@@ -1,3 +1,4 @@
+
 """Original New Eridian occupation design, not proprietary SEED mechanics."""
 OCCUPATIONS={
  "farmer":dict(competencies=("cultivation","environmental"), task="harvest", output="food", dependency="water", trait="patient"),
@@ -11,3 +12,7 @@ OCCUPATIONS={
 OCCUPATIONS["cultivator"]=OCCUPATIONS["farmer"]
 def matches(job,skill):return skill in OCCUPATIONS.get(job,{}).get("competencies",())
 def occupation_task(job):return OCCUPATIONS.get(job,{}).get("task","work")
+
+from .seed_skills import NEW_JOBS
+for key,(label,skill,task) in NEW_JOBS.items():
+    OCCUPATIONS[key]=dict(competencies=(skill,),task=task,output=skill,dependency="supplies",trait="methodical")
