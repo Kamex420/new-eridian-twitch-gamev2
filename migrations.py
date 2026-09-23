@@ -1,3 +1,4 @@
+
 """Additive, repeatable migration; never resets a save or renames legacy columns."""
 from sqlalchemy import inspect, text as sql_text
 from .db import engine, Base
@@ -6,6 +7,9 @@ def migrate_schema():
     """Add new fields without replacing or clearing existing player/world rows."""
     additions={
         "players":{
+            "cooking_xp":"INTEGER NOT NULL DEFAULT 0",
+            "medicine_xp":"INTEGER NOT NULL DEFAULT 0",
+            "emergency_xp":"INTEGER NOT NULL DEFAULT 0",
             "environmental_xp":"INTEGER NOT NULL DEFAULT 0",
             "fabrication_xp":"INTEGER NOT NULL DEFAULT 0",
             "infrastructure_xp":"INTEGER NOT NULL DEFAULT 0",
