@@ -67,13 +67,13 @@ def main():
             raise RuntimeError(f"Verification failed for /{command['name']}. No global commands were deleted.")
     print(f'CONFIRMED: all {len(commands)} server commands match the current catalog.', flush=True)
     print('CONFIRMED: server /eat has Food autocomplete.', flush=True)
-    names = {c['name'] for c in commands}
+    names = {c['name'] for c in commands} | {'agriculture'}  # Retired command name.
     removed = 0
     for command in api('GET', base + '/commands'):
         if command['name'] in names and command.get('type', 1) == 1:
             api('DELETE', base + '/commands/' + command['id'])
             removed += 1
-            print(f"DELETED: duplicate global /{command['name']}.", flush=True)
+            print(f"DELETED: duplicate or retired global /{command['name']}.", flush=True)
     remaining = api('GET', base + '/commands')
     if any(c['name'] in names and c.get('type', 1) == 1 for c in remaining):
         raise RuntimeError('Global duplicates still exist. Check for another deployment registering them.')
