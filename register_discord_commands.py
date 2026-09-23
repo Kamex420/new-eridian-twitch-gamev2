@@ -1,49 +1,76 @@
 
-# New Eridian v2 Discord command registration
-import os, sys, json, requests
+"""Register current commands and remove the superseded global /eat safely."""
+import ast
+import json
+import os
+from pathlib import Path
+import sys
 
-APP_ID = os.getenv("DISCORD_APPLICATION_ID","")
-TOKEN = os.getenv("DISCORD_BOT_TOKEN","")
-GUILD_ID = os.getenv("DISCORD_GUILD_ID","").strip()
-
-base = f"https://discord.com/api/v10/applications/{APP_ID}"
-url = f"{base}/guilds/{GUILD_ID}/commands" if GUILD_ID else f"{base}/commands"
-
+import requests
 from app.command_catalog import commands
 
-headers = {
-    "Authorization": f"Bot {TOKEN}",
-    "Content-Type": "application/json"
-}
 
-if "--dry-run" in sys.argv:
-    print(json.dumps(commands,ensure_ascii=False,indent=2))
-    sys.exit(0)
-if not APP_ID or not TOKEN:
-    sys.exit("Set DISCORD_APPLICATION_ID and DISCORD_BOT_TOKEN before registration.")
+def signature(command):
+    keys = ('name', 'type', 'required', 'autocomplete', 'choices', 'options',
+            'min_value', 'max_value', 'min_length', 'max_length')
+    def option(row):
+        return {k: ([option(x) for x in row[k]] if k == 'options' else row[k])
+                for k in keys if k in row and row[k] not in (False, None, [])}
+    return (command['description'], [option(x) for x in command.get('options', [])])
 
-r = requests.put(url, headers=headers, json=commands, timeout=30)
-print("HTTP", r.status_code)
-if not r.ok:
-    print(r.text)
-    sys.exit(1)
 
-def option_signature(options):
-    signatures=[]
-    for option in options:
-        row={key:option.get(key,False if key in {"required","autocomplete"} else None)
-             for key in ("name","type","required","autocomplete","min_value","max_value")}
-        row['choices']=[(choice['name'],choice['value']) for choice in option.get('choices',[])]
-        signatures.append(row)
-    return signatures
-registered={row["name"]:row for row in r.json()}
-for command in commands:
-    actual=registered.get(command['name'])
-    if actual is None or option_signature(actual.get('options',[]))!=option_signature(command.get('options',[])):
-        sys.exit('Registration verification failed for /'+command['name']+'. Check Discord settings before use.')
+def main():
+    if '--dry-run' in sys.argv:
+        print(json.dumps(commands, ensure_ascii=False, indent=2))
+        return
+    app_id = os.getenv('DISCORD_APPLICATION_ID', '').strip()
+    token = os.getenv('DISCORD_BOT_TOKEN', '').strip()
+    guild_id = os.getenv('DISCORD_GUILD_ID', '').strip()
+    if not app_id or not token or not guild_id:
+        raise RuntimeError('Set DISCORD_APPLICATION_ID, DISCORD_BOT_TOKEN and DISCORD_GUILD_ID on this game service.')
+    eat = next(c for c in commands if c['name'] == 'eat')
+    if not any(o['name'] == 'food' and o.get('autocomplete') for o in eat.get('options', [])):
+        raise RuntimeError('OLD DEPLOYMENT: app/command_catalog.py lacks /eat Food. Deploy the latest GitHub commit.')
+    source = Path(__file__).resolve().with_name('main.py')
+    functions = {n.name for n in ast.parse(source.read_text()).body
+                 if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
+    if 'item_command_menu' not in functions:
+        raise RuntimeError('OLD DEPLOYMENT: root main.py lacks the food menu. Deploy the latest GitHub commit.')
+    session = requests.Session()
+    session.headers.update(Authorization=f'Bot {token}')
 
-print(f"Verified {len(commands)} New Eridian v2 commands with dropdown options.")
-if GUILD_ID:
-    print("Registered as guild commands for fast testing.")
-else:
-    print("Registered globally; propagation can take longer.")
+    def api(method, path, **kwargs):
+        response = session.request(method, 'https://discord.com/api/v10' + path,
+                                   timeout=30, **kwargs)
+        if not response.ok:
+            raise RuntimeError(f'Discord {method} failed: HTTP {response.status_code}: {response.text[:1000]}')
+        return response.json() if response.status_code != 204 else None
+
+    application = api('GET', '/oauth2/applications/@me')
+    if str(application['id']) != app_id:
+        raise RuntimeError('Application ID and bot token belong to different applications. Nothing changed.')
+    print(f"Registering {application['name']} | App {app_id} | Server {guild_id}", flush=True)
+    base = f'/applications/{app_id}'
+    server = f'{base}/guilds/{guild_id}/commands'
+    api('PUT', server, json=commands)
+    saved = {c['name']: c for c in api('GET', server) if c.get('type', 1) == 1}
+    for command in commands:
+        if command['name'] not in saved or signature(saved[command['name']]) != signature(command):
+            raise RuntimeError(f"Verification failed for /{command['name']}. Global /eat was not deleted.")
+    print(f'CONFIRMED: all {len(commands)} server commands match the current catalog.', flush=True)
+    print('CONFIRMED: server /eat has Food autocomplete.', flush=True)
+    for command in api('GET', base + '/commands'):
+        if command['name'] == 'eat' and command.get('type', 1) == 1:
+            api('DELETE', base + '/commands/' + command['id'])
+            print('DELETED: old global /eat.', flush=True)
+    remaining = api('GET', base + '/commands')
+    if any(c['name'] == 'eat' and c.get('type', 1) == 1 for c in remaining):
+        raise RuntimeError('Global /eat still exists. Check for another deployment registering it.')
+    print('DONE: /eat is registered only for the configured server on this application.', flush=True)
+
+
+if __name__ == '__main__':
+    try:
+        main()
+    except (RuntimeError, requests.RequestException) as exc:
+        sys.exit(str(exc))
