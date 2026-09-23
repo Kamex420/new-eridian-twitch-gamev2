@@ -1,5 +1,6 @@
 
-from datetime import date, timedelta
+
+from datetime import date, datetime, timedelta, timezone
 import hashlib
 
 HOLIDAY_WINDOWS = [
@@ -99,7 +100,7 @@ def _holiday_date_for(name, year):
 
 
 def holidays_active_for(today=None):
-    today = today or date.today()
+    today = today or datetime.now(timezone.utc).date()
     active = []
     for label, _, _, emoji in HOLIDAY_WINDOWS:
         for year in (today.year - 1, today.year, today.year + 1):
@@ -121,8 +122,49 @@ def holidays_active_for(today=None):
     return active
 
 
+def next_holiday_window(today=None):
+    """Next unopened festival window, including the next calendar year."""
+    today = today or datetime.now(timezone.utc).date()
+    upcoming = []
+    for year in (today.year, today.year + 1):
+        for label, _, _, emoji in HOLIDAY_WINDOWS:
+            holiday = _holiday_date_for(label, year)
+            start = holiday - timedelta(days=30)
+            if start > today:
+                upcoming.append(dict(name=label, emoji=emoji, holiday_date=holiday,
+                                     start=start, end=holiday + timedelta(days=7)))
+    return min(upcoming, key=lambda row: row['start'])
+
+
+def holiday_message(now=None):
+    now = now or datetime.now(timezone.utc)
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=timezone.utc)
+    today = now.astimezone(timezone.utc).date()
+    def stamp(day, style='F'):
+        seconds = int(datetime(day.year, day.month, day.day, tzinfo=timezone.utc).timestamp())
+        return f'<t:{seconds}:{style}>'
+    lines = ['🎉 HOLIDAY CALENDAR']
+    active = holidays_active_for(today)
+    if active:
+        lines.append('ACTIVE NOW')
+        for row in sorted(active, key=lambda row: row['end']):
+            end = row['end'] + timedelta(days=1)
+            lines.append(f"{row['emoji']} {row['name']} — ends {stamp(end)} ({stamp(end, 'R')})")
+    else:
+        lines.append('No holiday event is active right now.')
+    row = next_holiday_window(today)
+    lines += ['NEXT HOLIDAY EVENT', f"{row['emoji']} {row['name']}",
+              f"Starts {stamp(row['start'])} ({stamp(row['start'], 'R')})",
+              f"Holiday date: {row['holiday_date'].isoformat()}",
+              f"Window: {row['start'].isoformat()} through {row['end'].isoformat()} (UTC dates).",
+              'Festivals begin 30 days before the holiday at 00:00 UTC and include the 7 days after it. Discord timestamps show your local time.',
+              'This is the seasonal festival calendar. Use /event for society challenges. Festival recipe names are flavor text; /make lists craftable items.']
+    return '\n'.join(lines)
+
+
 def festive_message_for(channel: str = "new-eridian", today=None):
-    today = today or date.today()
+    today = today or datetime.now(timezone.utc).date()
     active = holidays_active_for(today)
     if not active:
         return {"active": False, "message": "🌱 New Eridian is between festivals."}
@@ -159,4 +201,4 @@ def install(app):
     return app
 
 
-__all__ = ["festive_message_for", "holidays_active_for", "install"]
+__all__ = ["festive_message_for", "holidays_active_for", "next_holiday_window", "holiday_message", "install"]
