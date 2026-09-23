@@ -241,8 +241,8 @@ commands = [
     cmd("modlog","View moderator event-control records (moderators only)"),
 
     # Clear work actions. Redundant legacy Discord commands are intentionally omitted.
-    cmd("agriculture","Agriculture hub: tend, harvest, or use Water Filter hydroponics",[
-        {"type":STRING,"name":"action","description":"Agriculture activity","required":False,
+    cmd("farm","Farming hub: tend, harvest, or use Water Filter hydroponics",[
+        {"type":STRING,"name":"action","description":"Farming activity","required":False,
          "choices":[{"name":"Tend Fields","value":"tend"},{"name":"Harvest Crops","value":"harvest"},{"name":"Irrigate","value":"irrigate"},{"name":"Hydroponics (Water Filter)","value":"hydroponics"}]}
     ]),
     cmd("scan","Environmental survey that supports society Knowledge"),
@@ -324,7 +324,7 @@ for command in commands:
             command['options'][0]['choices'] += [{'name':LABELS[skill]+' — '+label,'value':skill+':'+key} for key,label in paths.items()]
     if command['name']=='eventstart':
         command['options'][0]['choices'] += [{'name':'Fire Emergency','value':'fire'},{'name':'Clinic Supply Shortage','value':'clinic'}]
-    if command['name']=='agriculture':command['description']='Farming: tend fields, harvest Crops, or operate hydroponics'
+    if command['name']=='farm':command['description']='Farming: tend fields, harvest Crops, or operate hydroponics'
     if command['name']=='mine':command['description']='Harvesting: mine personal and shared Ore'
     if command['name']=='scan':command['description']='Processing survey that supports society Knowledge'
     if command['name']=='repair':command['description']='Engineering: repair society infrastructure or personal gear'
@@ -337,4 +337,6 @@ commands.append(cmd('training','Browse SEED skills, branch levels, supplies and 
 for command in commands:
     if command['name']=='shift':
         command['options'][0]['choices'] += [{'name':label,'value':key} for key,label in [('kitchen_duty','Kitchen Duty'),('clinic_duty','Clinic Duty'),('safety_duty','Safety Duty')]]
-    if command['name']=='agriculture':command['options'][0]['description']='Farming activity'
+    if command['name']=='farm':command['options'][0]['description']='Farming activity'
+
+commands.append(cmd('holiday','See active holidays and when the next holiday event starts'))
