@@ -5416,8 +5416,10 @@ def _discord_split_result(content):
         " 🧬 Active life modifiers", " 🌅 ", " ☀️ ", " 🌇 ", " 🌙 ",
         " 🩹 ", " ✅ ", " 🎓 ", " 🏆 ", " 🌈 ", " 📣 ", " 🔔 ", " 📜 ", " 🛠️ "
     ]
+    text=text.replace(" | ","\n")
     for marker in markers:
         text=text.replace(marker,"\n"+marker.strip())
+    text=re.sub(r"\s*(🔎\s*Encounter:|🧳\s*Collected:)",r"\n\1",text)
     return [x.strip() for x in text.split("\n") if x.strip()]
 
 def _discord_embed_color(status):
@@ -5469,9 +5471,9 @@ def _discord_add_field(embed,name,lines,inline=False):
 
 def _discord_action_name(command):
     names={
-        "farm":"FARMING SHIFT","fabricate":"FABRICATION SHIFT",
-        "farm":"FARM SHIFT","harvest":"HARVEST","forage":"FORAGING",
-        "water":"ENVIRONMENTAL WORK","scan":"ENVIRONMENTAL SCAN",
+        "fabricate":"FABRICATION SHIFT",
+        "farm":"FARMING SHIFT","harvest":"HARVEST","forage":"FORAGING",
+        "water":"WATER TREATMENT","scan":"PROCESSING SCAN",
         "mine":"MINING SHIFT","rare":"RARE MATERIAL SEARCH","scavenge":"SCAVENGE RUN",
         "craft":"CRAFTING SHIFT","machine":"MACHINE OPERATION","repair":"REPAIR",
         "project":"PROJECT WORK","work":"WORK SHIFT","research":"RESEARCH",
@@ -5482,12 +5484,13 @@ def _discord_action_name(command):
         "eat":"MEAL","sleep":"REST CYCLE","walk":"WALK","games":"GAMES","relax":"RELAX",
         "hobby":"HOBBY","hi":"GREETING","hangout":"HANGOUT","duo":"DUO ACTIVITY",
         "meal":"COMMUNITY MEAL","mentor":"MENTORING","sell":"MARKET SALE",
-        "gearrepair":"GEAR REPAIR","use":"ITEM USED",
+        "gearrepair":"GEAR REPAIR","use":"ITEM USED","training":"SKILL TRAINING",
     }
     return names.get(command,(command or "NEW ERIDIAN").replace("_"," ").upper())
 
 def _discord_command_title(command):
     titles={
+        "training":"🌱 SKILL TRAINING","holiday":"🎉 HOLIDAY CALENDAR",
         "seed":"📘 NEW ERIDIAN v2 HANDBOOK","guide":"🧭 GUIDE","start":"🌱 CITIZEN READY",
         "me":"👤 CITIZEN PROFILE","skills":"🧬 APTITUDES","inventory":"🎒 INVENTORY",
         "job":"🧰 PROFESSION","contracts":"📋 DAILY CONTRACT","achievements":"🏆 ACHIEVEMENTS",
@@ -5633,6 +5636,10 @@ def _discord_action_embed(content,command,status):
     rewards=[];society=[];fleet=[];progress=[];discovery=[];world=[];mods=[];notes=[];risk=[];guidance=[];needs=[]
     modifier_mode=False;section_mode=""
     summary=""
+    has_practice=any(x.startswith(("Aptitude practice:","Competency practice:")) for x in pieces)
+    if command=="training":
+        match=re.search(r" completes ([^\n]+?)\.\s*\+",content)
+        if match:embed["title"]=title_prefix+" "+match.group(1)+(" • Complete" if status=="success" else "")
 
     for i,piece in enumerate(pieces):
         low=piece.lower()
@@ -5649,9 +5656,22 @@ def _discord_action_embed(content,command,status):
         if upper=="NEXT":section_mode="guidance";continue
 
         if piece.startswith("Needs:"):needs.append(piece[6:].strip());continue
-        if piece.startswith("Resources:"):rewards.append(piece[10:].strip());continue
-        if piece.startswith("Settlement:"):society.append(piece[11:].strip());continue
-        if piece.startswith(("Aptitude practice:","Competency practice:")):progress.append(piece);continue
+        if piece.startswith("Resources:"):
+            for change in piece[10:].split(","):
+                match=re.fullmatch(r"\s*(sc|contribution)\s*([+-]\d+)\s*",change,re.I)
+                if match:
+                    label="SC" if match[1].lower()=="sc" else "Contribution"
+                    value=f"{match[2]} {label}"
+                    if value not in rewards:rewards.append(value)
+                else:rewards.append(change.strip())
+            continue
+        if piece.startswith("Settlement:"):
+            if not society:society.append(piece[11:].strip())
+            continue
+        if piece.startswith(("Aptitude practice:","Competency practice:")):
+            progress.append(piece.split(":",1)[1].strip());continue
+        if piece.startswith("shared ") or piece.startswith("society "):
+            society.extend(x.strip().capitalize() for x in piece.split(";") if x.strip());continue
         if "LEVEL UP" in piece:
             progress.append(piece);continue
         if section_mode=="risk":
@@ -5671,10 +5691,15 @@ def _discord_action_embed(content,command,status):
         # Break the main success sentence away from inline mechanical rewards.
         if not summary:
             # Example: "🦆 Name completes delivery with Prisma. +1 Logistics XP"
-            m=re.match(r"^(.*?\.)\s*(\+\d+.+ XP)?$",piece)
+            m=re.match(r"^(.*?\.)\s*(\+\d+(?:\.\d+)? .+ XP(?: and branch XP)?)?$",piece)
             if m:
                 summary=m.group(1).strip()
-                if m.group(2):rewards.append(m.group(2).strip())
+                if m.group(2):
+                    xp=m.group(2).strip()
+                    if not has_practice:progress.append(xp.replace(" and branch XP",""))
+                    if "and branch XP" in xp:
+                        amount=xp.split()[0]
+                        progress.append(f"{amount} branch XP")
                 continue
             summary=piece
             continue
@@ -5726,7 +5751,7 @@ def _discord_action_embed(content,command,status):
     _discord_add_field(embed,"🟦 PROGRESS",progress)
     _discord_add_field(embed,"🟪 DISCOVERY",discovery)
     _discord_add_field(embed,"🟦 WORLD",world,inline=True)
-    _discord_add_field(embed,"⚪ MODIFIERS",mods)
+    _discord_add_field(embed,"🟦 SUCCESS CHANCE",mods)
     _discord_add_field(embed,"⚪ DETAILS",notes)
     return embed
 
@@ -5744,7 +5769,7 @@ def _discord_generic_embed(content,command,status):
     # Preserve simple all-caps/label sections when the endpoint already provides them.
     sections=[];current_name="📌 Details";current=[]
     for line in rest:
-        if (line.isupper() and len(line)<=48) or (line.endswith(":") and len(line)<=48):
+        if ((line.isupper() and re.match(r"^[A-Z][A-Z &/—-]*$",line)) or line.endswith(":")) and len(line)<=48 and not re.match(r"^[+−\-]?\d",line):
             if current:sections.append((current_name,current))
             current_name=line.strip(":")
             current=[]
@@ -5771,6 +5796,8 @@ def _discord_pretty_embed(content,command,status):
         "sell","gearrepair","use"
     }
 
+    if content.startswith(("✅ TASK COMPLETE","❌ TASK FAILED")):
+        return _discord_action_embed(content,command,status)
     if command=="progress":return _discord_progress_embed(content,status)
     if command=="world":return _discord_world_embed(content,status)
     if command=="life":return _discord_life_embed(content,status)
@@ -5964,7 +5991,7 @@ def _discord_json_message(content: str, ephemeral: bool = False, message_type: s
         elif any(word in lower for word in ("detail","note","modifier")):mark="◻️"
         else:mark="🟦"
         name=re.sub(r"^[^\w]+", "", name)
-        field["name"]=_discord_clean_piece(mark+" "+name,256)
+        field["name"]=_discord_clean_piece(mark+" "+(name.capitalize() if name.isupper() else name),256)
 
     if custom:
         existing=embed.get("description","")
