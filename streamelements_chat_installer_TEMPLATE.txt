@@ -1,0 +1,113 @@
+REPLACE https://YOUR-API-DOMAIN and YOUR_ADMIN_KEY BEFORE USING.
+
+!command add !seed 🌱 NEW ERIDIAN // SEED CHAT GAME | !start !me !job !skills !inventory !farm !harvest !mine !rare !research !craft !build !work !cargo !delivery !explore !market !status !progress !event !siro !rocky
+!command options !seed -level 100 -cd 15 -usercd 30
+
+!command add !start $(customapi https://YOUR-API-DOMAIN/api/v1/start?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&msg=$(msgid))
+!command options !start -level 100 -cd 10 -usercd 86400
+
+!command add !me $(customapi https://YOUR-API-DOMAIN/api/v1/profile?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender)))
+!command options !me -level 100 -cd 5 -usercd 15
+
+!command add !skills $(customapi https://YOUR-API-DOMAIN/api/v1/skills?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender)))
+!command options !skills -level 100 -cd 5 -usercd 15
+
+!command add !inventory $(customapi https://YOUR-API-DOMAIN/api/v1/inventory?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender)))
+!command options !inventory -level 100 -cd 5 -usercd 15
+
+!command add !wallet $(customapi https://YOUR-API-DOMAIN/api/v1/wallet?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender)))
+!command options !wallet -level 100 -cd 5 -usercd 15
+
+!command add !job $(customapi https://YOUR-API-DOMAIN/api/v1/job?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&job=$(queryescape $(1)))
+!command options !job -level 100 -cd 5 -usercd 30
+
+!command add !farm $(customapi https://YOUR-API-DOMAIN/api/v1/action/farm?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&msg=$(msgid))
+!command options !farm -level 100 -cd 3 -usercd 30
+
+!command add !harvest $(customapi https://YOUR-API-DOMAIN/api/v1/action/harvest?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&msg=$(msgid))
+!command options !harvest -level 100 -cd 3 -usercd 35
+
+!command add !mine $(customapi https://YOUR-API-DOMAIN/api/v1/action/mine?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&msg=$(msgid))
+!command options !mine -level 100 -cd 3 -usercd 35
+
+!command add !rare $(customapi https://YOUR-API-DOMAIN/api/v1/action/rare?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&msg=$(msgid))
+!command options !rare -level 100 -cd 5 -usercd 90
+
+!command add !research $(customapi https://YOUR-API-DOMAIN/api/v1/action/research?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&msg=$(msgid))
+!command options !research -level 100 -cd 3 -usercd 35
+
+!command add !craft $(customapi https://YOUR-API-DOMAIN/api/v1/action/craft?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&msg=$(msgid))
+!command options !craft -level 100 -cd 3 -usercd 45
+
+!command add !build $(customapi https://YOUR-API-DOMAIN/api/v1/action/build?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&msg=$(msgid))
+!command options !build -level 100 -cd 3 -usercd 45
+
+!command add !work $(customapi https://YOUR-API-DOMAIN/api/v1/action/work?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&msg=$(msgid))
+!command options !work -level 100 -cd 3 -usercd 35
+
+!command add !cargo $(customapi https://YOUR-API-DOMAIN/api/v1/action/cargo?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&msg=$(msgid))
+!command options !cargo -level 100 -cd 3 -usercd 45
+
+!command add !delivery $(customapi https://YOUR-API-DOMAIN/api/v1/action/delivery?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&msg=$(msgid))
+!command options !delivery -level 100 -cd 3 -usercd 45
+
+!command add !explore $(customapi https://YOUR-API-DOMAIN/api/v1/action/explore?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&msg=$(msgid))
+!command options !explore -level 100 -cd 3 -usercd 50
+
+!command add !market $(customapi https://YOUR-API-DOMAIN/api/v1/action/market?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&msg=$(msgid))
+!command options !market -level 100 -cd 3 -usercd 45
+
+!command add !eat $(customapi https://YOUR-API-DOMAIN/api/v1/action/eat?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&msg=$(msgid))
+!command options !eat -level 100 -cd 3 -usercd 15
+
+!command add !sleep $(customapi https://YOUR-API-DOMAIN/api/v1/action/sleep?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&msg=$(msgid))
+!command options !sleep -level 100 -cd 3 -usercd 60
+
+!command add !status $(customapi https://YOUR-API-DOMAIN/api/v1/society?channel=$(channel.provider_id))
+!command options !status -level 100 -cd 8 -usercd 20
+
+!command add !progress $(customapi https://YOUR-API-DOMAIN/api/v1/progress?channel=$(channel.provider_id))
+!command options !progress -level 100 -cd 8 -usercd 20
+
+!command add !event $(customapi https://YOUR-API-DOMAIN/api/v1/event?channel=$(channel.provider_id))
+!command options !event -level 100 -cd 8 -usercd 20
+
+!command add !rocky $(customapi https://YOUR-API-DOMAIN/api/v1/rocky?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender)))
+!command options !rocky -level 100 -cd 8 -usercd 60
+
+!command add !siro $(customapi https://YOUR-API-DOMAIN/api/v1/siro?channel=$(channel.provider_id))
+!command options !siro -level 100 -cd 8 -usercd 60
+
+!command add !sirostart $(customapi https://YOUR-API-DOMAIN/api/v1/admin/event/siro/on?channel=$(channel.provider_id)&level=$(sender.level)&key=YOUR_ADMIN_KEY)
+!command options !sirostart -level 500 -cd 5 -usercd 5
+
+!command add !siroend $(customapi https://YOUR-API-DOMAIN/api/v1/admin/event/siro/off?channel=$(channel.provider_id)&level=$(sender.level)&key=YOUR_ADMIN_KEY)
+!command options !siroend -level 500 -cd 5 -usercd 5
+
+!command add !foodcrisis $(customapi https://YOUR-API-DOMAIN/api/v1/admin/event/food/on?channel=$(channel.provider_id)&level=$(sender.level)&key=YOUR_ADMIN_KEY)
+!command options !foodcrisis -level 500 -cd 5 -usercd 5
+
+!command add !foodclear $(customapi https://YOUR-API-DOMAIN/api/v1/admin/event/food/off?channel=$(channel.provider_id)&level=$(sender.level)&key=YOUR_ADMIN_KEY)
+!command options !foodclear -level 500 -cd 5 -usercd 5
+
+!command add !miningboom $(customapi https://YOUR-API-DOMAIN/api/v1/admin/event/mining/on?channel=$(channel.provider_id)&level=$(sender.level)&key=YOUR_ADMIN_KEY)
+!command options !miningboom -level 500 -cd 5 -usercd 5
+
+!command add !miningclear $(customapi https://YOUR-API-DOMAIN/api/v1/admin/event/mining/off?channel=$(channel.provider_id)&level=$(sender.level)&key=YOUR_ADMIN_KEY)
+!command options !miningclear -level 500 -cd 5 -usercd 5
+
+!command add !deliverysurge $(customapi https://YOUR-API-DOMAIN/api/v1/admin/event/delivery/on?channel=$(channel.provider_id)&level=$(sender.level)&key=YOUR_ADMIN_KEY)
+!command options !deliverysurge -level 500 -cd 5 -usercd 5
+
+!command add !deliveryclear $(customapi https://YOUR-API-DOMAIN/api/v1/admin/event/delivery/off?channel=$(channel.provider_id)&level=$(sender.level)&key=YOUR_ADMIN_KEY)
+!command options !deliveryclear -level 500 -cd 5 -usercd 5
+
+!command add !marketboom $(customapi https://YOUR-API-DOMAIN/api/v1/admin/event/market/on?channel=$(channel.provider_id)&level=$(sender.level)&key=YOUR_ADMIN_KEY)
+!command options !marketboom -level 500 -cd 5 -usercd 5
+
+!command add !marketclear $(customapi https://YOUR-API-DOMAIN/api/v1/admin/event/market/off?channel=$(channel.provider_id)&level=$(sender.level)&key=YOUR_ADMIN_KEY)
+!command options !marketclear -level 500 -cd 5 -usercd 5
+
+!command add !nextday $(customapi https://YOUR-API-DOMAIN/api/v1/admin/day/next?channel=$(channel.provider_id)&level=$(sender.level)&key=YOUR_ADMIN_KEY)
+!command options !nextday -level 500 -cd 5 -usercd 5
+

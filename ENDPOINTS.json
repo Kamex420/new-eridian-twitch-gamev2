@@ -1,0 +1,37 @@
+{
+  "character": [
+    "/api/v1/start",
+    "/api/v1/profile",
+    "/api/v1/skills",
+    "/api/v1/inventory",
+    "/api/v1/wallet",
+    "/api/v1/job"
+  ],
+  "actions": [
+    "/api/v1/action/farm",
+    "/api/v1/action/harvest",
+    "/api/v1/action/mine",
+    "/api/v1/action/rare",
+    "/api/v1/action/research",
+    "/api/v1/action/craft",
+    "/api/v1/action/build",
+    "/api/v1/action/work",
+    "/api/v1/action/cargo",
+    "/api/v1/action/delivery",
+    "/api/v1/action/explore",
+    "/api/v1/action/market",
+    "/api/v1/action/eat",
+    "/api/v1/action/sleep"
+  ],
+  "society": [
+    "/api/v1/society",
+    "/api/v1/progress",
+    "/api/v1/event",
+    "/api/v1/rocky",
+    "/api/v1/siro"
+  ],
+  "moderator": [
+    "/api/v1/admin/event/{event}/{on|off}",
+    "/api/v1/admin/day/next"
+  ]
+}

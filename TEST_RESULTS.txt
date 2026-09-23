@@ -1,0 +1,10 @@
+New Eridian v2 — colony simulation 7.0.0
+
+100 passed in 7.84 seconds (SQLite / Python 3.12).
+71 original API paths retain original endpoint parameter names.
+43 registered Discord command option schemas match the uploaded source.
+One pre-existing FastAPI on_event deprecation warning remains.
+
+Validated: additive old-save migration twice, all core action success paths, all registered Discord dispatch, account merging, duplicate relationships, actual need deltas, Comfort output and success effects, supply chains, mentoring/crafting/colony/hobby milestones, action logs, Twitch length, recovery, routine authorization and cooldowns, incident consequences, overlay and status routes.
+
+Not exercised: production PostgreSQL, real Discord/Twitch delivery, Railway deployment or concurrent-load testing. See REFACTOR_DEPLOYMENT.md.

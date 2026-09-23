@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: new-eridian-seed-api
+    runtime: docker
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: ADMIN_KEY
+        generateValue: true
+      - key: GAME_NAME
+        value: New Eridian
