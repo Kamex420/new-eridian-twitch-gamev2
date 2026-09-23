@@ -1,3 +1,4 @@
+
 """Compatibility response adapter shared by HTTP and internal Discord calls.
 
 Decorators keep original signatures. Existing routes and slash command dispatch
@@ -31,8 +32,8 @@ def command(fn):
                             for section in ("Needs","Resources","Competency","Settlement"):
                                 changed=[f"{k} {v-before[section].get(k,v):+d}" for k,v in after[section].items() if v!=before[section].get(k,v)]
                                 if section=="Competency" and ctx["practice"]:
-                                    extra.append("Competency practice: "+"; ".join(ctx["practice"]))
-                                elif changed:extra.append(section+": "+", ".join(changed))
+                                    extra.append("Aptitude practice: "+"; ".join(ctx["practice"]))
+                                elif changed:extra.append(("Aptitudes" if section=="Competency" else section)+": "+", ".join(changed))
                             if not any(x.startswith("Needs:") for x in extra) and fn.__name__ not in {"profile","skills","life_status","guide","job"}:
                                 extra.insert(0,"Needs: unchanged")
                         if before:
@@ -64,13 +65,12 @@ def command(fn):
                     db.commit()
             if params.get("provider")=="discord":
                 return PlainTextResponse("\n".join(prefix)+("\n\n" if prefix else "")+text+("\n\n"+"\n".join(extra) if extra else ""),status_code=response.status_code)
-            # Reserve room for actual deltas and notifications before flavor text.
-            facts=" | ".join(prefix+extra)
-            if facts:
-                budget=max(30,495-len(facts)-3)
-                text=(text[:budget-1]+"…") if len(text)>budget else text
-                text=" | ".join(prefix+[text]+extra)
-            return PlainTextResponse(text[:500],status_code=response.status_code)
+            # StreamElements limits bytes, not Unicode characters.
+            text=" | ".join(prefix+[text]+extra)
+            encoded=text.encode("utf-8")
+            if len(encoded)>380:
+                text=encoded[:377].decode("utf-8",errors="ignore")+"…"
+            return PlainTextResponse(text,status_code=response.status_code)
         finally:
             context.reset(token);notices.reset(nt)
     return wrapped
