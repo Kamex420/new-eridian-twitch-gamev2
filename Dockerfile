@@ -1,3 +1,4 @@
+
 # app/main.py loads these legacy modules through the compatibility package.
 COPY db.py models.py needs.py occupations.py competencies.py settlement.py seedlings.py events.py progression.py commands.py migrations.py main.py ./
 COPY app ./app
