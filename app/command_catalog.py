@@ -1,4 +1,5 @@
 
+
 """Shared Discord command catalog: registration and runtime validation use this file."""
 
 def cmd(name, description, options=None):
@@ -309,3 +310,31 @@ for command in commands:
     if command["name"] in {"delivery","meal"}:
         label,value=("Send Delivery","send") if command["name"]=="delivery" else ("Share a Crop","share")
         command["options"]=[{"type":STRING,"name":"action","description":"View supplies first, or choose an action to spend the listed item","required":False,"choices":[{"name":"View Supplies","value":"view"},{"name":label,"value":value}]}]
+
+# SEED-aligned skills share one training menu; no duplicate work commands.
+from .seed_skills import LABELS, HUBS, NEW_JOBS, NEW_SPECS
+for command in commands:
+    if command['name']=='job':
+        command['options'][0]['choices'] += [{'name':label,'value':key} for key,(label,skill,task) in NEW_JOBS.items()]
+    if command['name']=='specialize':
+        for choice in command['options'][0]['choices']:
+            skill=choice['value'].split(':')[0]
+            choice['name']=LABELS[skill]+' — '+choice['name'].split(' — ',1)[-1]
+        for skill,paths in NEW_SPECS.items():
+            command['options'][0]['choices'] += [{'name':LABELS[skill]+' — '+label,'value':skill+':'+key} for key,label in paths.items()]
+    if command['name']=='eventstart':
+        command['options'][0]['choices'] += [{'name':'Fire Emergency','value':'fire'},{'name':'Clinic Supply Shortage','value':'clinic'}]
+    if command['name']=='agriculture':command['description']='Farming: tend fields, harvest Crops, or operate hydroponics'
+    if command['name']=='mine':command['description']='Harvesting: mine personal and shared Ore'
+    if command['name']=='scan':command['description']='Processing survey that supports society Knowledge'
+    if command['name']=='repair':command['description']='Engineering: repair society infrastructure or personal gear'
+commands.append(cmd('training','Browse SEED skills, branch levels, supplies and jobs; select Task to work',[
+    {'type':STRING,'name':'skill','description':'Choose a main skill to view its branches and requirements','required':False,
+     'choices':[{'name':LABELS[key],'value':hub} for hub,key in HUBS.items()]},
+    {'type':STRING,'name':'task','description':'Choose Skill first; shows required and owned materials','required':False,'autocomplete':True}
+]))
+
+for command in commands:
+    if command['name']=='shift':
+        command['options'][0]['choices'] += [{'name':label,'value':key} for key,label in [('kitchen_duty','Kitchen Duty'),('clinic_duty','Clinic Duty'),('safety_duty','Safety Duty')]]
+    if command['name']=='agriculture':command['options'][0]['description']='Farming activity'
