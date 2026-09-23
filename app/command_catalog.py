@@ -297,3 +297,15 @@ for command in commands:
         command["options"][0].pop("choices",None)
         command["options"][0].update(autocomplete=True,description="Select an owned consumable; craft more with /make")
 
+
+# Inventory-first commands: bare commands browse; explicit selections perform work.
+for command in commands:
+    if command["name"]=="eat":
+        command["description"]="View your food and quantities, then choose one item to eat"
+        command["options"]=[{"type":STRING,"name":"food","description":"Owned food and quantity; leave blank to view your food menu","required":False,"autocomplete":True}]
+    if command["name"]=="use":
+        command["description"]="View usable items and quantities, or choose one to consume"
+        command["options"][0]["required"]=False
+    if command["name"] in {"delivery","meal"}:
+        label,value=("Send Delivery","send") if command["name"]=="delivery" else ("Share a Crop","share")
+        command["options"]=[{"type":STRING,"name":"action","description":"View supplies first, or choose an action to spend the listed item","required":False,"choices":[{"name":"View Supplies","value":"view"},{"name":label,"value":value}]}]

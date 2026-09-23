@@ -1,5 +1,4 @@
 
-
 import os, random, secrets, string, math, re, hashlib, json, urllib.request
 from datetime import datetime, timezone, timedelta
 from fastapi import FastAPI, HTTPException, Request, BackgroundTasks
@@ -478,13 +477,17 @@ DUO_ACTIVITIES={"walk":35,"games":35,"research":90,"delivery":90,"explore":90}
 
 def resource_name(key):
     return {"sc":"SC","crops":"Crop","ore":"Ore","rare_ore":"Rare Ore","components":"Component","cargo":"Cargo","biofiber":"Biofiber","alloy_plate":"Alloy Plate","circuit_board":"Circuit Board","power_cell":"Power Cell","sealant":"Sealant","precision_lens":"Precision Lens"}.get(key,key.replace("_"," ").title())
+def requirement_text(costs):
+    """Preview quantities; deductions are reserved for completed transactions."""
+    return ", ".join(f"{amount} {resource_name(key)}" for key,amount in costs.items())
+
 def cost_text(costs):
     return "("+", ".join(f"-{amount} {resource_name(key)}" for key,amount in costs.items())+")"
 BONUS_TYPES={
     "rockys_favor":("🪨 Rocky's Favor","+3% success chance"),
     "seed_dividend":("🪙 SEED Dividend","+2 SC on successful skilled actions"),
     "civic_recognition":("⭐ Civic Recognition","+1 Contribution on successful skilled actions"),
-    "accelerated_learning":("🧬 Accelerated Learning","+1 aptitude XP on successful skilled actions"),
+    "accelerated_learning":("🧬 Accelerated Learning","+1 base aptitude practice on successful skilled actions; conditions affect banked XP"),
 }
 
 def record_account_name(db,channel,provider,provider_uid,name):
@@ -744,7 +747,7 @@ def gain_skill(p,skill,amount=1):
     if skill in {"fabrication","infrastructure"}:p.industry_xp+=amount
     new=lvl(getattr(p,field))
     if db is not None and new>old:
-        announce(db,p,f"LEVEL UP: {p.display_name} — {SKILL_LABELS[skill]} competency Lv. {old} → Lv. {new}",now())
+        announce(db,p,f"LEVEL UP: {p.display_name} — {SKILL_LABELS[skill]} aptitude Lv. {old} → Lv. {new}",now())
     return amount
 
 def specialization_for(db,p,skill):
@@ -1351,7 +1354,27 @@ def exposure_tick(db,p,pw,action,skill,clock):
         return f" ☣️ Siro exposure +{gain} ({pw.siro_exposure}/100)."
     return ""
 
-def world_rule_bundle(db,p,s,action,skill):
+def housing_status_text(shared,s,provider="discord",detailed=False):
+    shortage=max(0,s.population-shared.housing)
+    repair="/repair target:society" if provider=="discord" else "!repair"
+    overview=f"Shared housing: {shared.housing} spaces for {s.population} citizens"
+    if not shortage:return overview+" — enough housing; no housing penalty."
+    overview+=f" — short by {shortage}. Success chance -3% (3 percentage points)."
+    if not detailed:
+        return overview+f" Help: {repair}; repairs need shared Components."
+    needed=5-(shared.infrastructure%5)
+    rows=[overview,
+          f"Help: use {repair}. Each successful supplied repair uses 1 shared Component and adds 1–2 Infrastructure, depending on needs.",
+          f"Every 5 Infrastructure adds 1 housing space. Next space: {needed} more Infrastructure; shared Components available: {shared.components}."]
+    if shared.components<1:
+        craft="/make recipe:component" if provider=="discord" else "!make component"
+        mine="/mine" if provider=="discord" else "!mine"
+        rows.append(f"Supply the society first: {mine} adds shared Ore; {craft} uses your personal Ore and converts available shared Ore into shared Components.")
+    rows.append("This is society-wide housing capacity. Upgrading your personal Habitat does not add shared housing spaces.")
+    return "\n".join(rows)
+
+
+def world_rule_bundle(db,p,s,action,skill,provider="discord"):
     clock=world_clock(db,p.channel_id,s);pw=player_world(db,p)
     parts=[];total=0
     for fn,args in [
@@ -1369,7 +1392,14 @@ def world_rule_bundle(db,p,s,action,skill):
     ab,anotes=aftermath_modifier(db,p.channel_id,skill);total+=ab;parts.extend(anotes)
     shared=colony_state(db,p.channel_id);colony_tick(shared,s,now())
     pressure=colony_pressures(shared,s,pw.siro_exposure)
-    for label,value in pressure.items():total+=value;parts.append(f"Need pressure: {label} {round(value*100):+d}%")
+    for label,value in pressure.items():
+        total+=value
+        if label=="housing pressure":
+            parts.append(housing_status_text(shared,s,provider))
+        elif label=="habitat decline":
+            repair="/repair target:society" if provider=="discord" else "!repair"
+            parts.append(f"Society infrastructure shortage: 0 Infrastructure for {s.population} citizens. Success chance -3% (3 percentage points). Help: {repair}; needs shared Components.")
+        else:parts.append(f"Society condition: {label} {round(value*100):+d}%")
     if occupation_matches(p.job,skill):total+=.02;parts.append("Occupation match +2%")
     if skill in {"logistics","research","commerce","infrastructure"}:
         relations=db.execute(select(LifeRelationship).where(LifeRelationship.channel_id==p.channel_id,((LifeRelationship.uid_a==p.twitch_uid)|(LifeRelationship.uid_b==p.twitch_uid)))).scalars().all()
@@ -1414,7 +1444,7 @@ def cooldowns_text(db,p,provider="twitch"):
     rows=db.execute(select(Cooldown).where(Cooldown.channel_id==p.channel_id,Cooldown.canonical_uid==p.twitch_uid)).scalars().all()
     active=sorted((r.action,min(ACTION_COOLDOWNS.get(r.action,5),max(1,int(math.ceil((as_utc(r.ready_at)-now()).total_seconds()))))) for r in rows if as_utc(r.ready_at)>now())
     rules="Standard work, /eat, and /sleep: 5s. Social and recovery actions: 20–60s. /make: no cooldown."
-    if not active:return "⏱️ All actions are ready. "+rules
+    if not active:return "⏱️ No active cooldowns. Tasks still require sufficient needs and materials. "+rules
     if provider=="discord":return f"⏱️ {p.display_name} — Active Cooldowns\n\n"+"\n".join(f"• {guide_command(a,'discord')} — {seconds}s" for a,seconds in active[:15])+"\n\n"+rules
     return "⏱️ Cooldowns: "+" | ".join(f"{guide_command(a,'twitch')} {seconds}s" for a,seconds in active[:10])+" | Work/eat/sleep: 5s; social/recovery: 20–60s; !make: none"
 def action_wait(db,p,action_name):
@@ -1428,7 +1458,7 @@ DISCORD_ACTION_ROUTES={
     "survey":"/explore operation:Advanced Survey","market":"/market action:Commerce Work",
     "business":"/business action:Work","businesscontract":"/business action:Contract","businessinvest":"/business action:Invest",
     "hi":"/social action:Say Hi player:<name>","hangout":"/social action:Hang Out player:<name>",
-    "mentor":"/social action:Mentor player:<name>","duo":"/social action:Duo Activity player:<name>",
+    "mentor":"/social action:Mentor player:<name>","duo":"/social player:<name>",
     "gearrepair":"/repair target:Personal Quality Gear item:<item>",
     "sell":"/market action:Sell Resources resource:<resource> amount:<amount>",
 }
@@ -1935,10 +1965,10 @@ def guide_material_step(key,provider):
     prefix="/" if provider=="discord" else "!"
     routes={
         "crops":f"{prefix}agriculture action:Harvest Crops" if provider=="discord" else "!harvest",
-        "ore":f"{prefix}mine","rare_ore":f"{prefix}rare","components":f"{prefix}make recipe:Component",
+        "ore":f"{prefix}mine","rare_ore":f"{prefix}rare","components":("/make recipe:component" if provider=="discord" else "!make component"),
         "cargo":f"{prefix}cargo",
     }
-    return routes.get(key,f"{prefix}make recipe:{key}")
+    return routes.get(key,f"/make recipe:{key}" if provider=="discord" else f"!make {key}")
 
 def guide_three_steps(db,p,s,w,clock,provider):
     prefix="/" if provider=="discord" else "!";life=life_state(db,p);steps=[]
@@ -2007,7 +2037,7 @@ def guide(channel:str,uid:str,name:str="Citizen",goal:str="auto",provider:str="t
             if blocked_core:
                 lines.append(f"🏠 Work, crafting, and gear repair require Energy, Nutrition, and Social at {TASK_NEED_MINIMUM} or higher.")
                 lines.extend(f"• {label} {value}/100: use {fix}." for label,value,fix in blocked_core)
-                lines.append("Raise every need listed above, then retry your task. Failed attempts consume nothing and start no cooldown.")
+                lines.append("Raise every need listed above, then retry your task. Blocked attempts consume nothing and start no cooldown.")
             else:
                 needs={"Energy":life.energy,"Nutrition":life.nutrition,"Social":life.social,"Comfort":life.comfort,"Morale":life.morale};low=min(needs,key=needs.get)
                 routes={"Energy":f"{prefix}sleep or {prefix}relax","Nutrition":f"{prefix}eat","Social":social_fix,"Comfort":f"{prefix}relax","Morale":f"{prefix}walk or {prefix}hobby"}
@@ -2024,7 +2054,15 @@ def guide(channel:str,uid:str,name:str="Citizen",goal:str="auto",provider:str="t
             if d.complete:lines.extend(["📋 Today's contract is complete.",f"Next: {prefix}guide goal:society" if provider=="discord" else "Next: !guide society"])
             else:lines.extend([f"📋 Daily: {action_display_name(d.action)} {d.progress}/{d.target}.",f"Do {cmd} next"+(f" when its {wait}s cooldown ends." if wait else " now.")+f" Reward: {d.reward_sc} SC +1 Contribution."])
         elif selected=="seed_coin":
-            job_actions=[a for a in JOBS.get(p.job,("",set()))[1] if a in ACTION_SKILLS and a!="build"]
+            job_actions=[a for a in JOBS.get(p.job,("",set()))[1] if a in ACTION_SKILLS and a not in {"build","businessinvest"}]
+            owned_business=business_for(db,p)
+            job_actions=[a for a in job_actions if not (
+                (a in {"business","businesscontract"} and not owned_business) or
+                (a=="delivery" and p.cargo<=0) or
+                (a=="survey" and item(db,channel,p.twitch_uid,"sensor")<=0) or
+                (a=="craft" and p.ore<=0) or
+                (provider=="discord" and a in {"work","machine","craft"})
+            )]
             ranked=sorted((action_wait(db,p,a),a) for a in job_actions)
             if ranked:wait,a=ranked[0];reason=f"your {JOBS[p.job][0]} job adds +1 SC"
             else:
@@ -2039,12 +2077,12 @@ def guide(channel:str,uid:str,name:str="Citizen",goal:str="auto",provider:str="t
             lines.extend([f"🧬 Lowest aptitude: {SKILL_LABELS[skill]} Lv. {level} ({skill_xp(p,skill)} XP).",f"Train it with {cmd} "+("now." if not wait else f"in {wait}s.")+(f" At Lv. 10, use {prefix}specialize." if level<10 else f" Use {prefix}specialize if you have not chosen a path.")])
         elif selected=="crafting":
             if p.ore<=0:step=f"Start with {prefix}mine to obtain Ore."
-            elif p.components<=0:step=f"Use {prefix}make recipe:Component to turn Ore into a Component."
-            else:step=f"Open {prefix}make category:tree and follow Raw Materials → Basic Components → Advanced Components → Final Products. Use {prefix}seedindustries only when one link is missing."
+            elif p.components<=0:step=("Use /make recipe:component to turn 1 Ore into 1 Component." if provider=="discord" else "Use !make component to turn 1 Ore into 1 Component.")
+            else:step=("Open /make category:tree" if provider=="discord" else "Open !recipes tree")+" and follow Raw Materials → Basic Components → Advanced Components → Final Products."
             lines.extend([f"⚙️ Production route: Crops {p.crops} · Ore {p.ore} · Components {p.components} · Rare Ore {p.rare_ore} · Cargo {p.cargo}.",step])
         elif selected=="home":
             h=db.execute(select(Home).where(Home.channel_id==channel,Home.canonical_uid==p.twitch_uid)).scalar_one_or_none();tier=h.tier if h else 1;cost,component_cost=home_upgrade_cost(tier)
-            upgrade_command=f"{prefix}home action:Upgrade" if provider=="discord" else f"{prefix}homeupgrade";lines.extend([f"🏠 Habitat Tier {tier}. Next upgrade costs {cost} SC + {component_cost} Components.",f"You have {p.sc} SC + {p.components} Components. "+(f"Use {upgrade_command} now." if p.sc>=cost and p.components>=component_cost else f"Use {prefix}guide goal:seed_coin and {prefix}guide goal:crafting to gather what is missing." if provider=="discord" else "Use !guide seed_coin and !guide crafting to gather what is missing.")])
+            lines.extend(habitat_upgrade_plan(p,tier,provider))
         elif selected=="business":
             b=db.execute(select(Business).where(Business.channel_id==channel,Business.canonical_uid==p.twitch_uid)).scalar_one_or_none()
             if b:
@@ -2052,13 +2090,13 @@ def guide(channel:str,uid:str,name:str="Citizen",goal:str="auto",provider:str="t
                 lines.extend([f"🏢 {p.display_name}, {b.name} is Level {b.level} with {b.xp}/{business_xp_needed(b.level)} XP.",business_routes])
             else:
                 business_start_command=f"{prefix}business action:Start" if provider=="discord" else f"{prefix}businessstart"
-                lines.extend([f"🏢 A business costs 75 SC; you have {p.sc}.",f"Earn the difference with {prefix}guide"+(" goal:seed_coin" if provider=="discord" else " seed_coin")+f", then use {business_start_command}."])
+                lines.extend([f"🏢 A business costs 75 SC; you have {p.sc}.",(f"Earn {75-p.sc} more SC with "+("/guide goal:seed_coin" if provider=="discord" else "!guide seed_coin")+f", then use {business_start_command}." if p.sc<75 else f"✅ You can afford to start now. Use {business_start_command}.")])
         if selected!="event" and event_lines:lines.extend(["",*event_lines])
         steps=guide_three_steps(db,p,s,w,clock,provider)
         lines.extend(["","🧬 TASK COST FORECAST","• Standard work and /make: -2 Energy/-1 Nutrition/-1 Comfort. Heavy extraction, frontier, and repair work: -3 Energy/-1 Nutrition/-1 Comfort.",f"• Current readiness: Energy {life.energy} · Nutrition {life.nutrition} · Social {life.social}. Each must begin at {TASK_NEED_MINIMUM}+."])
-        lines.extend(["","NEXT THREE STEPS",*[f"{i}. {step}" for i,step in enumerate(steps,1)]])
+        if goal=="auto":lines.extend(["","NEXT THREE STEPS",*[f"{i}. {step}" for i,step in enumerate(steps,1)]])
         if not w.active_event:lines.extend(["",f"⚡ {auto_event_status(db,w)}"])
-        result="\n".join(lines) if provider=="discord" else (f"🧭 {p.display_name} | Next: "+" | ".join(f"{i}) {step}" for i,step in enumerate(steps,1))+f" | Needs E{life.energy}/N{life.nutrition}/S{life.social}")
+        result="\n".join(lines) if provider=="discord" else (f"🧭 {p.display_name} | "+" | ".join(lines[1:lines.index("🧬 TASK COST FORECAST")-1]))
         return PlainTextResponse(result) if provider=="discord" else out(result)
 
 @app.get("/api/v1/inventory")
@@ -2113,14 +2151,40 @@ def achievements(channel:str,uid:str,name:str="Citizen",provider:str="twitch"):
                  "\n\nMilestone titles unlock at 1, 10, and 30 completed Production Orders. Crafting every Basic Component and producing a Masterwork have their own achievements.")
         return platform_response(provider,discord,"🏆 "+(", ".join(names) if names else "No achievements yet."))
 
+def habitat_upgrade_plan(p,tier,provider):
+    cost,components=home_upgrade_cost(tier)
+    missing_sc=max(0,cost-p.sc);missing_components=max(0,components-p.components)
+    upgrade="/home action:upgrade" if provider=="discord" else "!homeup"
+    lines=[f"🏠 Habitat Tier {tier} → Tier {tier+1}",
+           f"Upgrade cost: {cost} SC and {components} Components.",
+           f"You have: {p.sc} SC and {p.components} Components."]
+    missing=[]
+    if missing_sc:missing.append(f"{missing_sc} SC")
+    if missing_components:missing.append(f"{missing_components} Components")
+    if not missing:
+        lines.append(f"✅ Ready to upgrade. Use {upgrade}.")
+        return lines
+    lines.append("Still needed: "+" and ".join(missing)+".")
+    if missing_sc:
+        earn="/guide goal:seed_coin" if provider=="discord" else "!guide seed_coin"
+        lines.append(f"Earn the remaining {missing_sc} SC: use {earn}.")
+    if missing_components:
+        ore=max(0,missing_components-p.ore)
+        if ore:lines.append(f"Gather {ore} more Ore with {'/mine' if provider=='discord' else '!mine'}.")
+        craft="/make recipe:component" if provider=="discord" else "!make component"
+        lines.append(f"Craft {missing_components} Components with {craft} ({missing_components} crafts; 1 Ore each).")
+    lines.append(f"Then use {upgrade}. Nothing spent yet.")
+    return lines
+
 @app.get("/api/v1/home")
 def home(channel:str,uid:str,name:str="Citizen",provider:str="twitch"):
     with SessionLocal() as db:
         _,p=player(db,channel,provider,uid,name)
         h=db.execute(select(Home).where(Home.channel_id==channel,Home.canonical_uid==p.twitch_uid)).scalar_one_or_none()
         if not h:h=Home(channel_id=channel,canonical_uid=p.twitch_uid);db.add(h);db.commit()
-        discord=f"🏠 {p.display_name} — Habitat\n\nCurrent tier: {h.tier}\nNext upgrade: {home_upgrade_cost(h.tier)[0]} SC + {home_upgrade_cost(h.tier)[1]} Components\n\nUse /home action:Upgrade when ready."
-        return platform_response(provider,discord,f"🏠 Habitat Tier {h.tier} | Next upgrade: {home_upgrade_cost(h.tier)[0]} SC + {home_upgrade_cost(h.tier)[1]} Components.")
+        plan=habitat_upgrade_plan(p,h.tier,provider)
+        return platform_response(provider,"\n".join(plan)," | ".join(plan))
+
 
 @app.get("/api/v1/home/upgrade")
 @colony_command
@@ -2129,7 +2193,9 @@ def homeup(channel:str,uid:str,name:str="Citizen",provider:str="twitch"):
         _,p=player(db,channel,provider,uid,name);h=db.execute(select(Home).where(Home.channel_id==channel,Home.canonical_uid==p.twitch_uid)).scalar_one_or_none()
         if not h:h=Home(channel_id=channel,canonical_uid=p.twitch_uid);db.add(h);db.commit()
         cost,component_cost=home_upgrade_cost(h.tier)
-        if p.sc<cost or p.components<component_cost:return out(f"🏠 Need {cost} SC + {component_cost} Components.")
+        if p.sc<cost or p.components<component_cost:
+            plan=habitat_upgrade_plan(p,h.tier,provider)
+            return platform_response(provider,"⚠️ Upgrade not ready\n\n"+"\n".join(plan)," | ".join(plan))
         spent=cost_text({"sc":cost,"components":component_cost})
         p.sc-=cost;p.components-=component_cost;h.tier+=1;db.commit();return out(f"🏠 Habitat upgraded to Tier {h.tier}! {spent}")
 
@@ -2197,9 +2263,9 @@ def craft_dependency_text(recipe,provider="discord"):
         for ingredient,qty in catalog[key].items():visit(ingredient,amount*qty,path+(key,))
         if key not in seen:seen.add(key);ordered.append(key)
     visit(recipe)
-    lines=[f"• {cost_text({part:qty*units[key] for part,qty in catalog[key].items()})} → {units[key]} {craft_item_name(key)}" for key in ordered]
+    lines=[f"• {requirement_text({part:qty*units[key] for part,qty in catalog[key].items()})} → {units[key]} {craft_item_name(key)}" for key in ordered]
     message=(f"🌳 {craft_item_name(recipe)} — PRODUCTION TREE\n\nBUILD ORDER\n"+'\n'.join(lines)+
-             '\n\nRAW INPUTS FOR ONE FINISHED ITEM\n'+cost_text(raw)+
+             '\n\nRAW INPUTS FOR ONE FINISHED ITEM\n'+requirement_text(raw)+
              '\n\nPreview only: nothing spent. Totals assume crafting all components from scratch. Reuse owned parts or buy missing inputs from Seed Industries.'+
              f'\nCraft the final step with /make recipe:{recipe}.')
     return platform_response(provider,message,f"🌳 {craft_item_name(recipe)} | "+' | '.join(lines))
@@ -2218,7 +2284,7 @@ def recipes(channel:str="new-eridian",provider:str="twitch",category:str=""):
                 lines=[]
                 for key,item_name,cost,effect,need in craft_category_rows(category):
                     lock=f" · unlocks at {SOCIETY_TIERS[need][0]}" if need is not None and need>tier_index else ""
-                    lines.append(f"• {item_name} (`{key}`) — {cost_text(cost)} · {effect}{lock}")
+                    lines.append(f"• {item_name} (`{key}`) — {requirement_text(cost)} · {effect}{lock}")
                 text="\n".join(lines)
             if provider=="discord":return PlainTextResponse(f"{emoji} {label}\n\n{description}\n\n{text}\n\nUse /make category:Production Tree to see the full chain.")
             return out(f"{emoji} {label} | "+", ".join(CRAFT_STAGE_ITEMS[category])+" | Use !make <recipe>.")
@@ -2310,7 +2376,7 @@ def craft_menu(db,p,channel,provider,category=""):
                 if unique_bonus_owned(db,p,recipe_key):owned_unique+=1
                 elif need is not None and tier_index<need:locked+=1
                 elif not craft_missing_materials(db,p,cost):ready+=1
-            tail=f"{ready} ready / {len(rows)} recipes"
+            tail=f"Materials available for {ready} / {len(rows)} recipes"
             if locked:tail+=f" · {locked} tier-locked"
             if owned_unique:tail+=f" · {owned_unique} unique item owned"
             category_lines.append(f"• {emoji} **{label}** — {tail}")
@@ -2335,7 +2401,7 @@ def craft_menu(db,p,channel,provider,category=""):
         else:
             missing=craft_missing_materials(db,p,cost)
             status=("❌ Need "+", ".join(missing)) if missing else "✅ READY"
-        lines.append(f"• {status} — **{item_name}** (`{key}`)\n  Cost: {cost_text(cost)} · {effect}")
+        lines.append(f"• {status} — **{item_name}** (`{key}`)\n  Required: {requirement_text(cost)} · {effect}\n  On hand: {requirement_text({k:material_amount(db,p,k) for k in cost})}")
     footer=("Basic Components stack and feed Advanced Components or simple Final Products." if category=="basic_components" else
             "Advanced Components combine specialized materials and unlock complex Final Products." if category=="advanced_components" else
             "Passive-bonus equipment is limited to one of each item; consumable Rations can stack. Quality gear rolls Crude through Masterwork.")
@@ -2639,18 +2705,18 @@ def seed_industries(channel:str,uid:str,name:str="Citizen",action:str="browse",i
                 for order_key,data in orders:
                     numbers=production_order_numbers(data);done=order_completed(db,p,clock["day"],order_key);missing=craft_missing_materials(db,p,data["cost"])
                     state="✅ COMPLETED" if done else ("❌ NEED "+", ".join(missing) if missing else "✅ READY TO DELIVER")
-                    rows.append(f"• {state} — **{data['name']}** (`{order_key}`)\n  Deliver: {cost_text(data['cost'])[1:-1]}\n  Reward: {numbers['sc']} SC · {numbers['contribution']} Contribution · {numbers['development']} Development · +2 Fabrication/+1 Commerce XP\n  Purpose: {data['purpose']}")
+                    rows.append(f"• {state} — **{data['name']}** (`{order_key}`)\n  Deliver: {requirement_text(data['cost'])}\n  Reward: {numbers['sc']} SC · {numbers['contribution']} Contribution · {numbers['development']} Development · Fabrication/Commerce practice (base 2/1; adjusted by conditions)\n  Purpose: {data['purpose']}")
                 discord=(f"🏭 SEED INDUSTRIES — DAY {clock['day']} PRODUCTION ORDERS\n\n"
                          "Three rotating contracts connect gathering, manufacturing, and New Eridian's needs. Each may be completed once per citizen per Avesta day.\n\n"+
                          "\n\n".join(rows)+"\n\nUse /seedindustries action:Fulfill item:<order key>. Buying every input costs more than the order pays; manufacturing creates the profit.")
-                twitch=f"🏭 Day {clock['day']} Orders | "+" | ".join(f"{key}: {cost_text(data['cost'])} → {production_order_numbers(data)['sc']} SC" for key,data in orders)
+                twitch=f"🏭 Day {clock['day']} Orders | "+" | ".join(f"{key}: {requirement_text(data['cost'])} → {production_order_numbers(data)['sc']} SC" for key,data in orders)
                 return platform_response(provider,discord,twitch)
             match=next(((order_key,data) for order_key,data in orders if order_key==key),None)
             if not match:return out("🏭 That order is not active today. View today's production orders first.")
             order_key,data=match
             if order_completed(db,p,clock["day"],order_key):return out(f"🏭 {data['name']} is already complete for Avesta Day {clock['day']}.")
             missing=craft_missing_materials(db,p,data["cost"])
-            if missing:return out(f"🏭 {data['name']} still needs "+", ".join(missing)+". Use /guide goal:crafting for a production route.")
+            if missing:return out(f"🏭 {data['name']} still needs "+", ".join(missing)+(". Use /guide goal:crafting for a production route." if provider=="discord" else ". Use !guide crafting for a production route."))
             for material,qty in data["cost"].items():material_change(db,p,material,-qty)
             numbers=production_order_numbers(data);p.sc+=numbers["sc"];p.contribution+=numbers["contribution"];p.actions+=1;p.successes+=1
             gain_skill(p,"fabrication",2);gain_skill(p,"commerce",1);society(db,channel).development+=numbers["development"]
@@ -2736,8 +2802,8 @@ def gearrepair(channel:str,uid:str,name:str="Citizen",item:str="",provider:str="
         _,p=player(db,channel,provider,uid,name);life=life_state(db,p);blocked=task_need_gate(db,p,"gearrepair",provider,life)
         if blocked:return PlainTextResponse(blocked) if provider=="discord" else out(blocked)
         rows=db.execute(select(QualityGear).where(QualityGear.channel_id==channel,QualityGear.canonical_uid==p.twitch_uid,QualityGear.qty>0)).scalars().all()
-        row=next((x for x in rows if x.item_key==key or x.item_name.lower()==(item or "").lower()),None)
-        if not row:return out("🔧 Gear not found. Use /inventory section:Quality Gear to see item keys and names.")
+        row=next((x for x in rows if f"gear_{x.id}"==key or x.item_key==key or x.item_name.lower()==(item or "").lower()),None)
+        if not row:return out("🔧 Gear not found. Use "+("/inventory section:gear" if provider=="discord" else "!gear")+" to see your equipment.")
         if row.condition>=100:return out("🔧 That item is already at full condition. Nothing spent.")
         cost=max(1,(100-row.condition+19)//20)
         if p.components<cost:return out(f"🔧 Repair needs {cost} Components. You have {p.components}.")
@@ -2768,7 +2834,9 @@ def world_status(channel:str,uid:str="",name:str="Citizen",provider:str="twitch"
         s=society(db,channel);clock=world_clock(db,channel,s);proj=current_project(db,channel,clock["day"]);pcfg=project_cfg(proj.project_key)
         storyrow,storycfg=story_state(db,channel,clock)
         rumor=RUMORS[_stable_index(f"{channel}:{clock['day']}:rumor",len(RUMORS))]
-        low=shortages(s);short=", ".join(x[0] for x in low) if low else "No critical shortages"
+        low=shortages(s);shared=colony_state(db,channel)
+        short=", ".join(x[0] for x in low) if low else "No core-resource shortages"
+        if shared.housing<s.population:short+="; "+housing_status_text(shared,s,provider)
         discord=(f"{clock['phase_emoji']} Avesta Day {clock['day']} — {clock['phase']}\n\n"
                  f"World condition: {clock['condition']}\n{clock['condition_text']}\n\n"
                  f"Society project: {pcfg[1]} {proj.progress}/{proj.goal}\n"
@@ -2944,7 +3012,8 @@ def soc(channel:str,provider:str="twitch",viewer:str=""):
         personal=f"{clean(viewer)}, your society currently needs the most help with {min({'Food':s.food,'Materials':s.materials,'Development':s.development,'Knowledge':s.knowledge,'Treasury':s.treasury,'Reputation':s.reputation},key=lambda k:{'Food':s.food,'Materials':s.materials,'Development':s.development,'Knowledge':s.knowledge,'Treasury':s.treasury,'Reputation':s.reputation}[k])}.\n\n" if viewer else ""
         discord=(f"🏙️ {s.name} — Society Status\n\n{personal}🏛️ Tier: {tier[0]}\n👥 Population: {s.population}\n\n"
                  f"📦 CORE RESOURCES\n🌾 Food: {s.food} · ⛏️ Materials: {s.materials}\n🏗️ Development: {s.development} · 🔬 Knowledge: {s.knowledge}\n"
-                 f"🪙 Treasury: {s.treasury} · ⭐ Reputation: {s.reputation}\n\n💰 Tier success bonus: +{tier[2]} SC\nUse /society section:Next Tier Progress to see the next tier.")
+                 f"🪙 Treasury: {s.treasury} · ⭐ Reputation: {s.reputation}\n\n💰 Tier pay bonus: +{tier[2]} SC\nUse /society section:Next Tier Progress to see the next tier.")
+        discord+="\n\nSHARED HOUSING\n"+housing_status_text(colony_state(db,channel),s,provider,True)
         twitch=f"🏙️ {s.name} — {tier[0]} | 🌾{s.food} Food · ⛏️{s.materials} Materials · 🏗️{s.development} Development · 🔬{s.knowledge} Knowledge · 🪙{s.treasury} Treasury · ⭐{s.reputation} Reputation · 👥{s.population} | Tier bonus +{tier[2]} SC"
         return platform_response(provider,discord,twitch)
 
@@ -4750,20 +4819,31 @@ def action(action:str,channel:str,uid:str,name:str="Citizen",msg:str="",provider
         if skill:
             blocked=task_need_gate(db,p,action,provider)
             if blocked:return PlainTextResponse(blocked) if provider=="discord" else out(blocked)
+        selected_food=(msg[5:] if action=="eat" and (msg or "").startswith("food:") else "")
+        foods=edible_inventory(db,p) if action=="eat" else []
+        if selected_food:
+            if selected_food not in {"crops","ration","meal_kit","emergency"}:
+                return out("⚠️ Unknown food. Open /eat and choose from your food list. Nothing spent.")
+            if selected_food=="emergency":
+                if not emergency_food_available(db,p,foods):return out("⚠️ Emergency food requires Nutrition below 20 and no edible items. Open /eat to see your food. Nothing spent.")
+            elif not any(row["key"]==selected_food and row["qty"]>0 for row in foods):
+                return out("⚠️ You no longer own that food. Open /eat for your current inventory. Nothing spent.")
         advanced=(msg or "").startswith("mode:")
         mode=(msg.split(":",1)[1].split("|",1)[0] if advanced else "")
         make_prefix="/make" if provider=="discord" else "!make"
-        if mode=="hydroponics" and item(db,channel,c,"water_filter")<=0:return out(f"🔒 Hydroponics requires a Water Filter. Craft one with {make_prefix} category:final_products.")
-        if mode=="field_analysis" and item(db,channel,c,"siro_sampler")<=0:return out(f"🔒 Field Analysis requires a Siro Sampler. Craft one with {make_prefix} category:final_products.")
-        if action=="survey" and item(db,channel,c,"sensor")<=0:return out(f"🔒 Advanced Survey requires a Sensor. Craft one with {make_prefix} category:final_products.")
-        if mode=="expedite" and material_amount(db,p,"power_cell")<=0:return out(f"🔒 Expedited Spaceport Operations require 1 Power Cell. Manufacture one with {make_prefix} category:advanced_components.")
-        if mode=="analyze" and not unique_bonus_owned(db,p,"market_analyzer"):return out(f"🔒 Market Analysis requires a Market Analyzer. Craft one with {make_prefix} category:Final Products.")
+        final_products="/make category:final_products" if provider=="discord" else "!make final_products"
+        advanced_components="/make category:advanced_components" if provider=="discord" else "!make advanced_components"
+        if mode=="hydroponics" and item(db,channel,c,"water_filter")<=0:return out(f"🔒 Hydroponics requires a Water Filter. Craft one with {final_products}.")
+        if mode=="field_analysis" and item(db,channel,c,"siro_sampler")<=0:return out(f"🔒 Field Analysis requires a Siro Sampler. Craft one with {final_products}.")
+        if action=="survey" and item(db,channel,c,"sensor")<=0:return out(f"🔒 Advanced Survey requires a Sensor. Craft one with {final_products}.")
+        if mode=="expedite" and material_amount(db,p,"power_cell")<=0:return out(f"🔒 Expedited Spaceport Operations require 1 Power Cell. Manufacture one with {advanced_components}.")
+        if mode=="analyze" and not unique_bonus_owned(db,p,"market_analyzer"):return out(f"🔒 Market Analysis requires a Market Analyzer. Craft one with {final_products}.")
         if action=="craft" and p.ore<=0:return out("⚙️ Need Ore first.")
         if action=="delivery" and p.cargo<=0:return out(f"🦆 No Cargo ready. Use {'/cargo' if provider=='discord' else '!cargo'} first.")
-        if action=="eat" and p.crops<=0 and item(db,channel,c,"ration")<=0:
+        if action=="eat" and not any(row["qty"]>0 for row in foods):
             emergency_life=life_state(db,p)
             if emergency_life.nutrition>=TASK_NEED_MINIMUM:
-                message=(f"🍲 {p.display_name}, you have no Ration or Crop, but you are not starving. "
+                message=(f"🍲 {p.display_name}, you have no Crop, Ration, or Meal Kit, but you are not starving. "
                          f"Emergency meals are reserved for Nutrition below {TASK_NEED_MINIMUM}. "
                          f"Use {'/agriculture action:Harvest Crops or /seedindustries' if provider=='discord' else '!harvest or !seedindustries'} before your next meal.")
                 return out(message)
@@ -4772,7 +4852,7 @@ def action(action:str,channel:str,uid:str,name:str="Citizen",msg:str="",provider
         wait=check_cooldown(db,p,action)
         if wait:return out(f"⏱️ {p.display_name}, {action_display_name(action,mode)} is ready in {wait}s.")
         life_bonus,life_notes,life=life_modifiers(db,p,skill)
-        clock,pw,world_bonus,world_notes=world_rule_bundle(db,p,s,action,skill)
+        clock,pw,world_bonus,world_notes=world_rule_bundle(db,p,s,action,skill,provider)
         life_bonus+=world_bonus;life_notes.extend(world_notes)
         life_before=(life.energy,life.nutrition,life.social)
         spend_life_for_action(life,action)
@@ -4865,7 +4945,7 @@ def action(action:str,channel:str,uid:str,name:str="Citizen",msg:str="",provider
             else:
                 s.treasury+=1;society_gain="+1 Treasury"
             if action=="cargo":p.cargo+=1
-            elif action=="delivery":p.cargo-=1
+            elif action=="delivery":p.cargo-=1;society_gain+="; -1 personal Cargo"
             bond=duck_bond(db,p,duck,2 if action=="delivery" else 1)
             fleet_bonus=1 if bond.xp>=50 else 0
             if fleet_bonus:p.sc+=fleet_bonus
@@ -4891,14 +4971,22 @@ def action(action:str,channel:str,uid:str,name:str="Citizen",msg:str="",provider
                 if b:gain_business_xp(b,1);business_note=f" {b.name} advances to {b.xp}/{business_xp_needed(b.level)} XP."
             xp_gain=gain_skill(p,"commerce",xp_gain);p.sc+=sc_gain;p.contribution+=contribution_gain;base=f"🏪 {p.display_name} completes {action_display_name(action,mode)}. +{xp_gain} Commerce XP | +{sc_gain} SC | +{contribution_gain} Contribution | New Eridian gains +{2 if action=='businesscontract' or (action=='market' and mode=='analyze') else 1} {'Reputation' if action=='businesscontract' else 'Treasury'}.{business_note}"
         elif action=="eat":
-            if item(db,channel,c,"ration")>0:
+            food_key=selected_food or next((row["key"] for key in ("ration","crops","meal_kit") for row in foods if row["key"]==key and row["qty"]>0),"emergency")
+            if food_key=="meal_kit":
+                kits=db.execute(select(QualityGear).where(QualityGear.channel_id==channel,QualityGear.canonical_uid==c,QualityGear.item_key=="meal_kit",QualityGear.qty>0)).scalars().all()
+                kit=max(kits,key=lambda row:list(QUALITY_TIERS).index(row.quality))
+                nutrition_before=life.nutrition;morale_before=life.morale
+                life.nutrition=clamp100(life.nutrition+75+int(QUALITY_TIERS[kit.quality]["special"]*100));life.morale=clamp100(life.morale+5)
+                kit.qty-=1
+                base=f"🍲 {p.display_name} eats a {kit.quality} Meal Kit (-1 Meal Kit). Nutrition {nutrition_before}→{life.nutrition}; Morale {morale_before}→{life.morale}."
+            elif food_key=="ration":
                 row=db.execute(select(ExtraItem).where(ExtraItem.channel_id==channel,ExtraItem.canonical_uid==c,ExtraItem.item=="ration")).scalar_one();row.qty-=1
                 boost=db.execute(select(TimedBonus).where(TimedBonus.channel_id==channel,TimedBonus.canonical_uid==c,TimedBonus.bonus=="rockys_favor")).scalar_one_or_none()
                 if not boost:boost=TimedBonus(channel_id=channel,canonical_uid=c,bonus="rockys_favor",expires_at=now(),times_received=0);db.add(boost)
                 boost.expires_at=max(now(),as_utc(boost.expires_at))+timedelta(minutes=10);boost.times_received+=1
                 life.nutrition=clamp100(life.nutrition+70);life.morale=clamp100(life.morale+5)
                 base=f"🍲 {p.display_name} eats a Ration (-1 Ration). +70 Nutrition (capped at 100)/+5 Morale. Rocky's Favor: +3 percentage points success; +10 minutes (time stacks)."
-            elif p.crops>0:
+            elif food_key=="crops":
                 old_nutrition=life.nutrition;p.crops-=1;life.nutrition=clamp100(life.nutrition+35)
                 recovery_note=""
                 if old_nutrition<TASK_NEED_MINIMUM and life.nutrition<TASK_NEED_MINIMUM:
@@ -5016,7 +5104,7 @@ BEST USE: /guide goal:crafting, /guide goal:home, or /guide goal:business.""",
 "life":"""🌿 LIFE & SOCIAL SYSTEMS
 
 /me section:Life Needs — Energy, Nutrition, Social, Comfort, Morale, and active effects.
-/eat — Uses a Ration first for +70 Nutrition, +5 Morale, and 10 minutes of +3 percentage-point success; otherwise consumes 1 Crop for +35 Nutrition and +1 Morale. If Nutrition is below 20 and you have neither, a free emergency meal restores Nutrition to 40. All needs cap at 100.
+/eat — Opens your food list with owned quantities. Select Food to consume one Crop, Ration, or Meal Kit. A Ration gives +70 Nutrition, +5 Morale, and 10 minutes of +3 percentage-point success; a Crop gives +35 Nutrition and +1 Morale. A Meal Kit restores Nutrition based on quality and +5 Morale. If Nutrition is below 20 and you own no food, a free emergency meal restores Nutrition to 40. All needs cap at 100.
 /sleep — Fully restores Energy and Comfort to 100 at any time of day; reduces Siro exposure by up to 8.
 /relax — Restores Energy, Morale, and Comfort.
 /walk — Improves Morale and Exploration hobby progress.
@@ -5053,7 +5141,7 @@ Old work routes remain compatible on Twitch/API, including !craft and !machine, 
 "operations":"""🛰️ LOGISTICS, FRONTIER & COMMERCE
 
 /cargo — Prepares 1 personal Cargo and adds +1 society Treasury. Use before /delivery.
-/delivery — Requires and consumes 1 Cargo, adds +1 Reputation, and advances delivery-fleet bond XP.
+/delivery — Opens your Cargo supply preview; choose Send Delivery. Requires 1 personal Cargo, consumed only on success; adds +1 Reputation, and advances delivery-fleet bond XP.
 /spaceport — Standard Logistics work or Expedited Operations that consume 1 Power Cell for stronger Treasury, Reputation, and SC rewards.
 /explore — Scout normally or use a Sensor for an Advanced Survey with stronger Knowledge and SC rewards.
 /research — Standard research or Siro Sampler Field Analysis with stronger Knowledge and SC rewards.
@@ -5085,8 +5173,8 @@ BEST USE: /guide goal:event during emergencies and /guide goal:society between e
 
 /district — Chooses your home district.
 /shift — Chooses today's role bonus.
-/meal — Contributes 1 Crop to the community meal.
-/use — Consumes a crafted life item.
+/meal — Shows owned Crops; choose Share a Crop to contribute one to the community meal.
+/use — Lists owned life items and quantities; select Item to consume one.
 /repair — Choose Society Infrastructure work or Personal Quality Gear repair.
 /linklookup — Owner-only lookup for connected Discord/Twitch identities.
 
@@ -5107,6 +5195,7 @@ Aptitude — A skill family such as Agriculture, Research, or Logistics. Its lev
 Occupation / Job — Your profession. Matching work pays +1 SC, improves practice by 25%, and adds +2% success.
 Specialization — Permanent Lv. 10 path giving matching actions +3% success and +1 SC.
 Society stats — Shared Food, Materials, Development, Knowledge, Treasury, and Reputation.
+Shared housing — Society-wide spaces for citizens. Fewer spaces than citizens gives -3 percentage points to task success. Supplied society repairs add Infrastructure; every 5 Infrastructure adds 1 space. Personal Habitat upgrades do not expand shared housing. See /society for current capacity and supply needs.
 Society tier — Based on the lowest of all six stats. Higher tiers add modest SC pay and unlock recipes.
 Primary event role — Each successful matching action adds +1 progress.
 Support event role — Every two matching successes add +1 progress.
@@ -5197,12 +5286,15 @@ DISCORD_PRIVATE_COMMANDS = {
 
 def discord_message_status(content):
     lower=content.lower()
-    # Failure wins over incidental words such as "cooldown" in the NEXT
-    # section. This keeps failed result cards red instead of yellow.
-    if content.startswith(("❌","⛔","⚠️")) or "+0 rewards" in lower or "empty-handed" in lower or "cannot " in lower:return "failure"
-    if "ready in" in lower or content.startswith("⏱️"):return "cooldown"
-    if content.startswith(("✅","🌾","⛏️","⚙️","🏗️","🔬","🦆","🧭","🏪","💧")) or " completes " in lower:return "success"
+    if content.startswith(("❌","⛔","⚠️","🔒","🛑")) or any(term in lower for term in
+        ("+0 rewards", "empty-handed", "cannot ", "still needed:", "still needs ", "need ore first", "no cargo ready", "you only have", "gear not found")):
+        return "failure"
+    if content.startswith("⏱️") or re.search(r"is ready in \d+s",lower):return "cooldown"
+    if content.startswith("✅") or any(term in lower for term in
+        ("task complete", "fabrication complete", " completes ", " upgraded to ", " sold ", " bought ")):
+        return "success"
     return "info"
+
 def discord_message_category(command):
     groups={
         "handbook":{"seed"},"guide":{"guide"},"character":{"start","me","progress","inventory","job","specialize","link"},
@@ -5260,23 +5352,34 @@ def _discord_add_field(embed,name,lines,inline=False):
         if line.startswith("•"):line=line[1:].strip()
         if line not in clean:clean.append(line)
     if not clean:return
-    value="\n".join("• "+x for x in clean)
-    embed["fields"].append({
-        "name":_discord_clean_piece(name,256),
-        "value":_discord_clean_piece(value,1024),
-        "inline":bool(inline),
-    })
+    # Split fields at line boundaries so instructions are not cut at 1024 chars.
+    chunks=[];current=""
+    for line in clean:
+        line="• "+line
+        while len(line)>1000:
+            if current:chunks.append(current);current=""
+            split=line.rfind(" ",0,1000)
+            if split<1:split=1000
+            chunks.append(line[:split]);line=line[split:].lstrip()
+        if current and len(current)+1+len(line)>1000:
+            chunks.append(current);current=""
+        current=(current+"\n"+line).strip()
+    if current:chunks.append(current)
+    for i,value in enumerate(chunks):
+        embed["fields"].append({"name":_discord_clean_piece(name+(" (continued)" if i else ""),256),
+                                "value":value,"inline":bool(inline)})
+
 
 def _discord_action_name(command):
     names={
         "agriculture":"AGRICULTURE SHIFT","fabricate":"FABRICATION SHIFT",
-        "farm":"FARM SHIFT","harvest":"HARVEST COMPLETE","forage":"FORAGE COMPLETE",
+        "farm":"FARM SHIFT","harvest":"HARVEST","forage":"FORAGING",
         "water":"ENVIRONMENTAL WORK","scan":"ENVIRONMENTAL SCAN",
         "mine":"MINING SHIFT","rare":"RARE MATERIAL SEARCH","scavenge":"SCAVENGE RUN",
-        "craft":"CRAFTING SHIFT","machine":"MACHINE OPERATION","repair":"REPAIR COMPLETE",
-        "project":"PROJECT WORK","work":"WORK SHIFT","research":"RESEARCH COMPLETE",
-        "cargo":"CARGO PREP","delivery":"DELIVERY COMPLETE","spaceport":"SPACEPORT SHIFT",
-        "explore":"EXPEDITION COMPLETE","survey":"SURVEY COMPLETE","market":"MARKET SHIFT",
+        "craft":"CRAFTING SHIFT","machine":"MACHINE OPERATION","repair":"REPAIR",
+        "project":"PROJECT WORK","work":"WORK SHIFT","research":"RESEARCH",
+        "cargo":"CARGO PREP","delivery":"DELIVERY","spaceport":"SPACEPORT SHIFT",
+        "explore":"EXPEDITION","survey":"SURVEY","market":"MARKET SHIFT",
         "businesswork":"BUSINESS SHIFT","business":"BUSINESS SHIFT",
         "businesscontract":"BUSINESS CONTRACT","businessinvest":"BUSINESS INVESTMENT",
         "eat":"MEAL","sleep":"REST CYCLE","walk":"WALK","games":"GAMES","relax":"RELAX",
@@ -5555,7 +5658,7 @@ def _discord_generic_embed(content,command,status):
     if not sections and rest:
         sections=[("📌 Details",rest)]
 
-    for name,vals in sections[:5]:
+    for name,vals in sections:
         if not name.startswith(("📌","💰","📊","✨","🏛️","🌎","📖","🏗️","🎯","🦆","🧬","☣️","🧳","🤝","⚙️","🎒","🏆","📋")):
             name="📌 "+name.title()
         _discord_add_field(embed,name,vals)
@@ -5563,6 +5666,7 @@ def _discord_generic_embed(content,command,status):
     return embed
 
 def _discord_pretty_embed(content,command,status):
+    if content.startswith(("🍽️ FOOD MENU","🎒 ITEM MENU")):return _discord_generic_embed(content,command,"info")
     action_commands=set(ACTION_SKILLS)|{
         "agriculture","fabricate",
         "eat","sleep","businesswork","businesscontract","businessinvest",
@@ -5575,7 +5679,8 @@ def _discord_pretty_embed(content,command,status):
     if command=="life":return _discord_life_embed(content,status)
     if command=="event":return _discord_event_embed(content,status)
     if command=="status":return _discord_status_embed(content,status)
-    if command in action_commands:return _discord_action_embed(content,command,status)
+    if command in action_commands and not (command in {"business","market"} and status=="info"):
+        return _discord_action_embed(content,command,status)
     return _discord_generic_embed(content,command,status)
 
 def _discord_split_personal_details(content: str):
@@ -5663,8 +5768,68 @@ from .command_catalog import commands as DISCORD_COMMAND_CATALOG
 DISCORD_OPTION_SCHEMA = {row["name"]: row.get("options", []) for row in DISCORD_COMMAND_CATALOG}
 
 def discord_command_copy(content):
-    # Flat option examples in the game now match the registered dropdowns.
-    return str(content or "")
+    """Render registered command choices as readable menu instructions.
+
+    Only command spans are changed; citizen names, item IDs and prose elsewhere
+    retain their original spelling. Running this twice is harmless.
+    """
+    aliases = dict(DISCORD_ACTION_ROUTES)
+    aliases.update({"skills":"/progress section:skills", "contracts":"/progress section:daily",
+        "achievements":"/progress section:achievements", "collection":"/progress section:collection",
+        "life":"/me section:life", "bonuses":"/me section:bonuses", "cooldowns":"/me section:cooldowns",
+        "traits":"/me section:traits", "relationships":"/me section:relationships",
+        "journal":"/me section:journal", "tutorial":"/me section:tutorial",
+        "titles":"/me section:titles", "display":"/me section:display",
+        "homeup":"/home action:upgrade", "homeupgrade":"/home action:upgrade",
+        "businessstart":"/business action:start", "businesswork":"/business action:work",
+        "gear":"/inventory section:gear", "recipes":"/make",
+        "marketboard":"/market action:view", "projectstatus":"/world section:project",
+        "eventhistory":"/event section:history", "leaderboard":"/society section:leaderboard",
+        "conditions":"/world section:conditions", "story":"/world section:story",
+        "bulletin":"/world section:bulletin", "rumor":"/world section:rumor"})
+    text=str(content or "")
+    # Match whole commands only; never substrings, URLs, fractions or backticks.
+    pattern=r"(?<![\w`:/])/([a-z][a-z0-9_]*)(?![\w`])"
+    text=re.sub(pattern,lambda m:aliases.get(m[1],m[0]) if m[1] not in DISCORD_OPTION_SCHEMA else m[0],text)
+    choice_aliases={
+        ("home","action","view"):"view",("home","action","upgrade"):"upgrade",
+        ("business","action","view"):"view",("business","action","start"):"start",
+        ("seedindustries","action","orders"):"orders",("seedindustries","action","fulfill"):"fulfill",
+        ("explore","operation","advanced survey"):"survey",("progress","section","skills"):"skills",
+    }
+    matches=list(re.finditer(pattern,text))
+    for match in reversed(matches):
+        command=match[1]
+        if command not in DISCORD_OPTION_SCHEMA:continue
+        # Option values are confined to this command's sentence/line, before the next command.
+        end=next((m.start() for m in matches if m.start()>match.start()),len(text))
+        span=text[match.end():end]
+        fields={row["name"]:row for row in DISCORD_OPTION_SCHEMA[command]}
+        for field,row in fields.items():
+            labels={str(c["value"]):c["name"] for c in row.get("choices",[])}
+            candidates={key:label for key,label in labels.items()}
+            candidates.update({label:label for label in labels.values()})
+            for (cmd,opt,alias),value in choice_aliases.items():
+                if cmd==command and opt==field and value in labels:candidates[alias]=labels[value]
+            if field=="recipe":
+                candidates.update({key:craft_item_name(key) for key in (*PART_RECIPES,*RECIPES,*QUALITY_RECIPES)})
+                candidates.update({label:label for label in list(candidates.values())})
+            # Longest label first, so e.g. Skills & Level Unlocks is not partially consumed.
+            known="|".join(re.escape(k) for k in sorted(candidates,key=len,reverse=True))
+            value_pattern=("(?:"+known+r")(?![\w])|" if known else "")+r"<[^>\n]+>|[A-Za-z0-9_]+"
+            option_pattern=r"\b"+re.escape(field)+r":("+value_pattern+r")"
+            def render(m):
+                value=m[1]
+                label=next((v for k,v in candidates.items() if k.casefold()==value.casefold()),None)
+                if label is None:
+                    label=value if value.startswith("<") else value.replace("_"," ").title()
+                return field.replace("_"," ").title()+": **"+label+"**"
+            span=re.sub(option_pattern,render,span,flags=re.I)
+        # The arrow separates the command to type from the dropdowns to choose.
+        if re.match(r"\s*[A-Z][A-Za-z ]*: \*\*",span):span=" → "+span.lstrip()
+        text=text[:match.start()]+"`/"+command+"`"+span+text[end:]
+    return text
+
 
 def _discord_json_message(content: str, ephemeral: bool = False, message_type: str = ""):
     content=discord_command_copy(content)
@@ -5687,6 +5852,18 @@ def _discord_json_message(content: str, ephemeral: bool = False, message_type: s
         existing=embed.get("description","")
         embed["description"]=_discord_clean_piece((custom+" "+existing).strip(),1800)
 
+    # Never let readable labels push an otherwise valid message over embed limits.
+    # Reserve room for an explicit notice rather than silently dropping text.
+    budget=5700-len(embed.get("title",""))-len(embed.get("description",""))-len(embed.get("footer",{}).get("text",""))
+    kept=[];omitted=False
+    for field in embed.get("fields",[]):
+        size=len(field["name"])+len(field["value"])
+        if len(kept)>=24 or size>budget:
+            omitted=True;break
+        kept.append(field);budget-=size
+    if omitted:
+        kept.append({"name":"More detail", "value":"This view is long. Choose a specific section, crafting category, or handbook topic to see its full details.", "inline":False})
+    embed["fields"]=kept
     data={"embeds":[embed]}
     if ephemeral:
         data["flags"]=64
@@ -5823,7 +6000,7 @@ def _discord_gear_autocomplete(payload,query=""):
             .order_by(QualityGear.item_name)
         ).scalars().all()
         data=[
-            (f"{x.quality} {x.item_name} — {x.condition}% condition",x.item_key)
+            (f"{x.quality} {x.item_name} ×{x.qty} — repair {(100-x.condition+19)//20} Components (own {p.components})",f"gear_{x.id}")
             for x in rows if x.condition<100
         ]
         return _discord_autocomplete_choices(data,query)
@@ -5856,7 +6033,7 @@ def _discord_make_autocomplete(payload:dict):
                 lock=" ✅ OWNED · LIMIT 1"
             elif need is not None and tier_index<need:
                 lock=f" 🔒 {SOCIETY_TIERS[need][0]}"
-            data.append((f"{item_name} — {cost_text(cost)}{lock}",key))
+            data.append((f"{item_name} — "+("; ".join(f"{resource_name(k)} {material_amount(db,current_player,k)}/{v}" for k,v in cost.items()) if current_player else requirement_text(cost))+lock,key))
     return _discord_autocomplete_choices(data,query)
 
 def _discord_autocomplete(payload:dict):
@@ -5871,6 +6048,15 @@ def _discord_autocomplete(payload:dict):
     if command=='social' and option=='player' and selected.get('action')=='group_games':return _discord_autocomplete_choices([])
     if command=='me' and option=='title' and selected.get('section') not in {None,'','titles'}:return _discord_autocomplete_choices([])
     if command=='repair' and option=='item' and selected.get('target')=='society':return _discord_autocomplete_choices([])
+
+    if command=="eat" and option=="food":
+        _,_,p=_discord_existing_player(payload)
+        if not p:return _discord_autocomplete_choices([])
+        with SessionLocal() as db:
+            foods=edible_inventory(db,p)
+            rows=[(f"{row['name']} ×{row['qty']} — {row['effect']}",row['key']) for row in foods if row['qty']>0]
+            if emergency_food_available(db,p,foods):rows.append(("Emergency Meal — free; restores Nutrition to 40","emergency"))
+            return _discord_autocomplete_choices(rows,query)
 
     if command=="seedindustries" and option=="item":
         values=_discord_options(payload);mode=values.get("action","browse")
@@ -5887,10 +6073,8 @@ def _discord_autocomplete(payload:dict):
         _,_,p=_discord_existing_player(payload)
         if not p:return _discord_autocomplete_choices([])
         with SessionLocal() as db:
-            rows=db.execute(select(QualityGear).where(QualityGear.channel_id==DISCORD_WORLD_ID,
-                QualityGear.canonical_uid==p.twitch_uid,QualityGear.qty>0,
-                QualityGear.item_key.in_(["meal_kit","recreation_set","comfort_pack"]))).scalars().all()
-            return _discord_autocomplete_choices([(f"{row.item_name} — owned",row.item_key) for row in rows],query)
+            owned=owned_life_items(db,p)
+            return _discord_autocomplete_choices([(f"{QUALITY_RECIPES[key]['name']} ×{sum(row.qty for row in rows)} — consumes 1; best quality first",key) for key,rows in owned.items() if rows],query)
 
     if command=="make" and option=="recipe":
         return _discord_make_autocomplete(payload)
@@ -5970,7 +6154,7 @@ def _discord_validate_options(command,options):
     required={
         ('market','sell'):('resource',),('seedindustries','buy'):('item',),
         ('seedindustries','sell'):('item',),('seedindustries','fulfill'):('item',),
-        ('repair','gear'):('item',),
+
     }
     selector='target' if command=='repair' else 'action'
     needed=list(required.get((command,options.get(selector)),()))
@@ -5981,11 +6165,111 @@ def _discord_validate_options(command,options):
         return options,"ℹ️ Raw Materials are gathered or bought. Select Basic Components, Advanced Components, Final Products, or Production Tree for a recipe. Nothing spent."
     return options,""
 
+def edible_inventory(db,p):
+    kits=db.execute(select(QualityGear).where(QualityGear.channel_id==p.channel_id,
+        QualityGear.canonical_uid==p.twitch_uid,QualityGear.item_key=="meal_kit",QualityGear.qty>0)).scalars().all()
+    best=max(kits,key=lambda row:list(QUALITY_TIERS).index(row.quality)) if kits else None
+    kit_gain=75+int(QUALITY_TIERS[best.quality]["special"]*100) if best else 0
+    return [
+        {"key":"crops","name":"Crop","qty":p.crops,"effect":"+35 Nutrition, +1 Morale"},
+        {"key":"ration","name":"Ration","qty":item(db,p.channel_id,p.twitch_uid,"ration"),"effect":"+70 Nutrition, +5 Morale; +3 percentage points success for 10 minutes"},
+        {"key":"meal_kit","name":"Meal Kit","qty":sum(row.qty for row in kits),
+         "effect":f"+{kit_gain} Nutrition, +5 Morale; uses your best quality ({best.quality})" if best else "Nutrition and Morale recovery; strength depends on quality"},
+    ]
+
+
+def emergency_food_available(db,p,foods=None):
+    return life_state(db,p).nutrition<TASK_NEED_MINIMUM and not any(row["qty"]>0 for row in (foods or edible_inventory(db,p)))
+
+
+def owned_life_items(db,p):
+    rows=db.execute(select(QualityGear).where(QualityGear.channel_id==p.channel_id,
+        QualityGear.canonical_uid==p.twitch_uid,QualityGear.qty>0,
+        QualityGear.item_key.in_(["meal_kit","recreation_set","comfort_pack"]))).scalars().all()
+    return {key:[row for row in rows if row.item_key==key] for key in ("meal_kit","recreation_set","comfort_pack")}
+
+
+def item_command_menu(command,uid,name):
+    """Read supplies without executing a task or starting its cooldown."""
+    with SessionLocal() as db:
+        _,p=player(db,DISCORD_WORLD_ID,"discord",uid,name)
+        shared=colony_state(db,p.channel_id)
+        lines=["🍽️ FOOD MENU" if command=="eat" else "🎒 ITEM MENU",f"{p.display_name} — /{command}"]
+        if command=="eat":
+            foods=edible_inventory(db,p);life=life_state(db,p)
+            lines += [f"Nutrition: {life.nutrition}/100", "YOUR FOOD"]
+            lines += [f"• {row['name']} ×{row['qty']} — {row['effect']}" for row in foods]
+            if emergency_food_available(db,p,foods):
+                lines.append("• Emergency Meal — available free: restores Nutrition to 40; no item consumed.")
+            elif not any(row["qty"]>0 for row in foods):
+                lines.append("No food owned. Gather Crops with /agriculture action:harvest, or craft a Ration with /make recipe:ration. Free emergency food becomes available below 20 Nutrition.")
+            lines += ["CHOOSE FOOD", "Run /eat again and select Food. The suggestions show owned quantities. One selected item is consumed. Recovery caps at 100; Meal Kit uses your highest quality first."]
+        elif command=="use":
+            lines.append("YOUR CONSUMABLES")
+            for key,rows in owned_life_items(db,p).items():
+                effect={"meal_kit":"Nutrition + Morale","recreation_set":"Social + Morale","comfort_pack":"Comfort + Energy"}[key]
+                quality=", ".join(f"{r.quality} ×{r.qty}" for r in rows) or "none owned"
+                lines.append(f"• {QUALITY_RECIPES[key]['name']} ×{sum(r.qty for r in rows)} — {effect}; {quality}.")
+            lines.append("Run /use again and select Item. Uses 1 of your highest available quality; needs cap at 100. Craft missing supplies with /make.")
+        elif command=="delivery":
+            lines += [f"• Personal Cargo ×{p.cargo} — requires 1; consumed only on success. Failure keeps it.",
+                      f"• Shared Cargo ×{shared.cargo} — optional extra society production, separate from your inventory.",
+                      "Prepare personal Cargo with /cargo. When ready, use /delivery action:send."]
+        elif command=="meal":
+            lines += [f"• Personal Crop ×{p.crops} — sharing consumes 1 Crop.",
+                      "Gather Crops with /agriculture action:harvest. Choose /meal action:share to contribute; use /eat for personal food recovery."]
+        elif command=="repair":
+            lines += [f"• Shared Components ×{shared.components} — society repairs can consume 1 on success to add shared Infrastructure.",
+                      f"• Personal Components ×{p.components} — used for personal gear repairs.",
+                      "Society work: /repair target:society. Without shared Components, base work rewards still apply but no extra Infrastructure or housing is produced.",
+                      "PERSONAL GEAR"]
+            rows=db.execute(select(QualityGear).where(QualityGear.channel_id==p.channel_id,QualityGear.canonical_uid==p.twitch_uid,QualityGear.qty>0)).scalars().all()
+            for row in rows:
+                cost=max(1,(100-row.condition+19)//20) if row.condition<100 else 0
+                lines.append(f"• {row.quality} {row.item_name} ×{row.qty} — {row.condition}% condition; {cost} personal Components to repair.")
+            if not rows:lines.append("No quality gear owned. Craft equipment with /make.")
+            lines.append("Choose /repair target:gear, then Item. Each selection repairs one quality entry; the dropdown shows cost and stock.")
+        elif command in {"research","agriculture","spaceport","explore","market"}:
+            configs={
+                "research":("siro_sampler","Siro Sampler","operation","standard","field_analysis",False),
+                "agriculture":("water_filter","Water Filter","action","tend","hydroponics",False),
+                "spaceport":("power_cell","Power Cell","operation","standard","expedite",True),
+                "explore":("sensor","Sensor","operation","scout","survey",False),
+                "market":("market_analyzer","Market Analyzer","action","work","analyze",False),
+            }
+            key,label,option,normal,advanced,consumed=configs[command]
+            qty=(sum(r.qty for r in db.execute(select(QualityGear).where(QualityGear.channel_id==p.channel_id,QualityGear.canonical_uid==p.twitch_uid,QualityGear.item_key==key,QualityGear.qty>0)).scalars()) if key=="market_analyzer" else material_amount(db,p,key))
+            rule="consumes 1 only on success; kept on failure" if consumed else "requires ownership; not consumed"
+            lines += [f"• {label} ×{qty} — advanced task {rule}.",
+                      f"Standard task: /{command} {option}:{normal} — no personal item required.",
+                      f"Advanced task: /{command} {option}:{advanced}.",
+                      f"Get the required item with /make recipe:{key}."]
+            if command=="agriculture":lines.append("Other choices: /agriculture action:harvest for Crops, or /agriculture action:irrigate for Environmental work.")
+            if command=="market":
+                lines += ["YOUR SELLABLE RESOURCES"]+[f"• {resource_name(key)} ×{getattr(p,key)}" for key in MARKET_BASE]
+                lines.append("Use /market action:view for prices, or /market action:sell and select Resource + Amount. Sales consume the quantity selected.")
+        elif command=="social":
+            owned=owned_life_items(db,p)
+            lines += [f"• Recreation Set ×{sum(r.qty for r in owned['recreation_set'])} — /social action:group_games consumes 1, highest quality first.",
+                      f"• Personal Cargo ×{p.cargo} — Duo Delivery consumes 1; select a relationship partner.",
+                      "Greetings, hangouts and most duo activities need no item. Select Action and a Player for relationship activities. /games restores Social free without an item or partner."]
+        lines.append("Browsing only: no task performed, no items spent, no cooldown started.")
+        return "\n".join(lines)
+
+
 def _discord_call_internal(command: str, uid: str, name: str, options: dict, interaction_id: str):
     options,error=_discord_validate_options(command,options)
     if error:return error
     # Reuse the same game functions the Twitch API uses.
     channel = DISCORD_WORLD_ID
+    selectors={"eat":"food","use":"item","delivery":"action","meal":"action", "repair":"target",
+               "research":"operation","agriculture":"action","spaceport":"operation","explore":"operation","market":"action","social":"action"}
+    if command in selectors and (not options.get(selectors[command]) or
+            (command in {"delivery","meal"} and options.get("action")=="view") or
+            (command=="repair" and options.get("target")=="gear" and not options.get("item"))):
+        return item_command_menu(command,uid,name)
+    if command=="eat":
+        return action("eat",channel,uid,name,msg="food:"+str(options["food"]),provider="discord").body.decode()
 
     if command == "seed":
         return discord_seed_help(str(options.get("topic") or "overview"),name)
@@ -6233,6 +6517,9 @@ async def discord_interactions(request: Request, background_tasks: BackgroundTas
             ephemeral=True,
             message_type=command
         )
+
+    if result.startswith(("🍽️ FOOD MENU","🎒 ITEM MENU")):
+        return _discord_json_message(result,ephemeral=True,message_type=command)
 
     # Commands that are already private keep their full response private.
     if command in DISCORD_PRIVATE_COMMANDS:
