@@ -1,4 +1,6 @@
 
+
+
 import os, random, secrets, string, math, re, hashlib, json, urllib.request
 from datetime import datetime, timezone, timedelta
 from fastapi import FastAPI, HTTPException, Request, BackgroundTasks
@@ -1479,8 +1481,8 @@ def action_wait(db,p,action_name):
     row=db.execute(select(Cooldown).where(Cooldown.channel_id==p.channel_id,Cooldown.canonical_uid==p.twitch_uid,Cooldown.action==action_name)).scalar_one_or_none()
     return min(ACTION_COOLDOWNS.get(action_name,5),max(0,int(math.ceil((as_utc(row.ready_at)-now()).total_seconds())))) if row and as_utc(row.ready_at)>now() else 0
 DISCORD_ACTION_ROUTES={
-    "farm":"/agriculture action:Tend Fields","forage":"/agriculture action:Tend Fields",
-    "harvest":"/agriculture action:Harvest Crops","water":"/agriculture action:Irrigate",
+    "farm":"/farm action:Tend Fields","forage":"/farm action:Tend Fields",
+    "harvest":"/farm action:Harvest Crops","water":"/farm action:Irrigate",
     "scavenge":"/mine","machine":"/make","work":"/make","craft":"/make","fabricate":"/make",
     "repair":"/repair target:Society Infrastructure","project":"/repair target:Society Infrastructure","build":"/repair target:Society Infrastructure",
     "survey":"/explore operation:Advanced Survey","market":"/market action:Commerce Work",
@@ -2005,7 +2007,7 @@ def bonuses(channel:str,uid:str,name:str="Citizen",provider:str="twitch"):
 def guide_material_step(key,provider):
     prefix="/" if provider=="discord" else "!"
     routes={
-        "crops":f"{prefix}agriculture action:Harvest Crops" if provider=="discord" else "!harvest",
+        "crops":f"{prefix}farm action:Harvest Crops" if provider=="discord" else "!harvest",
         "ore":f"{prefix}mine","rare_ore":f"{prefix}rare","components":("/make recipe:component" if provider=="discord" else "!make component"),
         "cargo":f"{prefix}cargo",
     }
@@ -2441,7 +2443,7 @@ def craft_menu(db,p,channel,provider,category=""):
 
     emoji,label,description=CRAFT_CATEGORY_INFO[category]
     if category=="raw_materials":
-        routes=("• Crop — /agriculture action:Harvest Crops\n• Ore — /mine\n• Rare Ore — /rare\n"
+        routes=("• Crop — /farm action:Harvest Crops\n• Ore — /mine\n• Rare Ore — /rare\n"
                 "• Cargo — /cargo\n\nSeed Industries can fill a missing input, but producing it yourself is cheaper.")
         return PlainTextResponse(f"{emoji} {label}\n\n{description}\n\nON HAND\n{materials}\n\nHOW TO OBTAIN\n{routes}\n\nNext stage: /make category:basic_components")
     lines=[]
@@ -4912,7 +4914,7 @@ def action(action:str,channel:str,uid:str,name:str="Citizen",msg:str="",provider
             if emergency_life.nutrition>=TASK_NEED_MINIMUM:
                 message=(f"🍲 {p.display_name}, you have no Crop, Ration, or Meal Kit, but you are not starving. "
                          f"Emergency meals are reserved for Nutrition below {TASK_NEED_MINIMUM}. "
-                         f"Use {'/agriculture action:Harvest Crops or /seedindustries' if provider=='discord' else '!harvest or !seedindustries'} before your next meal.")
+                         f"Use {'/farm action:Harvest Crops or /seedindustries' if provider=='discord' else '!harvest or !seedindustries'} before your next meal.")
                 return out(message)
         if action in {"business","businesscontract","businessinvest"} and not owned_business:return out(f"🏢 {p.display_name}, register a business first with {'/business action:Start' if provider=='discord' else '!businessstart'}.")
         if action=="businessinvest" and p.sc<(25+10*owned_business.level):return out(f"🏢 {p.display_name}, this business investment costs {25+10*owned_business.level} SC. You currently have {p.sc} SC.")
@@ -4989,7 +4991,7 @@ def action(action:str,channel:str,uid:str,name:str="Citizen",msg:str="",provider
             p.sc-=investment_cost;xp_gain=gain_skill(p,"commerce",xp_gain);p.contribution+=1+timed_contribution;s.treasury+=3;s.development+=1;gain_business_xp(owned_business,3)
             base=f"🏢 {p.display_name} invests in {owned_business.name} (-{investment_cost} SC). +{xp_gain} Commerce XP | +{1+timed_contribution} Contribution | +3 Business XP | New Eridian gains +3 Treasury/+1 Development."
         elif action in {"farm","harvest","forage"}:
-            if not passed(.68):return fail(f"🌱 {p.display_name} has a rough agriculture shift.")
+            if not passed(.68):return fail(f"🌱 {p.display_name} has a rough farming shift.")
             xp_gain=gain_skill(p,"cultivation",xp_gain);p.sc+=2+bonus;p.contribution+=contribution_gain;s.food+=1
             if action=="harvest":p.crops+=1
             base=f"🌾 {p.display_name} completes {action_display_name(action,mode)}. +{xp_gain} Farming XP | +{2+bonus} SC | +{contribution_gain} Contribution | New Eridian gains +1 Food."
@@ -5178,7 +5180,7 @@ BEST USE: /guide goal:aptitude for training or /guide goal:seed_coin for income.
 /seedindustries — Fixed-price NPC exchange plus three rotating daily Production Orders. Orders consume manufactured goods and reward SC, Contribution, Development, Crafting XP, and Commerce XP.
 
 CRAFTING ROUTE
-/agriculture action:Harvest Crops and /mine → gather Crops and Ore
+/farm action:Harvest Crops and /mine → gather Crops and Ore
 /make recipe:Component → turn 1 Ore into 1 Component
 /cargo → prepare Cargo for Power Cells
 /make category:Production Tree → view the complete item chain
@@ -5216,10 +5218,10 @@ Energy, Nutrition, and Social must each be 20 or higher to work, craft with /mak
 Comfort and Morale affect success chance but do not hard-block tasks. Recovery and information commands remain available while work is blocked. This recovery loop always provides a way back into work without requiring work first.""",
 "production":"""🏭 WORK ACTIONS
 
-/agriculture — Farming work: 2 SC before bonuses, +1 Contribution, base society Food plus available shared production, and condition-dependent aptitude practice on success.
-/agriculture action:Harvest Crops — Farming work that gives a personal Crop.
-/agriculture action:Irrigate — Processing work that adds society Food.
-/agriculture action:Hydroponics — Requires a Water Filter and improves Food while producing a Crop.
+/farm — Farming work: 2 SC before bonuses, +1 Contribution, base society Food plus available shared production, and condition-dependent aptitude practice on success.
+/farm action:Harvest Crops — Farming work that gives a personal Crop.
+/farm action:Irrigate — Processing work that adds society Food.
+/farm action:Hydroponics — Requires a Water Filter and improves Food while producing a Crop.
 /scan — Processing work that adds +1 society Knowledge.
 /mine — Reliable Harvesting work. Success gives 1 Ore, Materials, XP, SC, and Contribution.
 /rare — Risky 28% base search. Success gives 1 Rare Ore, +2 Materials, and 6 SC before bonuses.
@@ -5248,6 +5250,7 @@ BEST USE: /cargo → /delivery for the delivery loop; /market for society Treasu
 
 /world — One hub for world overview, Conditions & Siro, Daily Bulletin, Rumor, Weekly Story, Society Project, and Market.
 /society — One hub for society Overview, Next Tier Progress, and Contribution Leaderboard.
+/holiday — Active festivals and the next holiday start time.
 /event — One hub for Active Event and Recent Event History.
 /guide goal:event — Recommends your best available response during an event.
 
@@ -5360,8 +5363,8 @@ def twitch_modlog(channel:str,level:int=0,key:str="",page:str="1"):
         return twitch_pages(content,page,"!modlog")
 
 DISCORD_PUBLIC_COMMANDS = {
-    "society", "event", "eventstart", "eventstop",
-    "agriculture",
+    "society", "event", "eventstart", "eventstop", "holiday",
+    "farm",
     "mine", "rare",
     "research", "scan",
     "repair",
@@ -5393,7 +5396,7 @@ def discord_message_category(command):
         "handbook":{"seed"},"guide":{"guide"},"character":{"start","me","progress","inventory","job","specialize","link"},
         "life":{"social","relax","walk","games","hobby","world","district","shift","meal","ducks","use"},"business":{"business","seedindustries","market"},
         "society":{"society"},"event":{"event","eventstart","eventstop"},"moderator":{"modlog","linklookup"},
-        "action":set(ACTION_SKILLS)|{"agriculture","fabricate","eat","sleep"},
+        "action":set(ACTION_SKILLS)|{"farm","fabricate","eat","sleep"},
     }
     return next((group for group,names in groups.items() if command in names),"default")
 def _discord_clean_piece(value,limit=1024):
@@ -5465,7 +5468,7 @@ def _discord_add_field(embed,name,lines,inline=False):
 
 def _discord_action_name(command):
     names={
-        "agriculture":"AGRICULTURE SHIFT","fabricate":"FABRICATION SHIFT",
+        "farm":"FARMING SHIFT","fabricate":"FABRICATION SHIFT",
         "farm":"FARM SHIFT","harvest":"HARVEST","forage":"FORAGING",
         "water":"ENVIRONMENTAL WORK","scan":"ENVIRONMENTAL SCAN",
         "mine":"MINING SHIFT","rare":"RARE MATERIAL SEARCH","scavenge":"SCAVENGE RUN",
@@ -5761,7 +5764,7 @@ def _discord_generic_embed(content,command,status):
 def _discord_pretty_embed(content,command,status):
     if content.startswith(("🍽️ FOOD MENU","🎒 ITEM MENU")):return _discord_generic_embed(content,command,"info")
     action_commands=set(ACTION_SKILLS)|{
-        "agriculture","fabricate",
+        "farm","fabricate",
         "eat","sleep","businesswork","businesscontract","businessinvest",
         "walk","games","relax","hobby","hi","hangout","duo","meal","mentor",
         "sell","gearrepair","use"
@@ -5963,7 +5966,7 @@ def _discord_json_message(content: str, ephemeral: bool = False, message_type: s
     return {"type":4,"data":data}
 
 DISCORD_PERSONAL_DETAIL_COMMANDS=set(ACTION_SKILLS)|{
-    "agriculture","fabricate",
+    "farm","fabricate",
     "businesswork","businesscontract","businessinvest",
     "duo","meal","mentor","sell","gearrepair","use"
 }
@@ -5983,7 +5986,7 @@ def _discord_user(payload: dict):
 DISCORD_HUB_SELECTORS={"seed":"topic","guide":"goal","me":"section","progress":"section",
  "inventory":"section","home":"action","business":"action","make":"category",
  "seedindustries":"action","world":"section","society":"section","event":"section",
- "social":"action","agriculture":"action","research":"operation","repair":"target",
+ "social":"action","farm":"action","research":"operation","repair":"target",
  "spaceport":"operation","explore":"operation","market":"action"}
 
 def _discord_flat_payload(payload):
@@ -6306,7 +6309,7 @@ def training(channel:str,uid:str,name:str='Citizen',skill:str='',task:str='',pro
         jobs=[label for label,sk,_ in NEW_JOBS.values() if sk==key]
         if key=='cultivation':jobs=['Farmer']
         lines.append('Matching jobs: '+', '.join(jobs)+'. Use /job. Main skill levels improve success; branch levels add up to 5 percentage points to matching task success. Lv.10 specialization adds its existing bonuses.')
-        lines.append('Sources: Wood, Water, Stone and Herbs → Harvesting; Planks, Cut Stone, Cloth, Antiseptic and Preserved Food → Processing; Storage Jars → Crafting; Medicine → Medicine; Components → Engineering or /make; Crops → Farming or /agriculture.')
+        lines.append('Sources: Wood, Water, Stone and Herbs → Harvesting; Planks, Cut Stone, Cloth, Antiseptic and Preserved Food → Processing; Storage Jars → Crafting; Medicine → Medicine; Components → Engineering or /make; Crops → Farming or /farm.')
         lines.append('Select Task to perform work. Browsing spends nothing.')
         text='\n'.join(lines)
         return PlainTextResponse(text) if provider=='discord' else out(text.replace('\n',' | '))
@@ -6348,7 +6351,7 @@ def item_command_menu(command,uid,name):
             if emergency_food_available(db,p,foods):
                 lines.append("• Emergency Meal — available free: restores Nutrition to 40; no item consumed.")
             elif not any(row["qty"]>0 for row in foods):
-                lines.append("No food owned. Gather Crops with /agriculture action:harvest, or craft a Ration with /make recipe:ration. Free emergency food becomes available below 20 Nutrition.")
+                lines.append("No food owned. Gather Crops with /farm action:harvest, or craft a Ration with /make recipe:ration. Free emergency food becomes available below 20 Nutrition.")
             lines += ["CHOOSE FOOD", "Run /eat again and select Food. The suggestions show owned quantities. One selected item is consumed. Recovery caps at 100; Meal Kit uses your highest quality first."]
         elif command=="use":
             lines.append("YOUR CONSUMABLES")
@@ -6365,7 +6368,7 @@ def item_command_menu(command,uid,name):
                       "Prepare personal Cargo with /cargo. When ready, use /delivery action:send."]
         elif command=="meal":
             lines += [f"• Personal Crop ×{p.crops} — sharing consumes 1 Crop.",
-                      "Gather Crops with /agriculture action:harvest. Choose /meal action:share to contribute; use /eat for personal food recovery."]
+                      "Gather Crops with /farm action:harvest. Choose /meal action:share to contribute; use /eat for personal food recovery."]
         elif command=="repair":
             lines += [f"• Shared Components ×{shared.components} — society repairs can consume 1 on success to add shared Infrastructure.",
                       f"• Personal Components ×{p.components} — used for personal gear repairs.",
@@ -6377,10 +6380,10 @@ def item_command_menu(command,uid,name):
                 lines.append(f"• {row.quality} {row.item_name} ×{row.qty} — {row.condition}% condition; {cost} personal Components to repair.")
             if not rows:lines.append("No quality gear owned. Craft equipment with /make.")
             lines.append("Choose /repair target:gear, then Item. Each selection repairs one quality entry; the dropdown shows cost and stock.")
-        elif command in {"research","agriculture","spaceport","explore","market"}:
+        elif command in {"research","farm","spaceport","explore","market"}:
             configs={
                 "research":("siro_sampler","Siro Sampler","operation","standard","field_analysis",False),
-                "agriculture":("water_filter","Water Filter","action","tend","hydroponics",False),
+                "farm":("water_filter","Water Filter","action","tend","hydroponics",False),
                 "spaceport":("power_cell","Power Cell","operation","standard","expedite",True),
                 "explore":("sensor","Sensor","operation","scout","survey",False),
                 "market":("market_analyzer","Market Analyzer","action","work","analyze",False),
@@ -6392,7 +6395,7 @@ def item_command_menu(command,uid,name):
                       f"Standard task: /{command} {option}:{normal} — no personal item required.",
                       f"Advanced task: /{command} {option}:{advanced}.",
                       f"Get the required item with /make recipe:{key}."]
-            if command=="agriculture":lines.append("Other choices: /agriculture action:harvest for Crops, or /agriculture action:irrigate for Processing work.")
+            if command=="farm":lines.append("Other choices: /farm action:harvest for Crops, or /farm action:irrigate for Processing work.")
             if command=="market":
                 lines += ["YOUR SELLABLE RESOURCES"]+[f"• {resource_name(key)} ×{getattr(p,key)}" for key in MARKET_BASE]
                 lines.append("Use /market action:view for prices, or /market action:sell and select Resource + Amount. Sales consume the quantity selected.")
@@ -6411,7 +6414,7 @@ def _discord_call_internal(command: str, uid: str, name: str, options: dict, int
     # Reuse the same game functions the Twitch API uses.
     channel = DISCORD_WORLD_ID
     selectors={"eat":"food","use":"item","delivery":"action","meal":"action", "repair":"target",
-               "research":"operation","agriculture":"action","spaceport":"operation","explore":"operation","market":"action","social":"action"}
+               "research":"operation","farm":"action","spaceport":"operation","explore":"operation","market":"action","social":"action"}
     if command in selectors and (not options.get(selectors[command]) or
             (command in {"delivery","meal"} and options.get("action")=="view") or
             (command=="repair" and options.get("target")=="gear" and not options.get("item"))):
@@ -6419,6 +6422,9 @@ def _discord_call_internal(command: str, uid: str, name: str, options: dict, int
     if command=="eat":
         return action("eat",channel,uid,name,msg="food:"+str(options["food"]),provider="discord").body.decode()
 
+    if command == "holiday":
+        from .seasonal import holiday_message
+        return holiday_message()
     if command == "training":
         return training(channel,uid,name,str(options.get('skill') or ''),str(options.get('task') or ''),'discord').body.decode()
     if command == "seed":
@@ -6477,10 +6483,10 @@ def _discord_call_internal(command: str, uid: str, name: str, options: dict, int
             item_name=str(options.get("item") or ""),
             amount=int(options.get("amount") or 1),provider="discord"
         ).body.decode("utf-8")
-    if command == "agriculture":
-        agriculture_action=str(options.get("action") or "tend").lower()
-        action_name={"tend":"farm","harvest":"harvest","irrigate":"water","hydroponics":"water"}.get(agriculture_action,"farm")
-        marker="mode:hydroponics" if agriculture_action=="hydroponics" else f"discord-{interaction_id}"
+    if command == "farm":
+        farm_action=str(options.get("action") or "tend").lower()
+        action_name={"tend":"farm","harvest":"harvest","irrigate":"water","hydroponics":"water"}.get(farm_action,"farm")
+        marker="mode:hydroponics" if farm_action=="hydroponics" else f"discord-{interaction_id}"
         return action(action=action_name,channel=channel,uid=uid,name=name,msg=marker,provider="discord").body.decode("utf-8")
     if command == "research":
         operation=str(options.get("operation") or "standard").lower();marker="mode:field_analysis" if operation=="field_analysis" else f"discord-{interaction_id}"
@@ -6587,7 +6593,7 @@ def _discord_call_internal(command: str, uid: str, name: str, options: dict, int
         with SessionLocal() as db:
             actor=f"{name} ({uid})";w=world(db,channel);event_key=w.active_event or "none";result=cancel_event(db,w,actor);audit_moderator(db,channel,actor,"eventstop",event_key);return result
 
-    action_name = {"agriculture":"farm","fabricate":"machine"}.get(command,command)
+    action_name = {"farm":"farm","fabricate":"machine"}.get(command,command)
     return action(
         action=action_name,
         channel=channel,
