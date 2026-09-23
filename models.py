@@ -1,3 +1,4 @@
+
 """Persistence models. Legacy table and column names are intentional compatibility contracts."""
 import os
 from datetime import datetime, timezone
@@ -24,6 +25,9 @@ class Player(Base):
     fabrication_xp=Column(Integer,nullable=False,default=0)
     infrastructure_xp=Column(Integer,nullable=False,default=0)
     commerce_xp=Column(Integer,nullable=False,default=0)
+    cooking_xp=Column(Integer,nullable=False,default=0)
+    medicine_xp=Column(Integer,nullable=False,default=0)
+    emergency_xp=Column(Integer,nullable=False,default=0)
     crops=Column(Integer,nullable=False,default=0)
     ore=Column(Integer,nullable=False,default=0)
     rare_ore=Column(Integer,nullable=False,default=0)
@@ -576,3 +580,10 @@ class SeedlingState(Base):
 Seedling=Player
 Settlement=Society
 Needs=LifeState
+
+class SkillBranch(Base):
+    __tablename__="skill_branches_v8"
+    channel_id=Column(String(64),primary_key=True)
+    canonical_uid=Column(String(96),primary_key=True)
+    branch=Column(String(48),primary_key=True)
+    xp=Column(Integer,nullable=False,default=0)
