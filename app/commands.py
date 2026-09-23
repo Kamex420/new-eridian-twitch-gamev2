@@ -1,2 +1,3 @@
 from ._compat import load_root_module
-load_root_module("commands")
+
+globals().update(load_root_module("commands").__dict__)

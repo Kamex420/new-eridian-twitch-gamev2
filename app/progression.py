@@ -1,2 +1,3 @@
 from ._compat import load_root_module
-load_root_module("progression")
+
+globals().update(load_root_module("progression").__dict__)

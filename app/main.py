@@ -1,8 +1,18 @@
 from ._compat import load_root_module
-for _name in ("db","models","needs","occupations","competencies","settlement","seedlings","events","progression","commands","migrations"):
+
+# Load dependencies first so the legacy module's relative imports resolve to
+# the public app.* wrappers, then execute the legacy FastAPI application.
+for _name in (
+    "db", "models", "needs", "occupations", "competencies", "settlement",
+    "seedlings", "events", "progression", "commands", "migrations",
+):
     load_root_module(_name)
-_globals = globals()
-with open(__import__('pathlib').Path(__file__).resolve().parent.parent / 'main.py', encoding='utf-8') as _f:
-    exec(compile(_f.read(), str(__import__('pathlib').Path(_f.name)), 'exec'), _globals)
+
+_root_main = load_root_module("main")
+globals().update(_root_main.__dict__)
+
 from .fun_systems import install as _install_fun_systems
+from .seasonal import install as _install_seasonal
+
 _install_fun_systems(app)
+_install_seasonal(app)
