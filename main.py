@@ -2401,7 +2401,7 @@ def craft_menu(db,p,channel,provider,category=""):
         else:
             missing=craft_missing_materials(db,p,cost)
             status=("❌ Need "+", ".join(missing)) if missing else "✅ READY"
-        lines.append(f"• {status} — **{item_name}** (`{key}`)\n  Cost: {requirement_text(cost)} · {effect}")
+        lines.append(f"• {status} — **{item_name}** (`{key}`)\n  Required: {requirement_text(cost)} · {effect}\n  On hand: {requirement_text({k:material_amount(db,p,k) for k in cost})}")
     footer=("Basic Components stack and feed Advanced Components or simple Final Products." if category=="basic_components" else
             "Advanced Components combine specialized materials and unlock complex Final Products." if category=="advanced_components" else
             "Passive-bonus equipment is limited to one of each item; consumable Rations can stack. Quality gear rolls Crude through Masterwork.")
@@ -2802,7 +2802,7 @@ def gearrepair(channel:str,uid:str,name:str="Citizen",item:str="",provider:str="
         _,p=player(db,channel,provider,uid,name);life=life_state(db,p);blocked=task_need_gate(db,p,"gearrepair",provider,life)
         if blocked:return PlainTextResponse(blocked) if provider=="discord" else out(blocked)
         rows=db.execute(select(QualityGear).where(QualityGear.channel_id==channel,QualityGear.canonical_uid==p.twitch_uid,QualityGear.qty>0)).scalars().all()
-        row=next((x for x in rows if x.item_key==key or x.item_name.lower()==(item or "").lower()),None)
+        row=next((x for x in rows if f"gear_{x.id}"==key or x.item_key==key or x.item_name.lower()==(item or "").lower()),None)
         if not row:return out("🔧 Gear not found. Use "+("/inventory section:gear" if provider=="discord" else "!gear")+" to see your equipment.")
         if row.condition>=100:return out("🔧 That item is already at full condition. Nothing spent.")
         cost=max(1,(100-row.condition+19)//20)
@@ -4819,6 +4819,15 @@ def action(action:str,channel:str,uid:str,name:str="Citizen",msg:str="",provider
         if skill:
             blocked=task_need_gate(db,p,action,provider)
             if blocked:return PlainTextResponse(blocked) if provider=="discord" else out(blocked)
+        selected_food=(msg[5:] if action=="eat" and (msg or "").startswith("food:") else "")
+        foods=edible_inventory(db,p) if action=="eat" else []
+        if selected_food:
+            if selected_food not in {"crops","ration","meal_kit","emergency"}:
+                return out("⚠️ Unknown food. Open /eat and choose from your food list. Nothing spent.")
+            if selected_food=="emergency":
+                if not emergency_food_available(db,p,foods):return out("⚠️ Emergency food requires Nutrition below 20 and no edible items. Open /eat to see your food. Nothing spent.")
+            elif not any(row["key"]==selected_food and row["qty"]>0 for row in foods):
+                return out("⚠️ You no longer own that food. Open /eat for your current inventory. Nothing spent.")
         advanced=(msg or "").startswith("mode:")
         mode=(msg.split(":",1)[1].split("|",1)[0] if advanced else "")
         make_prefix="/make" if provider=="discord" else "!make"
@@ -4831,10 +4840,10 @@ def action(action:str,channel:str,uid:str,name:str="Citizen",msg:str="",provider
         if mode=="analyze" and not unique_bonus_owned(db,p,"market_analyzer"):return out(f"🔒 Market Analysis requires a Market Analyzer. Craft one with {final_products}.")
         if action=="craft" and p.ore<=0:return out("⚙️ Need Ore first.")
         if action=="delivery" and p.cargo<=0:return out(f"🦆 No Cargo ready. Use {'/cargo' if provider=='discord' else '!cargo'} first.")
-        if action=="eat" and p.crops<=0 and item(db,channel,c,"ration")<=0:
+        if action=="eat" and not any(row["qty"]>0 for row in foods):
             emergency_life=life_state(db,p)
             if emergency_life.nutrition>=TASK_NEED_MINIMUM:
-                message=(f"🍲 {p.display_name}, you have no Ration or Crop, but you are not starving. "
+                message=(f"🍲 {p.display_name}, you have no Crop, Ration, or Meal Kit, but you are not starving. "
                          f"Emergency meals are reserved for Nutrition below {TASK_NEED_MINIMUM}. "
                          f"Use {'/agriculture action:Harvest Crops or /seedindustries' if provider=='discord' else '!harvest or !seedindustries'} before your next meal.")
                 return out(message)
@@ -4936,7 +4945,7 @@ def action(action:str,channel:str,uid:str,name:str="Citizen",msg:str="",provider
             else:
                 s.treasury+=1;society_gain="+1 Treasury"
             if action=="cargo":p.cargo+=1
-            elif action=="delivery":p.cargo-=1
+            elif action=="delivery":p.cargo-=1;society_gain+="; -1 personal Cargo"
             bond=duck_bond(db,p,duck,2 if action=="delivery" else 1)
             fleet_bonus=1 if bond.xp>=50 else 0
             if fleet_bonus:p.sc+=fleet_bonus
@@ -4962,14 +4971,22 @@ def action(action:str,channel:str,uid:str,name:str="Citizen",msg:str="",provider
                 if b:gain_business_xp(b,1);business_note=f" {b.name} advances to {b.xp}/{business_xp_needed(b.level)} XP."
             xp_gain=gain_skill(p,"commerce",xp_gain);p.sc+=sc_gain;p.contribution+=contribution_gain;base=f"🏪 {p.display_name} completes {action_display_name(action,mode)}. +{xp_gain} Commerce XP | +{sc_gain} SC | +{contribution_gain} Contribution | New Eridian gains +{2 if action=='businesscontract' or (action=='market' and mode=='analyze') else 1} {'Reputation' if action=='businesscontract' else 'Treasury'}.{business_note}"
         elif action=="eat":
-            if item(db,channel,c,"ration")>0:
+            food_key=selected_food or next((row["key"] for key in ("ration","crops","meal_kit") for row in foods if row["key"]==key and row["qty"]>0),"emergency")
+            if food_key=="meal_kit":
+                kits=db.execute(select(QualityGear).where(QualityGear.channel_id==channel,QualityGear.canonical_uid==c,QualityGear.item_key=="meal_kit",QualityGear.qty>0)).scalars().all()
+                kit=max(kits,key=lambda row:list(QUALITY_TIERS).index(row.quality))
+                nutrition_before=life.nutrition;morale_before=life.morale
+                life.nutrition=clamp100(life.nutrition+75+int(QUALITY_TIERS[kit.quality]["special"]*100));life.morale=clamp100(life.morale+5)
+                kit.qty-=1
+                base=f"🍲 {p.display_name} eats a {kit.quality} Meal Kit (-1 Meal Kit). Nutrition {nutrition_before}→{life.nutrition}; Morale {morale_before}→{life.morale}."
+            elif food_key=="ration":
                 row=db.execute(select(ExtraItem).where(ExtraItem.channel_id==channel,ExtraItem.canonical_uid==c,ExtraItem.item=="ration")).scalar_one();row.qty-=1
                 boost=db.execute(select(TimedBonus).where(TimedBonus.channel_id==channel,TimedBonus.canonical_uid==c,TimedBonus.bonus=="rockys_favor")).scalar_one_or_none()
                 if not boost:boost=TimedBonus(channel_id=channel,canonical_uid=c,bonus="rockys_favor",expires_at=now(),times_received=0);db.add(boost)
                 boost.expires_at=max(now(),as_utc(boost.expires_at))+timedelta(minutes=10);boost.times_received+=1
                 life.nutrition=clamp100(life.nutrition+70);life.morale=clamp100(life.morale+5)
                 base=f"🍲 {p.display_name} eats a Ration (-1 Ration). +70 Nutrition (capped at 100)/+5 Morale. Rocky's Favor: +3 percentage points success; +10 minutes (time stacks)."
-            elif p.crops>0:
+            elif food_key=="crops":
                 old_nutrition=life.nutrition;p.crops-=1;life.nutrition=clamp100(life.nutrition+35)
                 recovery_note=""
                 if old_nutrition<TASK_NEED_MINIMUM and life.nutrition<TASK_NEED_MINIMUM:
@@ -5087,7 +5104,7 @@ BEST USE: /guide goal:crafting, /guide goal:home, or /guide goal:business.""",
 "life":"""🌿 LIFE & SOCIAL SYSTEMS
 
 /me section:Life Needs — Energy, Nutrition, Social, Comfort, Morale, and active effects.
-/eat — Uses a Ration first for +70 Nutrition, +5 Morale, and 10 minutes of +3 percentage-point success; otherwise consumes 1 Crop for +35 Nutrition and +1 Morale. If Nutrition is below 20 and you have neither, a free emergency meal restores Nutrition to 40. All needs cap at 100.
+/eat — Opens your food list with owned quantities. Select Food to consume one Crop, Ration, or Meal Kit. A Ration gives +70 Nutrition, +5 Morale, and 10 minutes of +3 percentage-point success; a Crop gives +35 Nutrition and +1 Morale. A Meal Kit restores Nutrition based on quality and +5 Morale. If Nutrition is below 20 and you own no food, a free emergency meal restores Nutrition to 40. All needs cap at 100.
 /sleep — Fully restores Energy and Comfort to 100 at any time of day; reduces Siro exposure by up to 8.
 /relax — Restores Energy, Morale, and Comfort.
 /walk — Improves Morale and Exploration hobby progress.
@@ -5124,7 +5141,7 @@ Old work routes remain compatible on Twitch/API, including !craft and !machine, 
 "operations":"""🛰️ LOGISTICS, FRONTIER & COMMERCE
 
 /cargo — Prepares 1 personal Cargo and adds +1 society Treasury. Use before /delivery.
-/delivery — Requires and consumes 1 Cargo, adds +1 Reputation, and advances delivery-fleet bond XP.
+/delivery — Opens your Cargo supply preview; choose Send Delivery. Requires 1 personal Cargo, consumed only on success; adds +1 Reputation, and advances delivery-fleet bond XP.
 /spaceport — Standard Logistics work or Expedited Operations that consume 1 Power Cell for stronger Treasury, Reputation, and SC rewards.
 /explore — Scout normally or use a Sensor for an Advanced Survey with stronger Knowledge and SC rewards.
 /research — Standard research or Siro Sampler Field Analysis with stronger Knowledge and SC rewards.
@@ -5156,8 +5173,8 @@ BEST USE: /guide goal:event during emergencies and /guide goal:society between e
 
 /district — Chooses your home district.
 /shift — Chooses today's role bonus.
-/meal — Contributes 1 Crop to the community meal.
-/use — Consumes a crafted life item.
+/meal — Shows owned Crops; choose Share a Crop to contribute one to the community meal.
+/use — Lists owned life items and quantities; select Item to consume one.
 /repair — Choose Society Infrastructure work or Personal Quality Gear repair.
 /linklookup — Owner-only lookup for connected Discord/Twitch identities.
 
@@ -5649,6 +5666,7 @@ def _discord_generic_embed(content,command,status):
     return embed
 
 def _discord_pretty_embed(content,command,status):
+    if content.startswith(("🍽️ FOOD MENU","🎒 ITEM MENU")):return _discord_generic_embed(content,command,"info")
     action_commands=set(ACTION_SKILLS)|{
         "agriculture","fabricate",
         "eat","sleep","businesswork","businesscontract","businessinvest",
@@ -5982,7 +6000,7 @@ def _discord_gear_autocomplete(payload,query=""):
             .order_by(QualityGear.item_name)
         ).scalars().all()
         data=[
-            (f"{x.quality} {x.item_name} — {x.condition}% condition",x.item_key)
+            (f"{x.quality} {x.item_name} ×{x.qty} — repair {(100-x.condition+19)//20} Components (own {p.components})",f"gear_{x.id}")
             for x in rows if x.condition<100
         ]
         return _discord_autocomplete_choices(data,query)
@@ -6015,7 +6033,7 @@ def _discord_make_autocomplete(payload:dict):
                 lock=" ✅ OWNED · LIMIT 1"
             elif need is not None and tier_index<need:
                 lock=f" 🔒 {SOCIETY_TIERS[need][0]}"
-            data.append((f"{item_name} — {requirement_text(cost)}{lock}",key))
+            data.append((f"{item_name} — "+("; ".join(f"{resource_name(k)} {material_amount(db,current_player,k)}/{v}" for k,v in cost.items()) if current_player else requirement_text(cost))+lock,key))
     return _discord_autocomplete_choices(data,query)
 
 def _discord_autocomplete(payload:dict):
@@ -6030,6 +6048,15 @@ def _discord_autocomplete(payload:dict):
     if command=='social' and option=='player' and selected.get('action')=='group_games':return _discord_autocomplete_choices([])
     if command=='me' and option=='title' and selected.get('section') not in {None,'','titles'}:return _discord_autocomplete_choices([])
     if command=='repair' and option=='item' and selected.get('target')=='society':return _discord_autocomplete_choices([])
+
+    if command=="eat" and option=="food":
+        _,_,p=_discord_existing_player(payload)
+        if not p:return _discord_autocomplete_choices([])
+        with SessionLocal() as db:
+            foods=edible_inventory(db,p)
+            rows=[(f"{row['name']} ×{row['qty']} — {row['effect']}",row['key']) for row in foods if row['qty']>0]
+            if emergency_food_available(db,p,foods):rows.append(("Emergency Meal — free; restores Nutrition to 40","emergency"))
+            return _discord_autocomplete_choices(rows,query)
 
     if command=="seedindustries" and option=="item":
         values=_discord_options(payload);mode=values.get("action","browse")
@@ -6046,10 +6073,8 @@ def _discord_autocomplete(payload:dict):
         _,_,p=_discord_existing_player(payload)
         if not p:return _discord_autocomplete_choices([])
         with SessionLocal() as db:
-            rows=db.execute(select(QualityGear).where(QualityGear.channel_id==DISCORD_WORLD_ID,
-                QualityGear.canonical_uid==p.twitch_uid,QualityGear.qty>0,
-                QualityGear.item_key.in_(["meal_kit","recreation_set","comfort_pack"]))).scalars().all()
-            return _discord_autocomplete_choices([(f"{row.item_name} — owned",row.item_key) for row in rows],query)
+            owned=owned_life_items(db,p)
+            return _discord_autocomplete_choices([(f"{QUALITY_RECIPES[key]['name']} ×{sum(row.qty for row in rows)} — consumes 1; best quality first",key) for key,rows in owned.items() if rows],query)
 
     if command=="make" and option=="recipe":
         return _discord_make_autocomplete(payload)
@@ -6129,7 +6154,7 @@ def _discord_validate_options(command,options):
     required={
         ('market','sell'):('resource',),('seedindustries','buy'):('item',),
         ('seedindustries','sell'):('item',),('seedindustries','fulfill'):('item',),
-        ('repair','gear'):('item',),
+
     }
     selector='target' if command=='repair' else 'action'
     needed=list(required.get((command,options.get(selector)),()))
@@ -6140,11 +6165,111 @@ def _discord_validate_options(command,options):
         return options,"ℹ️ Raw Materials are gathered or bought. Select Basic Components, Advanced Components, Final Products, or Production Tree for a recipe. Nothing spent."
     return options,""
 
+def edible_inventory(db,p):
+    kits=db.execute(select(QualityGear).where(QualityGear.channel_id==p.channel_id,
+        QualityGear.canonical_uid==p.twitch_uid,QualityGear.item_key=="meal_kit",QualityGear.qty>0)).scalars().all()
+    best=max(kits,key=lambda row:list(QUALITY_TIERS).index(row.quality)) if kits else None
+    kit_gain=75+int(QUALITY_TIERS[best.quality]["special"]*100) if best else 0
+    return [
+        {"key":"crops","name":"Crop","qty":p.crops,"effect":"+35 Nutrition, +1 Morale"},
+        {"key":"ration","name":"Ration","qty":item(db,p.channel_id,p.twitch_uid,"ration"),"effect":"+70 Nutrition, +5 Morale; +3 percentage points success for 10 minutes"},
+        {"key":"meal_kit","name":"Meal Kit","qty":sum(row.qty for row in kits),
+         "effect":f"+{kit_gain} Nutrition, +5 Morale; uses your best quality ({best.quality})" if best else "Nutrition and Morale recovery; strength depends on quality"},
+    ]
+
+
+def emergency_food_available(db,p,foods=None):
+    return life_state(db,p).nutrition<TASK_NEED_MINIMUM and not any(row["qty"]>0 for row in (foods or edible_inventory(db,p)))
+
+
+def owned_life_items(db,p):
+    rows=db.execute(select(QualityGear).where(QualityGear.channel_id==p.channel_id,
+        QualityGear.canonical_uid==p.twitch_uid,QualityGear.qty>0,
+        QualityGear.item_key.in_(["meal_kit","recreation_set","comfort_pack"]))).scalars().all()
+    return {key:[row for row in rows if row.item_key==key] for key in ("meal_kit","recreation_set","comfort_pack")}
+
+
+def item_command_menu(command,uid,name):
+    """Read supplies without executing a task or starting its cooldown."""
+    with SessionLocal() as db:
+        _,p=player(db,DISCORD_WORLD_ID,"discord",uid,name)
+        shared=colony_state(db,p.channel_id)
+        lines=["🍽️ FOOD MENU" if command=="eat" else "🎒 ITEM MENU",f"{p.display_name} — /{command}"]
+        if command=="eat":
+            foods=edible_inventory(db,p);life=life_state(db,p)
+            lines += [f"Nutrition: {life.nutrition}/100", "YOUR FOOD"]
+            lines += [f"• {row['name']} ×{row['qty']} — {row['effect']}" for row in foods]
+            if emergency_food_available(db,p,foods):
+                lines.append("• Emergency Meal — available free: restores Nutrition to 40; no item consumed.")
+            elif not any(row["qty"]>0 for row in foods):
+                lines.append("No food owned. Gather Crops with /agriculture action:harvest, or craft a Ration with /make recipe:ration. Free emergency food becomes available below 20 Nutrition.")
+            lines += ["CHOOSE FOOD", "Run /eat again and select Food. The suggestions show owned quantities. One selected item is consumed. Recovery caps at 100; Meal Kit uses your highest quality first."]
+        elif command=="use":
+            lines.append("YOUR CONSUMABLES")
+            for key,rows in owned_life_items(db,p).items():
+                effect={"meal_kit":"Nutrition + Morale","recreation_set":"Social + Morale","comfort_pack":"Comfort + Energy"}[key]
+                quality=", ".join(f"{r.quality} ×{r.qty}" for r in rows) or "none owned"
+                lines.append(f"• {QUALITY_RECIPES[key]['name']} ×{sum(r.qty for r in rows)} — {effect}; {quality}.")
+            lines.append("Run /use again and select Item. Uses 1 of your highest available quality; needs cap at 100. Craft missing supplies with /make.")
+        elif command=="delivery":
+            lines += [f"• Personal Cargo ×{p.cargo} — requires 1; consumed only on success. Failure keeps it.",
+                      f"• Shared Cargo ×{shared.cargo} — optional extra society production, separate from your inventory.",
+                      "Prepare personal Cargo with /cargo. When ready, use /delivery action:send."]
+        elif command=="meal":
+            lines += [f"• Personal Crop ×{p.crops} — sharing consumes 1 Crop.",
+                      "Gather Crops with /agriculture action:harvest. Choose /meal action:share to contribute; use /eat for personal food recovery."]
+        elif command=="repair":
+            lines += [f"• Shared Components ×{shared.components} — society repairs can consume 1 on success to add shared Infrastructure.",
+                      f"• Personal Components ×{p.components} — used for personal gear repairs.",
+                      "Society work: /repair target:society. Without shared Components, base work rewards still apply but no extra Infrastructure or housing is produced.",
+                      "PERSONAL GEAR"]
+            rows=db.execute(select(QualityGear).where(QualityGear.channel_id==p.channel_id,QualityGear.canonical_uid==p.twitch_uid,QualityGear.qty>0)).scalars().all()
+            for row in rows:
+                cost=max(1,(100-row.condition+19)//20) if row.condition<100 else 0
+                lines.append(f"• {row.quality} {row.item_name} ×{row.qty} — {row.condition}% condition; {cost} personal Components to repair.")
+            if not rows:lines.append("No quality gear owned. Craft equipment with /make.")
+            lines.append("Choose /repair target:gear, then Item. Each selection repairs one quality entry; the dropdown shows cost and stock.")
+        elif command in {"research","agriculture","spaceport","explore","market"}:
+            configs={
+                "research":("siro_sampler","Siro Sampler","operation","standard","field_analysis",False),
+                "agriculture":("water_filter","Water Filter","action","tend","hydroponics",False),
+                "spaceport":("power_cell","Power Cell","operation","standard","expedite",True),
+                "explore":("sensor","Sensor","operation","scout","survey",False),
+                "market":("market_analyzer","Market Analyzer","action","work","analyze",False),
+            }
+            key,label,option,normal,advanced,consumed=configs[command]
+            qty=(sum(r.qty for r in db.execute(select(QualityGear).where(QualityGear.channel_id==p.channel_id,QualityGear.canonical_uid==p.twitch_uid,QualityGear.item_key==key,QualityGear.qty>0)).scalars()) if key=="market_analyzer" else material_amount(db,p,key))
+            rule="consumes 1 only on success; kept on failure" if consumed else "requires ownership; not consumed"
+            lines += [f"• {label} ×{qty} — advanced task {rule}.",
+                      f"Standard task: /{command} {option}:{normal} — no personal item required.",
+                      f"Advanced task: /{command} {option}:{advanced}.",
+                      f"Get the required item with /make recipe:{key}."]
+            if command=="agriculture":lines.append("Other choices: /agriculture action:harvest for Crops, or /agriculture action:irrigate for Environmental work.")
+            if command=="market":
+                lines += ["YOUR SELLABLE RESOURCES"]+[f"• {resource_name(key)} ×{getattr(p,key)}" for key in MARKET_BASE]
+                lines.append("Use /market action:view for prices, or /market action:sell and select Resource + Amount. Sales consume the quantity selected.")
+        elif command=="social":
+            owned=owned_life_items(db,p)
+            lines += [f"• Recreation Set ×{sum(r.qty for r in owned['recreation_set'])} — /social action:group_games consumes 1, highest quality first.",
+                      f"• Personal Cargo ×{p.cargo} — Duo Delivery consumes 1; select a relationship partner.",
+                      "Greetings, hangouts and most duo activities need no item. Select Action and a Player for relationship activities. /games restores Social free without an item or partner."]
+        lines.append("Browsing only: no task performed, no items spent, no cooldown started.")
+        return "\n".join(lines)
+
+
 def _discord_call_internal(command: str, uid: str, name: str, options: dict, interaction_id: str):
     options,error=_discord_validate_options(command,options)
     if error:return error
     # Reuse the same game functions the Twitch API uses.
     channel = DISCORD_WORLD_ID
+    selectors={"eat":"food","use":"item","delivery":"action","meal":"action", "repair":"target",
+               "research":"operation","agriculture":"action","spaceport":"operation","explore":"operation","market":"action","social":"action"}
+    if command in selectors and (not options.get(selectors[command]) or
+            (command in {"delivery","meal"} and options.get("action")=="view") or
+            (command=="repair" and options.get("target")=="gear" and not options.get("item"))):
+        return item_command_menu(command,uid,name)
+    if command=="eat":
+        return action("eat",channel,uid,name,msg="food:"+str(options["food"]),provider="discord").body.decode()
 
     if command == "seed":
         return discord_seed_help(str(options.get("topic") or "overview"),name)
@@ -6392,6 +6517,9 @@ async def discord_interactions(request: Request, background_tasks: BackgroundTas
             ephemeral=True,
             message_type=command
         )
+
+    if result.startswith(("🍽️ FOOD MENU","🎒 ITEM MENU")):
+        return _discord_json_message(result,ephemeral=True,message_type=command)
 
     # Commands that are already private keep their full response private.
     if command in DISCORD_PRIVATE_COMMANDS:
