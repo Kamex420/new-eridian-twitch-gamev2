@@ -1,10 +1,11 @@
 
-"""Register current commands and remove the superseded global /eat safely."""
+
 import ast
 import json
 import os
 from pathlib import Path
 import sys
+import time
 
 import requests
 from app.command_catalog import commands
@@ -40,8 +41,15 @@ def main():
     session.headers.update(Authorization=f'Bot {token}')
 
     def api(method, path, **kwargs):
-        response = session.request(method, 'https://discord.com/api/v10' + path,
-                                   timeout=30, **kwargs)
+        for attempt in range(5):
+            response = session.request(method, 'https://discord.com/api/v10' + path,
+                                       timeout=30, **kwargs)
+            if response.status_code != 429:
+                break
+            delay = float(response.json().get('retry_after', 1))
+            if attempt == 4 or delay > 30:
+                raise RuntimeError('Discord rate limit: cleanup is incomplete. Rerun registration after the limit clears.')
+            time.sleep(max(0.1, delay))
         if not response.ok:
             raise RuntimeError(f'Discord {method} failed: HTTP {response.status_code}: {response.text[:1000]}')
         return response.json() if response.status_code != 204 else None
@@ -56,17 +64,21 @@ def main():
     saved = {c['name']: c for c in api('GET', server) if c.get('type', 1) == 1}
     for command in commands:
         if command['name'] not in saved or signature(saved[command['name']]) != signature(command):
-            raise RuntimeError(f"Verification failed for /{command['name']}. Global /eat was not deleted.")
+            raise RuntimeError(f"Verification failed for /{command['name']}. No global commands were deleted.")
     print(f'CONFIRMED: all {len(commands)} server commands match the current catalog.', flush=True)
     print('CONFIRMED: server /eat has Food autocomplete.', flush=True)
+    names = {c['name'] for c in commands}
+    removed = 0
     for command in api('GET', base + '/commands'):
-        if command['name'] == 'eat' and command.get('type', 1) == 1:
+        if command['name'] in names and command.get('type', 1) == 1:
             api('DELETE', base + '/commands/' + command['id'])
-            print('DELETED: old global /eat.', flush=True)
+            removed += 1
+            print(f"DELETED: duplicate global /{command['name']}.", flush=True)
     remaining = api('GET', base + '/commands')
-    if any(c['name'] == 'eat' and c.get('type', 1) == 1 for c in remaining):
-        raise RuntimeError('Global /eat still exists. Check for another deployment registering it.')
-    print('DONE: /eat is registered only for the configured server on this application.', flush=True)
+    if any(c['name'] in names and c.get('type', 1) == 1 for c in remaining):
+        raise RuntimeError('Global duplicates still exist. Check for another deployment registering them.')
+    print(f'DONE: {len(commands)} server commands verified; {removed} global duplicates removed.', flush=True)
+    print('Unrelated global commands were preserved. Managed commands are now server-only.', flush=True)
 
 
 if __name__ == '__main__':
