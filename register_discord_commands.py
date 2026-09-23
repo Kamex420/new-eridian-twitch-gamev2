@@ -1,5 +1,5 @@
 
-
+"""Register current commands and remove matching global command duplicates safely."""
 import ast
 import json
 import os
