@@ -1,6 +1,4 @@
 
-
-
 import os, random, secrets, string, math, re, hashlib, json, urllib.request
 from datetime import datetime, timezone, timedelta
 from fastapi import FastAPI, HTTPException, Request, BackgroundTasks
@@ -5426,6 +5424,9 @@ def _discord_embed_color(status):
     if status=="failure":return 0xED4245
     if status=="cooldown":return 0xFEE75C
     if status=="success":return 0x57F287
+    if status=="action":return 0xFEE75C
+    if status=="social":return 0xEB459E
+    if status=="detail":return 0x99AAB5
     return 0x3498DB
 
 def _discord_embed(title,description="",status="info"):
@@ -5463,7 +5464,7 @@ def _discord_add_field(embed,name,lines,inline=False):
     if current:chunks.append(current)
     for i,value in enumerate(chunks):
         embed["fields"].append({"name":_discord_clean_piece(name+(" (continued)" if i else ""),256),
-                                "value":value,"inline":bool(inline)})
+                                "value":value,"inline":False})
 
 
 def _discord_action_name(command):
@@ -5820,9 +5821,9 @@ def _discord_private_details_embed(private_text: str, command: str):
             modifiers.append(line)
 
     embed=_discord_embed(
-        "🧬 YOUR ACTION DETAILS",
+        "◻️ YOUR ACTION DETAILS",
         "Personal modifiers used for this action.",
-        "info"
+        "detail"
     )
     _discord_add_field(embed,"🧬 Modifiers",modifiers or ["No active modifiers."])
     _discord_add_field(embed,"🎯 Result Calculation",chance or ["No success roll details available."])
@@ -5939,10 +5940,31 @@ def _discord_json_message(content: str, ephemeral: bool = False, message_type: s
     # response uses the "embeds" array instead of plain "content".
     embed=_discord_pretty_embed(content,command,status)
 
-    # Semantic color language: green success/growth, yellow cooldown/action,
-    # blue information, red blockers/danger, magenta social/story.
-    if status=="info" and (command=="social" or "story" in str(content).lower()):
-        embed["color"]=0xEB459E
+    # Colored badges remain visible even when a mobile client hides embed borders.
+    # Scope social color to the actual view, not a mention of "story" in a guide.
+    tone=status
+    menu=content.startswith(("🍽️ FOOD MENU","🎒 ITEM MENU"))
+    first_line=content.splitlines()[0].lower() if content else ""
+    if status=="info":
+        if menu or command in {"make","guide"}:
+            tone="action"
+        elif command in {"social","hobby","ducks"} or any(word in first_line for word in ("weekly story","relationships","journal","lore")):
+            tone="social"
+    embed["color"]=_discord_embed_color(tone)
+    badge={"success":"🟩","failure":"🟥","cooldown":"🟨","action":"🟨","social":"🟪","detail":"◻️"}.get(tone,"🟦")
+    embed["title"]=_discord_clean_piece(badge+" "+re.sub(r"^[🟩🟥🟨🟦🟪]\s*","",embed.get("title","New Eridian v2")),256)
+    for field in embed.get("fields",[]):
+        field["inline"]=False
+        name=field["name"]
+        lower=name.lower()
+        if any(word in lower for word in ("failed","danger","blocked","warning","risk")):mark="🟥"
+        elif any(word in lower for word in ("reward","next","improve","action","recipe","supplies","cost")):mark="🟨"
+        elif any(word in lower for word in ("story","lore","social","fleet","discovery","relationship","journal")):mark="🟪"
+        elif any(word in lower for word in ("progress","growth","level","achievement")):mark="🟩"
+        elif any(word in lower for word in ("detail","note","modifier")):mark="◻️"
+        else:mark="🟦"
+        name=re.sub(r"^[^\w]+", "", name)
+        field["name"]=_discord_clean_piece(mark+" "+name,256)
 
     if custom:
         existing=embed.get("description","")
