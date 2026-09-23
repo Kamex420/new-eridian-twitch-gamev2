@@ -1,3 +1,4 @@
+
 from datetime import date, timedelta
 import hashlib
 
@@ -83,7 +84,8 @@ def _nth_weekday_of_month(year, month, weekday, occurrence):
 
 def _holiday_date_for(name, year):
     if name == "Memorial Day":
-        return _nth_weekday_of_month(year, 5, 0, 1) + timedelta(days=30)
+        last = date(year, 5, 31)
+        return last - timedelta(days=last.weekday())
     if name == "Father's Day":
         return _nth_weekday_of_month(year, 6, 6, 3)
     if name == "Labor Day":
@@ -142,6 +144,10 @@ def festive_message_for(channel: str = "new-eridian", today=None):
         "days_after_holiday": pick["days_after_holiday"],
         "message": f"{pick['emoji']} {label}: {lines[idx]}",
         "special_recipe": recipe,
+        "special_recipe_craftable": False,
+        "special_recipe_note": "Festival flavor only; available crafting recipes are listed in /make.",
+        "holiday": pick["holiday_date"].isoformat(),
+        "days_to_holiday": pick["days_until_holiday"],
     }
 
 
