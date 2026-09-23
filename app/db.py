@@ -1,1 +1,2 @@
-from db import *
+from ._compat import load_root_module
+load_root_module("db")
