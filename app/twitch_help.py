@@ -1,4 +1,5 @@
 
+
 """Twitch-specific handbook; syntax matches the bundled StreamElements templates."""
 TOPICS = {
     "start": "New Eridian v2: !start, !job farmer, then !guide. Work, !eat and !sleep have a shared 5-second cooldown. Social/recovery timers vary; !cooldowns shows yours. !make has no cooldown. Link accounts with !link, then enter that code using /link in Discord.",
