@@ -1354,7 +1354,27 @@ def exposure_tick(db,p,pw,action,skill,clock):
         return f" ☣️ Siro exposure +{gain} ({pw.siro_exposure}/100)."
     return ""
 
-def world_rule_bundle(db,p,s,action,skill):
+def housing_status_text(shared,s,provider="discord",detailed=False):
+    shortage=max(0,s.population-shared.housing)
+    repair="/repair target:society" if provider=="discord" else "!repair"
+    overview=f"Shared housing: {shared.housing} spaces for {s.population} citizens"
+    if not shortage:return overview+" — enough housing; no housing penalty."
+    overview+=f" — short by {shortage}. Success chance -3% (3 percentage points)."
+    if not detailed:
+        return overview+f" Help: {repair}; repairs need shared Components."
+    needed=5-(shared.infrastructure%5)
+    rows=[overview,
+          f"Help: use {repair}. Each successful supplied repair uses 1 shared Component and adds 1–2 Infrastructure, depending on needs.",
+          f"Every 5 Infrastructure adds 1 housing space. Next space: {needed} more Infrastructure; shared Components available: {shared.components}."]
+    if shared.components<1:
+        craft="/make recipe:component" if provider=="discord" else "!make component"
+        mine="/mine" if provider=="discord" else "!mine"
+        rows.append(f"Supply the society first: {mine} adds shared Ore; {craft} uses your personal Ore and converts available shared Ore into shared Components.")
+    rows.append("This is society-wide housing capacity. Upgrading your personal Habitat does not add shared housing spaces.")
+    return "\n".join(rows)
+
+
+def world_rule_bundle(db,p,s,action,skill,provider="discord"):
     clock=world_clock(db,p.channel_id,s);pw=player_world(db,p)
     parts=[];total=0
     for fn,args in [
@@ -1372,7 +1392,14 @@ def world_rule_bundle(db,p,s,action,skill):
     ab,anotes=aftermath_modifier(db,p.channel_id,skill);total+=ab;parts.extend(anotes)
     shared=colony_state(db,p.channel_id);colony_tick(shared,s,now())
     pressure=colony_pressures(shared,s,pw.siro_exposure)
-    for label,value in pressure.items():total+=value;parts.append(f"Need pressure: {label} {round(value*100):+d}%")
+    for label,value in pressure.items():
+        total+=value
+        if label=="housing pressure":
+            parts.append(housing_status_text(shared,s,provider))
+        elif label=="habitat decline":
+            repair="/repair target:society" if provider=="discord" else "!repair"
+            parts.append(f"Society infrastructure shortage: 0 Infrastructure for {s.population} citizens. Success chance -3% (3 percentage points). Help: {repair}; needs shared Components.")
+        else:parts.append(f"Society condition: {label} {round(value*100):+d}%")
     if occupation_matches(p.job,skill):total+=.02;parts.append("Occupation match +2%")
     if skill in {"logistics","research","commerce","infrastructure"}:
         relations=db.execute(select(LifeRelationship).where(LifeRelationship.channel_id==p.channel_id,((LifeRelationship.uid_a==p.twitch_uid)|(LifeRelationship.uid_b==p.twitch_uid)))).scalars().all()
@@ -2807,7 +2834,9 @@ def world_status(channel:str,uid:str="",name:str="Citizen",provider:str="twitch"
         s=society(db,channel);clock=world_clock(db,channel,s);proj=current_project(db,channel,clock["day"]);pcfg=project_cfg(proj.project_key)
         storyrow,storycfg=story_state(db,channel,clock)
         rumor=RUMORS[_stable_index(f"{channel}:{clock['day']}:rumor",len(RUMORS))]
-        low=shortages(s);short=", ".join(x[0] for x in low) if low else "No critical shortages"
+        low=shortages(s);shared=colony_state(db,channel)
+        short=", ".join(x[0] for x in low) if low else "No core-resource shortages"
+        if shared.housing<s.population:short+="; "+housing_status_text(shared,s,provider)
         discord=(f"{clock['phase_emoji']} Avesta Day {clock['day']} — {clock['phase']}\n\n"
                  f"World condition: {clock['condition']}\n{clock['condition_text']}\n\n"
                  f"Society project: {pcfg[1]} {proj.progress}/{proj.goal}\n"
@@ -2984,6 +3013,7 @@ def soc(channel:str,provider:str="twitch",viewer:str=""):
         discord=(f"🏙️ {s.name} — Society Status\n\n{personal}🏛️ Tier: {tier[0]}\n👥 Population: {s.population}\n\n"
                  f"📦 CORE RESOURCES\n🌾 Food: {s.food} · ⛏️ Materials: {s.materials}\n🏗️ Development: {s.development} · 🔬 Knowledge: {s.knowledge}\n"
                  f"🪙 Treasury: {s.treasury} · ⭐ Reputation: {s.reputation}\n\n💰 Tier pay bonus: +{tier[2]} SC\nUse /society section:Next Tier Progress to see the next tier.")
+        discord+="\n\nSHARED HOUSING\n"+housing_status_text(colony_state(db,channel),s,provider,True)
         twitch=f"🏙️ {s.name} — {tier[0]} | 🌾{s.food} Food · ⛏️{s.materials} Materials · 🏗️{s.development} Development · 🔬{s.knowledge} Knowledge · 🪙{s.treasury} Treasury · ⭐{s.reputation} Reputation · 👥{s.population} | Tier bonus +{tier[2]} SC"
         return platform_response(provider,discord,twitch)
 
@@ -4813,7 +4843,7 @@ def action(action:str,channel:str,uid:str,name:str="Citizen",msg:str="",provider
         wait=check_cooldown(db,p,action)
         if wait:return out(f"⏱️ {p.display_name}, {action_display_name(action,mode)} is ready in {wait}s.")
         life_bonus,life_notes,life=life_modifiers(db,p,skill)
-        clock,pw,world_bonus,world_notes=world_rule_bundle(db,p,s,action,skill)
+        clock,pw,world_bonus,world_notes=world_rule_bundle(db,p,s,action,skill,provider)
         life_bonus+=world_bonus;life_notes.extend(world_notes)
         life_before=(life.energy,life.nutrition,life.social)
         spend_life_for_action(life,action)
@@ -5148,6 +5178,7 @@ Aptitude — A skill family such as Agriculture, Research, or Logistics. Its lev
 Occupation / Job — Your profession. Matching work pays +1 SC, improves practice by 25%, and adds +2% success.
 Specialization — Permanent Lv. 10 path giving matching actions +3% success and +1 SC.
 Society stats — Shared Food, Materials, Development, Knowledge, Treasury, and Reputation.
+Shared housing — Society-wide spaces for citizens. Fewer spaces than citizens gives -3 percentage points to task success. Supplied society repairs add Infrastructure; every 5 Infrastructure adds 1 space. Personal Habitat upgrades do not expand shared housing. See /society for current capacity and supply needs.
 Society tier — Based on the lowest of all six stats. Higher tiers add modest SC pay and unlock recipes.
 Primary event role — Each successful matching action adds +1 progress.
 Support event role — Every two matching successes add +1 progress.
