@@ -1,5 +1,6 @@
 
 
+
 """Versioned SEED content and explicit New Eridian gameplay adaptations.
 Inventory IDs are namespaced; old materials, XP and account links are untouched.
 """
@@ -29,6 +30,8 @@ def station(r):
     rid=next(k for k,v in RECIPES.items() if v is r or v==r)
     return cp.station_names(rid)
 def find_item(value):
+    from . import item_identity
+    value=item_identity.canonical(value.casefold().replace(' ','_')) if value not in ACTIVE else value
     if value in ACTIVE:return value
     matches=[k for k in ACTIVE if value.casefold().replace('_',' ') == ITEMS[k]['name'].casefold()]
     return matches[0] if len(matches)==1 else value
@@ -104,7 +107,7 @@ def gather_menu(page=1,provider='discord'):
         lines.append(f"• {item_label(key)} ×{GATHER[key]['amount']}"+(f' ({key})' if provider!='discord' else ''))
     lines += (['Select Resource and type its name. Change Page to see every resource.',
                'Costs: 2 Energy, 1 Nutrition, 1 Comfort; work needs and cooldown apply.',
-               'Named SEED materials are separate from legacy Ore, Wood and Water. /catalog Item shows the exact ingredient.']
+               'Old material names use the same stock as their catalog replacements. /catalog Item shows the exact ingredient.']
               if provider=='discord' else [f'!gather <id> collects; !gatherpage {min(page+1,pages)} next. Costs 2 Energy/1 Nutrition/1 Comfort.'])
     return '\n'.join(lines)
 
@@ -227,7 +230,7 @@ def purpose(key):
         return dict(mode='plant',label=f"Garden batch: 1 seed + 1 Clean Water → 3 {ITEMS[output]['name']}; +1 Farming and Seed Cultivation XP.",consume=True,output=output)
     if src=='GMT_MATERIAL_PROCESSED_WATER':return dict(mode='recover',label='Drink: consumes 1; +10 Energy, +10 Comfort.',consume=True,boost={'energy':10,'comfort':10})
     if src=='GMT_PRODUCT_TOOL_SCANNER_BATTERY':return dict(mode='ingredient',label='Scanner battery: consumed by /use Resource Scanner to find 2 Hematite Ore and earn Research XP.',consume=False)
-    if src=='GMT_PRODUCT_TOOL_RESOURCE_SCANNER':return dict(mode='scan',label='Scan: keeps scanner; consumes 1 SEED Power Cell → 2 Hematite Ore, +1 Research XP. Costs work needs.',consume=False)
+    if src=='GMT_PRODUCT_TOOL_RESOURCE_SCANNER':return dict(mode='scan',label='Scan: keeps scanner; consumes 1 Power Cell → 2 Hematite Ore, +1 Research XP. Costs work needs.',consume=False)
     if src=='DELIVERY_DRONE' or cat=='storage' or 'BACKPACK' in src:return dict(mode='pack',label='Pack delivery: keeps item; 1 personal Cargo → 2 shared Cargo, +1 Logistics XP. Costs work needs.',consume=False)
     if 'CAT_MAIN_VENDING_MACHINES' in v['categories']:return dict(mode='vend',label='Stock vending machine: keeps machine; 1 Crop → 1 SC, +1 Commerce XP. Costs work needs.',consume=False)
     if cat=='machines':return dict(mode='workshop',label='Owning this machine grants matching workshop access after its tier unlock, plus +1 base practice per trained skill/branch. Bonus capped at +1; machine kept. /workshop shows access and tiers.',consume=False)
@@ -244,8 +247,8 @@ def purpose(key):
 PURPOSE={k:purpose(k) for k in ACTIVE}
 
 def stock(m,db,p):
-    if not p:return {}
-    return {r.item:r.qty for r in db.execute(m.select(m.ExtraItem).where(m.ExtraItem.channel_id==p.channel_id,m.ExtraItem.canonical_uid==p.twitch_uid,m.ExtraItem.qty>0)).scalars()}
+    from . import item_identity
+    return item_identity.stock(m,db,p)
 
 def category_choices():
     return [{'name':f'{label} ({sum(v==k for v in CATEGORY.values())})','value':k} for k,label in CATEGORIES.items()]
@@ -301,9 +304,9 @@ def catalog(m,db,p,item='',page=1,owned=False,category=''):
             lines+=['',f'WORKSHOP RECIPES · {page}/{pages}',*['• '+x for x in names[(page-1)*10:page*10]],'Keep Item selected and change Page for all matching recipes.']
         return '\n'.join(lines)
     if not category:
-        lines=['🟦 SEED Item Categories','Choose Category to see every item in that group.','']
+        lines=['🟦 Item Categories','Choose Category to see every item in that group.','']
         for key,label in CATEGORIES.items():lines.append(f"• {label}: {len(filtered_keys(key,owned,inv))}")
-        lines+=['','Owned filters to your inventory. Page shows the rest of a category.','/make uses the same SEED category filters. /use shows owned usable items.']
+        lines+=['','Owned filters to your inventory. Page shows the rest of a category.','/make uses the same category filters. /use shows owned usable items.']
         return '\n'.join(lines)
     rows=filtered_keys(category,owned,inv);pages=max(1,math.ceil(len(rows)/12));page=max(1,min(int(page),pages))
     lines=[f'🟦 {CATEGORIES[category]} · {page}/{pages}',f'{len(rows)} '+('owned item types' if owned else 'items total')+' · 12 per page','']
@@ -319,9 +322,9 @@ def choices(m,db,p,query='',gather_only=False,category='',owned=False,usable=Fal
 def use_menu(m,db,p,category='',page=1):
     inv=stock(m,db,p);keys=[k for k in filtered_keys(category,True,inv) if PURPOSE[k]['mode'] not in {'ingredient','workshop'}]
     pages=max(1,math.ceil(len(keys)/6));page=max(1,min(int(page),pages))
-    lines=[f'🎒 ITEM MENU — SEED Uses · {page}/{pages}',f'{len(keys)} owned usable item types','']
+    lines=[f'🎒 ITEM MENU — Uses · {page}/{pages}',f'{len(keys)} owned usable item types','']
     for key in keys[(page-1)*6:page*6]:lines += [f"• {ITEMS[key]['name']} ×{inv[key]}",PURPOSE[key]['label']]
-    if not keys:lines+=['No usable SEED items owned in this category.']
+    if not keys:lines+=['No usable items owned in this category.']
     return '\n'.join(lines+['','Select Category to filter; change Page to see every item. Select Item to use it.','Ingredients are used by /make. Owned machines improve matching recipe practice automatically.'])
 
 def use(m,db,p,key,provider):
