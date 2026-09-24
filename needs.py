@@ -1,17 +1,28 @@
-"""Pure needs policy. Four-hour ticks preserve remainder; catch-up is bounded."""
+
+"""Passive recovery uses elapsed time; saved legacy timestamps remain compatible."""
 from datetime import timedelta, timezone
 FIELDS=("energy", "nutrition", "social", "comfort", "morale")
-RATES={"energy":1,"nutrition":1,"social":1,"comfort":2,"morale":1}
-TICK_SECONDS=14400
-MAX_TICKS=6
+TICK_SECONDS=900
+RECOVERY_CAP=60
+RECOVERY_PER_TICK=1
+RECOVERY_HELP="Life needs recover +1 every 15 real minutes, up to 60/100, including while away. Food, sleep and social activities recover faster."
 
 def decay(row, current):
+    """Compatibility name: replace passive decay with bounded recharge.
+
+    Advance the clock even at the cap, so elapsed time cannot be banked and
+    spent repeatedly. Preserve partial ticks and never lower needs above 60.
+    No rewards, inventory spending or player actions are awarded by recovery.
+    """
     last=row.last_decay_at
-    if last.tzinfo is None: last=last.replace(tzinfo=timezone.utc)
+    if last.tzinfo is None:last=last.replace(tzinfo=timezone.utc)
+    if current.tzinfo is None:current=current.replace(tzinfo=timezone.utc)
     elapsed=max(0,int((current-last).total_seconds()//TICK_SECONDS))
     if not elapsed:return False
-    steps=min(MAX_TICKS,elapsed)
-    for key,rate in RATES.items():setattr(row,key,max(0,min(100,getattr(row,key)-steps*rate)))
+    for key in FIELDS:
+        value=getattr(row,key)
+        if value<RECOVERY_CAP:
+            setattr(row,key,min(RECOVERY_CAP,value+elapsed*RECOVERY_PER_TICK))
     row.last_decay_at=last+timedelta(seconds=elapsed*TICK_SECONDS)
     row.updated_at=current
     return True
