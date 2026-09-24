@@ -133,7 +133,7 @@ commands = [
          "choices":[{"name":"Browse Market","value":"browse"},{"name":"Buy","value":"buy"},{"name":"Sell","value":"sell"},{"name":"View Production Orders","value":"orders"},{"name":"Fulfill Production Order","value":"fulfill"}]},
         {"type":STRING,"name":"item","description":"Material, component, or production-order key","required":False,
          "choices":[
-            {"name":"Crops","value":"crops"},{"name":"Ore","value":"ore"},{"name":"Rare Ore","value":"rare_ore"},
+            {"name":"Crops","value":"crops"},{"name":"Hematite Ore","value":"ore"},{"name":"Argentite Ore","value":"rare_ore"},
             {"name":"Components","value":"components"},{"name":"Cargo","value":"cargo"},{"name":"Biofiber","value":"biofiber"},
             {"name":"Alloy Plate","value":"alloy_plate"},{"name":"Circuit Board","value":"circuit_board"},
             {"name":"Power Cell","value":"power_cell"},{"name":"Sealant","value":"sealant"},
@@ -246,8 +246,8 @@ commands = [
          "choices":[{"name":"Tend Fields","value":"tend"},{"name":"Harvest Crops","value":"harvest"},{"name":"Irrigate","value":"irrigate"},{"name":"Hydroponics (Water Filter)","value":"hydroponics"}]}
     ]),
     cmd("scan","Environmental survey that supports society Knowledge"),
-    cmd("mine","Standard Extraction work that gives personal Ore"),
-    cmd("rare","Risky Rare Ore search with higher reward"),
+    cmd("mine","Standard Extraction work that gives personal Hematite Ore"),
+    cmd("rare","Prospect Argentite: Harvesting Lv3, three actions per ore, 20-second cooldown"),
     cmd("research","Research or use a Siro Sampler for advanced field analysis",[
         {"type":STRING,"name":"operation","description":"Research operation","required":False,
          "choices":[{"name":"Standard Research","value":"standard"},{"name":"Field Analysis (Siro Sampler)","value":"field_analysis"}]}
@@ -271,7 +271,7 @@ commands = [
         {"type":STRING,"name":"action","description":"Market action","required":False,
          "choices":[{"name":"View Prices","value":"view"},{"name":"Sell Resources","value":"sell"},{"name":"Commerce Work","value":"work"},{"name":"Analyze Market (Market Analyzer)","value":"analyze"}]},
         {"type":STRING,"name":"resource","description":"Resource to sell","required":False,
-         "choices":[{"name":"Crops","value":"crops"},{"name":"Ore","value":"ore"},{"name":"Rare Ore","value":"rare_ore"},{"name":"Components","value":"components"},{"name":"Cargo","value":"cargo"}]},
+         "choices":[{"name":"Crops","value":"crops"},{"name":"Hematite Ore","value":"ore"},{"name":"Argentite Ore","value":"rare_ore"},{"name":"Components","value":"components"},{"name":"Cargo","value":"cargo"}]},
         {"type":4,"name":"amount","description":"Amount to sell (1-25)","required":False}
     ]),
 ]
@@ -325,10 +325,10 @@ for command in commands:
     if command['name']=='eventstart':
         command['options'][0]['choices'] += [{'name':'Fire Emergency','value':'fire'},{'name':'Clinic Supply Shortage','value':'clinic'}]
     if command['name']=='farm':command['description']='Farming: tend fields, harvest Crops, or operate hydroponics'
-    if command['name']=='mine':command['description']='Harvesting: mine personal and shared Ore'
+    if command['name']=='mine':command['description']='Harvesting: mine Hematite Ore and shared ore'
     if command['name']=='scan':command['description']='Processing survey that supports society Knowledge'
     if command['name']=='repair':command['description']='Engineering: repair society infrastructure or personal gear'
-commands.append(cmd('training','Browse SEED skills, branch levels, supplies and jobs; select Task to work',[
+commands.append(cmd('training','Browse skills, branch levels, supplies and jobs; select Task to work',[
     {'type':STRING,'name':'skill','description':'Choose a main skill to view its branches and requirements','required':False,
      'choices':[{'name':LABELS[key],'value':hub} for hub,key in HUBS.items()]},
     {'type':STRING,'name':'task','description':'Choose Skill first; shows required and owned materials','required':False,'autocomplete':True}
@@ -342,12 +342,12 @@ for command in commands:
 commands.append(cmd('holiday','See active holidays and when the next holiday event starts'))
 
 # Searchable source catalog; selectors browse until an explicit work item is chosen.
-commands.append(cmd('catalog','Find SEED items, recipes, ingredients and your quantities',[
+commands.append(cmd('catalog','Find items, recipes, ingredients and your quantities',[
     {'type':STRING,'name':'item','description':'Search an item to inspect its recipes and gathering sources','required':False,'autocomplete':True},
     {'type':4,'name':'page','description':'Page of items, 12 per page','required':False,'min_value':1,'max_value':1000},
     {'type':5,'name':'owned','description':'Show only items you own','required':False}
 ]))
-commands.append(cmd('gather','Collect natural SEED materials for cooking, processing and crafting',[
+commands.append(cmd('gather','Collect natural materials for cooking, processing and crafting',[
     {'type':STRING,'name':'resource','description':'Type a material name to search all resources; selecting it gathers it','required':False,'autocomplete':True},
     {'type':4,'name':'page','description':'Browse every raw resource; leave Resource blank to view only','required':False,'min_value':1,'max_value':1000}
 ]))
@@ -365,8 +365,8 @@ for command in commands:
     if command['name']=='catalog':command['description']='Browse ALL items by category and page; inspect their uses and recipes'
     if command['name']=='make':
         for opt in command['options']:
-            if opt['name']=='category':opt['choices'] += [{'name':'SEED: '+label,'value':'seed_'+key} for key,label in CATEGORIES.items()]
-        command['options'].append({'type':4,'name':'page','description':'Page of recipes in a SEED category','required':False,'min_value':1,'max_value':1000})
+            if opt['name']=='category':opt['choices'] += [{'name':label,'value':'seed_'+key} for key,label in CATEGORIES.items()]
+        command['options'].append({'type':4,'name':'page','description':'Page of recipes in a category','required':False,'min_value':1,'max_value':1000})
 
 
 commands.append(cmd('workshop','View recipe tiers and unlock access to a named crafting station',[
@@ -377,7 +377,7 @@ commands.append(cmd('workshop','View recipe tiers and unlock access to a named c
 for command in commands:
     if command['name']=='seedindustries':
         command['options'] += [
-            {'type':STRING,'name':'category','description':'Filter starter stock; leave All for every item','required':False,'choices':[{'name':label,'value':value} for value,label in [('all','All Supplies'),('legacy','Legacy Materials & Parts'),('seed','SEED Starter Supplies'),('training','Training Supplies'),('rare','Rare Ores')]]},
+            {'type':STRING,'name':'category','description':'Filter starter stock; leave All for every item','required':False,'choices':[{'name':label,'value':value} for value,label in [('all','All Supplies'),('legacy','General Materials & Parts'),('seed','Starter Supplies'),('training','Training Supplies'),('rare','Rare Ores')]]},
             {'type':4,'name':'page','description':'Market page; browse only','required':False,'min_value':1,'max_value':1000}]
 
 for command in commands:
