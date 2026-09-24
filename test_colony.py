@@ -61,6 +61,7 @@ def test_all_actions_success_paths(action,monkeypatch):
     seed(provider='discord');monkeypatch.setattr(m.random,'random',lambda:0.0)
     with m.SessionLocal() as db:
         p=db.query(m.Player).one()
+        if action=='rare':p.mining_xp=12
         db.add(m.Business(channel_id='test',canonical_uid=p.twitch_uid,name='Test Business'))
         m.item_add(db,'test',p.twitch_uid,'sensor',1)
         if action in m.SEED_TASKS:
@@ -70,6 +71,12 @@ def test_all_actions_success_paths(action,monkeypatch):
             if tag:
                 m.material_change(db,p,cp.permit_key(tag),1)
                 db.add(m.CraftLedger(channel_id='test',canonical_uid=p.twitch_uid,recipe='component',qty=250,best_quality=''))
+            if action in m.MERGED_TRAINING:
+                rid=m.MERGED_TRAINING[action];r=m.seed_content.RECIPES[rid]
+                m.material_change(db,p,cp.permit_key(cp.tags(rid)[0]),1)
+                req=r['requirement'].get('Skill','SK_CRAFTING')
+                main,branch=m.seed_content.SKILLS[req]
+                if branch:m.gain_branch(db,p,branch,1000)
             from app.competencies import FIELDS
             threshold=next(x for x in range(1000) if m.lvl(x)>=cfg['unlock'])
             setattr(p,FIELDS[cfg['skill']],threshold)
@@ -78,7 +85,7 @@ def test_all_actions_success_paths(action,monkeypatch):
         db.commit()
     r=client.get('/api/v1/action/'+action,params=dict(channel='test',uid='u',provider='discord'))
     assert r.status_code==200,r.text
-    assert 'TASK COMPLETE' in r.text,r.text
+    assert ('PROSPECTING' if action=='rare' else 'TASK COMPLETE') in r.text,r.text
     assert 'Needs:' in r.text or action=='sleep'
 
 @pytest.mark.parametrize('provider',['twitch','discord'])
