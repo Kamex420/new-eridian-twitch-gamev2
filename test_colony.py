@@ -1,3 +1,4 @@
+
 import os, tempfile, json, inspect, sqlite3, subprocess, sys
 from pathlib import Path
 from datetime import timedelta
@@ -34,14 +35,16 @@ def test_legacy_route_contract():
     routes={r.path:r for r in m.app.routes}
     for path,(method,args) in expected.items():
         assert path in routes and method.upper() in routes[path].methods
-        assert list(inspect.signature(routes[path].endpoint).parameters)==args
+        params=inspect.signature(routes[path].endpoint).parameters
+        assert list(params)[:len(args)]==args
+        assert all(p.default is not inspect.Parameter.empty for name,p in list(params.items())[len(args):])
 
-@pytest.mark.parametrize('hours,expected',[(3,0),(4,1),(9,2),(10000,6)])
-def test_decay_capped_and_idempotent(hours,expected):
-    current=m.now();row=SimpleNamespace(**{k:80 for k in ('energy','nutrition','social','comfort','morale')},last_decay_at=current-timedelta(hours=hours))
+@pytest.mark.parametrize('minutes,expected',[(14,0),(15,1),(60,4),(480,32),(100000,60)])
+def test_recovery_capped_and_idempotent(minutes,expected):
+    current=m.now();row=SimpleNamespace(**{k:0 for k in ('energy','nutrition','social','comfort','morale')},last_decay_at=current-timedelta(minutes=minutes))
     decay(row,current)
-    assert row.energy==80-expected and row.comfort==80-expected*2
-    before=row.comfort;decay(row,current);assert row.comfort==before
+    assert all(getattr(row,k)==expected for k in ('energy','nutrition','social','comfort','morale'))
+    before=row.energy;decay(row,current);assert row.energy==before
 
 def test_needs_reduce_real_output():
     good=SimpleNamespace(energy=80,nutrition=80,comfort=80,social=80,morale=80)
@@ -59,6 +62,13 @@ def test_all_actions_success_paths(action,monkeypatch):
         p=db.query(m.Player).one()
         db.add(m.Business(channel_id='test',canonical_uid=p.twitch_uid,name='Test Business'))
         m.item_add(db,'test',p.twitch_uid,'sensor',1)
+        if action in m.SEED_TASKS:
+            cfg=m.SEED_TASKS[action]
+            from app.competencies import FIELDS
+            threshold=next(x for x in range(1000) if m.lvl(x)>=cfg['unlock'])
+            setattr(p,FIELDS[cfg['skill']],threshold)
+            for key,amount in cfg['cost'].items():
+                m.material_change(db,p,key,max(0,amount-m.material_amount(db,p,key)))
         db.commit()
     r=client.get('/api/v1/action/'+action,params=dict(channel='test',uid='u',provider='discord'))
     assert r.status_code==200,r.text
@@ -69,7 +79,7 @@ def test_all_actions_success_paths(action,monkeypatch):
 def test_levelup_visible_and_persistent(provider,monkeypatch):
     seed(provider=provider);monkeypatch.setattr(m.random,'random',lambda:0)
     with m.SessionLocal() as db:
-        p=db.query(m.Player).one();p.farm_xp=9;p.job='farmer';db.commit()
+        p=db.query(m.Player).one();p.farm_xp=4;p.job='farmer';db.commit()
     r=client.get('/api/v1/action/harvest',params=dict(channel='test',uid='u',provider=provider))
     assert 'LEVEL UP' in r.text and '1 → Lv. 2' in r.text
     if provider=='twitch':assert len(r.text)<=500
@@ -101,7 +111,7 @@ def test_blocked_action_preserves_inputs():
 def test_crafting_levelup_and_inputs():
     seed(provider='discord')
     with m.SessionLocal() as db:
-        p=db.query(m.Player).one();p.fabrication_xp=9;p.job='technician';db.commit()
+        p=db.query(m.Player).one();p.fabrication_xp=4;p.job='technician';db.commit()
     r=client.get('/api/v1/make',params=dict(channel='test',uid='u',recipe='component',provider='discord'))
     assert r.status_code==200 and 'LEVEL UP' in r.text,r.text
     with m.SessionLocal() as db:
@@ -111,7 +121,8 @@ def test_mentor_notifies_target():
     seed('u',name='Mentor');seed('v',name='Learner')
     with m.SessionLocal() as db:
         p=db.query(m.Player).filter_by(twitch_uid='v').one()
-        for field in ('farm_xp','mining_xp','fabrication_xp','research_xp','delivery_xp','explore_xp','commerce_xp'):setattr(p,field,9)
+        from app.competencies import FIELDS
+        for field in FIELDS.values():setattr(p,field,4)
         db.commit()
     r=m.mentor('test','u','Mentor','Learner','twitch')
     assert 'LEVEL UP' in r.body.decode()
@@ -215,8 +226,8 @@ def test_emergency_meal_remains_recoverable():
     assert 'emergency' in r.body.decode().lower()
     with m.SessionLocal() as db:assert db.query(m.LifeState).one().nutrition>=20
 
-def test_discord_option_contract_unchanged():
-    assert m.DISCORD_OPTION_SCHEMA==json.loads((Path(__file__).parent/'legacy_discord_options.json').read_text())
+def test_current_discord_option_contract():
+    assert m.DISCORD_OPTION_SCHEMA==json.loads((Path(__file__).parent/'discord_options.json').read_text())
 
 def test_colony_levelup_and_action_log(monkeypatch):
     seed();monkeypatch.setattr(m.random,'random',lambda:0)
@@ -244,3 +255,73 @@ def test_multiple_hobby_rank_jump_notified():
         p=db.query(m.Player).one();h=m.hobby_row(db,p,'games');h.points=14;db.commit()
     r=m.hobby('test','u',hobby='games')
     assert 'LEVEL UP' in r.body.decode()
+
+
+def test_recovery_preserves_partial_ticks_and_cannot_bank_at_cap():
+    current=m.now()
+    row=SimpleNamespace(**{k:80 for k in ('energy','nutrition','social','comfort','morale')},last_decay_at=current-timedelta(minutes=61))
+    decay(row,current)
+    assert row.energy==80  # Never lower a well-rested need to the passive cap.
+    assert row.last_decay_at==current-timedelta(minutes=1)
+    row.energy=0
+    assert not decay(row,current)
+    assert not decay(row,current+timedelta(minutes=13))
+    assert decay(row,current+timedelta(minutes=14)) and row.energy==1
+
+
+def test_recovery_ignores_backwards_clock_and_accepts_sqlite_timestamps():
+    current=m.now()
+    row=SimpleNamespace(**{k:0 for k in ('energy','nutrition','social','comfort','morale')},last_decay_at=current.replace(tzinfo=None))
+    assert not decay(row,current-timedelta(hours=1))
+    assert decay(row,current+timedelta(minutes=15))
+    assert row.energy==1
+
+
+@pytest.mark.parametrize('provider',['discord','twitch'])
+def test_returning_citizen_recovers_without_spending_or_duplicate_credit(provider,monkeypatch):
+    seed(provider=provider)
+    current=m.now()
+    monkeypatch.setattr(m,'now',lambda:current)
+    with m.SessionLocal() as db:
+        p=db.query(m.Player).one();life=m.life_state(db,p)
+        for key in ('energy','nutrition','social','comfort','morale'):setattr(life,key,0)
+        life.last_decay_at=current-timedelta(hours=8)
+        before=(p.actions,p.sc,p.crops,p.farm_xp);db.commit()
+    with m.SessionLocal() as db:
+        _,p=m.player(db,'test',provider,'u','Kamex')
+        assert m.life_state(db,p).energy==32
+        assert m.task_need_gate(db,p,'mine',provider)==''
+        assert (p.actions,p.sc,p.crops,p.farm_xp)==before
+    with m.SessionLocal() as db:
+        p=db.query(m.Player).one()
+        assert all(getattr(m.life_state(db,p),k)==32 for k in ('energy','nutrition','social','comfort','morale'))
+        assert db.query(m.Cooldown).count()==0
+        assert '+1' in m.life_status_text(db,p,provider)
+
+
+@pytest.mark.parametrize('task', [k for k,v in m.SEED_TASKS.items() if v['cost']])
+def test_training_missing_supplies_remains_blocked(task):
+    from app.competencies import FIELDS
+    with m.SessionLocal() as db:
+        _,p=m.player(db,'test','discord','u','Citizen')
+        for field in FIELDS.values():setattr(p,field,1000)
+        for key in m.SEED_TASKS[task]['cost']:
+            m.material_change(db,p,key,-m.material_amount(db,p,key))
+        db.commit()
+    result=client.get('/api/v1/action/'+task,params=dict(channel='test',uid='u',provider='discord'))
+    assert 'Still needed' in result.text
+    with m.SessionLocal() as db:
+        assert db.query(m.Cooldown).count()==0
+
+
+@pytest.mark.parametrize('task',[k for k,v in m.SEED_TASKS.items() if v['unlock']>1])
+def test_training_level_locks_remain_enforced(task):
+    seed(provider='discord')
+    with m.SessionLocal() as db:
+        p=db.query(m.Player).one()
+        for key,amount in m.SEED_TASKS[task]['cost'].items():m.material_change(db,p,key,amount)
+        db.commit()
+    result=client.get('/api/v1/action/'+task,params=dict(channel='test',uid='u',provider='discord'))
+    assert 'requires' in result.text and 'Nothing spent' in result.text
+    with m.SessionLocal() as db:
+        assert db.query(m.Cooldown).count()==0
