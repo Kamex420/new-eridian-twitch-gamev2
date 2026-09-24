@@ -1,3 +1,6 @@
+
+> Current update: ITEM_UNIFICATION_UPDATE.md supersedes the separate legacy/catalog inventory model, overlapping market listings, old generic rare-ore rules and code-only rollback guidance below. Use the current TEST_RESULTS.txt for validation.
+
 # New Eridian v2 — obtainable crafting materials
 
 Based on Kamex420/new-eridian-twitch-gamev2 commit e8168e8e0a13101c7fe34e9c48083a4222951d92 (24 September 2026 review). New Eridian remains the society name.
