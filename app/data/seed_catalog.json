@@ -1,0 +1,106 @@
+"""Rebuild the bundled catalog from the user-supplied ZIP, without extracting files.
+Usage: python tools/import_seed_snapshot.py path/to/snapshot.zip
+Deep merge objects; replace arrays. Editor Tags belong to each concrete record.
+"""
+import hashlib, json, sys, zipfile
+from pathlib import Path
+
+BAD={'ABSTRACT','TEST','TESTING','ARCHIVED','DISABLED','NOT_CRAFTABLE'}
+PATCH='https://seed.game/news-from-avesta/seed-0-3-4-patch-notes'
+def merge(a,b):
+    a=dict(a)
+    for k,v in b.items():a[k]=merge(a[k],v) if isinstance(v,dict) and isinstance(a.get(k),dict) else v
+    return a
+
+def build(path):
+    with zipfile.ZipFile(path) as z:
+        repos={r:{d['Identifier']:d for n in z.namelist() if f'/{r}/entries/' in n and n.endswith('.json') for d in [json.loads(z.read(n))]} for r in ('GameType','Schematics','Skills')}
+        manifest=z.read('MANIFEST.txt').decode()
+    cache={}
+    def resolved(repo,key,trail=()):
+        ck=(repo,key)
+        if ck in cache:return cache[ck]
+        if key in trail:raise ValueError(f'Inheritance cycle: {trail} {key}')
+        d=repos[repo][key];parent=d.get('ParentIdentifier')
+        result=merge(resolved(repo,parent,trail+(key,)),d) if parent else d
+        cache[ck]=result
+        return result
+    def eligible(d):return not BAD.intersection(d.get('Tags',[]))
+    items={};excluded={};recipes={}
+    for key,raw in sorted(repos['GameType'].items()):
+        if not eligible(raw):continue
+        d=resolved('GameType',key)
+        if 'TAG_RESOURCE_HAULABLE' not in d.get('GameTags',{}).get('Tags',[]):continue
+        if key=='GMT_REMEDY_BANDAID':continue  # removed duplicate, official 0.3.4
+        items[key]={'name':d.get('Info',{}).get('Name',key),'description':d.get('Info',{}).get('Description',''),
+            'properties':d.get('ItemProperties',{}),'tags':d.get('GameTags',{}).get('Tags',[]),
+            'categories':d.get('GameCategory',{}).get('Categories',[]),
+            'aging':d.get('ItemAging',{}),'consumable':d.get('Consumable'),
+            'ailment_risk':d.get('ConsumableAilmentSource'), 'remedy':d.get('Remedy'),
+            'source':key}
+    items['GMT_REMEDY_BANDAGE']['properties']['Volume']=0.2
+    items['GMT_REMEDY_BANDAGE']['override']=PATCH
+    for key,raw in sorted(repos['Schematics'].items()):
+        if not eligible(raw):excluded[key]='editor tag';continue
+        d=resolved('Schematics',key);s=d.get('Schematic',{});outs=s.get('Outputs',{}).get('OutputList',[]);ins=s.get('Inputs',[])
+        if not outs or any(x['Resource'] not in items for x in outs+ins):excluded[key]='unsupported or retired item';continue
+        if any(x.get('Probability',100)!=100 or int(x['Amount'])!=x['Amount'] or x['Amount']<=0 for x in outs+ins):excluded[key]='unsupported quantity or probability';continue
+        def amounts(rows):
+            result={}
+            for x in rows:result[x['Resource']]=result.get(x['Resource'],0)+int(x['Amount'])
+            return result
+        recipes[key]={'name':items[outs[0]['Resource']]['name'],'inputs':amounts(ins),'outputs':amounts(outs),
+            'machines':s.get('Machines',{}).get('CraftedBy',[]),'timing':s.get('Process',{}).get('CraftingTime',{}),
+            'requirement':d.get('SchematicProductionSkillRequirement',{}),
+            'xp':d.get('SchematicProductionSkillXPContribution',{}),'source':key}
+    byname={}
+    for k,v in items.items():byname.setdefault(v['name'],[]).append(k)
+    def named(name):
+        keys=byname[name]
+        if len(keys)!=1:raise ValueError((name,keys))
+        return keys[0]
+    # Only documented post-snapshot changes; preserve the original recipe in audit.
+    costs={
+      'arcade':{'Steel Frame':2,'Fiberglass':6,'Circuit Board':1,'Treated Wood':30,'Cooling Fan':2,'Copper Wire':2},
+      'speaker':{'Plaxin':5,'Copper Wire':3,'Circuit Board':1,'Treated Wood':16,'Copper Coil':5},
+      'treadmill':{'Steel Frame':3,'Fiberglass':3,'Synthetic Rubber':15,'Small Electric Motor':1,'Circuit Board':1,'Bearing':3,'Cooling Fan':2,'Copper Wire':2},
+      'weight':{'Steel Frame':1,'Steel Rod':2,'Synthetic Rubber':4,'Bearing':4},
+      'monkey':{'Steel Rod':2,'Titanium Rod':2,'Concrete':16}}
+    for key,r in recipes.items():
+        name=r['name'].lower();kind=('arcade' if ('arcade cabinet' in name or name=='arcade racing pod') else 'speaker' if name=='plaxin luxury speaker' else 'treadmill' if name=='treadmill' else 'weight' if name=='weight bench' else 'monkey' if name=='monkey bars' else None)
+        if kind:r.update(snapshot_inputs=r['inputs'],inputs={named(n):q for n,q in costs[kind].items()},override=PATCH)
+    # Minigame gathering routes: natural raw resources, foods, and starter seeds only.
+    # Never infer natural gathering for a manufactured item with an erroneous tag.
+    roots={k for r in recipes.values() for k in r['inputs']}-{k for r in recipes.values() for k in r['outputs']}
+    gather={}
+    for key,v in items.items():
+        natural=key.startswith(('GMT_MATERIAL_RAW_','GMT_MATERIAL_ORE_','GMT_PRODUCT_FOOD_','GMT_SEED_'))
+        if natural and ('TAG_RESOURCE_HARVESTABLE' in v['tags'] or key in roots):
+            branch='ore_mining' if key.startswith('GMT_MATERIAL_ORE_') else 'water_collection' if key.endswith('_WATER') else 'wood_harvesting' if key.endswith('_LUMBER') else 'stone_quarrying' if key.endswith(('_STONE','_COAL','_CLAY')) else 'botanical_harvesting'
+            gather[key]={'amount':1,'branch':branch}
+    # Closed seed loops need starter seeds. Sources identify them as plantable seeds.
+    for key in items:
+        if key.startswith('GMT_SEED_') and any(key in r['inputs'] for r in recipes.values()):gather.setdefault(key,{'amount':1,'branch':'botanical_harvesting'})
+    reachable=set(gather)
+    while True:
+        added={k for r in recipes.values() if set(r['inputs'])<=reachable for k in r['outputs']}
+        if added<=reachable:break
+        reachable|=added
+    for key in list(recipes):
+        if not set(recipes[key]['inputs'])<=reachable:excluded[key]='unreachable inputs';del recipes[key]
+    # Stable compact IDs fit Discord's 100-character values and existing inventory columns.
+    item_ids={k:'sd_'+str(repos['GameType'][k]['UniqueId']) for k in items}
+    recipe_ids={k:'sr_'+str(repos['Schematics'][k]['UniqueId']) for k in recipes}
+    assert len(set(item_ids.values()))==len(items)
+    assert len(set(recipe_ids.values()))==len(recipes)
+    for r in recipes.values():
+        for field in ('inputs','outputs','snapshot_inputs'):
+            if field in r:r[field]={item_ids[k]:v for k,v in r[field].items()}
+    catalog={'metadata':{'manifest':manifest,'sha256':hashlib.sha256(Path(path).read_bytes()).hexdigest(),'version':'3.1.6 + selected 0.3.4 corrections','patch_url':PATCH,'excluded_recipes':excluded,'source_counts':{k:len(v) for k,v in repos.items()}},
+       'items':{item_ids[k]:v for k,v in items.items()},'recipes':{recipe_ids[k]:v for k,v in recipes.items()},'gather':{item_ids[k]:v for k,v in gather.items()},
+       'skills':{k:resolved('Skills',k).get('Skill',{}) for k,v in repos['Skills'].items() if eligible(v)}}
+    return catalog
+if __name__=='__main__':
+    result=build(sys.argv[1]);target=Path(__file__).resolve().parents[1]/'app/data/seed_catalog.json'
+    target.parent.mkdir(parents=True,exist_ok=True);target.write_text(json.dumps(result,ensure_ascii=False,indent=2)+'\n')
+    print({k:len(result[k]) for k in ('items','recipes','gather','skills')})
