@@ -1,3 +1,4 @@
+
 {
   "seed": [
     {
@@ -489,71 +490,71 @@
           "value": "tree"
         },
         {
-          "name": "SEED: Food",
+          "name": "Food",
           "value": "seed_food"
         },
         {
-          "name": "SEED: Drinks & Water",
+          "name": "Drinks & Water",
           "value": "seed_drinks"
         },
         {
-          "name": "SEED: Seeds & Saplings",
+          "name": "Seeds & Saplings",
           "value": "seed_seeds"
         },
         {
-          "name": "SEED: Raw Materials & Ores",
+          "name": "Raw Materials & Ores",
           "value": "seed_raw"
         },
         {
-          "name": "SEED: Processed Materials",
+          "name": "Processed Materials",
           "value": "seed_processed"
         },
         {
-          "name": "SEED: Components",
+          "name": "Components",
           "value": "seed_parts"
         },
         {
-          "name": "SEED: Medicine & Clinic Supplies",
+          "name": "Medicine & Clinic Supplies",
           "value": "seed_medicine"
         },
         {
-          "name": "SEED: Clothing & Accessories",
+          "name": "Clothing & Accessories",
           "value": "seed_clothing"
         },
         {
-          "name": "SEED: Machines & Workstations",
+          "name": "Machines & Workstations",
           "value": "seed_machines"
         },
         {
-          "name": "SEED: Storage & Shelves",
+          "name": "Storage & Shelves",
           "value": "seed_storage"
         },
         {
-          "name": "SEED: Chairs, Sofas & Benches",
+          "name": "Chairs, Sofas & Benches",
           "value": "seed_seating"
         },
         {
-          "name": "SEED: Beds & Camping",
+          "name": "Beds & Camping",
           "value": "seed_beds"
         },
         {
-          "name": "SEED: Bathroom & Washing",
+          "name": "Bathroom & Washing",
           "value": "seed_bathroom"
         },
         {
-          "name": "SEED: Tables & Counters",
+          "name": "Tables & Counters",
           "value": "seed_tables"
         },
         {
-          "name": "SEED: Decor, Lighting & Recreation",
+          "name": "Decor, Lighting & Recreation",
           "value": "seed_decor"
         },
         {
-          "name": "SEED: Building Parts",
+          "name": "Building Parts",
           "value": "seed_building"
         },
         {
-          "name": "SEED: Tools & Logistics",
+          "name": "Tools & Logistics",
           "value": "seed_tools"
         }
       ]
@@ -568,7 +569,7 @@
     {
       "type": 4,
       "name": "page",
-      "description": "Page of recipes in a SEED category",
+      "description": "Page of recipes in a category",
       "required": false,
       "min_value": 1,
       "max_value": 1000
@@ -633,11 +634,11 @@
           "value": "all"
         },
         {
-          "name": "Legacy Materials & Parts",
+          "name": "General Materials & Parts",
           "value": "legacy"
         },
         {
-          "name": "SEED Starter Supplies",
+          "name": "Starter Supplies",
           "value": "seed"
         },
         {
@@ -1314,11 +1315,11 @@
           "value": "crops"
         },
         {
-          "name": "Ore",
+          "name": "Hematite Ore",
           "value": "ore"
         },
         {
-          "name": "Rare Ore",
+          "name": "Argentite Ore",
           "value": "rare_ore"
         },
         {
