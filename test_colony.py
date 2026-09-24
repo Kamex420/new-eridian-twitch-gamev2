@@ -1,4 +1,5 @@
 
+
 import os, tempfile, json, inspect, sqlite3, subprocess, sys
 from pathlib import Path
 from datetime import timedelta
@@ -64,6 +65,11 @@ def test_all_actions_success_paths(action,monkeypatch):
         m.item_add(db,'test',p.twitch_uid,'sensor',1)
         if action in m.SEED_TASKS:
             cfg=m.SEED_TASKS[action]
+            cp=m.crafting_progression
+            tag=cp.TRAINING_STATIONS.get(cfg['branch'])
+            if tag:
+                m.material_change(db,p,cp.permit_key(tag),1)
+                db.add(m.CraftLedger(channel_id='test',canonical_uid=p.twitch_uid,recipe='component',qty=250,best_quality=''))
             from app.competencies import FIELDS
             threshold=next(x for x in range(1000) if m.lvl(x)>=cfg['unlock'])
             setattr(p,FIELDS[cfg['skill']],threshold)
