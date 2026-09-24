@@ -1,4 +1,5 @@
 
+
 """Shared Discord command catalog: registration and runtime validation use this file."""
 
 def cmd(name, description, options=None):
@@ -366,3 +367,19 @@ for command in commands:
         for opt in command['options']:
             if opt['name']=='category':opt['choices'] += [{'name':'SEED: '+label,'value':'seed_'+key} for key,label in CATEGORIES.items()]
         command['options'].append({'type':4,'name':'page','description':'Page of recipes in a SEED category','required':False,'min_value':1,'max_value':1000})
+
+
+commands.append(cmd('workshop','View recipe tiers and unlock access to a named crafting station',[
+    {'type':STRING,'name':'action','description':'View progress or purchase permanent station access','required':False,'choices':[{'name':'View Workshops','value':'view'},{'name':'Unlock Station','value':'unlock'}]},
+    {'type':STRING,'name':'station','description':'Specific workstation; shows tier and one-time fee','required':False,'autocomplete':True},
+    {'type':4,'name':'page','description':'Page of all stations','required':False,'min_value':1,'max_value':1000}
+]))
+for command in commands:
+    if command['name']=='seedindustries':
+        command['options'] += [
+            {'type':STRING,'name':'category','description':'Filter starter stock; leave All for every item','required':False,'choices':[{'name':label,'value':value} for value,label in [('all','All Supplies'),('legacy','Legacy Materials & Parts'),('seed','SEED Starter Supplies'),('training','Training Supplies'),('rare','Rare Ores')]]},
+            {'type':4,'name':'page','description':'Market page; browse only','required':False,'min_value':1,'max_value':1000}]
+
+for command in commands:
+    if command['name']=='seedindustries':
+        next(o for o in command['options'] if o['name']=='action')['choices'].append({'name':'Starter Routes by Branch','value':'starters'})
