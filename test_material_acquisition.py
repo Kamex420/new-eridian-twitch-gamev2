@@ -1,9 +1,11 @@
+
 """Guard the playable supply graph, not just the presence of catalog labels."""
 from collections import Counter
 import math
 import pytest
 from test_colony import m, reset, seed
 from app import seed_content as s
+from app import crafting_progression as cp
 
 
 def test_every_active_item_has_a_finite_production_plan():
@@ -53,7 +55,7 @@ def test_legacy_and_training_ingredients_are_obtainable():
     assert {k for _,output in recipes for k in output} <= available
 
 
-@pytest.mark.parametrize('key',sorted(s.GATHER))
+@pytest.mark.parametrize('key',sorted(set(s.GATHER)-cp.RARE))
 def test_each_raw_material_is_gatherable_by_a_new_citizen(key):
     with m.SessionLocal() as db:
         _,p=m.player(db,'test','discord','new','New Citizen')
@@ -85,14 +87,22 @@ def test_catalog_and_preview_explain_exact_sources_without_spending():
         preview=s.preview(m,db,p,rid)
         assert 'Get it: /gather resource:' in preview
         assert s.stock(m,db,p)=={}
+        p.sc=15
+        cp.workshop(m,db,p,'unlock','TAG_MACH_PROD_WATER_FILTRATION_SMALL')
         missing=s.craft(m,db,p,rid,'discord')
         assert 'HOW TO GET THEM' in missing and '/gather resource:' in missing
 
 
-def test_gather_then_craft_clean_water_without_admin_grants():
+def test_gather_then_craft_clean_water_without_admin_grants(monkeypatch):
+    monkeypatch.setattr(m.random,'random',lambda:0)
+    for _ in range(5):
+        m.action('harvest','test','new','Citizen',provider='discord')
+        with m.SessionLocal() as db:
+            db.query(m.Cooldown).delete();db.commit()
     with m.SessionLocal() as db:
         _,p=m.player(db,'test','discord','new','Citizen')
         key=s.source_key('GMT_MATERIAL_PROCESSED_WATER')
+        assert 'unlocked' in cp.workshop(m,db,p,'unlock','TAG_MACH_PROD_WATER_FILTRATION_SMALL')
         base,steps=s.acquisition_plan(key)
         for raw,times in base.items():
             for _ in range(times):
