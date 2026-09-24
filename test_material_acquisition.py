@@ -46,6 +46,9 @@ def test_legacy_and_training_ingredients_are_obtainable():
     recipes=[(cost,{m.craft_output_key(k):1}) for k,cost in {**m.PART_RECIPES,**m.RECIPES}.items()]
     recipes += [(r['cost'],{k:1}) for k,r in m.QUALITY_RECIPES.items()]
     recipes += [(r['cost'],r['output']) for r in m.SEED_TASKS.values()]
+    available={m.item_identity.canonical(k) for k in available}|set(s.GATHER)
+    recipes += [(r['inputs'],r['outputs']) for r in s.RECIPES.values()]
+    recipes=[({m.item_identity.canonical(k):n for k,n in cost.items()}, {m.item_identity.canonical(k):n for k,n in output.items()}) for cost,output in recipes]
     while True:
         before=len(available)
         for cost,output in recipes:
@@ -133,9 +136,9 @@ def test_legacy_raw_browser_and_missing_training_sources():
         for key in m.RAW_MATERIAL_KEYS:
             assert m.resource_name(key) in result
             assert m.material_source(key) in result
-        assert 'harvesting' in m.material_source('water')
-        assert m.material_source('water','twitch').startswith('!training harvesting train_water_collection')
-        assert 'processing' in m.material_source('cloth')
+        assert '/gather resource:Murky Water' in m.material_source('water')
+        assert m.material_source('water','twitch').startswith('!gather sd_817726320')
+        assert '/make recipe:' in m.material_source('cloth')
 
 
 def test_discord_gather_pages_and_twitch_template_contracts():
