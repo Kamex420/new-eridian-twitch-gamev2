@@ -1,3 +1,6 @@
+
+> Current update: ITEM_UNIFICATION_UPDATE.md supersedes the separate legacy/catalog inventory model, overlapping market listings, old generic rare-ore rules and code-only rollback guidance below. Use the current TEST_RESULTS.txt for validation.
+
 # New Eridian v2 — colony simulation update 7.0.0
 
 This package implements an original SEED-inspired model for New Eridian. It does not use a SEED API, private game data, or proprietary simulation rules. New Eridian remains the settlement name; New Eridian v2 remains the game name.
