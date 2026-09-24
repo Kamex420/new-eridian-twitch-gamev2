@@ -25,7 +25,9 @@ def nutrition(key):return max(1,min(100,round(EDIBLE[key]['properties']['Food']*
 def skill_name(key):return DATA['skills'].get(key,{}).get('Name','Crafting')
 def required_level(r):return max(1,1+math.ceil(r['requirement'].get('Level',0)/10))
 def station(r):
-    return ', '.join(t.removeprefix('TAG_MACHINE_').removeprefix('TAG_MACH_').replace('_',' ').title() for t in r['machines']) or 'Community workbench'
+    from . import crafting_progression as cp
+    rid=next(k for k,v in RECIPES.items() if v is r or v==r)
+    return cp.station_names(rid)
 def find_item(value):
     if value in ACTIVE:return value
     matches=[k for k in ACTIVE if value.casefold().replace('_',' ') == ITEMS[k]['name'].casefold()]
@@ -61,13 +63,15 @@ ACQUISITION=acquisition_routes()
 def source_hint(key,provider='discord'):
     if key in GATHER:
         command=f'/gather resource:{item_label(key)}' if provider=='discord' else f'!gather {key}'
-        return f"{command} → {GATHER[key]['amount']} per action; no ingredients or skill unlock."
+        from . import crafting_progression as cp
+        return f"{command} → {GATHER[key]['amount']} per action; no ingredients or skill unlock." if key not in cp.RARE else command+' → '+cp.rare_hint(key)
     rid=ACQUISITION.get(key)
     if not rid:return 'No acquisition route configured; report this item.'
     r=RECIPES[rid]
     command=f'/make recipe:{rid}' if provider=='discord' else f'!make {rid}'
     inputs=', '.join(f'{item_label(k)} ×{n}' for k,n in r['inputs'].items()) or 'no ingredients'
-    return f"{command} → {r['outputs'][key]} per batch; {inputs}; {skill_name(r['requirement'].get('Skill'))} Lv.{required_level(r)}."
+    from . import crafting_progression as cp
+    return f"{command} → {r['outputs'][key]} per batch; {inputs}; Tier {cp.recipe_tier(rid)}, {station(r)}, {skill_name(r['requirement'].get('Skill'))} Lv.{required_level(r)}. /workshop shows unlocks."
 
 def acquisition_plan(key,amount=1):
     """Gross base requirements and dependency order for a fresh batch (surplus kept)."""
@@ -95,7 +99,7 @@ def gather_menu(page=1,provider='discord'):
     size=8 if provider=='discord' else 3
     pages=max(1,math.ceil(len(rows)/size));page=max(1,min(int(page),pages))
     lines=[f'🌿 GATHER MATERIALS · {page}/{pages} · {len(rows)} resources',
-           'No ingredients, SC, tools or skill unlock required.']
+           'Common resources: no ingredients or skill unlock. Rare ores: Harvesting Lv.3; 3 actions per ore.' if provider=='discord' else 'Common: 1/action. Rare: Lv3, 3 actions/ore.']
     for key in rows[(page-1)*size:page*size]:
         lines.append(f"• {item_label(key)} ×{GATHER[key]['amount']}"+(f' ({key})' if provider!='discord' else ''))
     lines += (['Select Resource and type its name. Change Page to see every resource.',
@@ -105,15 +109,24 @@ def gather_menu(page=1,provider='discord'):
     return '\n'.join(lines)
 
 def preview(m,db,p,key):
+    from . import crafting_progression as cp
     r=RECIPES[key];req=r['requirement'].get('Skill','SK_CRAFTING')
     lines=[f"🛠️ {r['name']}", '', 'ONE BATCH',m.requirement_text(r['outputs']), '', 'MATERIALS']
     lines += [f"• {item_label(k)}: {m.material_amount(db,p,k)}/{v}\n  Get it: {source_hint(k)}" for k,v in r['inputs'].items()] or ['• No ingredients; extraction uses your work cooldown.']
-    lines += ['',f"SKILL · {skill_name(req)} Lv.{required_level(r)} · Yours: {level_for(m,db,p,req)}",f"WORKSHOP · {station(r)}",'Community workshop access is included.', '', 'Use /make and select this recipe to craft one batch.', 'Use /gather for natural materials; /catalog to look up ingredients.']
+    lines += ['',f"SKILL · {skill_name(req)} Lv.{required_level(r)} · Yours: {level_for(m,db,p,req)}",cp.unlock_text(m,db,p,key), '', 'Use /make and select this recipe to craft one batch.', 'Use /gather for natural materials; /catalog to look up ingredients.']
+    if any(k in cp.RARE for k in r['outputs']):lines+=['RARE EXTRACTION · '+cp.rare_hint(next(k for k in r['outputs'] if k in cp.RARE))]
     return '\n'.join(lines)
 
 def craft(m,db,p,key,provider):
+    from . import crafting_progression as cp
+    blocked=cp.recipe_gate(m,db,p,key,provider)
+    if blocked:return blocked
     r=RECIPES[key];req=r['requirement'].get('Skill','SK_CRAFTING')
     if level_for(m,db,p,req)<required_level(r):return f"🔒 {r['name']} needs {skill_name(req)} Lv.{required_level(r)}. Train this branch with /training. Nothing spent."
+    rare_output=next((k for k in r['outputs'] if k in cp.RARE),None)
+    if rare_output:
+        bonus=int(any(m.material_amount(db,p,k)>0 and key in recipes for k,recipes in MACHINE_RECIPES.items()))
+        return cp.rare_gather(m,db,p,rare_output,provider,bonus)
     missing=m.craft_missing_materials(db,p,r['inputs'])
     if missing:
         hints=[f'• {item_label(k)}: {source_hint(k,provider)}' for k,n in r['inputs'].items() if m.material_amount(db,p,k)<n]
@@ -141,6 +154,8 @@ def craft(m,db,p,key,provider):
 
 def gather(m,db,p,key,provider):
     if key not in GATHER:return '🛑 Choose a natural resource from /gather. Manufactured parts must be crafted.'
+    from . import crafting_progression as cp
+    if key in cp.RARE:return cp.rare_gather(m,db,p,key,provider)
     life=m.life_state(db,p);blocked=m.task_need_gate(db,p,'make',provider,life)
     if blocked:return blocked
     wait=m.check_cooldown(db,p,'seed_work')
@@ -195,7 +210,7 @@ SEED_CROPS={'CORN':'GMT_PRODUCT_FOOD_CORN','PUMPKIN':'GMT_PRODUCT_FOOD_PUMPKIN',
 # Keep individual machine names, while matching the extraction tag alias.
 def machine_tags(key):
     tags=set(ITEMS[key]['tags'])
-    if 'CAT_SUB_MACHINES_EXTRACTORS' in ITEMS[key]['categories']:tags.add('TAG_MACHINE_EXTRACTOR')
+    if 'TAG_MACHINE_EXTRACTION_ORE' in tags:tags.add('TAG_MACHINE_EXTRACTOR')
     return tags
 MACHINE_RECIPES={k:[rid for rid,r in RECIPES.items() if machine_tags(k)&set(r['machines'])] for k in ACTIVE if CATEGORY[k]=='machines'}
 
@@ -215,7 +230,7 @@ def purpose(key):
     if src=='GMT_PRODUCT_TOOL_RESOURCE_SCANNER':return dict(mode='scan',label='Scan: keeps scanner; consumes 1 SEED Power Cell → 2 Hematite Ore, +1 Research XP. Costs work needs.',consume=False)
     if src=='DELIVERY_DRONE' or cat=='storage' or 'BACKPACK' in src:return dict(mode='pack',label='Pack delivery: keeps item; 1 personal Cargo → 2 shared Cargo, +1 Logistics XP. Costs work needs.',consume=False)
     if 'CAT_MAIN_VENDING_MACHINES' in v['categories']:return dict(mode='vend',label='Stock vending machine: keeps machine; 1 Crop → 1 SC, +1 Commerce XP. Costs work needs.',consume=False)
-    if cat=='machines':return dict(mode='workshop',label='Own this workstation for +1 base practice per trained skill/branch on matching SEED recipes. Bonus capped at +1; machine kept. Needs/job modifiers still apply.',consume=False)
+    if cat=='machines':return dict(mode='workshop',label='Owning this machine grants matching workshop access after its tier unlock, plus +1 base practice per trained skill/branch. Bonus capped at +1; machine kept. /workshop shows access and tiers.',consume=False)
     if cat=='building' or src.endswith(('_MORTAR','_STONE_TILES')):return dict(mode='build',label='Build: consumes 1; +1 shared Infrastructure. Every 5 Infrastructure adds 1 housing space. Costs work needs.',consume=True)
     if cat=='beds':return dict(mode='recover',label='Rest: keeps item; +40 Energy, +25 Comfort, +5 Morale.',consume=False,boost={'energy':40,'comfort':25,'morale':5})
     if cat=='seating':return dict(mode='recover',label='Relax: keeps item; +20 Comfort, +10 Social.',consume=False,boost={'comfort':20,'social':10})
@@ -242,18 +257,20 @@ def filtered_keys(category='',owned=False,inventory=None,gather_only=False):
 def recipe_category(key):return CATEGORY[next(iter(RECIPES[key]['outputs']))]
 
 def recipe_menu(m,db,p,category,page=1):
+    from . import crafting_progression as cp
     rows=sorted((k for k in RECIPES if recipe_category(k)==category),key=lambda k:(RECIPES[k]['name'].casefold(),k))
     count=len(rows);pages=max(1,math.ceil(count/8));page=max(1,min(int(page),pages));inv=stock(m,db,p)
     lines=[f'🟦 {CATEGORIES[category]} Recipes · {page}/{pages}',f'{count} recipes · every recipe is included across these pages.','']
     for key in rows[(page-1)*8:page*8]:
         r=RECIPES[key];req=r['requirement'].get('Skill','SK_CRAFTING')
-        ready=all(inv.get(k,0)>=n for k,n in r['inputs'].items()) and level_for(m,db,p,req)>=required_level(r)
-        lines += [f"{'✅' if ready else '🔒'} {item_label(next(iter(r['outputs'])))} ×{next(iter(r['outputs'].values()))}",f"  {skill_name(req)} Lv.{required_level(r)} · inspect with /catalog Item."]
+        ready=all(inv.get(k,0)>=n for k,n in r['inputs'].items()) and level_for(m,db,p,req)>=required_level(r) and not cp.recipe_gate(m,db,p,key)
+        lines += [f"{'✅' if ready else '🔒'} {item_label(next(iter(r['outputs'])))} ×{next(iter(r['outputs'].values()))}",f"  Tier {cp.recipe_tier(key)} · {station(r)} · {skill_name(req)} Lv.{required_level(r)} · /workshop shows unlocks."]
     lines+=['',f'Choose Recipe to craft; Page {min(page+1,pages)} for more.','Choose Production Tree and Recipe for a free cost preview.']
     return '\n'.join(lines)
 
 # Override the first release's flat browser. Every item stays reachable via pages.
 def catalog(m,db,p,item='',page=1,owned=False,category=''):
+    from . import crafting_progression as cp
     if category and category not in CATEGORIES:return '🛑 Choose a category from the list. Nothing spent.'
     inv=stock(m,db,p)
     if item:
@@ -264,16 +281,16 @@ def catalog(m,db,p,item='',page=1,owned=False,category=''):
         lines+=['','HOW TO OBTAIN',source_hint(item)]
         if item not in GATHER:
             base,steps=acquisition_plan(item)
-            plan=[f'Gather {item_label(k)}: {n} action(s).' for k,n in sorted(base.items())]
-            plan += [f"Make {RECIPES[rid]['name']}: {n} batch(es) · {rid} · {skill_name(RECIPES[rid]['requirement'].get('Skill'))} Lv.{required_level(RECIPES[rid])}" for rid,n in steps]
+            plan=[f'Gather {item_label(k)}: {n*3 if k in cp.RARE else n} action(s).'+(' Harvesting Lv.3 required.' if k in cp.RARE else '') for k,n in sorted(base.items())]
+            plan += [f"Make {RECIPES[rid]['name']}: {n} batch(es) · {rid} · Tier {cp.recipe_tier(rid)} · {station(RECIPES[rid])} · {skill_name(RECIPES[rid]['requirement'].get('Skill'))} Lv.{required_level(RECIPES[rid])}" for rid,n in steps]
             pages=max(1,math.ceil(len(plan)/6));plan_page=max(1,min(int(page),pages))
             lines+=['',f'ACQUISITION PLAN · {plan_page}/{pages} — for 1 item from scratch',*plan[(plan_page-1)*6:plan_page*6],
                     'Follow the steps in order; reuse inventory to reduce gathering. Surplus is kept. Change Page for more steps.',
-                    'Skill locks: practice lower-level recipes in that skill or use /training. Community workshops are included.']
+                    'Skill locks: practice lower-level recipes or use /training. /workshop shows station access and tier requirements.']
         made=[r for r in RECIPES.values() if item in r['outputs']]
         if made:
             lines+=['','MAKE IT']
-            for r in made[:3]:lines += [f"• {r['name']} → {r['outputs'][item]}",m.requirement_text(r['inputs']) or 'Extraction; no ingredients',f"{skill_name(r['requirement'].get('Skill'))} Lv.{required_level(r)} · {station(r)}"]
+            for r in made[:3]:lines += [f"• {r['name']} → {r['outputs'][item]}",m.requirement_text(r['inputs']) or 'Extraction; no ingredients',f"Tier {cp.recipe_tier(next(k for k,v in RECIPES.items() if v is r))} · {skill_name(r['requirement'].get('Skill'))} Lv.{required_level(r)} · {station(r)}"]
             if len(made)>3:lines+=['More variants appear in /make Recipe search.']
         if USED_BY[item]:
             users=[RECIPES[r]['name'] for r in USED_BY[item]]
