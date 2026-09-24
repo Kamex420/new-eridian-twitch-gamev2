@@ -1,4 +1,4 @@
-﻿command,response,access_level,global_cooldown,user_cooldown
+command,response,access_level,global_cooldown,user_cooldown
 !seed,🌱 NEW ERIDIAN // SEED CHAT GAME | !start !me !job !skills !inventory !farm !harvest !mine !rare !research !craft !build !work !cargo !delivery !explore !market !status !progress !event !siro !rocky,100,15,30
 !start,$(customapi https://YOUR-API-DOMAIN/api/v1/start?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&msg=$(msgid)),100,10,86400
 !me,$(customapi https://YOUR-API-DOMAIN/api/v1/profile?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))),100,5,15
@@ -36,3 +36,15 @@
 !marketboom,$(customapi https://YOUR-API-DOMAIN/api/v1/admin/event/market/on?channel=$(channel.provider_id)&level=$(sender.level)&key=YOUR_ADMIN_KEY),500,5,5
 !marketclear,$(customapi https://YOUR-API-DOMAIN/api/v1/admin/event/market/off?channel=$(channel.provider_id)&level=$(sender.level)&key=YOUR_ADMIN_KEY),500,5,5
 !nextday,$(customapi https://YOUR-API-DOMAIN/api/v1/admin/day/next?channel=$(channel.provider_id)&level=$(sender.level)&key=YOUR_ADMIN_KEY),500,5,5
+!gather,$(customapi https://YOUR-API-DOMAIN/api/v1/seed-supplies?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&mode=gather&item=$(queryescape ${1:})),100,0,5
+!gatherpage,$(customapi https://YOUR-API-DOMAIN/api/v1/seed-supplies?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&mode=gather&page=$(1)),100,0,5
+!catalog,$(customapi https://YOUR-API-DOMAIN/api/v1/seed-supplies?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&mode=catalog&item=$(queryescape ${1:})),100,0,5
+!training,$(customapi https://YOUR-API-DOMAIN/api/v1/training?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&text=$(queryescape ${1:})),100,0,5
+!make,$(customapi https://YOUR-API-DOMAIN/api/v1/make?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&recipe=$(queryescape ${1:})),100,0,5
+!workshop,$(customapi https://YOUR-API-DOMAIN/api/v1/workshop?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&station=$(queryescape ${1:})),100,0,5
+!workshopunlock,$(customapi https://YOUR-API-DOMAIN/api/v1/workshop?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&action=unlock&station=$(queryescape ${1:})),100,0,5
+!workshoppage,$(customapi https://YOUR-API-DOMAIN/api/v1/workshop?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&page=$(1)),100,0,5
+!seedpage,$(customapi https://YOUR-API-DOMAIN/api/v1/seedindustries?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&page=$(1)),100,0,5
+!seedbuy,$(customapi https://YOUR-API-DOMAIN/api/v1/seedindustries?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&action=buy&item_name=$(queryescape $(1))&amount=$(2)),100,0,5
+!seedindustries,$(customapi https://YOUR-API-DOMAIN/api/v1/seedindustries?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&action=$(queryescape $(1))&item_name=$(queryescape $(2))),100,0,5
+!seedstarters,$(customapi https://YOUR-API-DOMAIN/api/v1/seedindustries?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&action=starters&page=$(1)),100,0,5
