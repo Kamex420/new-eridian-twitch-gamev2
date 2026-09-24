@@ -1,4 +1,5 @@
 
+
 """Versioned SEED content and explicit New Eridian gameplay adaptations.
 Inventory IDs are namespaced; old materials, XP and account links are untouched.
 """
@@ -41,10 +42,72 @@ def level_for(m,db,p,skill):
     row=db.execute(m.select(m.SkillBranch).where(m.SkillBranch.channel_id==p.channel_id,m.SkillBranch.canonical_uid==p.twitch_uid,m.SkillBranch.branch==branch)).scalar_one_or_none()
     return m.lvl(row.xp if row else 0)
 
+def acquisition_routes():
+    """Pick finite dependency paths; never send players around recipe cycles."""
+    routes={key:None for key in GATHER}
+    pending=sorted(RECIPES, key=lambda key:(required_level(RECIPES[key]),key))
+    while True:
+        additions={}
+        for key in pending:
+            recipe=RECIPES[key]
+            if set(recipe['inputs']) <= routes.keys():
+                for output in recipe['outputs']:
+                    if output not in routes:additions.setdefault(output,key)
+        if not additions:return routes
+        routes.update(additions)
+
+ACQUISITION=acquisition_routes()
+
+def source_hint(key,provider='discord'):
+    if key in GATHER:
+        command=f'/gather resource:{item_label(key)}' if provider=='discord' else f'!gather {key}'
+        return f"{command} → {GATHER[key]['amount']} per action; no ingredients or skill unlock."
+    rid=ACQUISITION.get(key)
+    if not rid:return 'No acquisition route configured; report this item.'
+    r=RECIPES[rid]
+    command=f'/make recipe:{rid}' if provider=='discord' else f'!make {rid}'
+    inputs=', '.join(f'{item_label(k)} ×{n}' for k,n in r['inputs'].items()) or 'no ingredients'
+    return f"{command} → {r['outputs'][key]} per batch; {inputs}; {skill_name(r['requirement'].get('Skill'))} Lv.{required_level(r)}."
+
+def acquisition_plan(key,amount=1):
+    """Gross base requirements and dependency order for a fresh batch (surplus kept)."""
+    base={};steps=[];surplus={}
+    def visit(item,needed):
+        reused=min(needed,surplus.get(item,0));needed-=reused
+        surplus[item]=surplus.get(item,0)-reused
+        if not needed:return
+        if item in GATHER:
+            batches=math.ceil(needed/GATHER[item]['amount'])
+            base[item]=base.get(item,0)+batches
+            surplus[item]+=batches*GATHER[item]['amount']-needed
+            return
+        rid=ACQUISITION[item];r=RECIPES[rid]
+        batches=math.ceil(needed/r['outputs'][item])
+        for ingredient,n in r['inputs'].items():visit(ingredient,n*batches)
+        for output,n in r['outputs'].items():surplus[output]=surplus.get(output,0)+n*batches
+        surplus[item]-=needed
+        steps.append((rid,batches))
+    visit(key,amount)
+    return base,steps
+
+def gather_menu(page=1,provider='discord'):
+    rows=filtered_keys(gather_only=True)
+    size=8 if provider=='discord' else 3
+    pages=max(1,math.ceil(len(rows)/size));page=max(1,min(int(page),pages))
+    lines=[f'🌿 GATHER MATERIALS · {page}/{pages} · {len(rows)} resources',
+           'No ingredients, SC, tools or skill unlock required.']
+    for key in rows[(page-1)*size:page*size]:
+        lines.append(f"• {item_label(key)} ×{GATHER[key]['amount']}"+(f' ({key})' if provider!='discord' else ''))
+    lines += (['Select Resource and type its name. Change Page to see every resource.',
+               'Costs: 2 Energy, 1 Nutrition, 1 Comfort; work needs and cooldown apply.',
+               'Named SEED materials are separate from legacy Ore, Wood and Water. /catalog Item shows the exact ingredient.']
+              if provider=='discord' else [f'!gather <id> collects; !gatherpage {min(page+1,pages)} next. Costs 2 Energy/1 Nutrition/1 Comfort.'])
+    return '\n'.join(lines)
+
 def preview(m,db,p,key):
     r=RECIPES[key];req=r['requirement'].get('Skill','SK_CRAFTING')
     lines=[f"🛠️ {r['name']}", '', 'ONE BATCH',m.requirement_text(r['outputs']), '', 'MATERIALS']
-    lines += [f"• {ITEMS[k]['name']}: {m.material_amount(db,p,k)}/{v}" for k,v in r['inputs'].items()] or ['• No ingredients; extraction uses your work cooldown.']
+    lines += [f"• {item_label(k)}: {m.material_amount(db,p,k)}/{v}\n  Get it: {source_hint(k)}" for k,v in r['inputs'].items()] or ['• No ingredients; extraction uses your work cooldown.']
     lines += ['',f"SKILL · {skill_name(req)} Lv.{required_level(r)} · Yours: {level_for(m,db,p,req)}",f"WORKSHOP · {station(r)}",'Community workshop access is included.', '', 'Use /make and select this recipe to craft one batch.', 'Use /gather for natural materials; /catalog to look up ingredients.']
     return '\n'.join(lines)
 
@@ -52,7 +115,9 @@ def craft(m,db,p,key,provider):
     r=RECIPES[key];req=r['requirement'].get('Skill','SK_CRAFTING')
     if level_for(m,db,p,req)<required_level(r):return f"🔒 {r['name']} needs {skill_name(req)} Lv.{required_level(r)}. Train this branch with /training. Nothing spent."
     missing=m.craft_missing_materials(db,p,r['inputs'])
-    if missing:return '🛑 Materials needed\n'+ '\n'.join('• '+s for s in missing)+'\nUse /gather for natural inputs or /catalog to find recipes.'
+    if missing:
+        hints=[f'• {item_label(k)}: {source_hint(k,provider)}' for k,n in r['inputs'].items() if m.material_amount(db,p,k)<n]
+        return '🛑 Materials needed\n'+ '\n'.join('• '+s for s in missing)+'\nHOW TO GET THEM\n'+'\n'.join(hints)
     wait=m.check_cooldown(db,p,'seed_work')
     if wait:return f'⏳ Workshop ready in {wait}s. Nothing spent.'
     owned=stock(m,db,p)
@@ -196,7 +261,15 @@ def catalog(m,db,p,item='',page=1,owned=False,category=''):
         if category and CATEGORY[item]!=category:return 'ℹ️ This item is in '+CATEGORIES[CATEGORY[item]]+'. Change Category to inspect it.'
         v=ITEMS[item];lines=[f"🟦 {item_label(item)}",CATEGORIES[CATEGORY[item]],f"Owned: {inv.get(item,0)}",'', 'USE',PURPOSE[item]['label']]
         if PURPOSE[item]['mode'] not in {'eat','ingredient','workshop'}:lines+=['Select /use Item to perform this action. Recovery caps at 100. Item uses share a 20-second cooldown. XP values are base practice; needs and jobs may modify them.']
-        if item in GATHER:lines+=['','SOURCE','Collect 1 with /gather Resource.']
+        lines+=['','HOW TO OBTAIN',source_hint(item)]
+        if item not in GATHER:
+            base,steps=acquisition_plan(item)
+            plan=[f'Gather {item_label(k)}: {n} action(s).' for k,n in sorted(base.items())]
+            plan += [f"Make {RECIPES[rid]['name']}: {n} batch(es) · {rid} · {skill_name(RECIPES[rid]['requirement'].get('Skill'))} Lv.{required_level(RECIPES[rid])}" for rid,n in steps]
+            pages=max(1,math.ceil(len(plan)/6));plan_page=max(1,min(int(page),pages))
+            lines+=['',f'ACQUISITION PLAN · {plan_page}/{pages} — for 1 item from scratch',*plan[(plan_page-1)*6:plan_page*6],
+                    'Follow the steps in order; reuse inventory to reduce gathering. Surplus is kept. Change Page for more steps.',
+                    'Skill locks: practice lower-level recipes in that skill or use /training. Community workshops are included.']
         made=[r for r in RECIPES.values() if item in r['outputs']]
         if made:
             lines+=['','MAKE IT']
