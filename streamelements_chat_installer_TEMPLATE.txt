@@ -111,3 +111,42 @@ REPLACE https://YOUR-API-DOMAIN and YOUR_ADMIN_KEY BEFORE USING.
 !command add !nextday $(customapi https://YOUR-API-DOMAIN/api/v1/admin/day/next?channel=$(channel.provider_id)&level=$(sender.level)&key=YOUR_ADMIN_KEY)
 !command options !nextday -level 500 -cd 5 -usercd 5
 
+
+
+# SEED material gathering and ingredient lookup
+!command add !gather $(customapi https://YOUR-API-DOMAIN/api/v1/seed-supplies?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&mode=gather&item=$(queryescape ${1:}))
+!command options !gather -level 100 -cd 0 -usercd 5
+
+!command add !gatherpage $(customapi https://YOUR-API-DOMAIN/api/v1/seed-supplies?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&mode=gather&page=$(1))
+!command options !gatherpage -level 100 -cd 0 -usercd 5
+
+!command add !catalog $(customapi https://YOUR-API-DOMAIN/api/v1/seed-supplies?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&mode=catalog&item=$(queryescape ${1:}))
+!command options !catalog -level 100 -cd 0 -usercd 5
+
+!command add !training $(customapi https://YOUR-API-DOMAIN/api/v1/training?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&text=$(queryescape ${1:}))
+!command options !training -level 100 -cd 0 -usercd 5
+
+!command add !make $(customapi https://YOUR-API-DOMAIN/api/v1/make?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&recipe=$(queryescape ${1:}))
+!command options !make -level 100 -cd 0 -usercd 5
+
+# Crafting progression and starter market
+!command add !workshop $(customapi https://YOUR-API-DOMAIN/api/v1/workshop?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&station=$(queryescape ${1:}))
+!command options !workshop -level 100 -cd 0 -usercd 5
+
+!command add !workshopunlock $(customapi https://YOUR-API-DOMAIN/api/v1/workshop?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&action=unlock&station=$(queryescape ${1:}))
+!command options !workshopunlock -level 100 -cd 0 -usercd 5
+
+!command add !workshoppage $(customapi https://YOUR-API-DOMAIN/api/v1/workshop?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&page=$(1))
+!command options !workshoppage -level 100 -cd 0 -usercd 5
+
+!command add !seedpage $(customapi https://YOUR-API-DOMAIN/api/v1/seedindustries?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&page=$(1))
+!command options !seedpage -level 100 -cd 0 -usercd 5
+
+!command add !seedbuy $(customapi https://YOUR-API-DOMAIN/api/v1/seedindustries?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&action=buy&item_name=$(queryescape $(1))&amount=$(2))
+!command options !seedbuy -level 100 -cd 0 -usercd 5
+
+!command add !seedindustries $(customapi https://YOUR-API-DOMAIN/api/v1/seedindustries?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&action=$(queryescape $(1))&item_name=$(queryescape $(2)))
+!command options !seedindustries -level 100 -cd 0 -usercd 5
+
+!command add !seedstarters $(customapi https://YOUR-API-DOMAIN/api/v1/seedindustries?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&action=starters&page=$(1))
+!command options !seedstarters -level 100 -cd 0 -usercd 5
