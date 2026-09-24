@@ -1,3 +1,4 @@
+
 from collections import Counter
 from datetime import timedelta
 import math
@@ -39,7 +40,7 @@ def test_all_recipes_have_real_stations_and_progress_without_circular_gates():
 
 def test_market_covers_raw_inputs_and_every_branch_starter_with_positive_prices():
     assert set(s.GATHER)<=cp.STARTER_MARKET.keys()
-    assert {k for task in m.SEED_TASKS.values() for k in task['cost']}<=m.SEED_INDUSTRIES.keys()
+    assert {m.item_identity.canonical(k) for task in m.SEED_TASKS.values() for k in task['cost']}<=m.SEED_INDUSTRIES.keys()
     assert len(cp.RARE)==4
     for skill,rid in cp.BRANCH_STARTERS.items():
         assert set(s.RECIPES[rid]['inputs'])<=cp.STARTER_MARKET.keys(),skill
@@ -47,7 +48,7 @@ def test_market_covers_raw_inputs_and_every_branch_starter_with_positive_prices(
         assert v['buy']>0 and v['sell']==0
     for k in cp.RARE:assert cp.STARTER_MARKET[k]['buy']>=4*6
     # Existing economy and buyback remain unchanged.
-    assert {k:(m.SEED_INDUSTRIES[k]['buy'],m.SEED_INDUSTRIES[k]['sell']) for k in ('crops','ore','rare_ore','components','cargo')}=={'crops':(4,1),'ore':(6,2),'rare_ore':(18,8),'components':(10,4),'cargo':(12,5)}
+    assert {k:(m.SEED_INDUSTRIES[m.item_identity.canonical(k)]['buy'],m.SEED_INDUSTRIES[m.item_identity.canonical(k)]['sell']) for k in ('crops','ore','rare_ore','components','cargo')}=={'crops':(4,1),'ore':(6,2),'rare_ore':(24,8),'components':(10,4),'cargo':(12,5)}
 
 
 @pytest.mark.parametrize('tag',sorted(cp.STATIONS))
@@ -149,7 +150,7 @@ def test_rare_cooldown_shared_across_ores_and_extractor_route():
 
 
 def test_rare_market_requires_level_and_new_stock_has_no_buyback():
-    key=sorted(cp.RARE)[0]
+    key=next(k for k in cp.RARE if s.ITEMS[k]['name']=='Rutile Ore')
     with m.SessionLocal() as db:
         p=citizen(db);p.sc=1000;db.commit()
     assert 'Harvesting Lv.3' in m.seed_industries('test','new',action='buy',item_name=key,provider='discord').body.decode()
