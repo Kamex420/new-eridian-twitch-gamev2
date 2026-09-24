@@ -1,6 +1,4 @@
 
-
-
 import os, random, secrets, string, math, re, hashlib, json, urllib.request
 from datetime import datetime, timezone, timedelta
 from fastapi import FastAPI, HTTPException, Request, BackgroundTasks
@@ -505,7 +503,7 @@ DUCK_PERSONALITY={
 DUO_ACTIVITIES={"walk":35,"games":35,"research":90,"delivery":90,"explore":90}
 
 def resource_name(key):
-    if key in seed_content.ITEMS:return seed_content.ITEMS[key]['name']
+    if key in seed_content.ITEMS:return seed_content.item_label(key) if key in seed_content.ACTIVE else seed_content.ITEMS[key]['name']
     return {"sc":"SC","crops":"Crop","ore":"Ore","rare_ore":"Rare Ore","components":"Component","cargo":"Cargo","biofiber":"Biofiber","alloy_plate":"Alloy Plate","circuit_board":"Circuit Board","power_cell":"Power Cell","sealant":"Sealant","precision_lens":"Precision Lens"}.get(key,key.replace("_"," ").title())
 def requirement_text(costs):
     """Preview quantities; deductions are reserved for completed transactions."""
@@ -1463,6 +1461,8 @@ def unique_activity_chatters(db,w,current_uid=None):
     return len(users)
 def scaled_auto_event_actions(unique_chatters):
     return int(math.ceil(AUTO_EVENT_ACTIONS*min(2.0,1+.25*max(0,unique_chatters-1))))
+ACTION_COOLDOWNS['seed_use']=20
+
 def check_cooldown(db,p,action_name):
     row=db.execute(select(Cooldown).where(Cooldown.channel_id==p.channel_id,Cooldown.canonical_uid==p.twitch_uid,Cooldown.action==action_name)).scalar_one_or_none()
     seconds=ACTION_COOLDOWNS.get(action_name,5)
@@ -2276,6 +2276,7 @@ def business_start(channel:str,uid:str,name:str="Citizen",business_name:str="New
 
 def normalize_craft_category(value):
     key=(value or "").lower().strip().replace("-","_").replace(" ","_")
+    if key.startswith('seed_') and key[5:] in seed_content.CATEGORIES:return key
     if key in CRAFT_BROWSE_OPTIONS:return key
     return CRAFT_CATEGORY_ALIASES.get(key,"")
 
@@ -2476,9 +2477,9 @@ def craft_menu(db,p,channel,provider,category=""):
 
 @app.get("/api/v1/make")
 @colony_command
-def make(channel:str,uid:str,name:str="Citizen",recipe:str="",provider:str="twitch",category:str=""):
+def make(channel:str,uid:str,name:str="Citizen",recipe:str="",provider:str="twitch",category:str="",page:int=1):
     if category and not normalize_craft_category(category):
-        return out("⚙️ Unknown crafting category. Choose Basic Components, Advanced Components, Final Products, Raw Materials, or Production Tree. Nothing spent.")
+        return out("⚙️ Unknown crafting category. Choose a category from /make, including the SEED item categories. Nothing spent.")
     category=normalize_craft_category(category)
     recipe_category=normalize_craft_category(recipe)
     recipe=craft_recipe_key(recipe)
@@ -2486,12 +2487,19 @@ def make(channel:str,uid:str,name:str="Citizen",recipe:str="",provider:str="twit
         category=recipe_category;recipe=""
     with SessionLocal() as db:
         c,p=player(db,channel,provider,uid,name)
+        if category.startswith('seed_'):
+            import sys
+            if not recipe:
+                result=seed_content.recipe_menu(sys.modules[__name__],db,p,category[5:],page)
+                return platform_response(provider,result,result.replace('\n',' | '))
+            if recipe not in seed_content.RECIPES or seed_content.recipe_category(recipe)!=category[5:]:
+                return out('ℹ️ That recipe is not in this category. Choose a Recipe from the filtered suggestions. Nothing spent.')
         if not recipe:
             result=craft_menu(db,p,channel,provider,category)
-            if not category and provider=='discord':return PlainTextResponse(result.body.decode()+"\n\nSEED RECIPES\nSearch Recipe by item name for the SEED catalog. /catalog shows ingredients; /gather collects natural materials. Community workshop access is included.")
+            if not category and provider=='discord':return PlainTextResponse(result.body.decode()+"\n\nSEED RECIPES\nChoose a SEED Category to browse every recipe by Page, or search Recipe by item name. /catalog shows ingredients; /gather collects natural materials. Community workshop access is included.")
             return result
         if recipe in seed_content.RECIPES:
-            if category and category!='tree':return out('ℹ️ For a SEED recipe, leave Category blank or select Production Tree to preview. Nothing spent.')
+            if category and category!='tree' and not category.startswith('seed_'):return out('ℹ️ Choose the matching SEED category, leave Category blank, or use Production Tree to preview. Nothing spent.')
             import sys
             module=sys.modules[__name__]
             if category=='tree':return platform_response(provider,seed_content.preview(module,db,p,recipe),seed_content.preview(module,db,p,recipe))
@@ -2889,6 +2897,14 @@ def gearrepair(channel:str,uid:str,name:str="Citizen",item:str="",provider:str="
 @app.get("/api/v1/use")
 @colony_command
 def use_item(channel:str,uid:str,name:str="Citizen",item:str="",provider:str="twitch"):
+    source_item=seed_content.find_item(item or '')
+    if source_item in seed_content.ACTIVE:
+        if source_item in seed_content.EDIBLE:return action('eat',channel,uid,name,msg='food:'+source_item,provider=provider)
+        import sys
+        with SessionLocal() as db:
+            _,p=player(db,channel,provider,uid,name)
+            result=seed_content.use(sys.modules[__name__],db,p,source_item,provider)
+            return platform_response(provider,result,result.replace('\n',' | '))
     key=(item or "").lower().strip().replace(" ","_")
     if key in {'furniture','workwear','medicine'}:
         with SessionLocal() as db:
@@ -5348,7 +5364,7 @@ def discord_seed_help(topic="overview",name="Citizen"):
     topic=(topic or "overview").lower()
     greeting=f"📖 {clean(name)} — New Eridian Handbook\n\n"
     if topic in SEED_HELP_TOPICS:
-        extra="\n\nSEED SUPPLIES\n/catalog searches items, ingredients and owned stock. /gather collects natural resources. In /make, leave Category blank and type a name in Recipe to find SEED batches. Select Production Tree for a free preview. /eat lists owned edible foods." if topic in {'property','production','terms'} else ''
+        extra="\n\nSEED SUPPLIES\n/catalog Category lists every item through numbered Pages; select Item for exact uses and ingredients. /gather collects natural resources. /make has matching SEED categories and recipe Pages. Production Tree previews without spending. /use lists owned items with their costs and effects; durable items are kept. /eat lists owned edible foods." if topic in {'property','production','terms'} else ''
         return greeting+SEED_HELP_TOPICS[topic]+extra
     return (greeting+"🌱 Choose a /seed topic for complete explanations:\n\n"
             "🧭 Start Here — first steps and /guide\n👤 Character — stats, jobs, XP, linking\n"
@@ -6190,7 +6206,9 @@ def _discord_make_autocomplete(payload:dict):
     category=normalize_craft_category(values.get("category"))
     query=str(focused.get("value") or "").lower().strip()
 
-    if category in CRAFT_CATEGORIES:
+    if category.startswith('seed_'):
+        rows=[]
+    elif category in CRAFT_CATEGORIES:
         rows=craft_category_rows(category)
     else:
         rows=[]
@@ -6216,10 +6234,11 @@ def _discord_make_autocomplete(payload:dict):
         seed_stock={row.item:row.qty for row in db.execute(select(ExtraItem).where(ExtraItem.channel_id==DISCORD_WORLD_ID,ExtraItem.canonical_uid==canonical)).scalars()} if current_player else {}
         for key,r in seed_content.RECIPES.items():
             if category in CRAFT_CATEGORIES or len(source_rows)>=25:break
+            if category.startswith('seed_') and seed_content.recipe_category(key)!=category[5:]:continue
             if query and query not in (r['name']+' '+r['source']).casefold():continue
             req=r['requirement'].get('Skill','SK_CRAFTING')
             stock='; '.join(f"{resource_name(k)} {seed_stock.get(k,0)}/{v}" for k,v in r['inputs'].items()) or 'no ingredients'
-            source_rows.append((f"SEED · {r['name']} ×{next(iter(r['outputs'].values()))} — {stock} · {seed_content.skill_name(req)} Lv.{seed_content.required_level(r)}",key))
+            source_rows.append((f"SEED · {seed_content.item_label(next(iter(r['outputs'])))} ×{next(iter(r['outputs'].values()))} — {stock} · {seed_content.skill_name(req)} Lv.{seed_content.required_level(r)}",key))
         data=(source_rows+data) if query else (data+source_rows)
     return _discord_autocomplete_choices(data,query)
 
@@ -6240,7 +6259,7 @@ def _discord_autocomplete(payload:dict):
         import sys
         _,_,p=_discord_existing_player(payload)
         with SessionLocal() as db:
-            return _discord_autocomplete_choices(seed_content.choices(sys.modules[__name__],db,p,gather_only=command=='gather'),query)
+            return _discord_autocomplete_choices(seed_content.choices(sys.modules[__name__],db,p,gather_only=command=='gather',category=selected.get('category',''),owned=bool(selected.get('owned',False))),query)
     if command=='training' and option=='task':
         hub=selected.get('skill')
         _,_,p=_discord_existing_player(payload)
@@ -6277,7 +6296,10 @@ def _discord_autocomplete(payload:dict):
         if not p:return _discord_autocomplete_choices([])
         with SessionLocal() as db:
             owned=owned_life_items(db,p)
-            return _discord_autocomplete_choices([(f"{QUALITY_RECIPES[key]['name']} ×{sum(row.qty for row in rows)} — consumes 1; best quality first",key) for key,rows in owned.items() if rows]+[(f'{resource_name(key)} ×{material_amount(db,p,key)} — consumes 1',key) for key in ('furniture','workwear','medicine') if material_amount(db,p,key)>0],query)
+            import sys
+            source=seed_content.choices(sys.modules[__name__],db,p,category=selected.get('category',''),owned=True,usable=True)
+            legacy=[] if selected.get('category') else [(f"{QUALITY_RECIPES[key]['name']} ×{sum(row.qty for row in rows)} — consumes 1; best quality first",key) for key,rows in owned.items() if rows]+[(f'{resource_name(key)} ×{material_amount(db,p,key)} — consumes 1',key) for key in ('furniture','workwear','medicine') if material_amount(db,p,key)>0]
+            return _discord_autocomplete_choices(source+legacy,query)
 
     if command=="make" and option=="recipe":
         return _discord_make_autocomplete(payload)
@@ -6451,14 +6473,14 @@ def item_command_menu(command,uid,name):
                 lines.append("No food owned. Gather Crops with /farm action:harvest, or craft a Ration with /make recipe:ration. Free emergency food becomes available below 20 Nutrition.")
             lines += ["CHOOSE FOOD", "Run /eat again and select Food. The suggestions show owned quantities. One selected item is consumed. Recovery caps at 100; Meal Kit uses your highest quality first."]
         elif command=="use":
-            lines.append("YOUR CONSUMABLES")
+            lines.append("ORIGINAL CONSUMABLES")
             for key,rows in owned_life_items(db,p).items():
                 effect={"meal_kit":"Nutrition + Morale","recreation_set":"Social + Morale","comfort_pack":"Comfort + Energy"}[key]
                 quality=", ".join(f"{r.quality} ×{r.qty}" for r in rows) or "none owned"
                 lines.append(f"• {QUALITY_RECIPES[key]['name']} ×{sum(r.qty for r in rows)} — {effect}; {quality}.")
             for key,effect in [('furniture','+35 Comfort, +5 Morale'),('workwear','+20 Comfort, +10 Energy'),('medicine','+10 Comfort; reduces Siro exposure by up to 10')]:
                 lines.append(f"• {resource_name(key)} ×{material_amount(db,p,key)} — consumes 1; {effect}.")
-            lines.append("Run /use again and select Item. Uses 1 of your highest available quality; needs cap at 100. Craft missing supplies with /make.")
+            lines.append("These original consumables use 1 item, highest quality first. SEED item rules appear in the menu above. Recovery caps at 100.")
         elif command=="delivery":
             lines += [f"• Personal Cargo ×{p.cargo} — requires 1; consumed only on success. Failure keeps it.",
                       f"• Shared Cargo ×{shared.cargo} — optional extra society production, separate from your inventory.",
@@ -6507,7 +6529,7 @@ def item_command_menu(command,uid,name):
 
 @app.get("/api/v1/seed-supplies")
 @colony_command
-def seed_supplies(channel:str,uid:str,name:str='Citizen',mode:str='catalog',item:str='',page:int=1,owned:bool=False,provider:str='twitch'):
+def seed_supplies(channel:str,uid:str,name:str='Citizen',mode:str='catalog',item:str='',page:int=1,owned:bool=False,provider:str='twitch',category:str=''):
     import sys
     with SessionLocal() as db:
         _,p=player(db,channel,provider,uid,name);module=sys.modules[__name__]
@@ -6515,7 +6537,7 @@ def seed_supplies(channel:str,uid:str,name:str='Citizen',mode:str='catalog',item
         if mode=='gather' and item:result=seed_content.gather(module,db,p,item,provider)
         elif mode=='gather':
             result='🌿 GATHER MATERIALS\nChoose Resource and type a name. Each action gathers one item.\n\n'+ '\n'.join('• '+seed_content.ITEMS[k]['name'] for k in seed_content.GATHER)+'\n\nCost: −2 Energy · −1 Nutrition · −1 Comfort; shared workshop cooldown.'
-        elif mode=='catalog':result=seed_content.catalog(module,db,p,item,page,owned)
+        elif mode=='catalog':result=seed_content.catalog(module,db,p,item,page,owned,category)
         else:result='🛑 Choose catalog or gather. Nothing spent.'
         return platform_response(provider,result,result.replace('\n',' | '))
 
@@ -6524,6 +6546,16 @@ def _discord_call_internal(command: str, uid: str, name: str, options: dict, int
     if error:return error
     # Reuse the same game functions the Twitch API uses.
     channel = DISCORD_WORLD_ID
+    if command=='use':
+        import sys
+        with SessionLocal() as db:
+            _,p=player(db,channel,'discord',uid,name)
+            category=str(options.get('category') or '')
+            if not options.get('item'):
+                menu=seed_content.use_menu(sys.modules[__name__],db,p,category,int(options.get('page') or 1))
+                return menu if category else menu+'\n\n'+item_command_menu('use',uid,name)
+            chosen=seed_content.find_item(str(options['item']))
+            if category and seed_content.CATEGORY.get(chosen)!=category:return 'ℹ️ That item is not in this category. Nothing spent.'
     selectors={"eat":"food","use":"item","delivery":"action","meal":"action", "repair":"target",
                "research":"operation","farm":"action","spaceport":"operation","explore":"operation","market":"action","social":"action"}
     if command in selectors and (not options.get(selectors[command]) or
@@ -6534,7 +6566,7 @@ def _discord_call_internal(command: str, uid: str, name: str, options: dict, int
         return action("eat",channel,uid,name,msg="food:"+str(options["food"]),provider="discord").body.decode()
 
     if command in {'catalog','gather'}:
-        return seed_supplies(channel,uid,name,command,str(options.get('item') or options.get('resource') or ''),int(options.get('page') or 1),bool(options.get('owned',False)),'discord').body.decode()
+        return seed_supplies(channel,uid,name,command,str(options.get('item') or options.get('resource') or ''),int(options.get('page') or 1),bool(options.get('owned',False)),'discord',str(options.get('category') or '')).body.decode()
     if command == "holiday":
         from .seasonal import holiday_message
         return holiday_message()
@@ -6587,7 +6619,7 @@ def _discord_call_internal(command: str, uid: str, name: str, options: dict, int
             channel=channel, uid=uid, name=name,
             recipe=str(options.get("recipe") or ""),
             category=str(options.get("category") or ""),
-            provider="discord"
+            page=int(options.get("page") or 1),provider="discord"
         ).body.decode("utf-8")
     if command == "seedindustries":
         return seed_industries(
