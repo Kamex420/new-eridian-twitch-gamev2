@@ -1,3 +1,5 @@
+> Current update: ITEM_UNIFICATION_UPDATE.md supersedes the separate legacy/catalog inventory model, overlapping market listings, old generic rare-ore rules and code-only rollback guidance below. Use the current TEST_RESULTS.txt for validation.
+
 # New Eridian v2 — combined update
 
 The current combined installation instructions are in CRAFTING_PROGRESSION_UPDATE.md. This release includes starter-market stock, rare-ore prospecting, required workshops and personal recipe tiers, plus all previous material-source and passive-recovery changes.
