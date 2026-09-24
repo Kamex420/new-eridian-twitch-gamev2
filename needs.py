@@ -1,4 +1,5 @@
 
+
 """Passive recovery uses elapsed time; saved legacy timestamps remain compatible."""
 from datetime import timedelta, timezone
 FIELDS=("energy", "nutrition", "social", "comfort", "morale")
