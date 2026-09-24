@@ -74,6 +74,7 @@ from .commands import command as colony_command, capture as colony_capture
 from .settlement import state as colony_state, seedling as colony_seedling, tick as colony_tick, pressures as colony_pressures, produce as colony_produce
 from .needs import productivity
 from .competencies import practice_gain, level as competency_level
+from . import item_identity
 from . import seed_content as seed_content
 from . import crafting_progression as crafting_progression
 from .seed_skills import LABELS as SEED_LABELS, HUBS as SEED_HUBS, TASKS as SEED_TASKS, TREE as SEED_TREE, NEW_JOBS, NEW_SPECS, LEGACY_BRANCH, CRAFT_PRACTICE
@@ -484,9 +485,9 @@ SEED_INDUSTRIES={
 }
 
 # New starter stock is buy-only; existing legacy buyback prices remain unchanged.
-SEED_INDUSTRIES.update(crafting_progression.STARTER_MARKET)
+SEED_INDUSTRIES.update({k:dict(v) for k,v in crafting_progression.STARTER_MARKET.items()})
 for _key,_price in {'wood':4,'water':4,'stone':4,'herbs':4,'planks':12,'preserved_food':8,'cut_stone':12,'cloth':20,'antiseptic':12,'storage_jar':12,'medicine':16}.items():
-    SEED_INDUSTRIES[_key]=dict(buy=_price,sell=0,purpose='Legacy training supply; see /training for its production route.',category='training')
+    SEED_INDUSTRIES[_key]=dict(buy=_price,sell=0,purpose='Training supply; see /training for its production route.',category='training')
 
 # Seed Industries pays less than the NPC replacement cost of an order, so
 # buying every input can never create an arbitrage loop. Citizens profit by
@@ -514,8 +515,9 @@ DUCK_PERSONALITY={
 DUO_ACTIVITIES={"walk":35,"games":35,"research":90,"delivery":90,"explore":90}
 
 def resource_name(key):
+    key=item_identity.canonical(key)
     if key in seed_content.ITEMS:return seed_content.item_label(key) if key in seed_content.ACTIVE else seed_content.ITEMS[key]['name']
-    return {"sc":"SC","crops":"Crop","ore":"Ore","rare_ore":"Rare Ore","components":"Component","cargo":"Cargo","biofiber":"Biofiber","alloy_plate":"Alloy Plate","circuit_board":"Circuit Board","power_cell":"Power Cell","sealant":"Sealant","precision_lens":"Precision Lens"}.get(key,key.replace("_"," ").title())
+    return {"sc":"SC","crops":"Crop","ore":"Hematite Ore","rare_ore":"Argentite Ore","components":"Component","cargo":"Cargo","biofiber":"Biofiber","alloy_plate":"Alloy Plate","circuit_board":"Circuit Board","power_cell":"Power Cell","sealant":"Sealant","precision_lens":"Precision Lens"}.get(key,key.replace("_"," ").title())
 def requirement_text(costs):
     """Preview quantities; deductions are reserved for completed transactions."""
     return ", ".join(f"{amount} {resource_name(key)}" for key,amount in costs.items())
@@ -749,6 +751,7 @@ def player(db,c,provider,uid,name):
     p=db.execute(select(Player).where(Player.channel_id==c,Player.twitch_uid==canon)).scalar_one_or_none()
     if not p:
         p=Player(channel_id=c,twitch_uid=canon,display_name=clean(name));db.add(p);society(db,c).population+=1;db.commit();db.refresh(p)
+    item_identity.migrate_player(sys.modules[__name__],db,p)
     record_account_name(db,c,provider,uid,name)
     p.display_name=clean(name);p.last_seen=now();db.commit()
     life_state(db,p)
@@ -1410,7 +1413,7 @@ def housing_status_text(shared,s,provider="discord",detailed=False):
     if shared.components<1:
         craft="/make recipe:component" if provider=="discord" else "!make component"
         mine="/mine" if provider=="discord" else "!mine"
-        rows.append(f"Supply the society first: {mine} adds shared Ore; {craft} uses your personal Ore and converts available shared Ore into shared Components.")
+        rows.append(f"Supply the society first: {mine} adds shared Ore; {craft} uses your personal Hematite Ore and converts available shared Ore into shared Components.")
     rows.append("This is society-wide housing capacity. Upgrading your personal Habitat does not add shared housing spaces.")
     return "\n".join(rows)
 
@@ -1507,7 +1510,7 @@ DISCORD_ACTION_ROUTES={
 }
 ACTION_DISPLAY_NAMES={
     "farm":"Tend Fields","forage":"Tend Fields","harvest":"Harvest Crops","water":"Irrigate",
-    "scan":"Environmental Scan","mine":"Mining","rare":"Rare Ore Search","scavenge":"Mining",
+    "scan":"Environmental Scan","mine":"Mining","rare":"Argentite Prospecting","scavenge":"Mining",
     "craft":"Crafting","machine":"Crafting","work":"Crafting",
     "repair":"Society Infrastructure Repair","project":"Society Infrastructure Repair","build":"Society Infrastructure Repair",
     "cargo":"Cargo Preparation","delivery":"Delivery","spaceport":"Spaceport Operations",
@@ -1554,17 +1557,27 @@ def audit_moderator(db,channel,moderator,action_name,detail):
 def live(w):
     return bool(w.active_event and w.event_ends and now()<as_utc(w.event_ends))
 def item(db,c,u,name):
+    name=item_identity.canonical(name)
+    if name in item_identity.FIELD_ITEMS:
+        p=db.execute(select(Player).where(Player.channel_id==c,Player.twitch_uid==u)).scalar_one_or_none()
+        return getattr(p,item_identity.FIELD_ITEMS[name]) if p else 0
     r=db.execute(select(ExtraItem).where(ExtraItem.channel_id==c,ExtraItem.canonical_uid==u,ExtraItem.item==name)).scalar_one_or_none()
     return r.qty if r else 0
 def item_add(db,c,u,name,d):
+    name=item_identity.canonical(name)
+    if name in item_identity.FIELD_ITEMS:
+        p=db.execute(select(Player).where(Player.channel_id==c,Player.twitch_uid==u)).scalar_one()
+        result=material_change(db,p,name,d);db.commit();return result
     r=db.execute(select(ExtraItem).where(ExtraItem.channel_id==c,ExtraItem.canonical_uid==u,ExtraItem.item==name)).scalar_one_or_none()
     if not r:r=ExtraItem(channel_id=c,canonical_uid=u,item=name,qty=0);db.add(r)
     r.qty=max(0,r.qty+d);db.commit();return r.qty
 PLAYER_MATERIAL_FIELDS={"crops","ore","rare_ore","components","cargo"}
 def material_amount(db,p,key):
+    key=item_identity.FIELD_ITEMS.get(item_identity.canonical(key),item_identity.canonical(key))
     if key in PLAYER_MATERIAL_FIELDS:return max(0,int(getattr(p,key)))
     return item(db,p.channel_id,p.twitch_uid,key)
 def material_change(db,p,key,delta):
+    key=item_identity.FIELD_ITEMS.get(item_identity.canonical(key),item_identity.canonical(key))
     if key in PLAYER_MATERIAL_FIELDS:
         setattr(p,key,max(0,int(getattr(p,key))+int(delta)));return getattr(p,key)
     row=db.execute(select(ExtraItem).where(
@@ -1579,7 +1592,8 @@ def craft_output_key(recipe):return CRAFT_OUTPUT_KEYS.get(recipe,recipe)
 def craft_output_amount(db,p,recipe):return material_amount(db,p,craft_output_key(recipe))
 
 def material_source(key,provider='discord'):
-    """Exact legacy inventory sources, distinct from namespaced SEED items."""
+    """Exact legacy inventory sources, distinct from namespaced items."""
+    key=item_identity.canonical(key)
     if key in seed_content.ACTIVE:return seed_content.source_hint(key,provider)
     work={'crops':('farm action:harvest','harvest'),'ore':('mine','mine'),
           'rare_ore':('rare','rare'),'cargo':('cargo','cargo')}
@@ -1630,6 +1644,7 @@ def available_production_orders(channel,day,tier_index):
     eligible=[(key,data) for key,data in PRODUCTION_ORDERS.items() if data["tier"]<=tier_index]
     return sorted(eligible,key=lambda row:_stable_index(f"{channel}:{day}:{row[0]}:order",10**9))[:min(3,len(eligible))]
 def replacement_value(key):
+    key=item_identity.canonical(key)
     if key in SEED_INDUSTRIES:return SEED_INDUSTRIES[key]["buy"]
     if key in RECIPES:return sum(replacement_value(part)*qty for part,qty in RECIPES[key].items())+CRAFT_PAY["core"]["sc"]
     if key in PART_RECIPES:return sum(replacement_value(part)*qty for part,qty in PART_RECIPES[key].items())+CRAFT_PAY["components"]["sc"]
@@ -1785,12 +1800,12 @@ def rare_outcome(db,p,s,skill):
     if random.random()>=chance:return ""
     if skill=="cultivation":p.crops+=1;s.food+=1;return " 🌿 Rare yield: a resilient Avesta cultivar adds +1 Crop/+1 Food."
     if skill=="environmental":s.knowledge+=2;return " 💧 Rare reading: an unusual biosphere pattern adds +2 Knowledge."
-    if skill=="extraction":p.rare_ore+=1;s.materials+=1;return " 💎 Rare find: a sealed deposit adds +1 Rare Ore/+1 Materials."
+    if skill=="extraction":item_add(db,p.channel_id,p.twitch_uid,"mineral_sample",1);s.materials+=1;return " 💎 Rare find: +1 Mineral Sample/+1 Materials. Prospect rare ores with /gather."
     if skill=="fabrication":p.components+=1;s.development+=1;return " ⚙️ Precision result: +1 Component/+1 Development."
     if skill=="infrastructure":s.development+=2;return " 🏗️ Rocky-approved reinforcement: +2 Development."
     if skill=="research":s.knowledge+=2;return " ☣️ Rare Siro signature archived: +2 Knowledge."
     if skill=="logistics":p.cargo+=1;s.treasury+=1;return " 🦆 The delivery fleet recovers lost cargo: +1 Cargo/+1 Treasury."
-    if skill=="frontier":p.rare_ore+=1;s.knowledge+=1;return " 🧭 Frontier cache mapped: +1 Rare Ore/+1 Knowledge."
+    if skill=="frontier":item_add(db,p.channel_id,p.twitch_uid,"mineral_sample",1);s.knowledge+=1;return " 🧭 Frontier cache: +1 Mineral Sample/+1 Knowledge. Prospect rare ores with /gather."
     if skill=="commerce":p.sc+=3;s.treasury+=1;return " 🏪 Exceptional contract: +3 SC/+1 Treasury."
     return ""
 
@@ -1800,6 +1815,8 @@ def merge_accounts(db,channel,source_uid,target_uid):
     source=db.execute(select(Player).where(Player.channel_id==channel,Player.twitch_uid==source_uid)).scalar_one_or_none()
     target=db.execute(select(Player).where(Player.channel_id==channel,Player.twitch_uid==target_uid)).scalar_one_or_none()
 
+    for account in (source,target):
+        if account:item_identity.migrate_player(sys.modules[__name__],db,account)
     if source and not target:
         source.twitch_uid=target_uid
         target=source
@@ -2005,7 +2022,7 @@ def skills(channel:str,uid:str,name:str="Citizen",provider:str="twitch"):
         specs={r.skill:SPECIALIZATIONS.get(r.skill,{}).get(r.choice,r.choice) for r in db.execute(select(Specialization).where(Specialization.channel_id==channel,Specialization.canonical_uid==p.twitch_uid)).scalars()}
         rows=[f"• {label}: Lv. {lvl(skill_xp(p,key))} · {skill_xp(p,key)} XP"+(f" · {specs[key]}" if key in specs else "") for key,label in SKILL_LABELS.items()]
         text=f"🧬 {p.display_name} — Skills\n\n"+"\n".join(rows)
-        text+="\n\nThe eight SEED skill families use the names in your reference screenshots. Research, Logistics, Frontier Operations and Commerce remain minigame skills. Existing XP is preserved; new skills and branch practice start at zero."
+        text+="\n\nThe eight skill families use the names in your reference screenshots. Research, Logistics, Frontier Operations and Commerce remain minigame skills. Existing XP is preserved; new skills and branch practice start at zero."
         text+="\nLevel 2: 5 XP; level 3: 12 XP; level 4: 22 XP; level 5: 35 XP; then 15 XP per level. Open /training and select Skill to view branches, requirements, jobs and your branch levels. Choose Task only when ready to work. Specializations unlock at main skill level 10; specialist medical branches require Medicine 5."
         return PlainTextResponse(text) if provider=="discord" else out("Skills | "+" · ".join(rows))
 
@@ -2151,11 +2168,11 @@ def guide(channel:str,uid:str,name:str="Citizen",goal:str="auto",provider:str="t
             skill=min(SKILL_LABELS,key=lambda x:skill_xp(p,x));cmd,wait=guide_action(db,p,skill,provider);level=lvl(skill_xp(p,skill))
             lines.extend([f"🧬 Lowest aptitude: {SKILL_LABELS[skill]} Lv. {level} ({skill_xp(p,skill)} XP).",f"Train it with {cmd} "+("now." if not wait else f"in {wait}s.")+(f" At Lv. 10, use {prefix}specialize." if level<10 else f" Use {prefix}specialize if you have not chosen a path.")])
         elif selected=="crafting":
-            if p.ore<=0:step=f"Start with {prefix}mine to obtain Ore."
-            elif p.components<=0:step=("Use /make recipe:component to turn 1 Ore into 1 Component." if provider=="discord" else "Use !make component to turn 1 Ore into 1 Component.")
+            if p.ore<=0:step=f"Start with {prefix}mine to obtain Hematite Ore."
+            elif p.components<=0:step=("Use /make recipe:component to turn 1 Hematite Ore into 1 Component." if provider=="discord" else "Use !make component to turn 1 Hematite Ore into 1 Component.")
             else:step=("Open /make category:tree" if provider=="discord" else "Open !recipes tree")+" and follow Raw Materials → Basic Components → Advanced Components → Final Products."
             lines.append(f"{prefix}workshop shows personal recipe tiers, manufacturing progress and exact station access. {prefix}seedindustries sells starter inputs; {prefix}catalog explains ingredient sources.")
-            lines.extend([f"⚙️ Production route: Crops {p.crops} · Ore {p.ore} · Components {p.components} · Rare Ore {p.rare_ore} · Cargo {p.cargo}.",step])
+            lines.extend([f"⚙️ Production route: Crops {p.crops} · Hematite Ore {p.ore} · Components {p.components} · Argentite Ore {p.rare_ore} · Cargo {p.cargo}.",step])
         elif selected=="home":
             h=db.execute(select(Home).where(Home.channel_id==channel,Home.canonical_uid==p.twitch_uid)).scalar_one_or_none();tier=h.tier if h else 1;cost,component_cost=home_upgrade_cost(tier)
             lines.extend(habitat_upgrade_plan(p,tier,provider))
@@ -2180,24 +2197,24 @@ def inventory(channel:str,uid:str,name:str="Citizen",provider:str="twitch"):
     with SessionLocal() as db:
         c,p=player(db,channel,provider,uid,name)
         toolkit=item(db,channel,c,"toolkit");sensor=item(db,channel,c,"sensor");ration=item(db,channel,c,"ration");crate=item(db,channel,c,"crate")
-        next_step="/mine for Ore" if p.ore<=0 else ("/make recipe:Component" if p.components<=0 else ("/cargo before a delivery" if p.cargo<=0 else "/seedindustries action:Orders"))
-        discord=(f"🎒 {p.display_name} — Inventory\n\n📦 RESOURCES\n🌾 Crops: {p.crops}\n⛏️ Ore: {p.ore}\n💎 Rare Ore: {p.rare_ore}\n⚙️ Components: {p.components}\n🦆 Cargo: {p.cargo}\n\n🧰 EQUIPMENT & SUPPLIES\nToolkit: {toolkit} · Sensor: {sensor} · Ration: {ration} · Crate: {crate}\n\nPersonal suggestion: use {next_step}.")
-        twitch=f"🎒 {p.display_name} | Resources: Crops {p.crops}, Ore {p.ore}, Rare {p.rare_ore}, Components {p.components}, Cargo {p.cargo} | Gear: Toolkit {toolkit}, Sensor {sensor}, Ration {ration}, Crate {crate}"
+        next_step="/mine for Hematite Ore" if p.ore<=0 else ("/make recipe:Component" if p.components<=0 else ("/cargo before a delivery" if p.cargo<=0 else "/seedindustries action:Orders"))
+        discord=(f"🎒 {p.display_name} — Inventory\n\n📦 RESOURCES\n🌾 Crops: {p.crops}\n⛏️ Hematite Ore: {p.ore}\n💎 Argentite Ore: {p.rare_ore}\n⚙️ Components: {p.components}\n🦆 Cargo: {p.cargo}\n\n🧰 EQUIPMENT & SUPPLIES\nToolkit: {toolkit} · Sensor: {sensor} · Ration: {ration} · Crate: {crate}\n\nPersonal suggestion: use {next_step}.")
+        twitch=f"🎒 {p.display_name} | Resources: Crops {p.crops}, Hematite Ore {p.ore}, Argentite Ore {p.rare_ore}, Components {p.components}, Cargo {p.cargo} | Gear: Toolkit {toolkit}, Sensor {sensor}, Ration {ration}, Crate {crate}"
         owned=db.execute(select(ExtraItem).where(ExtraItem.channel_id==channel,ExtraItem.canonical_uid==p.twitch_uid,ExtraItem.qty>0)).scalars().all()
-        basic_rows=[f"{craft_item_name(key)}: {craft_output_amount(db,p,key)}" for key in BASIC_COMPONENT_KEYS]
-        advanced_rows=[f"{craft_item_name(key)}: {craft_output_amount(db,p,key)}" for key in ADVANCED_COMPONENT_KEYS]
+        basic_rows=[f"{craft_item_name(key)}: {craft_output_amount(db,p,key)}" for key in BASIC_COMPONENT_KEYS if key not in item_identity.RETIRED_RECIPES]
+        advanced_rows=[f"{craft_item_name(key)}: {craft_output_amount(db,p,key)}" for key in ADVANCED_COMPONENT_KEYS if key not in item_identity.RETIRED_RECIPES]
         discord+="\n\n🔩 BASIC COMPONENTS\n"+"\n".join("• "+x for x in basic_rows)
         discord+="\n\n⚙️ ADVANCED COMPONENTS\n"+"\n".join("• "+x for x in advanced_rows)
         discord+="\n\nACTIVE ITEM EFFECTS\n"+"\n".join(f"{r.item.replace('_',' ').title()} x{r.qty}: {ITEM_EFFECTS[r.item]}" for r in owned if r.item in ITEM_EFFECTS)
-        extra=[r for r in owned if r.item in {k for cfg in SEED_TASKS.values() for k in (*cfg['cost'],*cfg['output'])} and r.item not in {'ration','biofiber','alloy_plate','circuit_board','components','precision_lens'}]
+        extra=[r for r in owned if r.item in {k for cfg in SEED_TASKS.values() for k in (*cfg['cost'],*cfg['output'])} and r.item not in seed_content.ACTIVE and r.item not in {'ration','biofiber','alloy_plate','circuit_board','components','precision_lens'}]
         if extra:
             discord+="\n\nTRAINING SUPPLIES\n"+"\n".join(f"• {resource_name(r.item)} ×{r.qty}" for r in extra)
             twitch+=' | Training supplies: '+', '.join(f"{resource_name(r.item)} {r.qty}" for r in extra)
         seed_stock=[r for r in owned if r.item in seed_content.ITEMS]
         if seed_stock:
-            discord+="\n\nSEED SUPPLIES\n"+"\n".join(f"• {resource_name(r.item)} ×{r.qty}" for r in seed_stock[:10])
+            discord+="\n\nSUPPLIES\n"+"\n".join(f"• {resource_name(r.item)} ×{r.qty}" for r in seed_stock[:10])
             discord+=f"\n{len(seed_stock)} item types. /catalog owned:True shows your full stock."
-            twitch+=f" | SEED supplies: {len(seed_stock)} types; use /catalog in Discord"
+            twitch+=f" | Supplies: {len(seed_stock)} types; use /catalog in Discord"
         return platform_response(provider,discord,twitch)
 
 @app.get("/api/v1/job")
@@ -2255,9 +2272,9 @@ def habitat_upgrade_plan(p,tier,provider):
         lines.append(f"Earn the remaining {missing_sc} SC: use {earn}.")
     if missing_components:
         ore=max(0,missing_components-p.ore)
-        if ore:lines.append(f"Gather {ore} more Ore with {'/mine' if provider=='discord' else '!mine'}.")
+        if ore:lines.append(f"Gather {ore} more Hematite Ore with {'/mine' if provider=='discord' else '!mine'}.")
         craft="/make recipe:component" if provider=="discord" else "!make component"
-        lines.append(f"Craft {missing_components} Components with {craft} ({missing_components} crafts; 1 Ore each).")
+        lines.append(f"Craft {missing_components} Components with {craft} ({missing_components} crafts; 1 Hematite Ore each).")
     lines.append(f"Then use {upgrade}. Nothing spent yet.")
     return lines
 
@@ -2370,7 +2387,7 @@ def recipes(channel:str="new-eridian",provider:str="twitch",category:str=""):
             emoji,label,description=CRAFT_CATEGORY_INFO[category]
             if category=="raw_materials":
                 text="\n".join(f"• {craft_item_name(key)} — {material_source(key,provider)}" for key in RAW_MATERIAL_KEYS)
-                text+='\n\nNamed SEED ingredients (Hematite Ore, Lumber, Murky Water, etc.) are separate inventory items. Use /gather and /catalog for their exact sources.'
+                text+='\n\nOld and new item names share one inventory balance. Use /gather and /catalog for exact sources.'
             else:
                 lines=[]
                 for key,item_name,cost,effect,need in craft_category_rows(category):
@@ -2385,6 +2402,8 @@ def recipes(channel:str="new-eridian",provider:str="twitch",category:str=""):
         return out("⚙️ Crafting stages: raw_materials, basic_components, advanced_components, final_products | Tree: !make tree")
 
 def craft_recipe_key(value):
+    alias=(value or '').lower().strip().replace(' ','_')
+    if alias in item_identity.RETIRED_RECIPES:return item_identity.RETIRED_RECIPES[alias]
     source=seed_content.find_recipe(value or '')
     if source:return source
     key=(value or "").lower().strip().replace("-","_").replace(" ","_")
@@ -2396,7 +2415,7 @@ def craft_recipe_key(value):
 
 def craft_category_rows(category):
     if category in {"basic_components","advanced_components"}:
-        keys=CRAFT_STAGE_ITEMS[category]
+        keys=[k for k in CRAFT_STAGE_ITEMS[category] if k not in item_identity.RETIRED_RECIPES]
         return [(key,craft_item_name(key),PART_RECIPES[key],PART_EFFECTS[key],0) for key in keys]
     if category=="final_products":
         core=[(key,craft_item_name(key),RECIPES[key],ITEM_EFFECTS[key],RECIPE_TIERS[key]) for key in RECIPES]
@@ -2455,12 +2474,12 @@ def craft_menu(db,p,channel,provider,category=""):
         if not category:
             return out("⚙️ Production: raw_materials → basic_components → advanced_components → final_products | Tree: !make tree | Craft: !make <recipe>")
         if category=="raw_materials":
-            return out(f"⛏️ Raw Materials | Crops {p.crops} · Ore {p.ore} · Rare Ore {p.rare_ore} · Cargo {p.cargo} | Gather through work or buy from Seed Industries")
+            return out(f"⛏️ Raw Materials | Crops {p.crops} · Hematite Ore {p.ore} · Argentite Ore {p.rare_ore} · Cargo {p.cargo} | Gather through work or buy from Seed Industries")
         rows=craft_category_rows(category)
         ready=[key for key,_,cost,_,need in rows if (need is None or tier_index>=need) and not unique_bonus_owned(db,p,key) and not craft_missing_materials(db,p,cost) and not crafting_progression.legacy_gate(sys.modules[__name__],db,p,key,provider)]
         return out(f"⚙️ {CRAFT_CATEGORY_INFO[category][1]} | Ready: {', '.join(ready) or 'none'} | All: {', '.join(key for key,_,_,_,_ in rows)}")
 
-    materials=f"🌾 Crops {p.crops} · ⛏️ Ore {p.ore} · 💎 Rare Ore {p.rare_ore} · 📦 Cargo {p.cargo}"
+    materials=f"🌾 Crops {p.crops} · ⛏️ Hematite Ore {p.ore} · 💎 Argentite Ore {p.rare_ore} · 📦 Cargo {p.cargo}"
     basic=" · ".join(f"{craft_item_name(key)} {craft_output_amount(db,p,key)}" for key in BASIC_COMPONENT_KEYS)
     advanced=" · ".join(f"{craft_item_name(key)} {craft_output_amount(db,p,key)}" for key in ADVANCED_COMPONENT_KEYS)
     if not category:
@@ -2489,7 +2508,7 @@ def craft_menu(db,p,channel,provider,category=""):
     emoji,label,description=CRAFT_CATEGORY_INFO[category]
     if category=="raw_materials":
         routes='\n'.join(f'• {resource_name(k)}: {material_source(k,provider)}' for k in RAW_MATERIAL_KEYS)
-        routes+='\n\nNamed SEED materials are separate: /gather lists every natural resource; /catalog Item gives exact sources and a build plan.'
+        routes+='\n\n/gather lists every natural resource; /catalog Item gives exact sources and a build plan.'
         return PlainTextResponse(f"{emoji} {label}\n\n{description}\n\nON HAND\n{materials}\n\nHOW TO OBTAIN\n{routes}\n\nNext stage: /make category:basic_components")
     lines=[]
     for key,item_name,cost,effect,need in craft_category_rows(category):
@@ -2517,7 +2536,7 @@ def craft_menu(db,p,channel,provider,category=""):
 def make(channel:str,uid:str,name:str="Citizen",recipe:str="",provider:str="twitch",category:str="",page:int=1):
     import sys
     if category and not normalize_craft_category(category):
-        return out("⚙️ Unknown crafting category. Choose a category from /make, including the SEED item categories. Nothing spent.")
+        return out("⚙️ Unknown crafting category. Choose a category from /make, including the item categories. Nothing spent.")
     category=normalize_craft_category(category)
     recipe_category=normalize_craft_category(recipe)
     recipe=craft_recipe_key(recipe)
@@ -2534,10 +2553,10 @@ def make(channel:str,uid:str,name:str="Citizen",recipe:str="",provider:str="twit
                 return out('ℹ️ That recipe is not in this category. Choose a Recipe from the filtered suggestions. Nothing spent.')
         if not recipe:
             result=craft_menu(db,p,channel,provider,category)
-            if not category and provider=='discord':return PlainTextResponse(result.body.decode()+"\n\nSEED RECIPES\nChoose a SEED Category to browse every recipe by Page, or search Recipe by item name. /catalog shows ingredients; /gather collects natural materials. Use /workshop for required station access and recipe tiers.")
+            if not category and provider=='discord':return PlainTextResponse(result.body.decode()+"\n\nRECIPES\nChoose a Category to browse every recipe by Page, or search Recipe by item name. /catalog shows ingredients; /gather collects natural materials. Use /workshop for required station access and recipe tiers.")
             return result
         if recipe in seed_content.RECIPES:
-            if category and category!='tree' and not category.startswith('seed_'):return out('ℹ️ Choose the matching SEED category, leave Category blank, or use Production Tree to preview. Nothing spent.')
+            if category and category!='tree' and not category.startswith('seed_'):return out('ℹ️ Choose the matching category, leave Category blank, or use Production Tree to preview. Nothing spent.')
             import sys
             module=sys.modules[__name__]
             if category=='tree':return platform_response(provider,seed_content.preview(module,db,p,recipe),seed_content.preview(module,db,p,recipe))
@@ -2798,6 +2817,7 @@ def marketboard(channel:str,provider:str="twitch"):
 @colony_command
 def sell(channel:str,uid:str,name:str="Citizen",resource:str="",amount:int=1,provider:str="twitch"):
     key=(resource or "").lower().strip().replace(" ","_");amount=max(1,min(25,int(amount or 1)))
+    key=item_identity.FIELD_ITEMS.get(seed_content.find_item(resource),key)
     if key not in MARKET_BASE:return out("🏪 Sellable: crops, ore, rare_ore, components, cargo.")
     with SessionLocal() as db:
         _,p=player(db,channel,provider,uid,name);clock=world_clock(db,channel)
@@ -2816,7 +2836,7 @@ def workshop(channel:str,uid:str,name:str='Citizen',action:str='view',station:st
         return platform_response(provider,result,result.replace('\n',' | '))
 
 def market_item_label(key):
-    return ('SEED '+resource_name(key)) if key in seed_content.ACTIVE else resource_name(key)
+    return resource_name(key)
 
 @app.get("/api/v1/seedindustries")
 @colony_command
@@ -2829,10 +2849,12 @@ def seed_industries(channel:str,uid:str,name:str="Citizen",action:str="browse",i
     if category not in {'all','legacy','seed','training','rare'}:return out('Choose a valid market category. Nothing spent.')
     if key not in SEED_INDUSTRIES:
         key=seed_content.find_item(item_name or '')
+    key=item_identity.canonical(key)
     if action=='browse':
         rows=sorted((k for k,v in SEED_INDUSTRIES.items() if category=='all' or v.get('category','legacy')==category),key=market_item_label)
         size=8 if provider=='discord' else 3;pages=max(1,math.ceil(len(rows)/size));page=max(1,min(page,pages))
-        lines=[f'🏭 SEED INDUSTRIES · {category} · Page {page}/{pages}', 'Starter supplies; buying saves work but costs SC.']
+        category_label={'all':'All Supplies','legacy':'General Materials & Parts','seed':'Starter Supplies','training':'Training Supplies','rare':'Rare Ores'}[category]
+        lines=[f'🏭 SEED INDUSTRIES · {category_label} · Page {page}/{pages}', 'Starter supplies; buying saves work but costs SC.']
         for k in rows[(page-1)*size:page*size]:
             v=SEED_INDUSTRIES[k];sale=f"sell {v['sell']}" if v['sell'] else 'no buyback'
             lines.append(f"• {market_item_label(k)}: buy {v['buy']} SC · {sale}"+(f' · {k}' if provider!='discord' else ''))
@@ -4982,6 +5004,9 @@ def action(action:str,channel:str,uid:str,name:str="Citizen",msg:str="",provider
         if skill:
             blocked=task_need_gate(db,p,action,provider)
             if blocked:return PlainTextResponse(blocked) if provider=="discord" else out(blocked)
+        if action=='rare':
+            result=crafting_progression.rare_gather(sys.modules[__name__],db,p,item_identity.ALIASES['rare_ore'],provider)
+            return platform_response(provider,result,result.replace('\n',' | '))
         if action in SEED_TASKS:
             cfg=SEED_TASKS[action]
             if lvl(skill_xp(p,skill))<cfg['unlock']:
@@ -4990,7 +5015,14 @@ def action(action:str,channel:str,uid:str,name:str="Citizen",msg:str="",provider
             if missing:return out("🔒 Still needed: "+", ".join(missing)+'. Nothing spent.'+missing_material_sources(db,p,cfg['cost'],provider))
         workshop_tag=None
         if action in SEED_TASKS:
-            workshop_tag=crafting_progression.TRAINING_STATIONS.get(SEED_TASKS[action]['branch'])
+            rid=MERGED_TRAINING.get(action)
+            if rid:
+                blocked=crafting_progression.recipe_gate(sys.modules[__name__],db,p,rid,provider)
+                if blocked:return out(blocked)
+                r=seed_content.RECIPES[rid];req=r['requirement'].get('Skill','SK_CRAFTING')
+                if seed_content.level_for(sys.modules[__name__],db,p,req)<seed_content.required_level(r):
+                    return out(f'🔒 {seed_content.skill_name(req)} Lv.{seed_content.required_level(r)} required. Train lower-level recipes. Nothing spent.')
+            workshop_tag=None if rid else crafting_progression.TRAINING_STATIONS.get(SEED_TASKS[action]['branch'])
         elif action in {'craft','machine','work','cargo'}:
             workshop_tag=crafting_progression.SURVIVAL
         if workshop_tag:
@@ -5017,7 +5049,7 @@ def action(action:str,channel:str,uid:str,name:str="Citizen",msg:str="",provider
         if action=="survey" and item(db,channel,c,"sensor")<=0:return out(f"🔒 Advanced Survey requires a Sensor. Craft one with {final_products}.")
         if mode=="expedite" and material_amount(db,p,"power_cell")<=0:return out(f"🔒 Expedited Spaceport Operations require 1 Power Cell. Manufacture one with {advanced_components}.")
         if mode=="analyze" and not unique_bonus_owned(db,p,"market_analyzer"):return out(f"🔒 Market Analysis requires a Market Analyzer. Craft one with {final_products}.")
-        if action=="craft" and p.ore<=0:return out("⚙️ Need Ore first.")
+        if action=="craft" and p.ore<=0:return out("⚙️ Need Hematite Ore first.")
         if action=="delivery" and p.cargo<=0:return out(f"🦆 No Cargo ready. Use {'/cargo' if provider=='discord' else '!cargo'} first.")
         if action=="eat" and not any(row["qty"]>0 for row in foods):
             emergency_life=life_state(db,p)
@@ -5080,6 +5112,7 @@ def action(action:str,channel:str,uid:str,name:str="Citizen",msg:str="",provider
             if not passed(.72):return fail(f"{cfg['label']} did not succeed. All task materials were kept.")
             for key,qty in cfg['cost'].items():material_change(db,p,key,-qty)
             for key,qty in cfg['output'].items():material_change(db,p,key,qty)
+            if action in MERGED_TRAINING:craft_record(db,p,MERGED_TRAINING[action])
             shared=colony_state(db,channel);old_infrastructure=shared.infrastructure
             for key,qty in cfg['shared'].items():setattr(shared,key,min(100,getattr(shared,key)+qty) if key=='mood' else getattr(shared,key)+qty)
             housing_gain=shared.infrastructure//5-old_infrastructure//5
@@ -5115,12 +5148,11 @@ def action(action:str,channel:str,uid:str,name:str="Citizen",msg:str="",provider
             else:
                 s.knowledge+=1;society_gain="+1 Knowledge"
             base=f"💧 {p.display_name} completes {action_display_name(action,mode)}. +{xp_gain} Processing XP | +{2+bonus} SC | +{contribution_gain} Contribution | New Eridian gains {society_gain}."
-        elif action in {"mine","rare","scavenge"}:
-            if not passed(.28 if action=="rare" else .68):return fail(f"⛏️ {p.display_name} comes back empty-handed.")
-            sc_gain=(6 if action=="rare" else 2)+bonus;xp_gain=gain_skill(p,"extraction",xp_gain);p.sc+=sc_gain;p.contribution+=contribution_gain
-            if action=="rare":p.rare_ore+=1;s.materials+=2
-            else:p.ore+=1;s.materials+=1
-            base=f"⛏️ {p.display_name} completes {action_display_name(action,mode)}. +{xp_gain} Harvesting XP | +{sc_gain} SC | +{contribution_gain} Contribution | New Eridian gains +{2 if action=='rare' else 1} Materials."
+        elif action in {"mine","scavenge"}:
+            if not passed(.68):return fail(f"⛏️ {p.display_name} comes back empty-handed.")
+            sc_gain=2+bonus;xp_gain=gain_skill(p,"extraction",xp_gain);p.sc+=sc_gain;p.contribution+=contribution_gain
+            p.ore+=1;s.materials+=1
+            base=f"⛏️ {p.display_name} completes {action_display_name(action,mode)}. +{xp_gain} Harvesting XP | +{sc_gain} SC | +{contribution_gain} Contribution | New Eridian gains +1 Materials."
         elif action=="research":
             if not passed(.68):return fail(f"🔬 {p.display_name} gets inconclusive results.")
             field=mode=="field_analysis";knowledge_gain=2 if field else 1;sc_gain=(4 if field else 2)+bonus
@@ -5214,7 +5246,7 @@ def action(action:str,channel:str,uid:str,name:str="Citizen",msg:str="",provider
             pw.siro_exposure=max(0,pw.siro_exposure-8)
             base=f"🛏️ {p.display_name} clocks out for the cycle. Energy 100/100 (+{sleep_gain}); Comfort 100/100 (+{comfort_gain}); +3 Morale; Siro exposure reduced by up to 8."
         else:raise HTTPException(404,"Unknown action")
-        if action=="craft":base=base.replace(" completes craft."," completes craft (-1 Ore).")
+        if action=="craft":base=base.replace(" completes craft."," completes craft (-1 Hematite Ore).")
         if action=="delivery":base=base.replace(" completes delivery."," completes delivery (-1 Cargo).")
         if crate_bonus:base+=" Trade Crate: +1 SC included."
         settlement_before=society_tier_index(s)
@@ -5271,11 +5303,11 @@ BEST FIRST STEPS
 2. /job
 3. /guide
 
-Standard work, /eat, and /sleep use a 5-second cooldown. Rare SEED prospecting uses a shared 20-second cooldown. Social and recovery actions use 20–60 seconds depending on the activity. Browsing spends nothing. SEED crafting uses a 5-second workshop cooldown; legacy /make recipes have no cooldown. Crafting requires the listed workstation, personal tier and skill. /workshop shows unlocks; /seedindustries sells starter supplies. Check exact remaining times with /me section:Cooldowns.""",
+Standard work, /eat, and /sleep use a 5-second cooldown. Rare prospecting uses a shared 20-second cooldown. Social and recovery actions use 20–60 seconds depending on the activity. Browsing spends nothing. Workshop crafting uses a 5-second workshop cooldown; legacy /make recipes have no cooldown. Crafting requires the listed workstation, personal tier and skill. /workshop shows unlocks; /seedindustries sells starter supplies. Check exact remaining times with /me section:Cooldowns.""",
 "character":"""👤 CHARACTER & PROGRESSION
 
 /me — One personal hub for Overview, Life Needs, Bonuses, Cooldowns, Traits, Relationships, Journal, Tutorial, Titles, and Display Style. Compact results are default; Detailed adds every modifier and final success chance.
-/progress — One progression hub for Skills, Daily Contract, Achievements, and Collection.\n/training — Eight SEED skill families with branch levels, tasks, owned supplies, and job guidance. Cooking, Medicine and Emergency Response join Farming, Harvesting, Engineering, Processing and Crafting. Research, Logistics, Frontier Operations and Commerce remain. Level 2 needs 5 XP; level 5 needs 35 XP; later levels need 15 XP each. Advanced tasks unlock at levels 3–5.
+/progress — One progression hub for Skills, Daily Contract, Achievements, and Collection.\n/training — Eight skill families with branch levels, tasks, owned supplies, and job guidance. Cooking, Medicine and Emergency Response join Farming, Harvesting, Engineering, Processing and Crafting. Research, Logistics, Frontier Operations and Commerce remain. Level 2 needs 5 XP; level 5 needs 35 XP; later levels need 15 XP each. Advanced tasks unlock at levels 3–5.
 /inventory — Resources and supplies; choose Quality Gear to inspect equipment condition.
 /job — Select a profession. Actions matching your job earn +1 extra SC; changing jobs does not erase XP.
 /specialize — At aptitude Lv. 10, permanently choose a path. Matching actions gain +3% success and +1 SC.
@@ -5295,8 +5327,8 @@ BEST USE: /guide goal:aptitude for training or /guide goal:seed_coin for income.
 /seedindustries — Fixed-price NPC exchange plus three rotating daily Production Orders. Orders consume manufactured goods and reward SC, Contribution, Development, Crafting XP, and Commerce XP.
 
 CRAFTING ROUTE
-/farm action:Harvest Crops and /mine → gather Crops and Ore
-/make recipe:Component → turn 1 Ore into 1 Component
+/farm action:Harvest Crops and /mine → gather Crops and Hematite Ore
+/make recipe:Component → turn 1 Hematite Ore into 1 Component
 /cargo → prepare Cargo for Power Cells
 /make category:Production Tree → view the complete item chain
 /make category:Basic Components → make Component, Biofiber, and Alloy Plate
@@ -5338,9 +5370,9 @@ Comfort and Morale affect success chance but do not hard-block tasks. Recovery a
 /farm action:Irrigate — Processing work that adds society Food.
 /farm action:Hydroponics — Requires a Water Filter and improves Food while producing a Crop.
 /scan — Processing work that adds +1 society Knowledge.
-/mine — Reliable Harvesting work. Success gives 1 Ore, Materials, XP, SC, and Contribution.
-/rare — Risky 28% base search. Success gives 1 Rare Ore, +2 Materials, and 6 SC before bonuses.
-/training — Choose a SEED skill, view branches and inventory requirements, then choose Task to work. Includes Cooking, Medicine and Emergency Response, their jobs, and level unlocks.\n/make — The complete Crafting system. Components, finished supplies, quality gear, Crafting XP, SC, and Development all live here.
+/mine — Reliable Harvesting work. Success gives 1 Hematite Ore, Materials, XP, SC, and Contribution.
+/rare — Prospect Argentite Ore. Harvesting Lv.3 required; three actions per ore, with a shared 20-second prospecting cooldown.
+/training — Choose a skill, view branches and inventory requirements, then choose Task to work. Includes Cooking, Medicine and Emergency Response, their jobs, and level unlocks.\n/make — The complete Crafting system. Components, finished supplies, quality gear, Crafting XP, SC, and Development all live here.
 /repair target:Society Infrastructure — Engineering work; adds +1 Development.
 /research — Research work that raises Knowledge. Primary response for Siro Bloom.
 
@@ -5435,7 +5467,7 @@ def discord_seed_help(topic="overview",name="Citizen"):
     topic=(topic or "overview").lower()
     greeting=f"📖 {clean(name)} — New Eridian Handbook\n\n"
     if topic in SEED_HELP_TOPICS:
-        extra="\n\nSEED SUPPLIES\n/catalog Category lists every item through numbered Pages; select Item for exact uses and ingredients. /gather collects natural resources. /make has matching SEED categories and recipe Pages. Production Tree previews without spending. /use lists owned items with their costs and effects; durable items are kept. /eat lists owned edible foods." if topic in {'property','production','terms'} else ''
+        extra="\n\nSUPPLIES\n/catalog Category lists every item through numbered Pages; select Item for exact uses and ingredients. /gather collects natural resources. /make has matching categories and recipe Pages. Production Tree previews without spending. /use lists owned items with their costs and effects; durable items are kept. /eat lists owned edible foods." if topic in {'property','production','terms'} else ''
         return greeting+SEED_HELP_TOPICS[topic]+extra
     return (greeting+"🌱 Choose a /seed topic for complete explanations:\n\n"
             "🧭 Start Here — first steps and /guide\n👤 Character — stats, jobs, XP, linking\n"
@@ -6303,14 +6335,14 @@ def _discord_make_autocomplete(payload:dict):
             data.append((f"{item_name} — "+("; ".join(f"{resource_name(k)} {material_amount(db,current_player,k)}/{v}" for k,v in cost.items()) if current_player else requirement_text(cost))+lock,key))
         # Recipe search spans both catalogs; source recipes appear first for named searches.
         source_rows=[]
-        seed_stock={row.item:row.qty for row in db.execute(select(ExtraItem).where(ExtraItem.channel_id==DISCORD_WORLD_ID,ExtraItem.canonical_uid==canonical)).scalars()} if current_player else {}
+        seed_stock=seed_content.stock(sys.modules[__name__],db,current_player)
         for key,r in seed_content.RECIPES.items():
             if category in CRAFT_CATEGORIES or len(source_rows)>=25:break
             if category.startswith('seed_') and seed_content.recipe_category(key)!=category[5:]:continue
             if query and query not in (r['name']+' '+r['source']).casefold():continue
             req=r['requirement'].get('Skill','SK_CRAFTING')
             stock='; '.join(f"{resource_name(k)} {seed_stock.get(k,0)}/{v}" for k,v in r['inputs'].items()) or 'no ingredients'
-            source_rows.append((f"SEED · {seed_content.item_label(next(iter(r['outputs'])))} · T{crafting_progression.recipe_tier(key)} {seed_content.station(r)} — {stock} · {seed_content.skill_name(req)} Lv.{seed_content.required_level(r)}",key))
+            source_rows.append((f"{seed_content.item_label(next(iter(r['outputs'])))} · T{crafting_progression.recipe_tier(key)} {seed_content.station(r)} — {stock} · {seed_content.skill_name(req)} Lv.{seed_content.required_level(r)}",key))
         data=(source_rows+data) if query else (data+source_rows)
     return _discord_autocomplete_choices(data,query)
 
@@ -6495,16 +6527,19 @@ def training(channel:str,uid:str,name:str='Citizen',skill:str='',task:str='',pro
             if cfg['hub']!=hub:continue
             xp=branch_xp.get(cfg['branch'],0);lock=f"LOCKED: {SKILL_LABELS[key]} {cfg['unlock']} required" if level<cfg['unlock'] else 'Available'
             cost='; '.join(f"{resource_name(k)}: need {v}, own {material_amount(db,p,k)}" for k,v in cfg['cost'].items()) or 'No items required'
+            if action_key in MERGED_TRAINING:
+                rid=MERGED_TRAINING[action_key];r=seed_content.RECIPES[rid]
+                lock+=f"; {crafting_progression.unlock_text(sys.modules[__name__],db,p,rid)}; {seed_content.skill_name(r['requirement'].get('Skill'))} Lv.{seed_content.required_level(r)}"
             outputs=', '.join(f"{v} {resource_name(k)}" for k,v in cfg['output'].items())
             benefits=', '.join(f"shared {k} +{v}" for k,v in cfg['shared'].items())
             benefits+=(', ' if benefits and cfg['society'] else '')+', '.join(f"society {k} +{v}" for k,v in cfg['society'].items())
-            tag=crafting_progression.TRAINING_STATIONS.get(cfg['branch'])
+            tag=None if action_key in MERGED_TRAINING else crafting_progression.TRAINING_STATIONS.get(cfg['branch'])
             if tag:cost+=f". Station: {crafting_progression.STATIONS[tag]['name']} · Tier {crafting_progression.STATIONS[tag]['tier']}; /workshop"
             lines.append(f"• {cfg['label']} — branch Lv. {lvl(xp)} ({xp} XP); {lock}\n  {cost}. Output: {outputs or benefits or cfg['effect']}."+(f" {benefits}." if outputs and benefits else '')+(f" {cfg['effect']}" if cfg['effect'] else ''))
         jobs=[label for label,sk,_ in NEW_JOBS.values() if sk==key]
         if key=='cultivation':jobs=['Farmer']
         lines.append('Matching jobs: '+', '.join(jobs)+'. Use /job. Main skill levels improve success; branch levels add up to 5 percentage points to matching task success. Lv.10 specialization adds its existing bonuses.')
-        lines.append('Sources: Wood, Water, Stone and Herbs → Harvesting; Planks, Cut Stone, Cloth, Antiseptic and Preserved Food → Processing; Storage Jars → Crafting; Medicine → Medicine; Components → Engineering or /make; Crops → Farming or /farm.')
+        lines.append('Sources: Lumber, Murky Water, Stone and Herbs → Harvesting; Wood Planks, Stone Block, Fabric, Antiseptics and Preserved Food → Processing; Storage Jars → Crafting; Medicine → Medicine; Components → Engineering or /make; Crops → Farming or /farm.')
         lines.append('Select Task to perform work. Browsing spends nothing.')
         text='\n'.join(lines)
         return PlainTextResponse(text) if provider=='discord' else out(text.replace('\n',' | '))
@@ -6557,7 +6592,7 @@ def item_command_menu(command,uid,name):
                 lines.append(f"• {QUALITY_RECIPES[key]['name']} ×{sum(r.qty for r in rows)} — {effect}; {quality}.")
             for key,effect in [('furniture','+35 Comfort, +5 Morale'),('workwear','+20 Comfort, +10 Energy'),('medicine','+10 Comfort; reduces Siro exposure by up to 10')]:
                 lines.append(f"• {resource_name(key)} ×{material_amount(db,p,key)} — consumes 1; {effect}.")
-            lines.append("These original consumables use 1 item, highest quality first. SEED item rules appear in the menu above. Recovery caps at 100.")
+            lines.append("These original consumables use 1 item, highest quality first. item rules appear in the menu above. Recovery caps at 100.")
         elif command=="delivery":
             lines += [f"• Personal Cargo ×{p.cargo} — requires 1; consumed only on success. Failure keeps it.",
                       f"• Shared Cargo ×{shared.cargo} — optional extra society production, separate from your inventory.",
@@ -6971,3 +7006,11 @@ def routine_step(channel:str,uid:str,name:str="Citizen",provider:str="twitch",ke
     choice=routine(channel,uid,name,provider)["next_action"]
     if choice in ACTION_SKILLS or choice in {"eat","sleep"}:return action(choice,channel,uid,name,provider=provider)
     return {"games":games,"walk":walk,"relax":relax}[choice](channel,uid,name,provider=provider)
+
+
+# Configure identities after all route/function definitions, before accepting work.
+item_identity.configure(sys.modules[__name__])
+with SessionLocal() as _identity_db:
+    for _identity_player in _identity_db.execute(select(Player)).scalars():
+        item_identity.migrate_player(sys.modules[__name__],_identity_db,_identity_player)
+    _identity_db.commit()
