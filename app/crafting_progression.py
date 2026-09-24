@@ -1,3 +1,4 @@
+
 """New Eridian workshop access, personal recipe tiers and starter supply prices.
 
 Community access is a permanent permit for ONE named station, not free access
@@ -98,7 +99,7 @@ def workshop(m,db,p,action='view',station='',page=1,provider='discord'):
         lines.append(f"{cfg['name']} · T{cfg['tier']} · {state} · {cfg['cost']} SC once"+(f' · {tag}' if provider!='discord' else ''))
     if provider=='discord':
         lines+=['','TIERS',*[tier_hint(t) for t,_,_ in TIERS],
-                'Only manufacturing recipes with ingredients count. Gathering, extraction, purchases and training do not count.',
+                'Only manufacturing recipes with ingredients count. Gathering, extraction, purchases and non-manufacturing training do not count.',
                 'Select Station and Unlock to purchase permanent access. Owning a matching machine also gives access; tier rules still apply.',
                 'Recipe previews show skill levels, tier and exact station. Survival Workbench is free.']
     else:lines+=['!workshoppage <page>; !workshopunlock <station ID>. Tiers: 0/25/100/250 batches.']
@@ -145,6 +146,8 @@ def starter_market():
                 value=max(2,math.ceil(cost/n))
                 if k not in prices or value<prices[k]:prices[k]=value;changed=True
         if not changed:break
+    global VALUES
+    VALUES=dict(prices)
     selected=set(s.GATHER);starters={}
     skills={r['requirement'].get('Skill','SK_CRAFTING') for r in s.RECIPES.values()}
     for skill in sorted(skills):
