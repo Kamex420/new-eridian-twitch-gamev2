@@ -1,4 +1,5 @@
 
+
 import os, random, secrets, string, math, re, hashlib, json, urllib.request
 from datetime import datetime, timezone, timedelta
 from fastapi import FastAPI, HTTPException, Request, BackgroundTasks
@@ -286,7 +287,7 @@ UNIQUE_QUALITY_ITEMS={key for key,recipe in QUALITY_RECIPES.items() if recipe["s
 
 # Crafting is browsed by production stage, never by overlapping aptitude.
 # An item's skill effects remain metadata on the item, not extra categories.
-RAW_MATERIAL_KEYS=("crops","ore","rare_ore","cargo")
+RAW_MATERIAL_KEYS=("crops","ore","rare_ore","cargo","wood","water","stone","herbs")
 BASIC_COMPONENT_KEYS=("component","biofiber","alloy_plate")
 ADVANCED_COMPONENT_KEYS=("circuit_board","power_cell","sealant","precision_lens")
 FINAL_PRODUCT_KEYS=tuple(RECIPES)+tuple(QUALITY_RECIPES)
@@ -834,7 +835,7 @@ def success_chance(db,p,skill,base=.68,cap=.86):
 def clamp100(value):
     return max(0,min(100,int(value)))
 
-from .needs import decay as decay_needs
+from .needs import decay as decay_needs, RECOVERY_HELP
 
 def life_state(db,p):
     row=db.execute(select(LifeState).where(LifeState.channel_id==p.channel_id,LifeState.canonical_uid==p.twitch_uid)).scalar_one_or_none()
@@ -1192,10 +1193,10 @@ def life_status_text(db,p,provider):
                 f"🏠 Comfort: {life.comfort}/100 · {life_label(life.comfort,'comfort')}\n"
                 f"✨ Morale: {life.morale}/100 · {life_label(life.morale,'morale')}\n\n"
                 f"TASK READINESS\n{readiness}\n\n"
-                f"ACTIVE EFFECTS\n{effects}\n\nUse /guide, /social, /relax, /walk, /games, or /hobby.")
+                f"PASSIVE RECOVERY\n{RECOVERY_HELP}\n\nACTIVE EFFECTS\n{effects}\n\nUse /guide, /social, /relax, /walk, /games, or /hobby.")
     readiness=("Work BLOCKED: "+"; ".join(x.replace("/","!") for x in blocked)) if blocked else f"Work READY (core needs {TASK_NEED_MINIMUM}+)"
     return (f"🌱 {p.display_name} | ⚡{life.energy} Energy · 🍲{life.nutrition} Nutrition · 🤝{life.social} Social · "
-            f"🏠{life.comfort} Comfort · ✨{life.morale} Morale | {readiness}"+(" | "+", ".join(notes[:3]) if notes else ""))
+            f"🏠{life.comfort} Comfort · ✨{life.morale} Morale | Recharge +1/15min to 60 | {readiness}"+(" | "+", ".join(notes[:3]) if notes else ""))
 
 
 def _stable_index(text,count):
@@ -1566,6 +1567,24 @@ def material_change(db,p,key,delta):
     row.qty=max(0,row.qty+int(delta));return row.qty
 def craft_output_key(recipe):return CRAFT_OUTPUT_KEYS.get(recipe,recipe)
 def craft_output_amount(db,p,recipe):return material_amount(db,p,craft_output_key(recipe))
+
+def material_source(key,provider='discord'):
+    """Exact legacy inventory sources, distinct from namespaced SEED items."""
+    if key in seed_content.ACTIVE:return seed_content.source_hint(key,provider)
+    work={'crops':('farm action:harvest','harvest'),'ore':('mine','mine'),
+          'rare_ore':('rare','rare'),'cargo':('cargo','cargo')}
+    if key in work:return ('/'+work[key][0] if provider=='discord' else '!'+work[key][1])+' — successful work adds personal supplies.'
+    recipe='component' if key=='components' else key
+    if recipe in PART_RECIPES or recipe in RECIPES:
+        return (f'/make recipe:{recipe}' if provider=='discord' else f'!make {recipe}')+' — '+requirement_text(PART_RECIPES.get(recipe) or RECIPES[recipe])
+    for task,cfg in SEED_TASKS.items():
+        if key in cfg['output']:
+            command=f"/training skill:{cfg['hub']} task:{task}" if provider=='discord' else f"!training {cfg['hub']} {task}"
+            return command+' — '+(requirement_text(cfg['cost']) or 'no ingredients')+f"; {SKILL_LABELS[cfg['skill']]} Lv.{cfg['unlock']}."
+    return 'Inspect the item in /catalog.'
+
+def missing_material_sources(db,p,cost,provider):
+    return '\nHOW TO GET THEM\n'+'\n'.join(f'• {resource_name(k)}: {material_source(k,provider)}' for k,n in cost.items() if material_amount(db,p,k)<n)
 
 def craft_record(db,p,recipe,quality=""):
     row=db.execute(select(CraftLedger).where(
@@ -2335,7 +2354,8 @@ def recipes(channel:str="new-eridian",provider:str="twitch",category:str=""):
         if category in CRAFT_CATEGORIES:
             emoji,label,description=CRAFT_CATEGORY_INFO[category]
             if category=="raw_materials":
-                text="\n".join(f"• {craft_item_name(key)} — gather through work or obtain through trade" for key in RAW_MATERIAL_KEYS)
+                text="\n".join(f"• {craft_item_name(key)} — {material_source(key,provider)}" for key in RAW_MATERIAL_KEYS)
+                text+='\n\nNamed SEED ingredients (Hematite Ore, Lumber, Murky Water, etc.) are separate inventory items. Use /gather and /catalog for their exact sources.'
             else:
                 lines=[]
                 for key,item_name,cost,effect,need in craft_category_rows(category):
@@ -2453,8 +2473,8 @@ def craft_menu(db,p,channel,provider,category=""):
 
     emoji,label,description=CRAFT_CATEGORY_INFO[category]
     if category=="raw_materials":
-        routes=("• Crop — /farm action:Harvest Crops\n• Ore — /mine\n• Rare Ore — /rare\n"
-                "• Cargo — /cargo\n\nSeed Industries can fill a missing input, but producing it yourself is cheaper.")
+        routes='\n'.join(f'• {resource_name(k)}: {material_source(k,provider)}' for k in RAW_MATERIAL_KEYS)
+        routes+='\n\nNamed SEED materials are separate: /gather lists every natural resource; /catalog Item gives exact sources and a build plan.'
         return PlainTextResponse(f"{emoji} {label}\n\n{description}\n\nON HAND\n{materials}\n\nHOW TO OBTAIN\n{routes}\n\nNext stage: /make category:basic_components")
     lines=[]
     for key,item_name,cost,effect,need in craft_category_rows(category):
@@ -2519,7 +2539,7 @@ def make(channel:str,uid:str,name:str="Citizen",recipe:str="",provider:str="twit
             r=QUALITY_RECIPES[recipe];costs=r["cost"]
             if unique_bonus_owned(db,p,recipe):return out(f"🛑 {p.display_name} already owns {r['name']}. Passive-bonus equipment is limited to one of each item.")
             missing=craft_missing_materials(db,p,costs)
-            if missing:return out(f"⚙️ {p.display_name} still needs "+", ".join(missing)+f" for {r['name']}.")
+            if missing:return out(f"⚙️ {p.display_name} still needs "+", ".join(missing)+f" for {r['name']}."+missing_material_sources(db,p,costs,provider))
             for key,amount in costs.items():material_change(db,p,key,-amount)
             quality_bonus=int(quality_gear_special(db,p,"precision_tools")*100)
             quality=quality_roll(lvl(p.fabrication_xp),quality_bonus)
@@ -2552,7 +2572,7 @@ def make(channel:str,uid:str,name:str="Citizen",recipe:str="",provider:str="twit
         if tier_index<required:return out(f"🔒 {recipe.replace('_',' ').title()} unlocks at society tier {SOCIETY_TIERS[required][0]}.")
         if unique_bonus_owned(db,p,recipe):return out(f"🛑 {p.display_name} already owns {resource_name(recipe)}. Passive-bonus equipment is limited to one of each item.")
         missing=craft_missing_materials(db,p,costs)
-        if missing:return out("⚙️ Still needed: "+", ".join(missing)+".")
+        if missing:return out("⚙️ Still needed: "+", ".join(missing)+"."+missing_material_sources(db,p,costs,provider))
         for key,amount in costs.items():material_change(db,p,key,-amount)
         output_key=craft_output_key(recipe);material_change(db,p,output_key,1)
         kind="components" if recipe in PART_RECIPES else "core";rewards=craft_reward(db,p,society_state,kind,recipe);craft_record(db,p,recipe)
@@ -4924,7 +4944,7 @@ def action(action:str,channel:str,uid:str,name:str="Citizen",msg:str="",provider
             if lvl(skill_xp(p,skill))<cfg['unlock']:
                 return out(f"🔒 {cfg['label']} requires {SKILL_LABELS[skill]} level {cfg['unlock']}. Nothing spent.")
             missing=craft_missing_materials(db,p,cfg['cost'])
-            if missing:return out("🔒 Still needed: "+", ".join(missing)+f". Open /training skill:{cfg['hub']} for supplies and sources. Nothing spent.")
+            if missing:return out("🔒 Still needed: "+", ".join(missing)+'. Nothing spent.'+missing_material_sources(db,p,cfg['cost'],provider))
         selected_food=(msg[5:] if action=="eat" and (msg or "").startswith("food:") else "")
         foods=edible_inventory(db,p) if action=="eat" else []
         if selected_food:
@@ -5341,7 +5361,7 @@ Primary event role — Each successful matching action adds +1 progress.
 Support event role — Every two matching successes add +1 progress.
 Cooldown — Standard work, /eat, and /sleep use 5 seconds. Social and recovery actions use 20–60 seconds. /make has no cooldown. Linked Twitch/Discord accounts share cooldowns.
 Task readiness — Energy, Nutrition, and Social must each be at least 20 for work, /make crafting, and personal gear repair. A blocked attempt spends nothing and starts no cooldown. Recovery commands remain usable; /eat supplies an emergency meal when a starving player has no food.
-Task cost — Standard work and /make use 2 Energy/1 Nutrition. Heavy extraction, frontier, and repair tasks use 3 Energy/1 Nutrition. Energy, Nutrition, Social and Morale decay by 1 per four real hours (maximum 6 per return); Comfort decays by 2 (maximum 12). Work also costs 1 Comfort; critical Comfort reduces morale, output and success. Results warn when recovery is required.
+Task cost — Standard work and /make use 2 Energy/1 Nutrition. Heavy extraction, frontier, and repair tasks use 3 Energy/1 Nutrition. All five life needs recharge by 1 per 15 real minutes, up to 60/100, including while away. Needs above 60 are not reduced. Food, sleep and social activities recover faster. Work also costs 1 Comfort; critical Comfort reduces morale, output and success. Results warn when recovery is required.
 Personal bonus — Temporary success, SC, Contribution, or XP boost. Each activation lasts 10 minutes; matching time stacks.
 Basic component — First-stage manufactured part made directly from raw material: Component, Biofiber, or Alloy Plate.
 Advanced component — Specialized manufactured part made from raw materials and basic components: Circuit Board, Power Cell, Sealant, or Precision Lens.
@@ -6535,9 +6555,11 @@ def seed_supplies(channel:str,uid:str,name:str='Citizen',mode:str='catalog',item
         _,p=player(db,channel,provider,uid,name);module=sys.modules[__name__]
         item=seed_content.find_item(item)
         if mode=='gather' and item:result=seed_content.gather(module,db,p,item,provider)
-        elif mode=='gather':
-            result='🌿 GATHER MATERIALS\nChoose Resource and type a name. Each action gathers one item.\n\n'+ '\n'.join('• '+seed_content.ITEMS[k]['name'] for k in seed_content.GATHER)+'\n\nCost: −2 Energy · −1 Nutrition · −1 Comfort; shared workshop cooldown.'
-        elif mode=='catalog':result=seed_content.catalog(module,db,p,item,page,owned,category)
+        elif mode=='gather':result=seed_content.gather_menu(page,provider)
+        elif mode=='catalog':
+            if provider!='discord' and item in seed_content.ACTIVE:
+                result=seed_content.item_label(item)+' | '+seed_content.source_hint(item,provider)
+            else:result=seed_content.catalog(module,db,p,item,page,owned,category)
         else:result='🛑 Choose catalog or gather. Nothing spent.'
         return platform_response(provider,result,result.replace('\n',' | '))
 
