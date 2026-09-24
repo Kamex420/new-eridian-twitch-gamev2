@@ -4,6 +4,8 @@ This package implements an original SEED-inspired model for New Eridian. It does
 
 ## Install this update
 
+For the combined material acquisition and passive recovery update, follow `COMBINED_UPDATE.md`. The original installation notes below describe the earlier simulation package.
+
 1. Back up the deployed database with your database provider's backup/export facility. Keep the existing database and `DATABASE_URL`.
 2. Unzip the download. Open `new-eridian-twitch-game-main/NEW_ERIDIAN_CUSTOM_API_COMPLETE`.
 3. In your GitHub repository, replace **the complete `NEW_ERIDIAN_CUSTOM_API_COMPLETE/app` folder** with this package's `app` folder. Keep every new `.py` module beside `main.py`. Upload the included documentation and tests as well if you want the full repository to match.
@@ -19,7 +21,7 @@ This package was edited and tested locally from your uploaded ZIP. It has not be
 
 - Citizens are persistent Seedlings. Existing identities, linked accounts, balances, XP, jobs, inventory, relationships, projects and incident history are retained.
 - Occupation/Job, Competency/Aptitude, Settlement/Society and SC/Settlement Currency are compatible vocabulary pairs. Existing command names and serialized database fields stay stable. There are still nine existing competency families; social growth uses the existing relationship system.
-- Every four real hours, Energy, Nutrition, Social and Morale lose one point. Comfort loses two. Catch-up is capped at six ticks: 6 points for the first four needs and 12 Comfort. Repeated polling does not repeat that catch-up. Partial ticks carry forward.
+- All five life needs recover 1 point every 15 real minutes, up to 60/100, including while away. This replaces passive decay. Values above 60 are preserved. Partial ticks carry forward and repeated polling does not grant extra recovery. /eat, /sleep and social activities recover faster.
 - Ordinary work costs 2 Energy, 1 Nutrition and 1 Comfort. Heavy work costs 3 Energy, 1 Nutrition and 1 Comfort. Work below 20 Comfort also costs 1 Morale. Existing Energy/Nutrition/Social readiness gates and free emergency food remain.
 - Low Comfort reduces success by 10 percentage points below 20, or 4 below 35, before combined modifier caps. Needs and Siro exposure reduce training efficiency and supplementary settlement production. Good conditions preserve full production.
 - `/sleep` still fully restores Energy and Comfort. Available settlement medicines can additionally reduce remaining exposure during sleep.
@@ -70,7 +72,7 @@ There is no background bot population, automatic spending for offline players, e
 | `app/db.py` | Existing database configuration, engine, session and base |
 | `app/models.py` | Unchanged legacy tables plus additive simulation tables and canonical aliases |
 | `app/migrations.py` | Existing additive upgrades plus schema-version recording |
-| `app/needs.py` | Time decay, need urgency, mood and productivity |
+| `app/needs.py` | Passive recovery, need urgency, mood and productivity |
 | `app/occupations.py` | Occupation competencies, preferred work and design associations |
 | `app/competencies.py` | Compatible levels, rank labels and practice formula |
 | `app/settlement.py` | Shared stock state, bounded upkeep, pressures and production |
