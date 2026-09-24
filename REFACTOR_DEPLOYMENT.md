@@ -4,7 +4,7 @@ This package implements an original SEED-inspired model for New Eridian. It does
 
 ## Install this update
 
-For the combined material acquisition and passive recovery update, follow `COMBINED_UPDATE.md`. The original installation notes below describe the earlier simulation package.
+For the combined material acquisition and passive recovery update, follow `CRAFTING_PROGRESSION_UPDATE.md`. The original installation notes below describe the earlier simulation package.
 
 1. Back up the deployed database with your database provider's backup/export facility. Keep the existing database and `DATABASE_URL`.
 2. Unzip the download. Open `new-eridian-twitch-game-main/NEW_ERIDIAN_CUSTOM_API_COMPLETE`.
