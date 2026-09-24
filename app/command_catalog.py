@@ -340,3 +340,13 @@ for command in commands:
     if command['name']=='farm':command['options'][0]['description']='Farming activity'
 
 commands.append(cmd('holiday','See active holidays and when the next holiday event starts'))
+
+# Searchable source catalog; selectors browse until an explicit work item is chosen.
+commands.append(cmd('catalog','Find SEED items, recipes, ingredients and your quantities',[
+    {'type':STRING,'name':'item','description':'Search an item to inspect its recipes and gathering sources','required':False,'autocomplete':True},
+    {'type':4,'name':'page','description':'Page of items, 12 per page','required':False,'min_value':1,'max_value':1000},
+    {'type':5,'name':'owned','description':'Show only items you own','required':False}
+]))
+commands.append(cmd('gather','Collect natural SEED materials for cooking, processing and crafting',[
+    {'type':STRING,'name':'resource','description':'Choose the resource to collect; blank shows the gathering menu','required':False,'autocomplete':True}
+]))
