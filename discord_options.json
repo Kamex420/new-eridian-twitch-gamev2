@@ -600,6 +600,10 @@
         {
           "name": "Fulfill Production Order",
           "value": "fulfill"
+        },
+        {
+          "name": "Starter Routes by Branch",
+          "value": "starters"
         }
       ]
     },
@@ -617,6 +621,42 @@
       "required": false,
       "min_value": 1,
       "max_value": 25
+    },
+    {
+      "type": 3,
+      "name": "category",
+      "description": "Filter starter stock; leave All for every item",
+      "required": false,
+      "choices": [
+        {
+          "name": "All Supplies",
+          "value": "all"
+        },
+        {
+          "name": "Legacy Materials & Parts",
+          "value": "legacy"
+        },
+        {
+          "name": "SEED Starter Supplies",
+          "value": "seed"
+        },
+        {
+          "name": "Training Supplies",
+          "value": "training"
+        },
+        {
+          "name": "Rare Ores",
+          "value": "rare"
+        }
+      ]
+    },
+    {
+      "type": 4,
+      "name": "page",
+      "description": "Market page; browse only",
+      "required": false,
+      "min_value": 1,
+      "max_value": 1000
     }
   ],
   "world": [
@@ -1461,6 +1501,39 @@
       "type": 4,
       "name": "page",
       "description": "Browse every raw resource; leave Resource blank to view only",
+      "required": false,
+      "min_value": 1,
+      "max_value": 1000
+    }
+  ],
+  "workshop": [
+    {
+      "type": 3,
+      "name": "action",
+      "description": "View progress or purchase permanent station access",
+      "required": false,
+      "choices": [
+        {
+          "name": "View Workshops",
+          "value": "view"
+        },
+        {
+          "name": "Unlock Station",
+          "value": "unlock"
+        }
+      ]
+    },
+    {
+      "type": 3,
+      "name": "station",
+      "description": "Specific workstation; shows tier and one-time fee",
+      "required": false,
+      "autocomplete": true
+    },
+    {
+      "type": 4,
+      "name": "page",
+      "description": "Page of all stations",
       "required": false,
       "min_value": 1,
       "max_value": 1000
