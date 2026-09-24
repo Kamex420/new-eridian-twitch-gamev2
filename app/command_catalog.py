@@ -1,3 +1,4 @@
+
 """Shared Discord command catalog: registration and runtime validation use this file."""
 
 def cmd(name, description, options=None):
@@ -346,7 +347,8 @@ commands.append(cmd('catalog','Find SEED items, recipes, ingredients and your qu
     {'type':5,'name':'owned','description':'Show only items you own','required':False}
 ]))
 commands.append(cmd('gather','Collect natural SEED materials for cooking, processing and crafting',[
-    {'type':STRING,'name':'resource','description':'Choose the resource to collect; blank shows the gathering menu','required':False,'autocomplete':True}
+    {'type':STRING,'name':'resource','description':'Type a material name to search all resources; selecting it gathers it','required':False,'autocomplete':True},
+    {'type':4,'name':'page','description':'Browse every raw resource; leave Resource blank to view only','required':False,'min_value':1,'max_value':1000}
 ]))
 
 # Shared item families: all catalog items have one category; full lists use pages.
