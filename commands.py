@@ -1,5 +1,6 @@
 
 
+
 """Compatibility response adapter shared by HTTP and internal Discord calls.
 
 Decorators keep original signatures. Existing routes and slash command dispatch
@@ -31,7 +32,7 @@ def command(fn):
                         after=snapshot(db,p);before=ctx["before"]
                         if before:
                             for section in ("Needs","Resources","Competency","Settlement"):
-                                changed=[f"{m.SKILL_LABELS.get(k,k) if section=='Competency' else k} {v-before[section].get(k,v):+d}" for k,v in after[section].items() if v!=before[section].get(k,v)]
+                                changed=[f"{m.SKILL_LABELS.get(k,k) if section=='Competency' else m.resource_name(k) if section=='Resources' else k} {v-before[section].get(k,v):+d}" for k,v in after[section].items() if v!=before[section].get(k,v)]
                                 if section=="Competency" and ctx["practice"]:
                                     extra.append("Aptitude practice: "+"; ".join(ctx["practice"]))
                                 elif changed:extra.append(("Aptitudes" if section=="Competency" else section)+": "+", ".join(changed))
