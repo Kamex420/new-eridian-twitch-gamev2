@@ -1,4 +1,4 @@
-command,response,access_level,global_cooldown,user_cooldown
+﻿command,response,access_level,global_cooldown,user_cooldown
 !seed,🌱 NEW ERIDIAN // SEED CHAT GAME | !start !me !job !skills !inventory !farm !harvest !mine !rare !research !craft !build !work !cargo !delivery !explore !market !status !progress !event !siro !rocky,100,15,30
 !start,$(customapi https://YOUR-API-DOMAIN/api/v1/start?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&msg=$(msgid)),100,10,86400
 !me,$(customapi https://YOUR-API-DOMAIN/api/v1/profile?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))),100,5,15
