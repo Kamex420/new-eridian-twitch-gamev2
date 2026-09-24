@@ -1,5 +1,3 @@
-
-
 """Shared Discord command catalog: registration and runtime validation use this file."""
 
 def cmd(name, description, options=None):
@@ -350,3 +348,19 @@ commands.append(cmd('catalog','Find SEED items, recipes, ingredients and your qu
 commands.append(cmd('gather','Collect natural SEED materials for cooking, processing and crafting',[
     {'type':STRING,'name':'resource','description':'Choose the resource to collect; blank shows the gathering menu','required':False,'autocomplete':True}
 ]))
+
+# Shared item families: all catalog items have one category; full lists use pages.
+from .seed_content import category_choices, CATEGORIES
+for command in commands:
+    if command['name'] in {'catalog','use'}:
+        command['options'].insert(0,{'type':STRING,'name':'category','description':'Choose a category; Page shows every item across numbered pages','required':False,'choices':category_choices()})
+    if command['name']=='use':
+        command['description']='Browse owned items and exact effects; consume supplies or use durable equipment'
+        command['options'].append({'type':4,'name':'page','description':'Page of owned usable items','required':False,'min_value':1,'max_value':1000})
+        for opt in command['options']:
+            if opt['name']=='item':opt['description']='Owned item; its description shows what is consumed and what is kept'
+    if command['name']=='catalog':command['description']='Browse ALL items by category and page; inspect their uses and recipes'
+    if command['name']=='make':
+        for opt in command['options']:
+            if opt['name']=='category':opt['choices'] += [{'name':'SEED: '+label,'value':'seed_'+key} for key,label in CATEGORIES.items()]
+        command['options'].append({'type':4,'name':'page','description':'Page of recipes in a SEED category','required':False,'min_value':1,'max_value':1000})
