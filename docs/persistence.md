@@ -1,4 +1,3 @@
-[persistence.md](https://github.com/user-attachments/files/32637443/persistence.md)
 # Persistence and compatibility
 
 Existing table names, player identifiers, route signatures and catalog IDs remain compatibility contracts. Moving Python source files does not rename database tables or reset saves. The database engine still uses `DATABASE_URL` and existing migrations remain additive.[^1]
@@ -32,3 +31,11 @@ The filesystem cleanup is independent of the database format. Earlier item conve
 [^1]: [`app/migrations.py`](../app/migrations.py) and [`app/models.py`](../app/models.py).
 [^2]: Exact mappings and migration logic: [`app/item_identity.py`](../app/item_identity.py).
 [^3]: Transaction tests: [`tests/test_task_queue.py`](../tests/test_task_queue.py). PostgreSQL execution has not been validated against a live deployment in this release.
+
+## Completion delivery
+
+`queue_destinations_v1` records a unique queue run ID, original player identity, platform and Discord channel. The channel comes from the verified Discord interaction and is scoped to that request. Linking accounts moves this destination with its active queue.
+
+Completion inserts one immutable `queue_notifications_v1` outbox row in the same transaction as the final rewards and counters. A separate lifecycle worker sends notifications; network requests never hold up the work scheduler. A conditional update claims a two-minute delivery lease. Retry attempts are bounded at five, with backoff and rate-limit delays; invalid credentials or permissions become terminal failures. An expired lease can be reclaimed after a process restart.
+
+Discord messages use an explicit user mention whitelist, disabling role and everyone mentions, with a stable nonce for retry deduplication. Remote send and database acknowledgement cannot be made atomic: a crash after acceptance may duplicate a notification outside Discord's deduplication window; it cannot duplicate game rewards. No interaction tokens are stored, and no completion DMs are sent.
