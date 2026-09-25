@@ -439,11 +439,11 @@
           "value": "start"
         },
         {
-          "name": "Work",
+          "name": "Work: 1 Cargo on success · 2 Energy",
           "value": "work"
         },
         {
-          "name": "Contract",
+          "name": "Contract: 2 Cargo + Lumber on success · 4 Energy",
           "value": "contract"
         },
         {
@@ -1155,23 +1155,23 @@
     {
       "type": 3,
       "name": "action",
-      "description": "Farming activity",
+      "description": "Choose work; listed yields are per success and Energy is spent per attempt",
       "required": false,
       "choices": [
         {
-          "name": "Tend Fields",
+          "name": "Tend Fields: 1 Crop + Pumpkin Seed · 2 Energy",
           "value": "tend"
         },
         {
-          "name": "Harvest Crops",
+          "name": "Harvest Crops: 2 Crops + Pumpkin + Seed · 3 Energy",
           "value": "harvest"
         },
         {
-          "name": "Irrigate",
+          "name": "Irrigate: 3 Crops + reclaimed Murky Water · 4 Energy",
           "value": "irrigate"
         },
         {
-          "name": "Hydroponics (Water Filter)",
+          "name": "Hydroponics: 4 Crops + Raw Algae · 5 Energy (Filter)",
           "value": "hydroponics"
         }
       ]
@@ -1182,7 +1182,7 @@
     {
       "type": 3,
       "name": "ore",
-      "description": "Ore to mine; select View Requirements before starting",
+      "description": "Ore or Coal to mine; select View Requirements before starting",
       "required": false,
       "autocomplete": true
     },
@@ -1205,7 +1205,7 @@
     {
       "type": 4,
       "name": "count",
-      "description": "Attempts (1–10); rare ores need three prospecting attempts per ore",
+      "description": "Attempts (1–10); rare ores need three successful prospecting attempts per ore",
       "required": false,
       "min_value": 1,
       "max_value": 10
@@ -1216,15 +1216,15 @@
     {
       "type": 3,
       "name": "operation",
-      "description": "Research operation",
+      "description": "Choose work; listed yields are per success and Energy is spent per attempt",
       "required": false,
       "choices": [
         {
-          "name": "Standard Research",
+          "name": "Standard: 1 Stone sample · 2 Energy",
           "value": "standard"
         },
         {
-          "name": "Field Analysis (Siro Sampler)",
+          "name": "Field Analysis: 2 Stone + Herbs · 4 Energy (Sampler)",
           "value": "field_analysis"
         }
       ]
@@ -1278,15 +1278,15 @@
     {
       "type": 3,
       "name": "operation",
-      "description": "Spaceport operation",
+      "description": "Choose work; listed yields are per success and Energy is spent per attempt",
       "required": false,
       "choices": [
         {
-          "name": "Standard Operations",
+          "name": "Standard: 1 Cargo + Lumber · 2 Energy",
           "value": "standard"
         },
         {
-          "name": "Expedite (-1 Power Cell)",
+          "name": "Expedite: 2 Cargo + 2 Lumber · 4 Energy (-1 Cell)",
           "value": "expedite"
         }
       ]
@@ -1296,15 +1296,15 @@
     {
       "type": 3,
       "name": "operation",
-      "description": "Frontier operation",
+      "description": "Choose work; listed yields are per success and Energy is spent per attempt",
       "required": false,
       "choices": [
         {
-          "name": "Scout",
+          "name": "Scout: Stone + Berries · 3 Energy",
           "value": "scout"
         },
         {
-          "name": "Advanced Survey (Sensor)",
+          "name": "Survey: 2 Stone + Clay + Coal · 5 Energy (Sensor)",
           "value": "survey"
         }
       ]
@@ -1314,7 +1314,7 @@
     {
       "type": 3,
       "name": "action",
-      "description": "Market action",
+      "description": "Choose work; listed yields are per success and Energy is spent per attempt",
       "required": false,
       "choices": [
         {
@@ -1326,11 +1326,11 @@
           "value": "sell"
         },
         {
-          "name": "Commerce Work",
+          "name": "Commerce: 1 Cargo · 2 Energy",
           "value": "work"
         },
         {
-          "name": "Analyze Market (Market Analyzer)",
+          "name": "Analyze: 2 Cargo + Lumber · 4 Energy (Analyzer)",
           "value": "analyze"
         }
       ]
