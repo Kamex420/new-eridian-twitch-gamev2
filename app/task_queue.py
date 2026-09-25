@@ -1,5 +1,5 @@
 """Persistent, bounded work queues. Each attempt and its counter commit together."""
-import asyncio, logging
+import asyncio, logging, json
 from contextlib import contextmanager
 from contextvars import ContextVar
 from datetime import timedelta
@@ -23,6 +23,68 @@ class TaskQueue(Base):
     state=Column(String(20),nullable=False,default='running')
     result=Column(Text,nullable=False,default='Waiting for the first attempt.')
     next_at=Column(DateTime(timezone=True),nullable=False)
+
+class QueueTotals(Base):
+    """Separate additive table preserves existing queues without guessing history."""
+    __tablename__ = 'task_queue_totals_v1'
+    channel_id = Column(String(64), primary_key=True)
+    canonical_uid = Column(String(96), primary_key=True)
+    succeeded = Column(Integer, nullable=False, default=0)
+    failed = Column(Integer, nullable=False, default=0)
+    progress = Column(Integer, nullable=False, default=0)
+    gained = Column(Text, nullable=False, default='{}')
+    used = Column(Text, nullable=False, default='{}')
+
+
+def inventory_snapshot(m, db, p):
+    """Canonical inventory quantities, including quality gear, excluding counters.
+
+    Compare each attempt inside its transaction so unrelated work between ticks
+    cannot enter the queue totals. Values are actual net changes per attempt.
+    """
+    stock = m.item_identity.stock(m, db, p)
+    stock = {k: v for k, v in stock.items() if not k.startswith('prospect:')}
+    for field in m.PLAYER_MATERIAL_FIELDS - {'ore', 'rare_ore'}:
+        stock[field] = getattr(p, field)
+    for gear in db.execute(select(m.QualityGear).where(
+            m.QualityGear.channel_id == p.channel_id,
+            m.QualityGear.canonical_uid == p.twitch_uid)).scalars():
+        stock['gear:' + gear.quality + ':' + gear.item_key] = gear.qty
+    return stock
+
+
+def total_label(m, key):
+    if key.startswith('gear:'):
+        _, quality, item = key.split(':', 2)
+        return quality + ' ' + m.QUALITY_RECIPES[item]['name']
+    return m.resource_name(key)
+
+
+def totals_text(m, db, row, short=False):
+    totals = db.get(QueueTotals, (row.channel_id, row.canonical_uid))
+    completed = row.total - row.remaining
+    succeeded = totals.succeeded if totals else 0
+    failed = totals.failed if totals else 0
+    progress = totals.progress if totals else 0
+    unknown = completed - succeeded - failed - progress
+    text = f'Succeeded: {succeeded}; failed: {failed}.'
+    if progress:
+        text += f' Prospecting steps without ore: {progress}.'
+    if unknown:
+        text += f' Earlier attempts without recorded totals: {unknown}.'
+    gained = json.loads(totals.gained) if totals else {}
+    used = json.loads(totals.used) if totals else {}
+    def listing(values):
+        return ', '.join(f'{total_label(m, k)} ×{v}' for k, v in sorted(values.items())) or 'None'
+    text += (' | Items gained: ' if short else '\n\nTOTAL ITEMS GAINED\n') + listing(gained)
+    if not short:
+        text += '\n\nTOTAL ITEMS USED\n' + listing(used)
+        if row.task.split(':', 1)[-1] in cp.RARE:
+            text += '\nRare ore requires three prospecting steps per ore. Saved progress carries over.'
+        if unknown:
+            text += '\nTotals cover only attempts recorded after this update; existing inventory is unchanged.'
+    return text
+
 
 actor_context=ContextVar('queue_actor',default=None)
 connection_context=ContextVar('queue_transaction',default=None)
@@ -92,7 +154,9 @@ def requirements(m,db,p,task,count):
 def status(m,db,p,row):
     if row is None:return 'You have no task queue. Use /queue action:Start, choose Task, and set Count from 1 to 10. Only one task type can be queued at a time.'
     name=choices(m).get(row.task,row.task)
-    text=f'TASK QUEUE — {row.state.upper()}\n{name}\nAttempts completed: {row.total-row.remaining}/{row.total}; remaining: {row.remaining}.\nOnly one task type can be queued at a time; maximum 10 attempts.\nLast result: {row.result}'
+    text=f'TASK QUEUE — {row.state.upper()}\n{name}\nAttempts completed: {row.total-row.remaining}/{row.total}; remaining: {row.remaining}.\nOnly one task type can be queued at a time; maximum 10 attempts.'
+    text+='\n'+totals_text(m,db,row)
+    if row.state=='paused':text+='\n\nPAUSE REASON\n'+row.result
     if row.remaining and row.state in ACTIVE:
         text+='\n\n'+requirements(m,db,p,row.task,row.remaining)+'\n\nThe queue resumes automatically when needs and requirements are met. Use /sleep, /eat or /games to recover faster; /queue action:Cancel stops the remaining attempts.'
     return text
@@ -124,6 +188,9 @@ def control(m,channel,uid,name,provider,action='view',task='',count=1):
             task=normalize(m,task)
             if task not in choices(m):return 'Choose a valid Task from /queue. No queue was changed.'
             if row and row.state in ACTIVE:return 'You already have a queue. Only one task type can be queued at a time. Cancel it before starting another.\n'+status(m,db,p,row)
+            totals=db.get(QueueTotals,(channel,p.twitch_uid))
+            if totals is not None:db.delete(totals);db.flush()
+            db.add(QueueTotals(channel_id=channel,canonical_uid=p.twitch_uid))
             if row is None:
                 row=TaskQueue(channel_id=channel,canonical_uid=p.twitch_uid);db.add(row)
             row.task=task;row.total=count;row.remaining=count;row.state='running';row.result='Waiting for the first attempt.';row.next_at=m.now()+timedelta(seconds=2)
@@ -146,7 +213,9 @@ def run_one(m,channel,uid):
                 if not p or not row or row.state not in ACTIVE or m.as_utc(row.next_at)>m.now():conn.rollback();return
                 if row.task not in choices(m):
                     row.state='cancelled';row.result='This task is no longer available. Choose a new task.';db.commit();conn.commit();return
-                before=p.actions;kind,target=row.task.split(':',1)
+                before=p.actions;success_before=p.successes
+                stock_before=inventory_snapshot(m,db,p)
+                kind,target=row.task.split(':',1)
                 blocked=m.task_need_gate(db,p,'make','discord')
                 if blocked:result=blocked
                 elif kind in {'mine','gather'}:result=s.gather(m,db,p,target,'discord')
@@ -158,7 +227,27 @@ def run_one(m,channel,uid):
                     finally:actor_context.reset(actor_token)
                 db.refresh(p)
                 attempted=p.actions>before
-                if attempted:row.remaining-=1
+                if attempted:
+                    row.remaining-=1
+                    totals=db.get(QueueTotals,(channel,uid))
+                    if totals is None:
+                        totals=QueueTotals(channel_id=channel,canonical_uid=uid,
+                                           succeeded=0,failed=0,progress=0,gained='{}',used='{}')
+                        db.add(totals)
+                    rare_target = target if target in cp.RARE else next(
+                        (k for k in s.RECIPES.get(target,{}).get('outputs',{}) if k in cp.RARE), None)
+                    if p.successes>success_before:totals.succeeded+=1
+                    elif rare_target:totals.progress+=1
+                    else:totals.failed+=1
+                    # Nested handlers may update inventory in another Session.
+                    db.flush();db.expire_all()
+                    stock_after=inventory_snapshot(m,db,p)
+                    gained=json.loads(totals.gained);used=json.loads(totals.used)
+                    for key in stock_before.keys() | stock_after.keys():
+                        delta=stock_after.get(key,0)-stock_before.get(key,0)
+                        if delta>0:gained[key]=gained.get(key,0)+delta
+                        elif delta<0:used[key]=used.get(key,0)-delta
+                    totals.gained=json.dumps(gained);totals.used=json.dumps(used)
                 row.state='completed' if row.remaining==0 else ('running' if attempted or 'ready in' in result.lower() else 'paused')
                 row.result=result[:1600]
                 _,_,cooldown=specification(m,row.task)
@@ -183,6 +272,7 @@ def install(m):
         return Session(bind=conn,expire_on_commit=False,join_transaction_mode='rollback_only') if conn is not None else original()
     m.SessionLocal=session_factory
     TaskQueue.__table__.create(m.engine,checkfirst=True)
+    QueueTotals.__table__.create(m.engine,checkfirst=True)
     async def loop():
         stop=m.app.state.queue_stop
         while not stop.is_set():
@@ -204,6 +294,15 @@ def install(m):
 def merge_accounts(m,db,channel,source_uid,target_uid):
     source=db.get(TaskQueue,(channel,source_uid));target=db.get(TaskQueue,(channel,target_uid))
     if source is None:return
+    source_totals=db.get(QueueTotals,(channel,source_uid))
+    target_totals=db.get(QueueTotals,(channel,target_uid))
+    keep_source=target is None or (source.state in ACTIVE and target.state not in ACTIVE)
+    if source_totals is not None:
+        if keep_source:
+            if target_totals is not None:db.delete(target_totals);db.flush()
+            source_totals.canonical_uid=target_uid
+        else:db.delete(source_totals)
+    elif keep_source and target_totals is not None:db.delete(target_totals)
     if target is None:source.canonical_uid=target_uid;return
     if source.state in ACTIVE and target.state not in ACTIVE:
         for field in ('task','total','remaining','state','result','next_at'):setattr(target,field,getattr(source,field))
@@ -218,6 +317,7 @@ def short_status(m,channel,uid,name,provider):
         if row is None:return 'No queue. !queueadd <task ID> <1–10>; !queuecancel stops it. Only one task type at a time.'
         _,energy,_=specification(m,row.task);n=row.remaining
         text=f'{row.state.upper()}: {choices(m).get(row.task,row.task)} | {row.total-n}/{row.total} attempts done. '
+        text+=totals_text(m,db,row,short=True)+' '
         if n and row.state in ACTIVE:
             life=m.life_state(db,p)
             text+=f'Finish without recovery: Energy {20+energy*(n-1)}, Nutrition {20+n-1}, Social 20. Now: {life.energy}/{life.nutrition}/{life.social}. '
