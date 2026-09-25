@@ -28,4 +28,4 @@ Players gather and mine materials, manufacture items at matching workstations, i
 - [Deployment reference](docs/reference/deployment.md) documents entry points and configuration semantics.
 - [Market and workstations](docs/reference/market-and-workstations.md) records current prices and access fees.
 
-Repository documentation describes the software; file-copy and branch replacement instructions are distributed separately.
+
