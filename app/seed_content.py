@@ -7,7 +7,9 @@ import json, math
 from pathlib import Path
 
 DATA=json.loads((Path(__file__).parent/'data/seed_catalog.json').read_text())
-ITEMS=DATA['items']; RECIPES=DATA['recipes']; GATHER=DATA['gather']
+ITEMS=DATA['items']; RECIPES=DATA['recipes']; GATHER={k:dict(v) for k,v in DATA['gather'].items()}
+# Gameplay classification: coal is mined; the imported catalog stays historical.
+GATHER['sd_183031416']['branch']='ore_mining'
 MAIN={'SK_FARMING':'cultivation','SK_HARVESTING':'extraction','SK_ENGINEERING':'infrastructure',
       'SK_PROCESSING':'environmental','SK_CRAFTING':'fabrication','SK_COOKING':'cooking','SK_MEDICINE':'medicine','SK_EMERGENCY_RESPONSE':'emergency'}
 BRANCHES={
@@ -117,6 +119,7 @@ def preview(m,db,p,key):
     lines=[f"🛠️ {r['name']}", '', 'ONE BATCH',m.requirement_text(r['outputs']), '', 'MATERIALS']
     lines += [f"• {item_label(k)}: {m.material_amount(db,p,k)}/{v}\n  Get it: {source_hint(k)}" for k,v in r['inputs'].items()] or ['• No ingredients; extraction uses your work cooldown.']
     lines += ['',f"SKILL · {skill_name(req)} Lv.{required_level(r)} · Yours: {level_for(m,db,p,req)}",cp.unlock_text(m,db,p,key), '', 'Use /make and select this recipe to craft one batch.', 'Use /gather for natural materials; /catalog to look up ingredients.']
+    if any(k in GATHER and GATHER[k]['branch']=='ore_mining' for k in r['outputs']):lines+=['MINING · Uses your work success chance. Failure gives 1 Stone Dust instead of ore.']
     if any(k in cp.RARE for k in r['outputs']):lines+=['RARE EXTRACTION · '+cp.rare_hint(next(k for k in r['outputs'] if k in cp.RARE))]
     return '\n'.join(lines)
 
@@ -136,6 +139,11 @@ def craft(m,db,p,key,provider):
         return '🛑 Materials needed\n'+ '\n'.join('• '+s for s in missing)+'\nHOW TO GET THEM\n'+'\n'.join(hints)
     wait=m.check_cooldown(db,p,'seed_work')
     if wait:return f'⏳ The workshop will be ready in {wait}s. Nothing spent.'
+    mining_detail=''
+    if any(k in GATHER and GATHER[k]['branch']=='ore_mining' for k in r['outputs']):
+        success,mining_detail=cp.mining_roll(m,db,p,provider)
+        if not success:return cp.mining_failure(m,db,p,provider,mining_detail)
+        m.determination_clear(db,p,'extraction')
     owned=stock(m,db,p)
     workshop_bonus=int(any(owned.get(machine,0)>0 and key in recipes for machine,recipes in MACHINE_RECIPES.items()))
     for k,v in r['inputs'].items():m.material_change(db,p,k,-v)
@@ -153,7 +161,7 @@ def craft(m,db,p,key,provider):
     p.actions+=1;p.successes+=1;m.craft_record(db,p,key);db.commit()
     return ('✅ CRAFTING COMPLETE\n\nOUTPUT\n'+ '\n'.join(f"• {item_label(k)} ×{v}" for k,v in r['outputs'].items())+
       '\n\nUSED\n'+(m.requirement_text(r['inputs']) or 'No ingredients')+'\n\nPRACTICE\n'+', '.join(xp)+
-      '\n\nWorkshop: '+station(r)+(' · Owned workstation: +1 practice per trained skill included.' if workshop_bonus else '')+'\n−2 Energy · −1 Nutrition · −1 Comfort')
+      '\n\nWorkshop: '+station(r)+(' · Owned workstation: +1 practice per trained skill included.' if workshop_bonus else '')+'\n−2 Energy · −1 Nutrition · −1 Comfort'+mining_detail)
 
 def gather(m,db,p,key,provider):
     if key not in GATHER:return '🛑 Choose a natural resource from /gather. Manufactured parts must be crafted.'
@@ -163,9 +171,14 @@ def gather(m,db,p,key,provider):
     if blocked:return blocked
     wait=m.check_cooldown(db,p,'seed_work')
     if wait:return f'⏳ Gathering will be ready in {wait}s. Nothing spent.'
+    detail=''
+    if GATHER[key]['branch']=='ore_mining':
+        success,detail=cp.mining_roll(m,db,p,provider)
+        if not success:return cp.mining_failure(m,db,p,provider,detail)
+        m.determination_clear(db,p,'extraction')
     cfg=GATHER[key];m.material_change(db,p,key,cfg['amount']);xp=m.gain_skill(p,'extraction',1);m.gain_branch(db,p,cfg['branch'],xp)
     m.spend_life_for_action(life,'make');p.actions+=1;p.successes+=1;db.commit()
-    return f"✅ GATHERING COMPLETE\n\nOUTPUT\n• {ITEMS[key]['name']} ×{cfg['amount']}\n\nPRACTICE\n+{xp} Harvesting and {cfg['branch'].replace('_',' ').title()} XP\n−2 Energy · −1 Nutrition · −1 Comfort"
+    return f"✅ GATHERING COMPLETE\n\nOUTPUT\n• {ITEMS[key]['name']} ×{cfg['amount']}\n\nPRACTICE\n+{xp} Harvesting and {cfg['branch'].replace('_',' ').title()} XP\n−2 Energy · −1 Nutrition · −1 Comfort"+detail
 
 # New Eridian adaptations: one primary category per obtainable item.
 CATEGORIES={
