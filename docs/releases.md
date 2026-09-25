@@ -46,3 +46,17 @@ All existing regression tests remain present. The catalog JSON and historical Di
 `app/main.py` remains large; this cleanup resolves source ownership and file organization, not every possible architectural refactor. Live Railway, Discord, Twitch and PostgreSQL deployment behavior have not been exercised here. Automated validation details are recorded separately.[^1]
 
 [^1]: [Validation record](testing/validation.md) and [raw test results](testing/results.txt).
+
+## Compact Discord messages
+
+Discord responses now open as compact cards with outcome, rewards, needs and
+blockers ahead of background information. Queue cards summarize attempts,
+successes, failures, prospecting steps, actual item totals and needs required
+to finish. Empty item sections and repeated instruction sheets no longer fill
+the overview. New Eridian remains the society name.
+
+Long responses retain their complete command text in small Details pages.
+Browsing is private and read-only; it never reruns a command. On private cards,
+Previous, Next and Overview update the same message. Public cards open a private
+copy so another player's view is not changed. Completion alerts still @mention
+the player in the game channel and now use the same compact card styling.
