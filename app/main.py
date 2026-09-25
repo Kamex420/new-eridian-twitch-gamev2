@@ -11,6 +11,8 @@ import sys
 import os, random, secrets, string, math, re, hashlib, json, urllib.request
 from datetime import datetime, timezone, timedelta
 from fastapi import FastAPI, HTTPException, Request, BackgroundTasks
+from starlette.concurrency import run_in_threadpool
+from . import discord_deferred
 from fastapi.responses import PlainTextResponse, HTMLResponse
 from sqlalchemy import create_engine, Column, Integer, String, DateTime, Boolean, UniqueConstraint, select, inspect, text as sql_text
 from sqlalchemy.orm import declarative_base, sessionmaker
@@ -6954,9 +6956,15 @@ async def discord_interactions(request: Request, background_tasks: BackgroundTas
             message_type="moderator"
         )
 
+    if command in {'mine','queue'}:
+        if not payload.get('application_id') or not payload.get('token'):
+            return _discord_json_message('Discord response details were missing. Please run the command again.',ephemeral=True)
+        background_tasks.add_task(discord_deferred.finish,sys.modules[__name__],payload,command,uid,name,options)
+        return {'type':5,'data':{'flags':64}}
+
     origin_token=task_queue.queue_notifications.origin_channel.set(str(payload.get('channel_id') or ''))
     try:
-        result = _discord_call_internal(command, uid, name, options, interaction_id)
+        result = await run_in_threadpool(_discord_call_internal, command, uid, name, options, interaction_id)
     except Exception as exc:
         # Keep the public Discord response clean; Railway logs will contain the traceback.
         print("Discord command error:", command, repr(exc))
