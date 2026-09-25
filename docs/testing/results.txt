@@ -1,3 +1,4 @@
+PREVIOUS FULL SUITE
 ........................................................................ [ 12%]
 ........................................................................ [ 25%]
 ........................................................................ [ 37%]
@@ -14,3 +15,12 @@
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
 576 passed, 1 warning in 75.11s (0:01:15)
 
+DISCORD TIMING FIX — FOCUSED CHECKS
+..................................................                       [100%]
+=============================== warnings summary ===============================
+../../../../root/.local/lib/python3.12/site-packages/starlette/testclient.py:51
+  /root/.local/lib/python3.12/site-packages/starlette/testclient.py:51: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.
+    _PortalFactoryType = Callable[[], AbstractContextManager[anyio.abc.BlockingPortal]]
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+50 passed, 1 warning in 9.03s
