@@ -5050,6 +5050,8 @@ def action(action:str,channel:str,uid:str,name:str="Citizen",msg:str="",provider
             return out("ℹ️ Nutrition is already full. Your food was kept.")
         advanced=(msg or "").startswith("mode:")
         mode=(msg.split(":",1)[1].split("|",1)[0] if advanced else "")
+        if mode and (action,mode) not in task_yields.YIELDS:
+            return out('Choose a supported option for this task. Nothing was spent.')
         make_prefix="/make" if provider=="discord" else "!make"
         final_products="/make category:final_products" if provider=="discord" else "!make final_products"
         advanced_components="/make category:advanced_components" if provider=="discord" else "!make advanced_components"
@@ -5076,6 +5078,10 @@ def action(action:str,channel:str,uid:str,name:str="Citizen",msg:str="",provider
         life_bonus+=world_bonus;life_notes.extend(world_notes)
         life_before=(life.energy,life.nutrition,life.social)
         spend_life_for_action(life,action)
+        yield_config=task_yields.config(action,mode)
+        if yield_config:
+            usual=3 if action in {'repair','project','explore','survey','machine','work'} else 2
+            life.energy=max(0,life.energy-max(0,yield_config[0]-usual))
         db.commit()
         job_bonus=1 if action in JOBS.get(p.job,("",set()))[1] else 0
         tier_bonus=society_tier(s)[2]
@@ -5106,7 +5112,10 @@ def action(action:str,channel:str,uid:str,name:str="Citizen",msg:str="",provider
             pref=player_preference(db,p)
             modifier_note=(life_modifier_text(provider,life_notes,chance_used[0]) if pref.result_style=="detailed" else concise_action_modifiers(provider,life_notes,chance_used[0],failed=True))
             improvement=failure_fix_text(skill,life_notes,chance_used[0],provider)
-            message=txt+" No task rewards were earned."+grit+injury+exposure+encounter+modifier_note+life_change_summary(life_before,life,provider)+task_readiness_warning(life,provider)+improvement+(" "+auto if auto else "")
+            mining_failure=action in {'mine','scavenge','train_ore_mining'}
+            if mining_failure:material_change(db,p,crafting_progression.STONE_DUST,1);db.commit()
+            reward_note=" No ore was recovered. +1 Stone Dust (crafting ingredient)." if mining_failure else " No task rewards were earned."
+            message=txt+reward_note+grit+injury+exposure+encounter+modifier_note+life_change_summary(life_before,life,provider)+task_readiness_warning(life,provider)+improvement+(" "+auto if auto else "")
             if provider=="discord":message="❌ TASK FAILED\n\nWHY\n"+message.replace(" | ","\n")+"\n\nNEXT\n• Retry after the 5-second work cooldown. Determination improves the next matching attempt."
             log_action(db,channel,c,action,message);return PlainTextResponse(message) if provider=="discord" else out(message)
         def passed(base):
@@ -5145,15 +5154,15 @@ def action(action:str,channel:str,uid:str,name:str="Citizen",msg:str="",provider
         elif action in {"farm","harvest","forage"}:
             if not passed(.68):return fail(f"🌱 {p.display_name} has a rough farming shift.")
             xp_gain=gain_skill(p,"cultivation",xp_gain);p.sc+=2+bonus;p.contribution+=contribution_gain;s.food+=1
-            if action=="harvest":p.crops+=1
+            # Personal harvest quantities are defined by task_yields.
             base=f"🌾 {p.display_name} completes {action_display_name(action,mode)}. +{xp_gain} Farming XP | +{2+bonus} SC | +{contribution_gain} Contribution | New Eridian gains +1 Food."
         elif action in {"water","scan"}:
             if not passed(.68):return fail(f"💧 {p.display_name} cannot stabilize the environmental readings.")
             xp_gain=gain_skill(p,"environmental",xp_gain);p.sc+=2+bonus;p.contribution+=contribution_gain
             if action=="water":
                 hydro=mode=="hydroponics";s.food+=2 if hydro else 1
-                if hydro:p.crops+=1
-                society_gain="+2 Food; +1 personal Crop" if hydro else "+1 Food"
+                # Hydroponic personal output is awarded with the other yields.
+                society_gain="+2 Food" if hydro else "+1 Food"
             else:
                 s.knowledge+=1;society_gain="+1 Knowledge"
             base=f"💧 {p.display_name} completes {action_display_name(action,mode)}. +{xp_gain} Processing XP | +{2+bonus} SC | +{contribution_gain} Contribution | New Eridian gains {society_gain}."
@@ -5257,6 +5266,7 @@ def action(action:str,channel:str,uid:str,name:str="Citizen",msg:str="",provider
         else:raise HTTPException(404,"Unknown action")
         if action=="craft":base=base.replace(" completes craft."," completes craft (-1 Hematite Ore).")
         if action=="delivery":base=base.replace(" completes delivery."," completes delivery (-1 Cargo).")
+        base+=task_yields.apply(sys.modules[__name__],db,p,action,mode)
         if crate_bonus:base+=" Trade Crate: +1 SC included."
         settlement_before=society_tier_index(s)
         shared=colony_state(db,channel)
@@ -5379,7 +5389,7 @@ Comfort and Morale affect success chance but do not hard-block tasks. Recovery a
 /farm action:Irrigate — Processing work that adds society Food.
 /farm action:Hydroponics — Requires a Water Filter and improves Food while producing a Crop.
 /scan — Processing work that adds +1 society Knowledge.
-/mine — Choose an ore and view its requirements, then select Mine. Count starts a queue of 1–10 attempts. Rare ores require three prospecting steps per ore. /queue shows progress, total needs and missing materials; it pauses and resumes automatically.
+/mine — Choose an ore and view its requirements, then select Mine. Count starts a queue of 1–10 attempts. Rare ores require three successful prospecting steps per ore. /queue shows progress, total needs and missing materials; it pauses and resumes automatically.
 /rare — Prospect Argentite Ore. Harvesting Lv.3 required; three actions per ore, with a shared 20-second prospecting cooldown.
 /training — Choose a skill, view branches and inventory requirements, then choose Task to work. Includes Cooking, Medicine and Emergency Response, their jobs, and level unlocks.\n/make — The complete Crafting system. Components, finished supplies, quality gear, Crafting XP, SC, and Development all live here.
 /repair target:Society Infrastructure — Engineering work; adds +1 Development.
@@ -6944,6 +6954,7 @@ async def discord_interactions(request: Request, background_tasks: BackgroundTas
             message_type="moderator"
         )
 
+    origin_token=task_queue.queue_notifications.origin_channel.set(str(payload.get('channel_id') or ''))
     try:
         result = _discord_call_internal(command, uid, name, options, interaction_id)
     except Exception as exc:
@@ -6954,6 +6965,8 @@ async def discord_interactions(request: Request, background_tasks: BackgroundTas
             ephemeral=True,
             message_type=command
         )
+    finally:
+        task_queue.queue_notifications.origin_channel.reset(origin_token)
 
     if result.startswith(("🍽️ FOOD MENU","🎒 ITEM MENU")):
         return _discord_json_message(result,ephemeral=True,message_type=command)
@@ -7036,7 +7049,7 @@ with SessionLocal() as _identity_db:
     _identity_db.commit()
 
 
-from . import task_queue
+from . import task_queue, task_yields
 
 @app.get('/api/v1/queue')
 def queued_tasks(channel:str,uid:str,name:str='Citizen',action:str='view',task:str='',count:str='1',provider:str='twitch'):
@@ -7054,9 +7067,9 @@ def mining(channel:str,uid:str,name:str='Citizen',ore:str='',action:str='view',c
     if action not in {'view','mine'}:return out('Choose View Requirements or Mine. Nothing was spent.')
     if not 1<=count<=10:return out('Count must be from 1 to 10. Nothing was spent.')
     if not ore:
-        lines=['MINING — CHOOSE AN ORE','Select Ore to inspect its requirements, then choose Mine. Count queues up to 10 attempts of that ore.']
+        lines=['MINING — CHOOSE AN ORE OR COAL','Mining can fail: each failure gives 1 Stone Dust instead of ore. Select Ore (including Coal) to inspect its requirements, then choose Mine. Count queues up to 10 attempts of that ore.']
         for k in sorted(task_queue.ores(),key=seed_content.item_label):
-            rule='Harvesting Lv.3; three steps per ore; 3 Energy, 1 Nutrition and 1 Comfort per step; 20-second shared cooldown' if k in crafting_progression.RARE else 'No skill unlock or tools required; 2 Energy, 1 Nutrition and 1 Comfort; 5-second shared gathering cooldown'
+            rule='Harvesting Lv.3; three successful steps per ore; 3 Energy, 1 Nutrition and 1 Comfort per step; 20-second shared cooldown' if k in crafting_progression.RARE else 'No skill unlock or tools required; 2 Energy, 1 Nutrition and 1 Comfort; 5-second shared gathering cooldown'
             lines.append(seed_content.item_label(k)+': '+rule+'.')
         text='\n'.join(lines)
     elif key not in task_queue.ores():text='Choose an ore from /mine. Other natural resources are listed under /gather. Nothing was spent.'
@@ -7064,7 +7077,7 @@ def mining(channel:str,uid:str,name:str='Citizen',ore:str='',action:str='view',c
     else:
         with SessionLocal() as db:
             _,p=player(db,channel,provider,uid,name)
-            rule='Harvesting level 3; three prospecting steps per ore; shared 20-second cooldown. No materials or tools required.\n' if key in crafting_progression.RARE else 'No skill unlock, materials or tools required; shared 5-second gathering cooldown.\n'
+            rule='Harvesting level 3; three successful prospecting steps per ore; failures give 1 Stone Dust and keep progress; shared 20-second cooldown. No materials or tools required.\n' if key in crafting_progression.RARE else 'No skill unlock, materials or tools required; shared 5-second gathering cooldown.\n'
             text=seed_content.item_label(key)+' — MINING REQUIREMENTS\n'+rule+task_queue.requirements(module,db,p,'mine:'+key,count)+'\nSelect Mine to start. Use /queue to check progress or cancel.'
     return platform_response(provider,text,text.replace('\n',' | '))
 
