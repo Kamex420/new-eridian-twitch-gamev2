@@ -1,3 +1,4 @@
+[persistence.md](https://github.com/user-attachments/files/32637443/persistence.md)
 # Persistence and compatibility
 
 Existing table names, player identifiers, route signatures and catalog IDs remain compatibility contracts. Moving Python source files does not rename database tables or reset saves. The database engine still uses `DATABASE_URL` and existing migrations remain additive.[^1]
@@ -11,6 +12,10 @@ The catalog JSON is unchanged by this cleanup. Historical `legacy_discord_option
 ## Queue transactions
 
 One `task_queues_v1` row belongs to a player within a world. Active state stores the exact task, total attempts, remaining attempts, next eligible time and most recent result. A failed attempt counts; a blocked attempt does not.
+
+The additive `task_queue_totals_v1` table stores successes, failures, prospecting-only steps, and JSON maps of item gains and spending. No existing queue columns are changed. Each attempt compares canonical material and quality-equipment inventory inside the same transaction; positive and negative per-attempt changes are accumulated separately. Internal prospecting counters are excluded. These are net inventory changes per attempt, including bonus yields, rather than numbers inferred from message text.
+
+Starting a new queue resets its totals. Cancellation preserves completed totals. Account linking transfers or discards the summary with its corresponding queue. Legacy attempts are not backfilled from the last result, because that result cannot establish earlier outcomes.
 
 The worker binds gameplay sessions to an outer transaction because existing handlers commit internally. Gameplay effects and the queue counter then commit together. PostgreSQL row locks serialize attempts for a player; SQLite uses `BEGIN IMMEDIATE`. A simulated failure after a handler's internal commit verifies that inventory, needs, cooldowns and queue progress roll back together.[^3]
 
