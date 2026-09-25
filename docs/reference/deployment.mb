@@ -40,3 +40,11 @@ Twitch notifications require `TWITCH_CLIENT_ID`, `TWITCH_BOT_USER_ID`, `TWITCH_B
 The command registrar publishes the revised option labels during normal container startup. Schema additions create separate queue destination and notification tables; they do not rewrite player inventories.
 
 References: [Discord message creation and allowed mentions](https://docs.discord.com/developers/resources/message), [Twitch chat delivery](https://dev.twitch.tv/docs/chat/send-receive-messages).
+
+## Interaction response timing
+
+Discord requires an initial response within three seconds. `/mine` and `/queue` return a deferred response immediately after signature and access validation, then update the original response using the request-local interaction token. The token is not persisted. Discord allows interaction-token responses for fifteen minutes.[^discord-timing]
+
+Deferral operates only after the request reaches the running app. Startup failures, missing uploaded modules, sleeping hosts or an unreachable interaction endpoint still require deployment diagnosis. An in-flight deferred command is not durable across process termination; persistent queues already committed to the database still resume normally.
+
+[^discord-timing]: [Discord interaction response documentation](https://github.com/discord/discord-api-docs/blob/main/developers/interactions/receiving-and-responding.mdx).
