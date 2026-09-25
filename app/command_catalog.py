@@ -1,5 +1,4 @@
 
-
 """Shared Discord command catalog: registration and runtime validation use this file."""
 
 def cmd(name, description, options=None):
@@ -383,3 +382,16 @@ for command in commands:
 for command in commands:
     if command['name']=='seedindustries':
         next(o for o in command['options'] if o['name']=='action')['choices'].append({'name':'Starter Routes by Branch','value':'starters'})
+
+
+for command in commands:
+    if command['name']=='mine':
+        command['description']='Choose an ore, inspect its requirements, and queue up to 10 mining attempts'
+        command['options']=[
+            {'type':STRING,'name':'ore','description':'Ore to mine; select View Requirements before starting','required':False,'autocomplete':True},
+            {'type':STRING,'name':'action','description':'Viewing requirements spends nothing','required':False,'choices':[{'name':'View Requirements','value':'view'},{'name':'Mine','value':'mine'}]},
+            {'type':4,'name':'count','description':'Attempts (1–10); rare ores need three prospecting attempts per ore','required':False,'min_value':1,'max_value':10}]
+commands.append(cmd('queue','View, start or cancel one task queue; maximum 10 attempts of one task type',[
+    {'type':STRING,'name':'action','description':'Queue automatically pauses and resumes as requirements change','required':False,'choices':[{'name':'View','value':'view'},{'name':'Start','value':'start'},{'name':'Cancel','value':'cancel'}]},
+    {'type':STRING,'name':'task','description':'One task type, resource or recipe for the entire queue','required':False,'autocomplete':True},
+    {'type':4,'name':'count','description':'Number of attempts, including failures; blocked attempts do not count','required':False,'min_value':1,'max_value':10}]))

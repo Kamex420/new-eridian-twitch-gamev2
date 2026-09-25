@@ -1,6 +1,0 @@
-FROM python:3.12-slim
-WORKDIR /installer
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-COPY register_discord_commands.py .
-CMD ["python", "register_discord_commands.py"]

@@ -1,4 +1,3 @@
-
 """New Eridian workshop access, personal recipe tiers and starter supply prices.
 
 Community access is a permanent permit for ONE named station, not free access
@@ -119,7 +118,7 @@ def rare_gather(m,db,p,key,provider='discord',workshop_bonus=0):
     life=m.life_state(db,p);blocked=m.task_need_gate(db,p,'make',provider,life)
     if blocked:return blocked
     wait=m.check_cooldown(db,p,'rare_prospect')
-    if wait:return f'⏳ Prospecting ready in {wait}s. Nothing spent.'
+    if wait:return f'⏳ Prospecting will be ready in {wait}s. Nothing spent.'
     progress_key='prospect:'+key;progress=m.material_amount(db,p,progress_key)+1
     complete=progress>=RARE_STEPS
     m.material_change(db,p,progress_key,-m.material_amount(db,p,progress_key))
