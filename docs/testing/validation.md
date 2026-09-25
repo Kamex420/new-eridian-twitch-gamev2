@@ -27,3 +27,12 @@ The registrar dry run emits 49 command definitions. Python compilation and white
 Tests used temporary SQLite databases. The source-only subprocess check verifies the Dockerfile's Python import boundary, not a built container image. A Docker image build, live PostgreSQL concurrency, Railway deployment and live Discord/Twitch delivery were not exercised. Notification HTTP calls were mocked; tests did not send real messages. A local test pass therefore establishes repository consistency, not a claim that production was deployed or validated.
 
 The catalog and migration fixtures are preserved evidence. The current option contract is stored separately in `tests/contracts/discord_options.json`; historical fixtures are not rewritten to match new behavior.
+
+## Compact message validation
+
+Full suite: 584 passed. The final navigation test file passed all 7 tests,
+including two added checks for expiration and signed component routing.
+One existing Starlette/AnyIO deprecation warning remains. Outbound messaging
+is mocked; no live Discord or Railway deployment was tested. Tests verify
+complete long-response preservation, compact queue totals and forecasts,
+private read-only navigation, expired views and short replies without buttons.
