@@ -69,3 +69,12 @@ Common ores, Coal and rare prospecting now roll the same intrinsic and situation
 A failed mining attempt awards one existing Stone Dust item, gives no ore or prospecting progress, spends the normal needs cost, starts the normal cooldown and consumes one queued attempt. It adds Determination and grants no success XP. Existing rare-ore progress is kept. Blocked attempts and cooldown waits grant no Stone Dust and spend no attempt. Stone Dust remains a catalog crafting ingredient with its existing recipes and item identity.
 
 The same rule applies to extraction-machine recipes and legacy mining/training routes; machine recipes retain their successful batch sizes. Non-mining gathering and manufacturing recipes retain their existing rules. Queue results and completion mentions include Stone Dust totals. Rare steps that make progress without an ore remain separately reported as prospecting progress, alongside recovered-ore successes and failed rolls.
+
+### Reading Discord cards
+
+Cards show a compact overview. Select **Details** for the complete response,
+then **Next**, **Previous** or **Overview** to navigate. Detail pages are private
+and available for 24 hours. Run the command again to refresh changing information.
+Queue needs use **current / needed to finish**, not current / maximum. The
+forecast excludes other actions, incidents and passive recovery. Full material
+sources, workstation requirements and mining rules remain in Details.
