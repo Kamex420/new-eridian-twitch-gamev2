@@ -1,6 +1,5 @@
 
 
-
 """Versioned SEED content and explicit New Eridian gameplay adaptations.
 Inventory IDs are namespaced; old materials, XP and account links are untouched.
 """
@@ -65,7 +64,8 @@ ACQUISITION=acquisition_routes()
 
 def source_hint(key,provider='discord'):
     if key in GATHER:
-        command=f'/gather resource:{item_label(key)}' if provider=='discord' else f'!gather {key}'
+        is_ore=GATHER[key]['branch']=='ore_mining'
+        command=(f'/mine ore:{item_label(key)} action:Mine' if is_ore else f'/gather resource:{item_label(key)}') if provider=='discord' else (f'!mine {key} 1' if is_ore else f'!gather {key}')
         from . import crafting_progression as cp
         return f"{command} → {GATHER[key]['amount']} per action; no ingredients or skill unlock." if key not in cp.RARE else command+' → '+cp.rare_hint(key)
     rid=ACQUISITION.get(key)
@@ -98,11 +98,11 @@ def acquisition_plan(key,amount=1):
     return base,steps
 
 def gather_menu(page=1,provider='discord'):
-    rows=filtered_keys(gather_only=True)
+    rows=[k for k in filtered_keys(gather_only=True) if GATHER[k]['branch']!='ore_mining']
     size=8 if provider=='discord' else 3
     pages=max(1,math.ceil(len(rows)/size));page=max(1,min(int(page),pages))
     lines=[f'🌿 GATHER MATERIALS · {page}/{pages} · {len(rows)} resources',
-           'Common resources: no ingredients or skill unlock. Rare ores: Harvesting Lv.3; 3 actions per ore.' if provider=='discord' else 'Common: 1/action. Rare: Lv3, 3 actions/ore.']
+           'No ingredients or skill unlock required. For ores, use /mine.' if provider=='discord' else '1 per action. Use !mine for ores.']
     for key in rows[(page-1)*size:page*size]:
         lines.append(f"• {item_label(key)} ×{GATHER[key]['amount']}"+(f' ({key})' if provider!='discord' else ''))
     lines += (['Select Resource and type its name. Change Page to see every resource.',
@@ -135,7 +135,7 @@ def craft(m,db,p,key,provider):
         hints=[f'• {item_label(k)}: {source_hint(k,provider)}' for k,n in r['inputs'].items() if m.material_amount(db,p,k)<n]
         return '🛑 Materials needed\n'+ '\n'.join('• '+s for s in missing)+'\nHOW TO GET THEM\n'+'\n'.join(hints)
     wait=m.check_cooldown(db,p,'seed_work')
-    if wait:return f'⏳ Workshop ready in {wait}s. Nothing spent.'
+    if wait:return f'⏳ The workshop will be ready in {wait}s. Nothing spent.'
     owned=stock(m,db,p)
     workshop_bonus=int(any(owned.get(machine,0)>0 and key in recipes for machine,recipes in MACHINE_RECIPES.items()))
     for k,v in r['inputs'].items():m.material_change(db,p,k,-v)
@@ -162,7 +162,7 @@ def gather(m,db,p,key,provider):
     life=m.life_state(db,p);blocked=m.task_need_gate(db,p,'make',provider,life)
     if blocked:return blocked
     wait=m.check_cooldown(db,p,'seed_work')
-    if wait:return f'⏳ Gathering ready in {wait}s. Nothing spent.'
+    if wait:return f'⏳ Gathering will be ready in {wait}s. Nothing spent.'
     cfg=GATHER[key];m.material_change(db,p,key,cfg['amount']);xp=m.gain_skill(p,'extraction',1);m.gain_branch(db,p,cfg['branch'],xp)
     m.spend_life_for_action(life,'make');p.actions+=1;p.successes+=1;db.commit()
     return f"✅ GATHERING COMPLETE\n\nOUTPUT\n• {ITEMS[key]['name']} ×{cfg['amount']}\n\nPRACTICE\n+{xp} Harvesting and {cfg['branch'].replace('_',' ').title()} XP\n−2 Energy · −1 Nutrition · −1 Comfort"
@@ -316,6 +316,7 @@ def catalog(m,db,p,item='',page=1,owned=False,category=''):
 
 def choices(m,db,p,query='',gather_only=False,category='',owned=False,usable=False):
     inv=stock(m,db,p);keys=filtered_keys(category,owned,inv,gather_only)
+    if gather_only:keys=[k for k in keys if GATHER[k]['branch']!='ore_mining']
     if usable:keys=[k for k in keys if PURPOSE[k]['mode'] not in {'ingredient','workshop'}]
     return [(f"{item_label(k)} ×{inv.get(k,0)}"+((' — '+PURPOSE[k]['label']) if usable else ''),k) for k in keys]
 
@@ -324,7 +325,7 @@ def use_menu(m,db,p,category='',page=1):
     pages=max(1,math.ceil(len(keys)/6));page=max(1,min(int(page),pages))
     lines=[f'🎒 ITEM MENU — Uses · {page}/{pages}',f'{len(keys)} owned usable item types','']
     for key in keys[(page-1)*6:page*6]:lines += [f"• {ITEMS[key]['name']} ×{inv[key]}",PURPOSE[key]['label']]
-    if not keys:lines+=['No usable items owned in this category.']
+    if not keys:lines+=['You do not own any usable items in this category.']
     return '\n'.join(lines+['','Select Category to filter; change Page to see every item. Select Item to use it.','Ingredients are used by /make. Owned machines improve matching recipe practice automatically.'])
 
 def use(m,db,p,key,provider):
@@ -367,4 +368,4 @@ def use(m,db,p,key,provider):
         m.society(db,p.channel_id).knowledge+=1;xp=m.gain_skill(p,'research',1);changes += ['+1 society Knowledge',f'+{xp} Research XP']
     if work:m.spend_life_for_action(life,'make');changes+=['−2 Energy · −1 Nutrition · −1 Comfort']
     p.actions+=1;p.successes+=1;db.commit()
-    return '\n'.join([f'✅ {name} — Complete','','RESULT',*['• '+x for x in changes],'','USED',m.requirement_text(cost) if cost else 'No items consumed.',*(['Selected durable item kept.'] if not cfg['consume'] else [])])
+    return '\n'.join([f'✅ {name} — Complete','','RESULT',*['• '+x for x in changes],'','USED',m.requirement_text(cost) if cost else 'No items were consumed.',*(['The selected durable item was kept.'] if not cfg['consume'] else [])])
