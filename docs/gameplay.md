@@ -1,4 +1,3 @@
-
 # Gameplay reference
 
 ## Mining and gathering
