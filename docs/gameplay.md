@@ -1,4 +1,4 @@
-# Gameplay reference
+[gameplay.md](https://github.com/user-attachments/files/32637407/gameplay.md)[Uploading g# Gameplay reference
 
 ## Mining and gathering
 
@@ -20,6 +20,8 @@ Energy, Nutrition and Social must each be at least 20 before an attempt. Comfort
 
 A queue contains one exact task/resource/recipe and at most ten attempts. Starting a second active queue is rejected even when its task matches. Failed attempts count; attempts blocked by needs, materials, ownership, skill, tier, workstation access or cooldown do not. Paused queues resume automatically after their requirements are met.
 
+Queue results show successes, failures, total items gained and total items used. A success uses the actual recipe or gathering yield; bonus items are included. Rare prospecting steps without ore are progress, not failures. The totals describe inventory changes already applied during each attempt, so viewing the queue never awards items twice. For queues begun before outcome tracking was installed, earlier attempts are marked as unrecorded.
+
 | Ten attempts | Base needs spent | Starting needs sufficient without recovery |
 | --- | --- | --- |
 | Common ore or ordinary crafting | 20 Energy, 10 Nutrition, 10 Comfort | 38 Energy, 29 Nutrition, 20 Social |
@@ -31,3 +33,4 @@ Queue status is private in Discord. Progress persists through restarts. The work
 
 [^1]: Rare prospecting: [`app/crafting_progression.py`](../app/crafting_progression.py).
 [^2]: Acquisition graph and execution: [`app/seed_content.py`](../app/seed_content.py). Queue rules: [`app/task_queue.py`](../app/task_queue.py).
+ameplay.md…]()
