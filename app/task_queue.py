@@ -6,7 +6,7 @@ from datetime import timedelta
 from sqlalchemy import Column,String,Integer,DateTime,Text,select
 from sqlalchemy.orm import Session
 from .db import Base
-from . import seed_content as s, crafting_progression as cp
+from . import seed_content as s, crafting_progression as cp, task_yields, queue_notifications
 
 class TaskQueue(Base):
     """One saved task per canonical citizen and world; remaining counts attempts.
@@ -80,7 +80,7 @@ def totals_text(m, db, row, short=False):
     if not short:
         text += '\n\nTOTAL ITEMS USED\n' + listing(used)
         if row.task.split(':', 1)[-1] in cp.RARE:
-            text += '\nRare ore requires three prospecting steps per ore. Saved progress carries over.'
+            text += '\nRare ore requires three successful prospecting steps per ore. Saved progress carries over.'
         if unknown:
             text += '\nTotals cover only attempts recorded after this update; existing inventory is unchanged.'
     return text
@@ -89,6 +89,7 @@ def totals_text(m, db, row, short=False):
 actor_context=ContextVar('queue_actor',default=None)
 connection_context=ContextVar('queue_transaction',default=None)
 ACTIVE={'running','paused'}
+ATTEMPT_SECONDS=10
 
 def ores():return {k for k,v in s.GATHER.items() if v['branch']=='ore_mining'}
 
@@ -97,6 +98,7 @@ def choices(m):
     result.update({f'gather:{k}':'Gather '+s.item_label(k) for k in sorted(s.GATHER) if k not in ores()})
     # Monetary investments, social targets and recovery are deliberately manual.
     result.update({f'work:{k}':m.action_display_name(k) for k in m.ACTION_SKILLS if k not in {'businessinvest','hi','hangout','mentor','duo','mine','rare','scavenge'}})
+    result.update({f'work:{a}@{mode}':m.action_display_name(a,mode) for a,mode in task_yields.YIELDS if mode})
     result.update({f'make:{k}':'Make '+r['name'] for k,r in s.RECIPES.items()})
     result.update({f'make:{k}':'Make '+m.craft_item_name(k) for k in (*m.PART_RECIPES,*m.RECIPES,*m.QUALITY_RECIPES) if k not in m.item_identity.RETIRED_RECIPES})
     return result
@@ -120,7 +122,12 @@ def specification(m,task):
         if target in m.SEED_TASKS:cost=m.SEED_TASKS[target]['cost']
         elif target=='craft':cost={'ore':1}
         elif target=='delivery':cost={'cargo':1}
-    return cost,energy,cooldown
+    if kind=='work':
+        action,mode=task_yields.split(target)
+        cfg=task_yields.config(action,mode)
+        if cfg:energy=cfg[0]
+        if mode=='expedite':cost={'power_cell':1}
+    return cost,energy,max(ATTEMPT_SECONDS,cooldown)
 
 def requirements(m,db,p,task,count):
     costs,energy,_=specification(m,task);life=m.life_state(db,p)
@@ -147,18 +154,24 @@ def requirements(m,db,p,task,count):
     if kind=='work' and target in m.SEED_TASKS:
         cfg=m.SEED_TASKS[target]
         lines.append(f"Requires {m.SKILL_LABELS[cfg['skill']]} level {cfg['unlock']}. Use /training to see the task's skill and workstation requirements.")
-    if target in cp.RARE:lines.append('Requires Harvesting level 3. Each queued attempt is one prospecting step; three steps produce one ore.')
+    if kind=='work':
+        action,mode=task_yields.split(target)
+        detail=task_yields.requirements(m,action,mode)
+        if detail:lines.append(detail)
+    if kind in {'mine','gather'} and target in ores():lines.append('Mining uses your work success chance. Failure spends needs and one attempt, gives 1 Stone Dust, and gives no ore.')
+    if target in cp.RARE:lines.append('Requires Harvesting level 3. Each queued attempt is one prospecting step; three successful steps produce one ore. Failed attempts give 1 Stone Dust and keep saved progress.')
     lines.append('These are task costs, excluding other activities, passive recovery and incident effects. Failed attempts count; blocked attempts do not.')
     return '\n'.join(lines)
 
 def status(m,db,p,row):
     if row is None:return 'You have no task queue. Use /queue action:Start, choose Task, and set Count from 1 to 10. Only one task type can be queued at a time.'
     name=choices(m).get(row.task,row.task)
-    text=f'TASK QUEUE — {row.state.upper()}\n{name}\nAttempts completed: {row.total-row.remaining}/{row.total}; remaining: {row.remaining}.\nOnly one task type can be queued at a time; maximum 10 attempts.'
+    text=f'TASK QUEUE — {row.state.upper()}\n{name}\nAttempts completed: {row.total-row.remaining}/{row.total}; remaining: {row.remaining}.\nOnly one task type can be queued at a time; maximum 10 attempts.\nThe worker checks your task every 10 seconds, even when nobody sends a message. Longer task cooldowns still apply.'
     text+='\n'+totals_text(m,db,row)
     if row.state=='paused':text+='\n\nPAUSE REASON\n'+row.result
     if row.remaining and row.state in ACTIVE:
         text+='\n\n'+requirements(m,db,p,row.task,row.remaining)+'\n\nThe queue resumes automatically when needs and requirements are met. Use /sleep, /eat or /games to recover faster; /queue action:Cancel stops the remaining attempts.'
+    text+='\n'+queue_notifications.delivery_status(db,row)
     return text
 
 @contextmanager
@@ -193,7 +206,8 @@ def control(m,channel,uid,name,provider,action='view',task='',count=1):
             db.add(QueueTotals(channel_id=channel,canonical_uid=p.twitch_uid))
             if row is None:
                 row=TaskQueue(channel_id=channel,canonical_uid=p.twitch_uid);db.add(row)
-            row.task=task;row.total=count;row.remaining=count;row.state='running';row.result='Waiting for the first attempt.';row.next_at=m.now()+timedelta(seconds=2)
+            row.task=task;row.total=count;row.remaining=count;row.state='running';row.result='Waiting for the first attempt.';row.next_at=m.now()+timedelta(seconds=ATTEMPT_SECONDS)
+            queue_notifications.start(m,db,p,provider,uid)
         elif action=='cancel':
             if row and row.state in ACTIVE:row.state='cancelled';row.result='Remaining attempts cancelled. Completed work was kept.'
         elif action!='view':return 'Choose View, Start or Cancel. No queue was changed.'
@@ -213,6 +227,7 @@ def run_one(m,channel,uid):
                 if not p or not row or row.state not in ACTIVE or m.as_utc(row.next_at)>m.now():conn.rollback();return
                 if row.task not in choices(m):
                     row.state='cancelled';row.result='This task is no longer available. Choose a new task.';db.commit();conn.commit();return
+                cp.mining_outcome.set(None)
                 before=p.actions;success_before=p.successes
                 stock_before=inventory_snapshot(m,db,p)
                 kind,target=row.task.split(':',1)
@@ -223,7 +238,9 @@ def run_one(m,channel,uid):
                     actor_token=actor_context.set((channel,uid))
                     try:
                         if kind=='make':result=m.make(channel,uid,p.display_name,target,'discord').body.decode()
-                        else:result=m.action(target,channel,uid,p.display_name,provider='discord').body.decode()
+                        else:
+                            action,mode=task_yields.split(target)
+                            result=m.action(action,channel,uid,p.display_name,msg='mode:'+mode if mode else '',provider='discord').body.decode()
                     finally:actor_context.reset(actor_token)
                 db.refresh(p)
                 attempted=p.actions>before
@@ -237,7 +254,7 @@ def run_one(m,channel,uid):
                     rare_target = target if target in cp.RARE else next(
                         (k for k in s.RECIPES.get(target,{}).get('outputs',{}) if k in cp.RARE), None)
                     if p.successes>success_before:totals.succeeded+=1
-                    elif rare_target:totals.progress+=1
+                    elif rare_target and cp.mining_outcome.get()!='failed':totals.progress+=1
                     else:totals.failed+=1
                     # Nested handlers may update inventory in another Session.
                     db.flush();db.expire_all()
@@ -251,7 +268,10 @@ def run_one(m,channel,uid):
                 row.state='completed' if row.remaining==0 else ('running' if attempted or 'ready in' in result.lower() else 'paused')
                 row.result=result[:1600]
                 _,_,cooldown=specification(m,row.task)
-                row.next_at=m.now()+timedelta(seconds=cooldown if attempted else 5)
+                row.next_at=m.now()+timedelta(seconds=ATTEMPT_SECONDS)
+                if row.state=='completed':
+                    db.flush()
+                    queue_notifications.complete(m,db,p,row,totals_text(m,db,row))
                 db.commit()
             conn.commit()
         except BaseException:
@@ -273,6 +293,7 @@ def install(m):
     m.SessionLocal=session_factory
     TaskQueue.__table__.create(m.engine,checkfirst=True)
     QueueTotals.__table__.create(m.engine,checkfirst=True)
+    queue_notifications.install(m)
     async def loop():
         stop=m.app.state.queue_stop
         while not stop.is_set():
@@ -294,6 +315,7 @@ def install(m):
 def merge_accounts(m,db,channel,source_uid,target_uid):
     source=db.get(TaskQueue,(channel,source_uid));target=db.get(TaskQueue,(channel,target_uid))
     if source is None:return
+    queue_notifications.merge(db,channel,source_uid,target_uid,target is None or (source.state in ACTIVE and target.state not in ACTIVE))
     source_totals=db.get(QueueTotals,(channel,source_uid))
     target_totals=db.get(QueueTotals,(channel,target_uid))
     keep_source=target is None or (source.state in ACTIVE and target.state not in ACTIVE)
