@@ -1,0 +1,30 @@
+# Deployment reference
+
+| Concern | Current contract |
+| --- | --- |
+| ASGI object | `app.main:app` |
+| Container build | Root `Dockerfile`; Python 3.12 image |
+| Startup registration | `scripts.register_discord_commands` module |
+| Health check | `/health` |
+| Port | `PORT`, with container fallback 8000 |
+| Persistence | `DATABASE_URL`; default local SQLite for development |
+| Queue worker | FastAPI startup/shutdown lifecycle; no separate worker service |
+| Registrar catalog | `app/command_catalog.py`; 49 command definitions |
+| Twitch definitions | `integrations/twitch/commands.csv` and `chat_commands.txt` |
+
+The Docker startup attempts command registration before starting Uvicorn. A registration failure is logged and does not prevent the HTTP service from starting. The registrar's dry-run mode emits the current catalog without modifying Discord or initializing the game database.
+
+## Environment semantics
+
+`DISCORD_APPLICATION_ID`, `DISCORD_BOT_TOKEN` and `DISCORD_GUILD_ID` identify the server command-registration target. `DISCORD_PUBLIC_KEY` verifies interactions. `DISCORD_WORLD_ID` associates Discord players with their saved world; Twitch command definitions carry the corresponding channel/world parameter. Changing that association can make existing progress appear to be missing even though its database rows remain intact.
+
+`DISCORD_OWNER_USER_IDS` and `DISCORD_MOD_ROLE_IDS` control existing privileged functions. `ADMIN_KEY` protects existing administrative endpoints. These values are environment configuration, not repository content. The game title defaults to New Eridian v2 and the society name to New Eridian.
+
+The complete environment reads remain in application source. This reference records the deployment-critical subset rather than inventing new defaults.[^1]
+
+## Build and rollback boundary
+
+Only `requirements.txt`, `app/` and `scripts/` are runtime image inputs. Test fixtures, documentation and chat definitions are excluded from the image. The source move introduces no destructive database migration; earlier item-conversion rollback limitations still apply.[^2]
+
+[^1]: [`app/main.py`](../../app/main.py), [`app/db.py`](../../app/db.py), and [`scripts/register_discord_commands.py`](../../scripts/register_discord_commands.py).
+[^2]: [Persistence and rollback semantics](../persistence.md).
