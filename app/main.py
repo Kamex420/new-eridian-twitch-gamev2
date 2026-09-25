@@ -12,7 +12,7 @@ import os, random, secrets, string, math, re, hashlib, json, urllib.request
 from datetime import datetime, timezone, timedelta
 from fastapi import FastAPI, HTTPException, Request, BackgroundTasks
 from starlette.concurrency import run_in_threadpool
-from . import discord_deferred
+from . import discord_deferred, message_layout
 from fastapi.responses import PlainTextResponse, HTMLResponse
 from sqlalchemy import create_engine, Column, Integer, String, DateTime, Boolean, UniqueConstraint, select, inspect, text as sql_text
 from sqlalchemy.orm import declarative_base, sessionmaker
@@ -6035,11 +6035,9 @@ def _discord_send_ephemeral_followup(application_id: str, interaction_token: str
     if not application_id or not interaction_token or not private_text:
         return
     url=f"https://discord.com/api/v10/webhooks/{application_id}/{interaction_token}"
-    payload={
-        "embeds":[_discord_private_details_embed(private_text,command)],
-        "flags":64,
-        "allowed_mentions":{"parse":[]},
-    }
+    payload=message_layout.render(sys.modules[__name__],
+        _discord_private_details_embed(private_text,command),private_text)
+    payload["flags"]=64
     try:
         request=urllib.request.Request(
             url,
@@ -6181,7 +6179,7 @@ def _discord_json_message(content: str, ephemeral: bool = False, message_type: s
     if omitted:
         kept.append({"name":"More detail", "value":"This view is long. Choose a specific section, crafting category, or handbook topic to see its full details.", "inline":False})
     embed["fields"]=kept
-    data={"embeds":[embed]}
+    data=message_layout.render(sys.modules[__name__],embed,content)
     if ephemeral:
         data["flags"]=64
     return {"type":4,"data":data}
@@ -6922,6 +6920,11 @@ async def discord_interactions(request: Request, background_tasks: BackgroundTas
         if not _discord_allowed_channel(payload):
             return {"type":8,"data":{"choices":[]}}
         return _discord_autocomplete(payload)
+
+    if payload.get("type") == 3:
+        if not _discord_allowed_channel(payload):
+            return {"type":4,"data":{"content":"Use the designated game channel.","flags":64}}
+        return await run_in_threadpool(message_layout.open_page,sys.modules[__name__],payload)
 
     # Application command.
     if payload.get("type") != 2:
