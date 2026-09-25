@@ -214,7 +214,7 @@ def test_twitch_task_discovery_and_requirements():
     r=client.get('/api/v1/queue-tasks',params={'query':'Hematite'})
     assert 'mine:'+ORE in r.text
     r=client.get('/api/v1/mining',params={'channel':'test','uid':'u','ore':RARE})
-    assert 'Harvesting level 3' in r.text and 'three prospecting steps' in r.text
+    assert 'Harvesting level 3' in r.text and 'three successful prospecting steps' in r.text
 
 @pytest.mark.parametrize('key',sorted(s.GATHER))
 def test_every_gatherable_has_exact_queue_totals(key):
@@ -244,12 +244,12 @@ def test_mixed_failures_rewards_and_repeated_view(monkeypatch):
     with m.SessionLocal() as db:
         p=db.query(m.Player).one();row=db.query(q.TaskQueue).one();totals=db.query(q.QueueTotals).one()
         assert (totals.succeeded,totals.failed,totals.progress)==(5,5,0)
-        assert p.crops==105
-        assert json.loads(totals.gained).get('crops')==5
+        assert p.crops==110
+        assert json.loads(totals.gained).get('crops')==10
         for _ in range(2):
             text=q.status(m,db,p,row)
-            assert 'Succeeded: 5; failed: 5.' in text and 'Crop ×5' in text
-        assert p.crops==105
+            assert 'Succeeded: 5; failed: 5.' in text and 'Crop ×10' in text
+        assert p.crops==110
 
 
 def test_crafting_totals_spending_pause_and_restart():
@@ -323,5 +323,5 @@ def test_bonus_items_are_counted_from_real_inventory(monkeypatch):
     advance()
     with m.SessionLocal() as db:
         p=db.query(m.Player).one();totals=db.query(q.QueueTotals).one()
-        assert totals.succeeded==1 and p.crops==102
-        assert json.loads(totals.gained)['crops']==2
+        assert totals.succeeded==1 and p.crops==103
+        assert json.loads(totals.gained)['crops']==3
