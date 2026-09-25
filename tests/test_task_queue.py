@@ -1,3 +1,4 @@
+import json
 from datetime import timedelta
 from concurrent.futures import ThreadPoolExecutor
 import pytest
@@ -214,3 +215,113 @@ def test_twitch_task_discovery_and_requirements():
     assert 'mine:'+ORE in r.text
     r=client.get('/api/v1/mining',params={'channel':'test','uid':'u','ore':RARE})
     assert 'Harvesting level 3' in r.text and 'three prospecting steps' in r.text
+
+@pytest.mark.parametrize('key',sorted(s.GATHER))
+def test_every_gatherable_has_exact_queue_totals(key):
+    count=6 if key in m.crafting_progression.RARE else 3
+    enqueue(('mine:' if key in q.ores() else 'gather:')+key,count)
+    with m.SessionLocal() as db:
+        p=db.query(m.Player).one();p.mining_xp=12
+        initial=m.material_amount(db,p,key);db.commit()
+    for _ in range(count):advance()
+    with m.SessionLocal() as db:
+        p=db.query(m.Player).one();row=db.query(q.TaskQueue).one()
+        totals=db.query(q.QueueTotals).one()
+        expected=2 if key in m.crafting_progression.RARE else count*s.GATHER[key]['amount']
+        assert m.material_amount(db,p,key)-initial==expected
+        assert json.loads(totals.gained)=={key:expected}
+        assert totals.failed==0
+        assert totals.succeeded==(2 if key in m.crafting_progression.RARE else count)
+        assert totals.progress==(4 if key in m.crafting_progression.RARE else 0)
+        assert f'{s.item_label(key)} ×{expected}' in q.status(m,db,p,row)
+
+
+def test_mixed_failures_rewards_and_repeated_view(monkeypatch):
+    enqueue('work:harvest',10)
+    for i in range(10):
+        monkeypatch.setattr(m.random,'random',lambda i=i:0.99 if i%2 else 0.5)
+        advance()
+    with m.SessionLocal() as db:
+        p=db.query(m.Player).one();row=db.query(q.TaskQueue).one();totals=db.query(q.QueueTotals).one()
+        assert (totals.succeeded,totals.failed,totals.progress)==(5,5,0)
+        assert p.crops==105
+        assert json.loads(totals.gained).get('crops')==5
+        for _ in range(2):
+            text=q.status(m,db,p,row)
+            assert 'Succeeded: 5; failed: 5.' in text and 'Crop ×5' in text
+        assert p.crops==105
+
+
+def test_crafting_totals_spending_pause_and_restart():
+    enqueue('make:component',3)
+    with m.SessionLocal() as db:
+        p=db.query(m.Player).one();p.ore=2;db.commit()
+    advance();advance();advance()
+    with m.SessionLocal() as db:
+        row=db.query(q.TaskQueue).one();totals=db.query(q.QueueTotals).one()
+        assert row.state=='paused' and row.remaining==1
+        assert (totals.succeeded,totals.failed)==(2,0)
+        assert json.loads(totals.gained)=={'components':2}
+        assert json.loads(totals.used)=={ORE:2}
+    q.control(m,'test','u','Citizen','discord','cancel')
+    q.control(m,'test','u','Citizen','discord','start','mine:'+ORE,1)
+    advance()
+    with m.SessionLocal() as db:
+        totals=db.query(q.QueueTotals).one()
+        assert totals.succeeded==1 and json.loads(totals.gained)=={ORE:1}
+
+
+def test_old_queue_history_is_not_invented():
+    enqueue(count=3);advance()
+    with m.SessionLocal() as db:
+        db.query(q.QueueTotals).delete();db.commit()
+    advance()
+    with m.SessionLocal() as db:
+        p=db.query(m.Player).one();row=db.query(q.TaskQueue).one()
+        text=q.status(m,db,p,row)
+        assert 'Earlier attempts without recorded totals: 1' in text
+        assert 'Succeeded: 1; failed: 0.' in text
+        assert p.ore==102
+
+
+def test_crash_rolls_back_summary_too(monkeypatch):
+    enqueue();due()
+    def broken(*args):raise RuntimeError('crash before commit')
+    monkeypatch.setattr(q,'specification',broken)
+    with pytest.raises(RuntimeError):q.run_one(m,'test','discord:u')
+    with m.SessionLocal() as db:
+        p=db.query(m.Player).one();totals=db.query(q.QueueTotals).one()
+        assert p.ore==100 and totals.succeeded==0 and totals.gained=='{}'
+
+@pytest.mark.parametrize('rid',[k for k,r in s.RECIPES.items() if r['inputs'] and any(v>1 for v in r['outputs'].values())])
+def test_multi_output_recipe_queue_uses_actual_batch_yields(rid):
+    from app import competencies
+    cp=m.crafting_progression;r=s.RECIPES[rid]
+    enqueue('make:'+rid,2)
+    with m.SessionLocal() as db:
+        p=db.query(m.Player).one()
+        db.add(m.CraftLedger(channel_id='test',canonical_uid=p.twitch_uid,recipe='component',qty=250,best_quality=''))
+        for tag in cp.tags(rid):m.material_change(db,p,cp.permit_key(tag),1)
+        for field in competencies.FIELDS.values():setattr(p,field,10000)
+        req=r['requirement'].get('Skill','SK_CRAFTING')
+        _,branch=s.SKILLS[req]
+        if branch:m.gain_branch(db,p,branch,10000)
+        for key,n in r['inputs'].items():m.material_change(db,p,key,n*2)
+        db.commit();before={key:m.material_amount(db,p,key) for key in r['outputs']}
+    advance();advance()
+    with m.SessionLocal() as db:
+        p=db.query(m.Player).one();row=db.query(q.TaskQueue).one();totals=db.query(q.QueueTotals).one()
+        assert row.state=='completed',row.result
+        assert totals.succeeded==2
+        for key,n in r['outputs'].items():
+            assert m.material_amount(db,p,key)-before[key]==n*2
+            assert json.loads(totals.gained)[key]==n*2
+
+
+def test_bonus_items_are_counted_from_real_inventory(monkeypatch):
+    enqueue('work:harvest',1);monkeypatch.setattr(m.random,'random',lambda:0.0)
+    advance()
+    with m.SessionLocal() as db:
+        p=db.query(m.Player).one();totals=db.query(q.QueueTotals).one()
+        assert totals.succeeded==1 and p.crops==102
+        assert json.loads(totals.gained)['crops']==2
