@@ -1,4 +1,11 @@
+[releases.md](https://github.com/user-attachments/files/32637460/releases.md)
 # Release notes
+
+## Queue outcome totals
+
+Queue status now reports successful attempts, failed attempts, and total inventory gained and used across the queue. Actual quantities include recipe batch sizes and bonus material yields. Rare-ore prospecting steps without an ore reward are reported separately from failures. Pauses and cooldown waits do not count as attempts.
+
+Totals persist with the queue and commit atomically with gameplay changes. Viewing results does not award items again. Older attempts whose outcomes were not recorded are explicitly marked as unrecorded; existing player inventory is preserved.
 
 ## Mining, queues and repository consolidation
 
