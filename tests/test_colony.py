@@ -1,4 +1,3 @@
-
 import os, tempfile, json, inspect, sqlite3, subprocess, sys
 from pathlib import Path
 from datetime import timedelta
@@ -17,7 +16,11 @@ from app.competencies import practice_gain
 client=TestClient(m.app)
 
 @pytest.fixture(autouse=True)
-def reset():
+def reset(monkeypatch):
+    monkeypatch.setattr(m.random,"random",lambda:0.5)
+    # Tests never use deployment messaging credentials.
+    for key in ("DISCORD_BOT_TOKEN","TWITCH_BOT_ACCESS_TOKEN","TWITCH_CLIENT_ID","TWITCH_BOT_USER_ID"):
+        monkeypatch.setenv(key, "")
     m.Base.metadata.drop_all(m.engine);m.Base.metadata.create_all(m.engine)
     m.migrate_schema()
 
