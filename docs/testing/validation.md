@@ -1,6 +1,6 @@
 # Validation record
 
-The mining failure and Stone Dust update passes **576 tests**. The raw result is preserved in [results.txt](results.txt). One warning originates from the third-party Starlette/AnyIO test client; no tests were skipped.
+The mining update passed 576 full-suite tests before this timing fix. The Discord acknowledgement fix then passed **50 focused tests**, covering response ordering, delivery retries, error replies, signed channel capture and background queues. Live Railway and Discord delivery were not exercised. The raw outputs are preserved in [results.txt](results.txt).
 
 ## Coverage
 
