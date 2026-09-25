@@ -1,4 +1,3 @@
-
 """Shared Discord command catalog: registration and runtime validation use this file."""
 
 def cmd(name, description, options=None):
@@ -242,14 +241,14 @@ commands = [
     # Clear work actions. Redundant legacy Discord commands are intentionally omitted.
     cmd("farm","Farming hub: tend, harvest, or use Water Filter hydroponics",[
         {"type":STRING,"name":"action","description":"Farming activity","required":False,
-         "choices":[{"name":"Tend Fields","value":"tend"},{"name":"Harvest Crops","value":"harvest"},{"name":"Irrigate","value":"irrigate"},{"name":"Hydroponics (Water Filter)","value":"hydroponics"}]}
+         "choices":[{"name":"Tend Fields: 1 Crop + Pumpkin Seed · 2 Energy","value":"tend"},{"name":"Harvest Crops: 2 Crops + Pumpkin + Seed · 3 Energy","value":"harvest"},{"name":"Irrigate: 3 Crops + reclaimed Murky Water · 4 Energy","value":"irrigate"},{"name":"Hydroponics: 4 Crops + Raw Algae · 5 Energy (Filter)","value":"hydroponics"}]}
     ]),
     cmd("scan","Environmental survey that supports society Knowledge"),
     cmd("mine","Standard Extraction work that gives personal Hematite Ore"),
     cmd("rare","Prospect Argentite: Harvesting Lv3, three actions per ore, 20-second cooldown"),
     cmd("research","Research or use a Siro Sampler for advanced field analysis",[
         {"type":STRING,"name":"operation","description":"Research operation","required":False,
-         "choices":[{"name":"Standard Research","value":"standard"},{"name":"Field Analysis (Siro Sampler)","value":"field_analysis"}]}
+         "choices":[{"name":"Standard: 1 Stone sample · 2 Energy","value":"standard"},{"name":"Field Analysis: 2 Stone + Herbs · 4 Energy (Sampler)","value":"field_analysis"}]}
     ]),
     cmd("repair","Repair society infrastructure or personal quality gear",[
         {"type":STRING,"name":"target","description":"What needs repair?","required":False,
@@ -260,15 +259,15 @@ commands = [
     cmd("delivery","Consume 1 Cargo for Logistics work and fleet progress"),
     cmd("spaceport","Standard logistics or a Power Cell expedition",[
         {"type":STRING,"name":"operation","description":"Spaceport operation","required":False,
-         "choices":[{"name":"Standard Operations","value":"standard"},{"name":"Expedite (-1 Power Cell)","value":"expedite"}]}
+         "choices":[{"name":"Standard: 1 Cargo + Lumber · 2 Energy","value":"standard"},{"name":"Expedite: 2 Cargo + 2 Lumber · 4 Energy (-1 Cell)","value":"expedite"}]}
     ]),
     cmd("explore","Scout or use a Sensor for an advanced survey",[
         {"type":STRING,"name":"operation","description":"Frontier operation","required":False,
-         "choices":[{"name":"Scout","value":"scout"},{"name":"Advanced Survey (Sensor)","value":"survey"}]}
+         "choices":[{"name":"Scout: Stone + Berries · 3 Energy","value":"scout"},{"name":"Survey: 2 Stone + Clay + Coal · 5 Energy (Sensor)","value":"survey"}]}
     ]),
     cmd("market","Market hub: prices, selling, work, or Market Analyzer activity",[
         {"type":STRING,"name":"action","description":"Market action","required":False,
-         "choices":[{"name":"View Prices","value":"view"},{"name":"Sell Resources","value":"sell"},{"name":"Commerce Work","value":"work"},{"name":"Analyze Market (Market Analyzer)","value":"analyze"}]},
+         "choices":[{"name":"View Prices","value":"view"},{"name":"Sell Resources","value":"sell"},{"name":"Commerce: 1 Cargo · 2 Energy","value":"work"},{"name":"Analyze: 2 Cargo + Lumber · 4 Energy (Analyzer)","value":"analyze"}]},
         {"type":STRING,"name":"resource","description":"Resource to sell","required":False,
          "choices":[{"name":"Crops","value":"crops"},{"name":"Hematite Ore","value":"ore"},{"name":"Argentite Ore","value":"rare_ore"},{"name":"Components","value":"components"},{"name":"Cargo","value":"cargo"}]},
         {"type":4,"name":"amount","description":"Amount to sell (1-25)","required":False}
@@ -386,12 +385,23 @@ for command in commands:
 
 for command in commands:
     if command['name']=='mine':
-        command['description']='Choose an ore, inspect its requirements, and queue up to 10 mining attempts'
+        command['description']='Choose ore or Coal, inspect requirements, and queue up to 10 mining attempts'
         command['options']=[
-            {'type':STRING,'name':'ore','description':'Ore to mine; select View Requirements before starting','required':False,'autocomplete':True},
+            {'type':STRING,'name':'ore','description':'Ore or Coal to mine; select View Requirements before starting','required':False,'autocomplete':True},
             {'type':STRING,'name':'action','description':'Viewing requirements spends nothing','required':False,'choices':[{'name':'View Requirements','value':'view'},{'name':'Mine','value':'mine'}]},
-            {'type':4,'name':'count','description':'Attempts (1–10); rare ores need three prospecting attempts per ore','required':False,'min_value':1,'max_value':10}]
+            {'type':4,'name':'count','description':'Attempts (1–10); rare ores need three successful prospecting attempts per ore','required':False,'min_value':1,'max_value':10}]
 commands.append(cmd('queue','View, start or cancel one task queue; maximum 10 attempts of one task type',[
     {'type':STRING,'name':'action','description':'Queue automatically pauses and resumes as requirements change','required':False,'choices':[{'name':'View','value':'view'},{'name':'Start','value':'start'},{'name':'Cancel','value':'cancel'}]},
     {'type':STRING,'name':'task','description':'One task type, resource or recipe for the entire queue','required':False,'autocomplete':True},
     {'type':4,'name':'count','description':'Number of attempts, including failures; blocked attempts do not count','required':False,'min_value':1,'max_value':10}]))
+
+# Choice labels expose base yields; bonuses remain additional rewards.
+for command in commands:
+    if command['name'] in {'farm','research','spaceport','explore','market'}:
+        command['options'][0]['description']='Choose work; listed yields are per success and Energy is spent per attempt'
+    if command['name']=='business':
+        for option in command.get('options',[]):
+            if option['name']=='action':
+                for choice in option.get('choices',[]):
+                    if choice['value']=='work':choice['name']='Work: 1 Cargo on success · 2 Energy'
+                    if choice['value']=='contract':choice['name']='Contract: 2 Cargo + Lumber on success · 4 Energy'
