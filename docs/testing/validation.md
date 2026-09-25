@@ -1,17 +1,19 @@
+[validation.md](https://github.com/user-attachments/files/32637369/validation.md)
 # Validation record
 
-The combined mining/queue update and source-layout cleanup pass **332 tests**. The raw result is preserved in [results.txt](results.txt). One warning originates from the third-party Starlette/AnyIO test client; no tests were skipped.
+The queue outcome totals update and existing repository tests pass **509 tests**. The raw result is preserved in [results.txt](results.txt). One warning originates from the third-party Starlette/AnyIO test client; no tests were skipped.
 
 ## Coverage
 
 | Area | Evidence |
 | --- | --- |
-| Existing behavior | All prior 329 gameplay, route, command, inventory and queue tests remain included |
+| Existing behavior | All prior 332 repository and gameplay tests remain included |
 | Module ownership | ORM models have one canonical `app.models` identity; no private legacy loader modules are imported |
 | Registrar isolation | Dry-run catalog loading leaves a fresh database path absent |
 | Production source boundary | A subprocess imports the app from a temporary directory containing only `app/` and `scripts/` |
 | Persistent compatibility | Old-schema migration, one-for-one item conversion, repeat conversion and linked balances |
 | Queue behavior | Limits, needs/material pauses, passive recovery, failure counting, cooldowns and cancellation |
+| Queue outcome totals | Every gatherable material, all catalog recipes producing multiple items per batch, mixed success/failure, bonus yield, pause/reset, old history and summary rollback |
 | Queue integrity | Concurrent workers, worker lifecycle, and rollback of effects plus counters after a simulated failure |
 | Player interfaces | Discord dispatch/autocomplete, Twitch output limits, ore picker and task discovery |
 
