@@ -111,10 +111,11 @@ def send(m,notice):
         if not token:raise DeliveryError('DISCORD_BOT_TOKEN is missing')
         if not notice.message_channel:raise DeliveryError('Discord game channel is missing')
         headers={'Authorization':'Bot '+token}
-        result=post('https://discord.com/api/v10/channels/'+notice.message_channel+'/messages',headers,
-                    {'content':f'<@{recipient}> Your queue is finished!\n'+notice.content[:1850],
-                     'allowed_mentions':{'parse':[],'users':[recipient]},
-                     'nonce':notice.id[:25],'enforce_nonce':True})
+        payload=m._discord_json_message(notice.content,message_type='queue')['data']
+        payload.update({'content':f'<@{recipient}> Your queue is finished!',
+                        'allowed_mentions':{'parse':[],'users':[recipient]},
+                        'nonce':notice.id[:25],'enforce_nonce':True})
+        result=post('https://discord.com/api/v10/channels/'+notice.message_channel+'/messages',headers,payload)
         if not result.get('id'):raise DeliveryError('Discord did not confirm message delivery')
         return
     try:channels=json.loads(os.getenv('TWITCH_QUEUE_CHANNELS','{}'))
