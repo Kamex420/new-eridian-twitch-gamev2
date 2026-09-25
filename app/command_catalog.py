@@ -1,3 +1,4 @@
+
 """Shared Discord command catalog: registration and runtime validation use this file."""
 
 def cmd(name, description, options=None):
