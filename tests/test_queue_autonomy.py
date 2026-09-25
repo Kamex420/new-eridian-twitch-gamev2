@@ -188,7 +188,8 @@ def test_signed_discord_command_captures_the_real_channel(monkeypatch):
     from test_colony import client
     key=SigningKey.generate();monkeypatch.setattr(m,'DISCORD_PUBLIC_KEY',key.verify_key.encode().hex())
     monkeypatch.setattr(m,'DISCORD_GAME_CHANNEL_ID','')
-    payload={'type':2,'id':'10','channel_id':'98765','member':{'user':{'id':'12345','username':'Player'}},
+    monkeypatch.setattr(m.discord_deferred,'edit_original',lambda *args:True)
+    payload={'application_id':'app','token':'test-token','type':2,'id':'10','channel_id':'98765','member':{'user':{'id':'12345','username':'Player'}},
              'data':{'name':'queue','options':[{'name':'action','value':'start'},
                                              {'name':'task','value':'mine:'+ORE},{'name':'count','value':1}]}}
     body=json.dumps(payload).encode();stamp='1234';signature=key.sign(stamp.encode()+body).signature.hex()
