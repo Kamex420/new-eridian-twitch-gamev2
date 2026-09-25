@@ -4,6 +4,7 @@ Community access is a permanent permit for ONE named station, not free access
 all machines. Owning the matching machine also grants access, after tier unlock.
 """
 import math
+from contextvars import ContextVar
 from . import seed_content as s
 
 TIERS=((1,'Starter',0),(2,'Skilled',25),(3,'Industrial',100),(4,'Advanced',250))
@@ -110,7 +111,39 @@ RARE_LEVEL=3
 RARE_STEPS=3
 
 def rare_hint(key):
-    return 'Harvesting Lv.3; 3 prospecting actions per ore. Each: 3 Energy, 1 Nutrition, 1 Comfort; 20s cooldown.'
+    return 'Harvesting Lv.3; 3 successful prospecting actions per ore; failure gives 1 Stone Dust. Each: 3 Energy, 1 Nutrition, 1 Comfort; 20s cooldown.'
+
+STONE_DUST='sd_1903724340'
+mining_outcome=ContextVar('mining_outcome',default=None)
+
+def mining_roll(m,db,p,provider):
+    """Use the work-task chance model before needs are spent; never roll a wait."""
+    bonus,notes,life=m.life_modifiers(db,p,'extraction')
+    society=m.society(db,p.channel_id)
+    world=m.world(db,p.channel_id)
+    m.resolve_expired_event(db,society,world)
+    _,_,world_bonus,world_notes=m.world_rule_bundle(db,p,society,'mine','extraction',provider)
+    world=m.world(db,p.channel_id)
+    relevant=bool(world.active_event and 'extraction' in {m.EVENTS[world.active_event]['primary'],m.EVENTS[world.active_event]['support']})
+    determination=m.determination_bonus(db,p,'extraction')
+    chance=min(.92,max(.10,m.success_chance(db,p,'extraction',.68)+bonus+world_bonus+determination+(.05 if relevant else 0)))
+    notes+=world_notes
+    if determination:notes.append(f'Determination +{determination*100:g}%')
+    if relevant:notes.append('Relevant event +5%')
+    success=m.random.random()<chance
+    mining_outcome.set('success' if success else 'failed')
+    return success,m.life_modifier_text(provider,notes,chance)
+
+def mining_failure(m,db,p,provider,detail,rare=False):
+    """A failed roll costs needs and one attempt, but preserves ore progress."""
+    m.material_change(db,p,STONE_DUST,1)
+    life=m.life_state(db,p);m.spend_life_for_action(life,'rare' if rare else 'make')
+    p.actions+=1
+    grit=m.determination_fail(db,p,'extraction');db.commit()
+    return ('❌ MINING FAILED\n\nOUTPUT\n• Stone Dust ×1\nNo ore was recovered.'+
+            (' Saved prospecting progress was kept.' if rare else '')+
+            f"\n−{3 if rare else 2} Energy · −1 Nutrition · −1 Comfort"+
+            f"\nCooldown: {20 if rare else 5} seconds. Stone Dust is a crafting ingredient."+grit+detail)
 
 def rare_gather(m,db,p,key,provider='discord',workshop_bonus=0):
     if m.lvl(m.skill_xp(p,'extraction'))<RARE_LEVEL:
@@ -119,22 +152,28 @@ def rare_gather(m,db,p,key,provider='discord',workshop_bonus=0):
     if blocked:return blocked
     wait=m.check_cooldown(db,p,'rare_prospect')
     if wait:return f'⏳ Prospecting will be ready in {wait}s. Nothing spent.'
+    success,detail=mining_roll(m,db,p,provider)
+    if not success:return mining_failure(m,db,p,provider,detail,rare=True)
+    m.determination_clear(db,p,'extraction')
     progress_key='prospect:'+key;progress=m.material_amount(db,p,progress_key)+1
     complete=progress>=RARE_STEPS
     m.material_change(db,p,progress_key,-m.material_amount(db,p,progress_key))
     if not complete:m.material_change(db,p,progress_key,progress)
+    mining_outcome.set('success' if complete else 'progress')
     if complete:m.material_change(db,p,key,1)
     xp=m.gain_skill(p,'extraction',1+workshop_bonus);m.gain_branch(db,p,'ore_mining',xp)
     m.spend_life_for_action(life,'rare');p.actions+=1;p.successes+=int(complete);db.commit()
     return (f"{'✅ ORE RECOVERED' if complete else '⛏️ PROSPECTING'} · {s.item_label(key)}\n"
             f"Progress: {progress}/3 · {'+1 ore; progress resets.' if complete else 'No ore yet; progress saved.'}\n"
-            f'+{xp} Harvesting/Ore Mining XP · −3 Energy · −1 Nutrition · −1 Comfort · 20s cooldown')
+            f'+{xp} Harvesting/Ore Mining XP · −3 Energy · −1 Nutrition · −1 Comfort · 20s cooldown'+detail)
 
 # Price all catalog materials from existing base-resource values plus processing
 # labor. No-input extraction never makes ores free. These new supplies have no
 # NPC buyback, so starter trades cannot create a buy/craft/sell cash loop.
 def starter_market():
     prices={k:RARE_NAMES.get(s.ITEMS[k]['name'],6 if s.GATHER[k]['branch']=='ore_mining' else 4) for k in s.GATHER}
+    # Moving Coal into the mining menu does not change its established price.
+    prices['sd_183031416']=4
     for _ in range(len(s.RECIPES)):
         changed=False
         for rid,r in s.RECIPES.items():
