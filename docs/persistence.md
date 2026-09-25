@@ -39,3 +39,14 @@ The filesystem cleanup is independent of the database format. Earlier item conve
 Completion inserts one immutable `queue_notifications_v1` outbox row in the same transaction as the final rewards and counters. A separate lifecycle worker sends notifications; network requests never hold up the work scheduler. A conditional update claims a two-minute delivery lease. Retry attempts are bounded at five, with backoff and rate-limit delays; invalid credentials or permissions become terminal failures. An expired lease can be reclaimed after a process restart.
 
 Discord messages use an explicit user mention whitelist, disabling role and everyone mentions, with a stable nonce for retry deduplication. Remote send and database acknowledgement cannot be made atomic: a crash after acceptance may duplicate a notification outside Discord's deduplication window; it cannot duplicate game rewards. No interaction tokens are stored, and no completion DMs are sent.
+
+### Message detail snapshots
+
+`message_pages_v1` stores an opaque random ID, JSON display pages and a 24-hour
+expiry. It is additive and created with the other SQLAlchemy tables. Snapshots
+survive worker restarts and work across instances sharing the database. Expired
+rows are removed when another long response is rendered. Navigation reads only
+this table and never calls gameplay handlers. A stale button asks the player to
+run the command again; pages are snapshots, not live queue status. Private
+snapshot IDs are exposed only on the corresponding ephemeral response. Public
+snapshots contain only the already-public command text.
