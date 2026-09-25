@@ -1,0 +1,631 @@
+{
+  "/health": [
+    "get",
+    []
+  ],
+  "/api/v1/start": [
+    "get",
+    [
+      "channel",
+      "uid",
+      "name",
+      "provider"
+    ]
+  ],
+  "/api/v1/profile": [
+    "get",
+    [
+      "channel",
+      "uid",
+      "name",
+      "provider"
+    ]
+  ],
+  "/api/v1/skills": [
+    "get",
+    [
+      "channel",
+      "uid",
+      "name",
+      "provider"
+    ]
+  ],
+  "/api/v1/specialize": [
+    "get",
+    [
+      "channel",
+      "uid",
+      "name",
+      "path",
+      "provider"
+    ]
+  ],
+  "/api/v1/cooldowns": [
+    "get",
+    [
+      "channel",
+      "uid",
+      "name",
+      "provider"
+    ]
+  ],
+  "/api/v1/bonuses": [
+    "get",
+    [
+      "channel",
+      "uid",
+      "name",
+      "provider"
+    ]
+  ],
+  "/api/v1/guide": [
+    "get",
+    [
+      "channel",
+      "uid",
+      "name",
+      "goal",
+      "provider"
+    ]
+  ],
+  "/api/v1/inventory": [
+    "get",
+    [
+      "channel",
+      "uid",
+      "name",
+      "provider"
+    ]
+  ],
+  "/api/v1/job": [
+    "get",
+    [
+      "channel",
+      "uid",
+      "name",
+      "job",
+      "provider"
+    ]
+  ],
+  "/api/v1/contracts": [
+    "get",
+    [
+      "channel",
+      "uid",
+      "name",
+      "provider"
+    ]
+  ],
+  "/api/v1/achievements": [
+    "get",
+    [
+      "channel",
+      "uid",
+      "name",
+      "provider"
+    ]
+  ],
+  "/api/v1/home": [
+    "get",
+    [
+      "channel",
+      "uid",
+      "name",
+      "provider"
+    ]
+  ],
+  "/api/v1/home/upgrade": [
+    "get",
+    [
+      "channel",
+      "uid",
+      "name",
+      "provider"
+    ]
+  ],
+  "/api/v1/business": [
+    "get",
+    [
+      "channel",
+      "uid",
+      "name",
+      "provider"
+    ]
+  ],
+  "/api/v1/business/start": [
+    "get",
+    [
+      "channel",
+      "uid",
+      "name",
+      "business_name",
+      "provider"
+    ]
+  ],
+  "/api/v1/recipes": [
+    "get",
+    [
+      "channel",
+      "provider",
+      "category"
+    ]
+  ],
+  "/api/v1/make": [
+    "get",
+    [
+      "channel",
+      "uid",
+      "name",
+      "recipe",
+      "provider",
+      "category"
+    ]
+  ],
+  "/api/v1/life": [
+    "get",
+    [
+      "channel",
+      "uid",
+      "name",
+      "provider"
+    ]
+  ],
+  "/api/v1/display": [
+    "get",
+    [
+      "channel",
+      "uid",
+      "name",
+      "style",
+      "provider"
+    ]
+  ],
+  "/api/v1/hi": [
+    "get",
+    [
+      "channel",
+      "uid",
+      "name",
+      "target",
+      "provider"
+    ]
+  ],
+  "/api/v1/hangout": [
+    "get",
+    [
+      "channel",
+      "uid",
+      "name",
+      "target",
+      "provider"
+    ]
+  ],
+  "/api/v1/relationships": [
+    "get",
+    [
+      "channel",
+      "uid",
+      "name",
+      "provider"
+    ]
+  ],
+  "/api/v1/relax": [
+    "get",
+    [
+      "channel",
+      "uid",
+      "name",
+      "provider"
+    ]
+  ],
+  "/api/v1/walk": [
+    "get",
+    [
+      "channel",
+      "uid",
+      "name",
+      "provider"
+    ]
+  ],
+  "/api/v1/games": [
+    "get",
+    [
+      "channel",
+      "uid",
+      "name",
+      "provider"
+    ]
+  ],
+  "/api/v1/hobby": [
+    "get",
+    [
+      "channel",
+      "uid",
+      "name",
+      "hobby",
+      "provider"
+    ]
+  ],
+  "/api/v1/tutorial": [
+    "get",
+    [
+      "channel",
+      "uid",
+      "name",
+      "provider"
+    ]
+  ],
+  "/api/v1/story": [
+    "get",
+    [
+      "channel",
+      "provider"
+    ]
+  ],
+  "/api/v1/titles": [
+    "get",
+    [
+      "channel",
+      "uid",
+      "name",
+      "title",
+      "provider"
+    ]
+  ],
+  "/api/v1/marketboard": [
+    "get",
+    [
+      "channel",
+      "provider"
+    ]
+  ],
+  "/api/v1/sell": [
+    "get",
+    [
+      "channel",
+      "uid",
+      "name",
+      "resource",
+      "amount",
+      "provider"
+    ]
+  ],
+  "/api/v1/seedindustries": [
+    "get",
+    [
+      "channel",
+      "uid",
+      "name",
+      "action",
+      "item_name",
+      "amount",
+      "provider"
+    ]
+  ],
+  "/api/v1/duo": [
+    "get",
+    [
+      "channel",
+      "uid",
+      "name",
+      "target",
+      "activity",
+      "provider"
+    ]
+  ],
+  "/api/v1/ducks": [
+    "get",
+    [
+      "channel",
+      "uid",
+      "name",
+      "duck",
+      "provider"
+    ]
+  ],
+  "/api/v1/gear": [
+    "get",
+    [
+      "channel",
+      "uid",
+      "name",
+      "provider"
+    ]
+  ],
+  "/api/v1/gearrepair": [
+    "get",
+    [
+      "channel",
+      "uid",
+      "name",
+      "item",
+      "provider"
+    ]
+  ],
+  "/api/v1/use": [
+    "get",
+    [
+      "channel",
+      "uid",
+      "name",
+      "item",
+      "provider"
+    ]
+  ],
+  "/api/v1/world": [
+    "get",
+    [
+      "channel",
+      "uid",
+      "name",
+      "provider"
+    ]
+  ],
+  "/api/v1/rumor": [
+    "get",
+    [
+      "channel",
+      "uid",
+      "name",
+      "provider"
+    ]
+  ],
+  "/api/v1/collection": [
+    "get",
+    [
+      "channel",
+      "uid",
+      "name",
+      "provider"
+    ]
+  ],
+  "/api/v1/traits": [
+    "get",
+    [
+      "channel",
+      "uid",
+      "name",
+      "provider"
+    ]
+  ],
+  "/api/v1/district": [
+    "get",
+    [
+      "channel",
+      "uid",
+      "name",
+      "district",
+      "provider"
+    ]
+  ],
+  "/api/v1/shift": [
+    "get",
+    [
+      "channel",
+      "uid",
+      "name",
+      "role",
+      "provider"
+    ]
+  ],
+  "/api/v1/conditions": [
+    "get",
+    [
+      "channel",
+      "uid",
+      "name",
+      "provider"
+    ]
+  ],
+  "/api/v1/goal": [
+    "get",
+    [
+      "channel",
+      "uid",
+      "name",
+      "provider"
+    ]
+  ],
+  "/api/v1/projectstatus": [
+    "get",
+    [
+      "channel",
+      "provider"
+    ]
+  ],
+  "/api/v1/bulletin": [
+    "get",
+    [
+      "channel",
+      "provider"
+    ]
+  ],
+  "/api/v1/meal": [
+    "get",
+    [
+      "channel",
+      "uid",
+      "name",
+      "provider"
+    ]
+  ],
+  "/api/v1/mentor": [
+    "get",
+    [
+      "channel",
+      "uid",
+      "name",
+      "target",
+      "provider"
+    ]
+  ],
+  "/api/v1/journal": [
+    "get",
+    [
+      "channel",
+      "uid",
+      "name",
+      "provider"
+    ]
+  ],
+  "/api/v1/link/create": [
+    "get",
+    [
+      "channel",
+      "uid",
+      "name",
+      "provider"
+    ]
+  ],
+  "/api/v1/link/claim": [
+    "get",
+    [
+      "channel",
+      "discord_uid",
+      "name",
+      "code"
+    ]
+  ],
+  "/api/v1/society": [
+    "get",
+    [
+      "channel",
+      "provider",
+      "viewer"
+    ]
+  ],
+  "/api/v1/event": [
+    "get",
+    [
+      "channel",
+      "provider",
+      "viewer"
+    ]
+  ],
+  "/api/v1/eventhistory": [
+    "get",
+    [
+      "channel",
+      "provider"
+    ]
+  ],
+  "/api/v1/leaderboard": [
+    "get",
+    [
+      "channel",
+      "provider",
+      "uid",
+      "name"
+    ]
+  ],
+  "/api/v1/overlay": [
+    "get",
+    [
+      "channel"
+    ]
+  ],
+  "/overlay": [
+    "get",
+    [
+      "panel",
+      "channel"
+    ]
+  ],
+  "/obs/{panel}": [
+    "get",
+    [
+      "panel",
+      "channel"
+    ]
+  ],
+  "/api/v1/tick": [
+    "get",
+    [
+      "channel"
+    ]
+  ],
+  "/api/v1/wallet": [
+    "get",
+    [
+      "channel",
+      "uid",
+      "name",
+      "provider"
+    ]
+  ],
+  "/api/v1/progress": [
+    "get",
+    [
+      "channel",
+      "provider",
+      "viewer"
+    ]
+  ],
+  "/api/v1/rocky": [
+    "get",
+    [
+      "channel",
+      "uid",
+      "name",
+      "provider"
+    ]
+  ],
+  "/api/v1/siro": [
+    "get",
+    [
+      "channel"
+    ]
+  ],
+  "/api/v1/admin/event/{event}/{state}": [
+    "get",
+    [
+      "event",
+      "state",
+      "channel",
+      "level",
+      "key"
+    ]
+  ],
+  "/api/v1/admin/day/next": [
+    "get",
+    [
+      "channel",
+      "level",
+      "key"
+    ]
+  ],
+  "/api/v1/action/{action}": [
+    "get",
+    [
+      "action",
+      "channel",
+      "uid",
+      "name",
+      "msg",
+      "provider"
+    ]
+  ],
+  "/api/v1/seed": [
+    "get",
+    [
+      "topic",
+      "page"
+    ]
+  ],
+  "/api/v1/admin/modlog": [
+    "get",
+    [
+      "channel",
+      "level",
+      "key",
+      "page"
+    ]
+  ],
+  "/discord/interactions": [
+    "post",
+    [
+      "request",
+      "background_tasks"
+    ]
+  ]
+}
