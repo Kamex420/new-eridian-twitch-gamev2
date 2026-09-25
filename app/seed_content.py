@@ -1,5 +1,4 @@
 
-
 """Versioned SEED content and explicit New Eridian gameplay adaptations.
 Inventory IDs are namespaced; old materials, XP and account links are untouched.
 """
