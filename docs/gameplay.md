@@ -1,10 +1,11 @@
-[gameplay.md](https://github.com/user-attachments/files/32637407/gameplay.md)[Uploading g# Gameplay reference
+
+# Gameplay reference
 
 ## Mining and gathering
 
 `/mine` exposes ore selection, a requirements preview, and a count from 1 to 10. Common ore attempts cost 2 Energy, 1 Nutrition and 1 Comfort, with the existing 5-second shared gathering cooldown. They require no tools or skill unlock.
 
-Argentite, Bauxite, Rutile and Aurite require Harvesting level 3. One prospecting attempt costs 3 Energy, 1 Nutrition and 1 Comfort; all rare ores share a 20-second cooldown. Three saved prospecting steps produce one ore. A ten-attempt queue beginning with no saved progress produces three ores and one remaining prospecting step.[^1]
+Argentite, Bauxite, Rutile and Aurite require Harvesting level 3. One prospecting attempt costs 3 Energy, 1 Nutrition and 1 Comfort; all rare ores share a 20-second cooldown. Three successful prospecting steps produce one ore. With no failures, a ten-attempt queue beginning with no saved progress produces three ores and one remaining step. Failures produce Stone Dust instead, so ten attempts no longer guarantee three ores.[^1]
 
 `/gather` browses non-ore resources. Older ore-gathering routes remain compatible with the same requirements. No alternate route skips rare-ore gates.
 
@@ -33,4 +34,39 @@ Queue status is private in Discord. Progress persists through restarts. The work
 
 [^1]: Rare prospecting: [`app/crafting_progression.py`](../app/crafting_progression.py).
 [^2]: Acquisition graph and execution: [`app/seed_content.py`](../app/seed_content.py). Queue rules: [`app/task_queue.py`](../app/task_queue.py).
-ameplay.md…]()
+
+## Automatic work and useful task options
+
+An active queue checks its next action every ten seconds while the service is running, independently of player messages. The first attempt is due ten seconds after starting. Needs and missing requirements pause the queue without consuming attempts. Rare-ore cooldowns still require twenty seconds between prospecting steps. Coal appears in `/mine`, awards one unit per successful attempt, and trains Ore Mining; its existing purchase price remains 4 SC.
+
+On completion, the bot posts a result message in the originating Discord channel and mentions only the player who started the queue. The message includes success/failure counts and item totals. Twitch completion messages mention the player in the configured stream chat. Delivery failures never undo or repeat gameplay rewards; the journal and queue retain the result.
+
+### Personal output per successful attempt
+
+| Task | Output | Energy per attempt | Additional requirement |
+| --- | --- | --- | --- |
+| Tend Fields | 1 Crop + 1 Pumpkin Seed | 2 | None |
+| Harvest Crops | 2 Crops + 1 Pumpkin + 1 Pumpkin Seed | 3 | None |
+| Irrigate | 3 Crops + 1 reclaimed Murky Water | 4 | None |
+| Hydroponics | 4 Crops + 1 Raw Algae | 5 | Water Filter, kept |
+| Standard Research | 1 Stone sample | 2 | None |
+| Field Analysis | 2 Stone + 1 Herbs | 4 | Siro Sampler, kept |
+| Standard Spaceport Operations | 1 Cargo + 1 Lumber from packaging | 2 | None |
+| Expedited Spaceport Operations | 2 Cargo + 2 Lumber | 4 | 1 Power Cell consumed on success |
+| Scout | 1 Stone + 1 Berries | 3 | None |
+| Advanced Survey | 2 Stone + 1 Clay + 1 Coal | 5 | Sensor, kept |
+| Commerce Work / Business Work | 1 Cargo | 2 | Registered business for Business Work |
+| Market Analysis / Business Contract | 2 Cargo + 1 Lumber | 4 | Market Analyzer / registered business |
+| Forage | 2 Berries + 1 Herbs | 3 | None |
+
+Higher-output methods trade more Energy for better yields. Failure still spends needs but grants none of these outputs. Existing random bonus yields are additional and included in queue totals. XP, society rewards and SC pay remain in place. Pumpkin Seeds have an existing planting use: one seed plus Clean Water yields three Pumpkins. Stone samples use the same Stone inventory as crafting; no duplicate item identities were introduced.
+
+Specialist methods can be queued with task IDs such as `work:water@hydroponics`, `work:research@field_analysis`, `work:spaceport@expedite` and `work:market@analyze`. Equipment and consumable requirements are checked for every attempt. Repair targets and distinct manufacturing/clinic recipes retain their separate purposes; they are not ranked as interchangeable resource-harvesting methods.
+
+## Mining success and Stone Dust
+
+Common ores, Coal and rare prospecting now roll the same intrinsic and situational work success model: a 68% base, skill/equipment/specialization bonuses, life and world modifiers, relevant events and Determination, capped to a final 10–92% chance. Results show the actual final chance. Skill level and conditions determine the final probability; 68% is not a fixed success rate.
+
+A failed mining attempt awards one existing Stone Dust item, gives no ore or prospecting progress, spends the normal needs cost, starts the normal cooldown and consumes one queued attempt. It adds Determination and grants no success XP. Existing rare-ore progress is kept. Blocked attempts and cooldown waits grant no Stone Dust and spend no attempt. Stone Dust remains a catalog crafting ingredient with its existing recipes and item identity.
+
+The same rule applies to extraction-machine recipes and legacy mining/training routes; machine recipes retain their successful batch sizes. Non-mining gathering and manufacturing recipes retain their existing rules. Queue results and completion mentions include Stone Dust totals. Rare steps that make progress without an ore remain separately reported as prospecting progress, alongside recovered-ore successes and failed rolls.
