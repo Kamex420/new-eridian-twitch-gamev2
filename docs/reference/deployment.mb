@@ -28,3 +28,15 @@ Only `requirements.txt`, `app/` and `scripts/` are runtime image inputs. Test fi
 
 [^1]: [`app/main.py`](../../app/main.py), [`app/db.py`](../../app/db.py), and [`scripts/register_discord_commands.py`](../../scripts/register_discord_commands.py).
 [^2]: [Persistence and rollback semantics](../persistence.md).
+
+## Background queues and completion messages
+
+The ASGI lifespan starts separate work and notification workers. The service must remain running for autonomous work; a stopped or sleeping host cannot execute timers. Queue state persists through downtime and resumes without a catch-up burst. The default container command enables normal Uvicorn lifespan handling.
+
+Discord channel notifications use the existing `DISCORD_BOT_TOKEN`. The bot requires View Channel and Send Messages in the originating game channel (and Send Messages in Threads if commands are used in a thread). New queues record the verified interaction channel. `DISCORD_GAME_CHANNEL_ID` is the fallback for queues whose original channel was not recorded. Only the initiating player is included in `allowed_mentions`.
+
+Twitch notifications require `TWITCH_CLIENT_ID`, `TWITCH_BOT_USER_ID`, `TWITCH_BOT_ACCESS_TOKEN` (a user access token with `user:write:chat`), and `TWITCH_QUEUE_CHANNELS`, a JSON mapping from game-world keys to broadcaster numeric IDs. This outbound permission is separate from StreamElements custom-API requests. Missing configuration or revoked credentials are reflected in notification status; completion results remain stored.
+
+The command registrar publishes the revised option labels during normal container startup. Schema additions create separate queue destination and notification tables; they do not rewrite player inventories.
+
+References: [Discord message creation and allowed mentions](https://docs.discord.com/developers/resources/message), [Twitch chat delivery](https://dev.twitch.tv/docs/chat/send-receive-messages).
