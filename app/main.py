@@ -12,7 +12,7 @@ import os, random, secrets, string, math, re, hashlib, json, urllib.request
 from datetime import datetime, timezone, timedelta
 from fastapi import FastAPI, HTTPException, Request, BackgroundTasks
 from starlette.concurrency import run_in_threadpool
-from . import discord_deferred, message_layout
+from . import discord_deferred, message_layout, discord_execution
 from fastapi.responses import PlainTextResponse, HTMLResponse
 from sqlalchemy import create_engine, Column, Integer, String, DateTime, Boolean, UniqueConstraint, select, inspect, text as sql_text
 from sqlalchemy.orm import declarative_base, sessionmaker
@@ -23,6 +23,10 @@ DATABASE_URL=os.getenv("DATABASE_URL","sqlite:///./new_eridian.db")
 GAME_NAME=os.getenv("GAME_NAME","New Eridian")
 GAME_TITLE=os.getenv("GAME_TITLE","New Eridian v2")
 ADMIN_KEY=os.getenv("ADMIN_KEY","change-me")
+
+def valid_admin_key(value):
+    return bool(ADMIN_KEY and ADMIN_KEY!='change-me' and secrets.compare_digest(str(value).encode(),ADMIN_KEY.encode()))
+
 DISCORD_PUBLIC_KEY=os.getenv("DISCORD_PUBLIC_KEY","")
 DISCORD_GAME_CHANNEL_ID=os.getenv("DISCORD_GAME_CHANNEL_ID","")
 DISCORD_WORLD_ID=os.getenv("DISCORD_WORLD_ID","new-eridian")
@@ -78,7 +82,7 @@ def platform_response(provider,discord_text,twitch_text):
     return PlainTextResponse(discord_text) if provider=="discord" else out(twitch_text)
 
 from .models import *
-from .commands import command as colony_command, capture as colony_capture
+from .commands import command as colony_command, capture as colony_capture, transaction as game_transaction
 from .settlement import state as colony_state, seedling as colony_seedling, tick as colony_tick, pressures as colony_pressures, produce as colony_produce
 from .needs import productivity
 from .competencies import practice_gain, level as competency_level
@@ -1491,14 +1495,15 @@ def check_cooldown(db,p,action_name):
     seconds=ACTION_COOLDOWNS.get(action_name,5)
     if row and as_utc(row.ready_at)>now():
         remaining=max(1,int(math.ceil((as_utc(row.ready_at)-now()).total_seconds())))
-        if remaining>seconds:row.ready_at=now()+timedelta(seconds=seconds);db.commit();return seconds
+        if remaining>seconds:row.ready_at=now()+timedelta(seconds=seconds);db.commit();remaining=seconds
+        if 'task_queue' in globals():task_queue.cooldown_wait.set(remaining)
         return remaining
     if not row:row=Cooldown(channel_id=p.channel_id,canonical_uid=p.twitch_uid,action=action_name,ready_at=now());db.add(row)
     row.ready_at=now()+timedelta(seconds=seconds);db.commit();return 0
 def cooldowns_text(db,p,provider="twitch"):
     rows=db.execute(select(Cooldown).where(Cooldown.channel_id==p.channel_id,Cooldown.canonical_uid==p.twitch_uid)).scalars().all()
     active=sorted((r.action,min(ACTION_COOLDOWNS.get(r.action,5),max(1,int(math.ceil((as_utc(r.ready_at)-now()).total_seconds()))))) for r in rows if as_utc(r.ready_at)>now())
-    rules="Standard work, /eat, and /sleep: 5s. Social and recovery actions: 20–60s. /make: no cooldown."
+    rules="Standard work, /eat, and /sleep: 5s. Social and recovery actions: 20–60s. Workshop /make: 5s; legacy recipes: no cooldown."
     if not active:return "⏱️ No active cooldowns. Tasks still require sufficient needs and materials. "+rules
     if provider=="discord":return f"⏱️ {p.display_name} — Active Cooldowns\n\n"+"\n".join(f"• {guide_command(a,'discord')} — {seconds}s" for a,seconds in active[:15])+"\n\n"+rules
     return "⏱️ Cooldowns: "+" | ".join(f"{guide_command(a,'twitch')} {seconds}s" for a,seconds in active[:10])+" | Work/eat/sleep: 5s; social/recovery: 20–60s; !make: none"
@@ -1997,9 +2002,20 @@ def achieve(db,p):
     return (" "+" | ".join(notes)) if notes else ""
 
 @app.get("/health")
-def health():return {"ok":True,"game":GAME_TITLE,"society":GAME_NAME,"version":"7.0.0"}
+def health():
+    try:
+        with engine.connect() as conn:conn.execute(sql_text('SELECT 1'))
+        workers={}
+        for name in ('queue_worker','notification_worker'):
+            worker=getattr(app.state,name,None)
+            workers[name]='running' if worker is not None and not worker.done() else 'not started' if worker is None else 'stopped'
+        if 'stopped' in workers.values():raise RuntimeError('worker stopped')
+    except Exception:
+        raise HTTPException(status_code=503,detail='Game service is temporarily unavailable') from None
+    return {"ok":True,"game":GAME_TITLE,"society":GAME_NAME,"version":"7.0.0","workers":workers}
 
 @app.get("/api/v1/start")
+@game_transaction
 def start(channel:str,uid:str,name:str="Citizen",provider:str="twitch"):
     with SessionLocal() as db:
         _,p=player(db,channel,provider,uid,name)
@@ -2054,11 +2070,13 @@ def specialize(channel:str,uid:str,name:str="Citizen",path:str="",provider:str="
         return out(f"🧬 {p.display_name} specialized as {SPECIALIZATIONS[skill][choice]}. Matching actions gain +3% success and +1 SC.")
 
 @app.get("/api/v1/cooldowns")
+@game_transaction
 def cooldowns(channel:str,uid:str,name:str="Citizen",provider:str="twitch"):
     with SessionLocal() as db:
         _,p=player(db,channel,provider,uid,name);text=cooldowns_text(db,p,provider);return PlainTextResponse(text) if provider=="discord" else out(text)
 
 @app.get("/api/v1/bonuses")
+@game_transaction
 def bonuses(channel:str,uid:str,name:str="Citizen",provider:str="twitch"):
     with SessionLocal() as db:
         _,p=player(db,channel,provider,uid,name);text=bonuses_text(db,p,provider);return PlainTextResponse(text) if provider=="discord" else out(text)
@@ -2204,6 +2222,7 @@ def guide(channel:str,uid:str,name:str="Citizen",goal:str="auto",provider:str="t
         return PlainTextResponse(result) if provider=="discord" else out(result)
 
 @app.get("/api/v1/inventory")
+@game_transaction
 def inventory(channel:str,uid:str,name:str="Citizen",provider:str="twitch"):
     with SessionLocal() as db:
         c,p=player(db,channel,provider,uid,name)
@@ -2241,6 +2260,7 @@ def job(channel:str,uid:str,name:str="Citizen",job:str="",provider:str="twitch")
         p.job=job;p.last_job_change=now();db.commit();note=tutorial_advance(db,p,"job");return out(f"💼 {p.display_name} has occupation {JOBS[job][0]}. Matching work earns bonus SC, practice and +2% success."+note)
 
 @app.get("/api/v1/contracts")
+@game_transaction
 def contracts(channel:str,uid:str,name:str="Citizen",provider:str="twitch"):
     with SessionLocal() as db:
         _,p=player(db,channel,provider,uid,name);d=daily(db,p);st="COMPLETE" if d.complete else f"{d.progress}/{d.target}"
@@ -2250,6 +2270,7 @@ def contracts(channel:str,uid:str,name:str="Citizen",provider:str="twitch"):
         return platform_response(provider,discord,twitch)
 
 @app.get("/api/v1/achievements")
+@game_transaction
 def achievements(channel:str,uid:str,name:str="Citizen",provider:str="twitch"):
     with SessionLocal() as db:
         _,p=player(db,channel,provider,uid,name);achieve(db,p)
@@ -2290,6 +2311,7 @@ def habitat_upgrade_plan(p,tier,provider):
     return lines
 
 @app.get("/api/v1/home")
+@game_transaction
 def home(channel:str,uid:str,name:str="Citizen",provider:str="twitch"):
     with SessionLocal() as db:
         _,p=player(db,channel,provider,uid,name)
@@ -2313,6 +2335,7 @@ def homeup(channel:str,uid:str,name:str="Citizen",provider:str="twitch"):
         p.sc-=cost;p.components-=component_cost;h.tier+=1;db.commit();return out(f"🏠 Habitat upgraded to Tier {h.tier}! {spent}")
 
 @app.get("/api/v1/business")
+@game_transaction
 def business(channel:str,uid:str,name:str="Citizen",provider:str="twitch"):
     with SessionLocal() as db:
         _,p=player(db,channel,provider,uid,name);b=db.execute(select(Business).where(Business.channel_id==channel,Business.canonical_uid==p.twitch_uid)).scalar_one_or_none()
@@ -2325,6 +2348,7 @@ def business(channel:str,uid:str,name:str="Citizen",provider:str="twitch"):
         return platform_response(provider,discord,twitch)
 
 @app.get("/api/v1/business/start")
+@game_transaction
 def business_start(channel:str,uid:str,name:str="Citizen",business_name:str="New Venture",provider:str="twitch"):
     with SessionLocal() as db:
         _,p=player(db,channel,provider,uid,name)
@@ -2389,6 +2413,7 @@ def craft_dependency_text(recipe,provider="discord"):
     return platform_response(provider,message,f"🌳 {craft_item_name(recipe)} | "+' | '.join(lines))
 
 @app.get("/api/v1/recipes")
+@game_transaction
 def recipes(channel:str="new-eridian",provider:str="twitch",category:str=""):
     category=normalize_craft_category(category)
     with SessionLocal() as db:
@@ -2652,6 +2677,7 @@ def life_status(channel:str,uid:str,name:str="Citizen",provider:str="twitch"):
         return PlainTextResponse(base) if provider=="discord" else out(base)
 
 @app.get("/api/v1/display")
+@game_transaction
 def display_style(channel:str,uid:str,name:str="Citizen",style:str="",provider:str="twitch"):
     with SessionLocal() as db:
         _,p=player(db,channel,provider,uid,name);pref=player_preference(db,p);choice=(style or "").strip().lower()
@@ -2660,6 +2686,7 @@ def display_style(channel:str,uid:str,name:str="Citizen",style:str="",provider:s
             pref.result_style=choice;db.commit()
         explanation=("Compact shows the outcome, rewards, and only actionable/exceptional notes." if pref.result_style=="compact" else
                      "Detailed also shows every active modifier and the final success chance after each work action.")
+        if provider=="discord":explanation="Discord action cards always show a compact receipt. Active bonuses are listed under /me section:Bonuses; this preference is retained for plain-text results."
         return out(f"🎨 Result style: {pref.result_style.title()}. {explanation} Colors: 🟢 success/growth · 🟡 actions/rewards · 🔵 information · 🔴 blockers/danger · 🟣 social/story · ⚪ supporting detail.")
 
 @app.get("/api/v1/hi")
@@ -2706,6 +2733,7 @@ def hangout(channel:str,uid:str,name:str="Citizen",target:str="",provider:str="t
         log_action(db,channel,p.twitch_uid,"hangout",msg);return out(msg)
 
 @app.get("/api/v1/relationships")
+@game_transaction
 def relationships(channel:str,uid:str,name:str="Citizen",provider:str="twitch"):
     with SessionLocal() as db:
         _,p=player(db,channel,provider,uid,name)
@@ -2790,11 +2818,13 @@ def hobby(channel:str,uid:str,name:str="Citizen",hobby:str="",provider:str="twit
 
 
 @app.get("/api/v1/tutorial")
+@game_transaction
 def tutorial(channel:str,uid:str,name:str="Citizen",provider:str="twitch"):
     with SessionLocal() as db:
         _,p=player(db,channel,provider,uid,name);return out(tutorial_text(db,p,provider))
 
 @app.get("/api/v1/story")
+@game_transaction
 def story(channel:str,provider:str="twitch"):
     with SessionLocal() as db:
         clock=world_clock(db,channel);row,cfg=story_state(db,channel,clock);vals=[row.track_a,row.track_b,row.track_c];total=sum(vals)
@@ -2803,6 +2833,7 @@ def story(channel:str,provider:str="twitch"):
         return out(f"📖 {cfg['name']} | {state} | {tracks} | {cfg['text']}")
 
 @app.get("/api/v1/titles")
+@game_transaction
 def titles(channel:str,uid:str,name:str="Citizen",title:str="",provider:str="twitch"):
     with SessionLocal() as db:
         _,p=player(db,channel,provider,uid,name);refresh_titles(db,p)
@@ -2817,6 +2848,7 @@ def titles(channel:str,uid:str,name:str="Citizen",title:str="",provider:str="twi
         return out("🏷️ Titles | "+(" | ".join(parts) if parts else "No titles yet."))
 
 @app.get("/api/v1/marketboard")
+@game_transaction
 def marketboard(channel:str,provider:str="twitch"):
     with SessionLocal() as db:
         clock=world_clock(db,channel);a,b=market_demand(channel,clock["day"])
@@ -2951,6 +2983,7 @@ def duo(channel:str,uid:str,name:str="Citizen",target:str="",activity:str="walk"
         return out(f"🤝 {p.display_name} and {other.display_name} complete a duo {act}. {reward}. Relationship +{relationship_gain}.{milestone}")
 
 @app.get("/api/v1/ducks")
+@game_transaction
 def ducks(channel:str,uid:str,name:str="Citizen",duck:str="",provider:str="twitch"):
     with SessionLocal() as db:
         _,p=player(db,channel,provider,uid,name);pref=player_preference(db,p);wanted=(duck or "").strip().title()
@@ -2964,6 +2997,7 @@ def ducks(channel:str,uid:str,name:str="Citizen",duck:str="",provider:str="twitc
         return PlainTextResponse("🦆 Delivery Fleet Bonds\n\n"+"\n".join("• "+x for x in parts)+footer) if provider=="discord" else out("🦆 "+" | ".join(parts)+footer)
 
 @app.get("/api/v1/gear")
+@game_transaction
 def gear(channel:str,uid:str,name:str="Citizen",provider:str="twitch"):
     with SessionLocal() as db:
         _,p=player(db,channel,provider,uid,name);rows=db.execute(select(QualityGear).where(QualityGear.channel_id==channel,QualityGear.canonical_uid==p.twitch_uid,QualityGear.qty>0).order_by(QualityGear.item_name)).scalars().all()
@@ -3046,6 +3080,7 @@ def world_status(channel:str,uid:str="",name:str="Citizen",provider:str="twitch"
         return platform_response(provider,discord,twitch)
 
 @app.get("/api/v1/rumor")
+@game_transaction
 def rumor(channel:str,uid:str="",name:str="Citizen",provider:str="twitch"):
     with SessionLocal() as db:
         clock=world_clock(db,channel);base=RUMORS[_stable_index(f"{channel}:{clock['day']}:{clock['phase']}",len(RUMORS))]
@@ -3053,6 +3088,7 @@ def rumor(channel:str,uid:str="",name:str="Citizen",provider:str="twitch"):
         return out(f"🗣️ {who}, {job}: {base}")
 
 @app.get("/api/v1/collection")
+@game_transaction
 def collection(channel:str,uid:str,name:str="Citizen",provider:str="twitch"):
     with SessionLocal() as db:
         _,p=player(db,channel,provider,uid,name)
@@ -3064,12 +3100,14 @@ def collection(channel:str,uid:str,name:str="Citizen",provider:str="twitch"):
         return out("🧳 "+p.display_name+" | "+" | ".join(f"{r.item_name} x{r.qty}" for r in rows[:10]))
 
 @app.get("/api/v1/traits")
+@game_transaction
 def traits(channel:str,uid:str,name:str="Citizen",provider:str="twitch"):
     with SessionLocal() as db:
         _,p=player(db,channel,provider,uid,name);items,_=trait_data(db,p)
         return out("🧬 "+p.display_name+" | "+(", ".join(items) if items else "No earned traits yet. Reach 50 XP in an aptitude to begin earning them."))
 
 @app.get("/api/v1/district")
+@game_transaction
 def district(channel:str,uid:str,name:str="Citizen",district:str="",provider:str="twitch"):
     key=(district or "").lower().strip().replace(" ","_")
     with SessionLocal() as db:
@@ -3092,6 +3130,7 @@ def shift(channel:str,uid:str,name:str="Citizen",role:str="",provider:str="twitc
         return out(f"🕒 {p.display_name} takes {SHIFT_ROLES[key]} for Avesta Day {clock['day']}. {bonus_note}")
 
 @app.get("/api/v1/conditions")
+@game_transaction
 def conditions(channel:str,uid:str,name:str="Citizen",provider:str="twitch"):
     with SessionLocal() as db:
         _,p=player(db,channel,provider,uid,name);pw=player_world(db,p);rows=active_statuses(db,p)
@@ -3099,6 +3138,7 @@ def conditions(channel:str,uid:str,name:str="Citizen",provider:str="twitch"):
         return out("🩺 "+p.display_name+" | "+" | ".join(bits))
 
 @app.get("/api/v1/goal")
+@game_transaction
 def personal_goal(channel:str,uid:str,name:str="Citizen",provider:str="twitch"):
     # /goal now shows the same Daily Contract as /contracts instead of
     # maintaining a second overlapping daily objective.
@@ -3119,6 +3159,7 @@ def projectstatus(channel:str,provider:str="twitch"):
         return out(f"🏗️ {cfg[1]} | {row.progress}/{row.goal} | Useful aptitudes: {skills} | Completed projects: {row.completed}")
 
 @app.get("/api/v1/bulletin")
+@game_transaction
 def bulletin(channel:str,provider:str="twitch"):
     with SessionLocal() as db:
         clock=world_clock(db,channel);proj=current_project(db,channel,clock["day"]);cfg=project_cfg(proj.project_key)
@@ -3163,6 +3204,7 @@ def mentor(channel:str,uid:str,name:str="Citizen",target:str="",provider:str="tw
         return out(f"🧑‍🏫 {p.display_name} mentors {target_p.display_name}. {target_p.display_name} gains +{mentored_gain} {SKILL_LABELS[skill]} competency XP; mentor gains +2 Contribution.")
 
 @app.get("/api/v1/journal")
+@game_transaction
 def journal(channel:str,uid:str,name:str="Citizen",provider:str="twitch"):
     with SessionLocal() as db:
         _,p=player(db,channel,provider,uid,name)
@@ -3172,6 +3214,7 @@ def journal(channel:str,uid:str,name:str="Citizen",provider:str="twitch"):
         return out("📓 "+" | ".join(r.entry for r in rows[:5]))
 
 @app.get("/api/v1/link/create")
+@game_transaction
 def link_create(channel:str,uid:str,name:str="Citizen",provider:str="twitch"):
     with SessionLocal() as db:
         c=resolve(db,channel,provider,uid);record_account_name(db,channel,provider,uid,name);code="".join(secrets.choice(string.ascii_uppercase+string.digits) for _ in range(6))
@@ -3179,6 +3222,7 @@ def link_create(channel:str,uid:str,name:str="Citizen",provider:str="twitch"):
         return out(f"🔗 Link code {code}. In Discord use /link {code} within 15 minutes.")
 
 @app.get("/api/v1/link/claim")
+@game_transaction
 def link_claim(channel:str,discord_uid:str,name:str="Citizen",code:str=""):
     with SessionLocal() as db:
         record_account_name(db,channel,"discord",discord_uid,name)
@@ -3214,6 +3258,7 @@ def soc(channel:str,provider:str="twitch",viewer:str=""):
         return platform_response(provider,discord,twitch)
 
 @app.get("/api/v1/event")
+@game_transaction
 def event(channel:str,provider:str="twitch",viewer:str=""):
     with SessionLocal() as db:
         s=society(db,channel);w=world(db,channel);expired=resolve_expired_event(db,s,w)
@@ -3227,6 +3272,7 @@ def event(channel:str,provider:str="twitch",viewer:str=""):
         return out(f"🚨 {cfg['emoji']} {cfg['name']} {pct}% | {w.event_progress}/{w.event_goal} | {seconds//60}:{seconds%60:02d} | Primary {primary} | Support {support} {w.event_support_successes}/2 | Penalty {penalty} | Leaders {leader_text(leaders)}")
 
 @app.get("/api/v1/eventhistory")
+@game_transaction
 def eventhistory(channel:str,provider:str="twitch"):
     with SessionLocal() as db:
         rows=db.execute(select(EventHistory).where(EventHistory.channel_id==channel).order_by(EventHistory.ended_at.desc()).limit(5)).scalars().all()
@@ -3235,6 +3281,7 @@ def eventhistory(channel:str,provider:str="twitch"):
         return PlainTextResponse("📜 New Eridian Event History\n"+"\n".join(lines)) if provider=="discord" else out("📜 "+" | ".join(lines[:3]))
 
 @app.get("/api/v1/leaderboard")
+@game_transaction
 def leaderboard(channel:str,provider:str="twitch",uid:str="",name:str="Citizen"):
     with SessionLocal() as db:
         viewer=None
@@ -3248,6 +3295,7 @@ def leaderboard(channel:str,provider:str="twitch",uid:str="",name:str="Citizen")
         return PlainTextResponse("🏆 New Eridian Contributors\n\n"+"\n".join(lines)+personal) if provider=="discord" else out("🏆 "+" | ".join(lines[:5]))
 
 @app.get("/api/v1/overlay")
+@game_transaction
 def overlay_state(channel:str):
     """Rich JSON contract for the New Eridian v2 OBS Browser Source."""
     with SessionLocal() as db:
@@ -4927,6 +4975,7 @@ refresh();setInterval(refresh,3500);
     return HTMLResponse(html)
 
 @app.get("/api/v1/tick")
+@game_transaction
 def tick(channel:str):
     with SessionLocal() as db:
         s=society(db,channel);w=world(db,channel);w.heartbeat=now();expired=resolve_expired_event(db,s,w)
@@ -4937,6 +4986,7 @@ def tick(channel:str):
 
 
 @app.get("/api/v1/wallet")
+@game_transaction
 def wallet(channel:str,uid:str,name:str="Citizen",provider:str="twitch"):
     with SessionLocal() as db:
         _,p=player(db,channel,provider,uid,name)
@@ -4972,6 +5022,7 @@ def rocky(channel:str,uid:str="",name:str="Citizen",provider:str="twitch"):
     return out(f"🪨 Rocky's Wisdom for {clean(name)}: {random.choice(sayings)}")
 
 @app.get("/api/v1/siro")
+@game_transaction
 def siro(channel:str):
     with SessionLocal() as db:
         s=society(db,channel);w=world(db,channel);resolve_expired_event(db,s,w)
@@ -4980,8 +5031,9 @@ def siro(channel:str):
         return out("☣️ Siro report: levels are manageable. Sensors remain active around New Eridian.")
 
 @app.get("/api/v1/admin/event/{event}/{state}")
+@game_transaction
 def admin_event(event:str,state:str,channel:str,level:int=0,key:str=""):
-    if key!=ADMIN_KEY:
+    if not valid_admin_key(key):
         return out("⛔ Invalid game-admin key.")
     if level<500:
         return out("⛔ Moderator access required.")
@@ -4995,8 +5047,9 @@ def admin_event(event:str,state:str,channel:str,level:int=0,key:str=""):
         result=cancel_event(db,w,"StreamElements moderator");audit_moderator(db,channel,"StreamElements level "+str(level),"eventstop",event);return out(result)
 
 @app.get("/api/v1/admin/day/next")
+@game_transaction
 def next_day(channel:str,level:int=0,key:str=""):
-    if key!=ADMIN_KEY or level<500:
+    if not valid_admin_key(key) or level<500:
         return out("⛔ Moderator access required.")
     with SessionLocal() as db:
         s=society(db,channel);clock=db.execute(select(WorldClock).where(WorldClock.channel_id==channel)).scalar_one_or_none()
@@ -5392,7 +5445,7 @@ Comfort and Morale affect success chance but do not hard-block tasks. Recovery a
 /farm action:Hydroponics — Requires a Water Filter and improves Food while producing a Crop.
 /scan — Processing work that adds +1 society Knowledge.
 /mine — Choose an ore and view its requirements, then select Mine. Count starts a queue of 1–10 attempts. Rare ores require three successful prospecting steps per ore. /queue shows progress, total needs and missing materials; it pauses and resumes automatically.
-/rare — Prospect Argentite Ore. Harvesting Lv.3 required; three actions per ore, with a shared 20-second prospecting cooldown.
+/rare — Prospect Argentite Ore. Harvesting Lv.3 required; three successful prospecting steps per ore, with a shared 20-second prospecting cooldown.
 /training — Choose a skill, view branches and inventory requirements, then choose Task to work. Includes Cooking, Medicine and Emergency Response, their jobs, and level unlocks.\n/make — The complete Crafting system. Components, finished supplies, quality gear, Crafting XP, SC, and Development all live here.
 /repair target:Society Infrastructure — Engineering work; adds +1 Development.
 /research — Research work that raises Knowledge. Primary response for Siro Bloom.
@@ -5463,7 +5516,7 @@ Shared housing — Society-wide spaces for citizens. Fewer spaces than citizens 
 Society tier — Based on the lowest of all six stats. Higher tiers add modest SC pay and unlock recipes.
 Primary event role — Each successful matching action adds +1 progress.
 Support event role — Every two matching successes add +1 progress.
-Cooldown — Standard work, /eat, and /sleep use 5 seconds. Social and recovery actions use 20–60 seconds. /make has no cooldown. Linked Twitch/Discord accounts share cooldowns.
+Cooldown — Standard work, /eat, and /sleep use 5 seconds. Social and recovery actions use 20–60 seconds. workshop /make uses 5s; legacy recipes have no cooldown. Linked Twitch/Discord accounts share cooldowns.
 Task readiness — Energy, Nutrition, and Social must each be at least 20 for work, /make crafting, and personal gear repair. A blocked attempt spends nothing and starts no cooldown. Recovery commands remain usable; /eat supplies an emergency meal when a starving player has no food.
 Task cost — Standard work and /make use 2 Energy/1 Nutrition. Heavy extraction, frontier, and repair tasks use 3 Energy/1 Nutrition. All five life needs recharge by 1 per 15 real minutes, up to 60/100, including while away. Needs above 60 are not reduced. Food, sleep and social activities recover faster. Work also costs 1 Comfort; critical Comfort reduces morale, output and success. Results warn when recovery is required.
 Personal bonus — Temporary success, SC, Contribution, or XP boost. Each activation lasts 10 minutes; matching time stacks.
@@ -5496,7 +5549,7 @@ def discord_seed_help(topic="overview",name="Citizen"):
             "🏭 Production — mining, industry, research\n🛰️ Operations — logistics, frontier, commerce\n"
             "🏙️ Society — tiers and events\n🍲 Other — eat and sleep\n🛡️ Moderator — event controls\n"
             "📖 Terms — definitions for SC, XP, Contribution, aptitudes, tiers, and event roles\n\n"
-            "Not sure what to do? Use /guide. Standard work/eat/sleep use 5 seconds, social/recovery use 20–60 seconds, and /make has no cooldown.")
+            "Not sure what to do? Use /guide. Standard work/eat/sleep use 5 seconds, social/recovery use 20–60 seconds, and workshop /make uses 5s; legacy recipes have no cooldown.")
 
 def twitch_pages(content, page, command):
     """Page by UTF-8 bytes to fit StreamElements' 400-byte response limit."""
@@ -5524,8 +5577,9 @@ def twitch_seed(topic:str="overview",page:str="1"):
     return twitch_pages(content,page,f"!seed {topic}")
 
 @app.get("/api/v1/admin/modlog")
+@game_transaction
 def twitch_modlog(channel:str,level:int=0,key:str="",page:str="1"):
-    if not ADMIN_KEY or ADMIN_KEY=="change-me" or key!=ADMIN_KEY or level<500:
+    if not valid_admin_key(key) or level<500:
         return out("⛔ Moderator access and a configured game-admin key required.")
     with SessionLocal() as db:
         rows=db.execute(select(ModeratorAudit).where(ModeratorAudit.channel_id==channel).order_by(ModeratorAudit.created_at.desc()).limit(10)).scalars().all()
@@ -5979,84 +6033,6 @@ def _discord_pretty_embed(content,command,status):
         return _discord_action_embed(content,command,status)
     return _discord_generic_embed(content,command,status)
 
-def _discord_split_personal_details(content: str):
-    """
-    For public Discord action commands, keep shared game results public while
-    moving the player's personal success-calculation details to an ephemeral
-    follow-up message.
-    """
-    text=str(content or "")
-    marker="🧬 Active life modifiers"
-    if marker not in text:
-        return text,None
-
-    public,private=text.split(marker,1)
-    public=public.rstrip()
-    private=private.strip()
-
-    if not private:
-        return text,None
-
-    # Normalize the private section into short readable lines.
-    lines=[]
-    for raw in private.replace("\r","").split("\n"):
-        line=raw.strip()
-        if not line:continue
-        if line.startswith("•"):
-            line=line[1:].strip()
-        lines.append(line)
-
-    return public,"\n".join(lines)
-
-
-def _discord_private_details_embed(private_text: str, command: str):
-    lines=[x.strip().lstrip("•").strip() for x in str(private_text or "").splitlines() if x.strip()]
-    chance=[]
-    modifiers=[]
-    for line in lines:
-        if line.lower().startswith("final success chance:"):
-            chance.append(line)
-        else:
-            modifiers.append(line)
-
-    embed=_discord_embed(
-        "◻️ YOUR ACTION DETAILS",
-        "Personal modifiers used for this action.",
-        "detail"
-    )
-    _discord_add_field(embed,"🧬 Modifiers",modifiers or ["No active modifiers."])
-    _discord_add_field(embed,"🎯 Result Calculation",chance or ["No success roll details available."])
-    embed["footer"]={"text":"Only you can see this • New Eridian v2"}
-    return embed
-
-
-def _discord_send_ephemeral_followup(application_id: str, interaction_token: str, private_text: str, command: str):
-    """Send an ephemeral interaction follow-up using Discord's webhook token."""
-    if not application_id or not interaction_token or not private_text:
-        return
-    url=f"https://discord.com/api/v10/webhooks/{application_id}/{interaction_token}"
-    payload=message_layout.render(sys.modules[__name__],
-        _discord_private_details_embed(private_text,command),private_text)
-    payload["flags"]=64
-    try:
-        request=urllib.request.Request(
-            url,
-            data=json.dumps(payload).encode("utf-8"),
-            headers={
-                "Content-Type":"application/json",
-                "User-Agent":"New-Eridian-v2/6.3.1",
-            },
-            method="POST",
-        )
-        with urllib.request.urlopen(request,timeout=8) as response:
-            response.read()
-    except Exception as exc:
-        # The public command must still succeed even if Discord rejects a
-        # private follow-up. Railway logs preserve the reason for debugging.
-        print("Discord ephemeral follow-up error:",command,repr(exc))
-
-
-
 # The published flat option schema is also used to validate requests.
 from .command_catalog import commands as DISCORD_COMMAND_CATALOG
 DISCORD_OPTION_SCHEMA = {row["name"]: row.get("options", []) for row in DISCORD_COMMAND_CATALOG}
@@ -6179,7 +6155,7 @@ def _discord_json_message(content: str, ephemeral: bool = False, message_type: s
     if omitted:
         kept.append({"name":"More detail", "value":"This view is long. Choose a specific section, crafting category, or handbook topic to see its full details.", "inline":False})
     embed["fields"]=kept
-    data=message_layout.render(sys.modules[__name__],embed,content)
+    data=message_layout.render(sys.modules[__name__],embed,content,command)
     if ephemeral:
         data["flags"]=64
     return {"type":4,"data":data}
@@ -6959,63 +6935,16 @@ async def discord_interactions(request: Request, background_tasks: BackgroundTas
             message_type="moderator"
         )
 
-    if command in {'mine','queue'}:
-        if not payload.get('application_id') or not payload.get('token'):
-            return _discord_json_message('Discord response details were missing. Please run the command again.',ephemeral=True)
-        background_tasks.add_task(discord_deferred.finish,sys.modules[__name__],payload,command,uid,name,options)
-        return {'type':5,'data':{'flags':64}}
+    if not payload.get('application_id') or not payload.get('token'):
+        return _discord_json_message('Discord response details were missing. Please run the command again.',ephemeral=True)
+    background_tasks.add_task(discord_deferred.finish,sys.modules[__name__],payload,command,uid,name,options)
+    private=discord_execution.private_response(sys.modules[__name__],command,options)
+    return {'type':5,'data':{'flags':64} if private else {}}
 
-    origin_token=task_queue.queue_notifications.origin_channel.set(str(payload.get('channel_id') or ''))
-    try:
-        result = await run_in_threadpool(_discord_call_internal, command, uid, name, options, interaction_id)
-    except Exception as exc:
-        # Keep the public Discord response clean; Railway logs will contain the traceback.
-        print("Discord command error:", command, repr(exc))
-        return _discord_json_message(
-            "⚠️ New Eridian hit a system error while processing that command.",
-            ephemeral=True,
-            message_type=command
-        )
-    finally:
-        task_queue.queue_notifications.origin_channel.reset(origin_token)
-
-    if result.startswith(("🍽️ FOOD MENU","🎒 ITEM MENU")):
-        return _discord_json_message(result,ephemeral=True,message_type=command)
-
-    # Commands that are already private keep their full response private.
-    if command in DISCORD_PRIVATE_COMMANDS:
-        return _discord_json_message(
-            result,
-            ephemeral=True,
-            message_type=command
-        )
-
-    # Public action results stay visible to the channel, but personal
-    # modifiers/success-chance calculations are sent only to the player.
-    if command in DISCORD_PERSONAL_DETAIL_COMMANDS:
-        public_result,private_details=_discord_split_personal_details(result)
-        if private_details:
-            background_tasks.add_task(
-                _discord_send_ephemeral_followup,
-                str(payload.get("application_id") or ""),
-                str(payload.get("token") or ""),
-                private_details,
-                command,
-            )
-        return _discord_json_message(
-            public_result,
-            ephemeral=False,
-            message_type=command
-        )
-
-    return _discord_json_message(
-        result,
-        ephemeral=False,
-        message_type=command
-    )
 
 
 @app.get("/api/v1/settlement")
+@game_transaction
 def settlement_status(channel:str):
     """Additional JSON view; existing society/overlay fields are untouched."""
     from .settlement import CORE, STOCKS
@@ -7024,6 +6953,7 @@ def settlement_status(channel:str):
         return {"schema_version":7,"name":s.name,"resources":{k:getattr(s,k) for k in CORE}|{k:getattr(shared,k) for k in STOCKS},"pressures":colony_pressures(shared,s),"population":s.population}
 
 @app.get("/api/v1/routine")
+@game_transaction
 def routine(channel:str,uid:str,name:str="Citizen",provider:str="twitch",goal:str="",preferred:str=""):
     with SessionLocal() as db:
         _,p=player(db,channel,provider,uid,name);st=colony_seedling(db,p)
@@ -7044,9 +6974,10 @@ def routine(channel:str,uid:str,name:str="Citizen",provider:str="twitch",goal:st
         db.commit();return result
 
 @app.post("/api/v1/admin/routine/step")
+@game_transaction
 def routine_step(channel:str,uid:str,name:str="Citizen",provider:str="twitch",key:str=""):
     """Explicit operator-driven single step; never background offline reward spam."""
-    if ADMIN_KEY=="change-me" or not secrets.compare_digest(key,ADMIN_KEY):raise HTTPException(403,"Admin key required")
+    if not valid_admin_key(key):raise HTTPException(403,"Admin key required")
     choice=routine(channel,uid,name,provider)["next_action"]
     if choice in ACTION_SKILLS or choice in {"eat","sleep"}:return action(choice,channel,uid,name,provider=provider)
     return {"games":games,"walk":walk,"relax":relax}[choice](channel,uid,name,provider=provider)
@@ -7063,6 +6994,7 @@ with SessionLocal() as _identity_db:
 from . import task_queue, task_yields
 
 @app.get('/api/v1/queue')
+@game_transaction
 def queued_tasks(channel:str,uid:str,name:str='Citizen',action:str='view',task:str='',count:str='1',provider:str='twitch'):
     try:count=int(str(count).strip() or '1')
     except ValueError:return out('Count must be a whole number from 1 to 10. No queue was changed.')
@@ -7071,6 +7003,7 @@ def queued_tasks(channel:str,uid:str,name:str='Citizen',action:str='view',task:s
     return platform_response(provider,text,short)
 
 @app.get('/api/v1/mining')
+@game_transaction
 def mining(channel:str,uid:str,name:str='Citizen',ore:str='',action:str='view',count:str='1',provider:str='twitch'):
     try:count=int(str(count).strip() or '1')
     except ValueError:return out('Count must be a whole number from 1 to 10. Nothing was spent.')
