@@ -1,11 +1,10 @@
 """Persistent, bounded work queues. Each attempt and its counter commit together."""
-import asyncio, logging, json
+import asyncio, logging, json, hashlib
 from contextlib import contextmanager
 from contextvars import ContextVar
 from datetime import timedelta
-from sqlalchemy import Column,String,Integer,DateTime,Text,select
-from sqlalchemy.orm import Session
-from .db import Base
+from sqlalchemy import Column,String,Integer,DateTime,Text,select,text
+from .db import Base, connection_context
 from . import seed_content as s, crafting_progression as cp, task_yields, queue_notifications
 
 class TaskQueue(Base):
@@ -34,6 +33,29 @@ class QueueTotals(Base):
     progress = Column(Integer, nullable=False, default=0)
     gained = Column(Text, nullable=False, default='{}')
     used = Column(Text, nullable=False, default='{}')
+
+
+class QueueHealth(Base):
+    """Additive retry state; existing queue rows and counters are unchanged."""
+    __tablename__ = 'queue_health_v1'
+    channel_id = Column(String(64), primary_key=True)
+    canonical_uid = Column(String(96), primary_key=True)
+    failures = Column(Integer, nullable=False, default=0)
+
+
+def lock_world(conn, channel):
+    # A transaction-scoped lock also protects shared society balances on Postgres.
+    # SQLite's BEGIN IMMEDIATE provides the corresponding single-writer boundary.
+    if channel and conn.dialect.name == 'postgresql':
+        key = int.from_bytes(hashlib.blake2b(channel.encode(), digest_size=8).digest(), 'big', signed=True)
+        conn.execute(text('SELECT pg_advisory_xact_lock(:key)'), {'key': key})
+
+
+def need_reason(m, db, p):
+    life = m.life_state(db, p)
+    fixes = {'energy': ('Energy', '/sleep'), 'nutrition': ('Nutrition', '/eat'), 'social': ('Social', '/games')}
+    return '\n'.join(f'{label}: {getattr(life, key)}/100; need {m.TASK_NEED_MINIMUM}. Use {command}.'
+                      for key, (label, command) in fixes.items() if getattr(life, key) < m.TASK_NEED_MINIMUM)
 
 
 def inventory_snapshot(m, db, p):
@@ -79,15 +101,13 @@ def totals_text(m, db, row, short=False):
     text += (' | Items gained: ' if short else '\n\nTOTAL ITEMS GAINED\n') + listing(gained)
     if not short:
         text += '\n\nTOTAL ITEMS USED\n' + listing(used)
-        if row.task.split(':', 1)[-1] in cp.RARE:
-            text += '\nRare ore requires three successful prospecting steps per ore. Saved progress carries over.'
         if unknown:
             text += '\nTotals cover only attempts recorded after this update; existing inventory is unchanged.'
     return text
 
 
 actor_context=ContextVar('queue_actor',default=None)
-connection_context=ContextVar('queue_transaction',default=None)
+cooldown_wait=ContextVar('queue_cooldown_wait',default=0)
 ACTIVE={'running','paused'}
 ATTEMPT_SECONDS=10
 
@@ -168,18 +188,23 @@ def status(m,db,p,row):
     name=choices(m).get(row.task,row.task)
     text=f'TASK QUEUE — {row.state.upper()}\n{name}\nAttempts completed: {row.total-row.remaining}/{row.total}; remaining: {row.remaining}.\nOnly one task type can be queued at a time; maximum 10 attempts.\nThe worker checks your task every 10 seconds, even when nobody sends a message. Longer task cooldowns still apply.'
     text+='\n'+totals_text(m,db,row)
-    if row.state=='paused':text+='\n\nPAUSE REASON\n'+row.result
+    health=db.get(QueueHealth,(row.channel_id,row.canonical_uid))
+    if health and health.failures and row.state in ACTIVE:
+        wait=max(0,int((m.as_utc(row.next_at)-m.now()).total_seconds()))
+        text+=f'\n\nRETRY STATUS\nTemporary system error ({health.failures}/3). Retrying in about {wait}s; the interrupted attempt was not spent.'
+    if row.state in {'paused','error'}:text+='\n\nPAUSE REASON\n'+row.result
     if row.remaining and row.state in ACTIVE:
         text+='\n\n'+requirements(m,db,p,row.task,row.remaining)+'\n\nThe queue resumes automatically when needs and requirements are met. Use /sleep, /eat or /games to recover faster; /queue action:Cancel stops the remaining attempts.'
     text+='\n'+queue_notifications.delivery_status(db,row)
     return text
 
 @contextmanager
-def atomic(m):
+def atomic(m, channel=None):
     """Keep nested handler commits inside one outer database transaction."""
     with m.engine.connect() as conn:
         if conn.dialect.name=='sqlite':conn.exec_driver_sql('BEGIN IMMEDIATE')
         else:conn.begin()
+        lock_world(conn, channel)
         token=connection_context.set(conn)
         try:
             yield conn
@@ -190,7 +215,7 @@ def atomic(m):
 
 def control(m,channel,uid,name,provider,action='view',task='',count=1):
     if connection_context.get() is None:
-        with atomic(m):return control(m,channel,uid,name,provider,action,task,count)
+        with atomic(m,channel):return control(m,channel,uid,name,provider,action,task,count)
     with m.SessionLocal() as db:
         _,p=m.player(db,channel,provider,uid,name)
         # Serialize competing starts even when no queue row exists yet.
@@ -204,12 +229,20 @@ def control(m,channel,uid,name,provider,action='view',task='',count=1):
             totals=db.get(QueueTotals,(channel,p.twitch_uid))
             if totals is not None:db.delete(totals);db.flush()
             db.add(QueueTotals(channel_id=channel,canonical_uid=p.twitch_uid))
+            health=db.get(QueueHealth,(channel,p.twitch_uid))
+            if health:health.failures=0
             if row is None:
                 row=TaskQueue(channel_id=channel,canonical_uid=p.twitch_uid);db.add(row)
             row.task=task;row.total=count;row.remaining=count;row.state='running';row.result='Waiting for the first attempt.';row.next_at=m.now()+timedelta(seconds=ATTEMPT_SECONDS)
             queue_notifications.start(m,db,p,provider,uid)
+            reason=need_reason(m,db,p)
+            if reason:
+                row.state='paused';row.result=reason
+                queue_notifications.stopped(m,db,p,row,'paused',reason)
         elif action=='cancel':
-            if row and row.state in ACTIVE:row.state='cancelled';row.result='Remaining attempts cancelled. Completed work was kept.'
+            if row and row.state in ACTIVE|{'error'}:
+                row.state='cancelled';row.result='Remaining attempts cancelled. Completed work was kept.'
+                queue_notifications.stopped(m,db,p,row,'cancelled',row.result)
         elif action!='view':return 'Choose View, Start or Cancel. No queue was changed.'
         db.commit();return status(m,db,p,row)
 
@@ -219,6 +252,7 @@ def run_one(m,channel,uid):
     with m.engine.connect() as conn:
         if conn.dialect.name=='sqlite':conn.exec_driver_sql('BEGIN IMMEDIATE')
         else:conn.begin()
+        lock_world(conn, channel)
         token=connection_context.set(conn)
         try:
             with m.SessionLocal() as db:
@@ -226,12 +260,16 @@ def run_one(m,channel,uid):
                 row=db.execute(select(TaskQueue).where(TaskQueue.channel_id==channel,TaskQueue.canonical_uid==uid).with_for_update()).scalar_one_or_none()
                 if not p or not row or row.state not in ACTIVE or m.as_utc(row.next_at)>m.now():conn.rollback();return
                 if row.task not in choices(m):
-                    row.state='cancelled';row.result='This task is no longer available. Choose a new task.';db.commit();conn.commit();return
+                    row.state='cancelled';row.result='This task is no longer available. Choose a new task.'
+                    queue_notifications.stopped(m,db,p,row,'cancelled',row.result)
+                    db.commit();conn.commit();return
+                previous_state=row.state
                 cp.mining_outcome.set(None)
+                cooldown_wait.set(0)
                 before=p.actions;success_before=p.successes
                 stock_before=inventory_snapshot(m,db,p)
                 kind,target=row.task.split(':',1)
-                blocked=m.task_need_gate(db,p,'make','discord')
+                blocked=need_reason(m,db,p)
                 if blocked:result=blocked
                 elif kind in {'mine','gather'}:result=s.gather(m,db,p,target,'discord')
                 else:
@@ -265,9 +303,17 @@ def run_one(m,channel,uid):
                         if delta>0:gained[key]=gained.get(key,0)+delta
                         elif delta<0:used[key]=used.get(key,0)-delta
                     totals.gained=json.dumps(gained);totals.used=json.dumps(used)
-                row.state='completed' if row.remaining==0 else ('running' if attempted or 'ready in' in result.lower() else 'paused')
-                row.result=result[:1600]
-                _,_,cooldown=specification(m,row.task)
+                row.state='completed' if row.remaining==0 else ('running' if attempted or cooldown_wait.get()>0 else 'paused')
+                row.result=result[:4000]
+                if row.remaining and attempted:
+                    reason=need_reason(m,db,p)
+                    if reason:row.state='paused';row.result=reason
+                if attempted and previous_state=='paused':
+                    queue_notifications.dismiss_pause(db,db.get(queue_notifications.Destination,(channel,uid)))
+                if row.state=='paused' and (previous_state!='paused' or attempted):
+                    queue_notifications.stopped(m,db,p,row,'paused',row.result)
+                health=db.get(QueueHealth,(channel,uid))
+                if health:health.failures=0
                 row.next_at=m.now()+timedelta(seconds=ATTEMPT_SECONDS)
                 if row.state=='completed':
                     db.flush()
@@ -283,16 +329,35 @@ def tick(m):
         keys=list(db.execute(select(TaskQueue.channel_id,TaskQueue.canonical_uid).where(TaskQueue.state.in_(ACTIVE),TaskQueue.next_at<=m.now()).order_by(TaskQueue.next_at).limit(100)))
     for channel,uid in keys:
         try:run_one(m,channel,uid)
-        except Exception:logging.getLogger(__name__).exception('Queue attempt rolled back')
+        except Exception as exc:
+            logging.getLogger(__name__).error('Queue attempt rolled back (%s); recording bounded retry',type(exc).__name__)
+            try:record_failure(m,channel,uid)
+            except Exception:logging.getLogger(__name__).error('Queue database unavailable; retry state could not be saved')
+
+def record_failure(m,channel,uid):
+    """Retries only rolled-back work, with a three-error circuit breaker."""
+    with atomic(m,channel):
+        with m.SessionLocal() as db:
+            row=db.get(TaskQueue,(channel,uid))
+            if not row or row.state not in ACTIVE or m.as_utc(row.next_at)>m.now():return
+            health=db.get(QueueHealth,(channel,uid))
+            if health is None:
+                health=QueueHealth(channel_id=channel,canonical_uid=uid,failures=0);db.add(health)
+            health.failures+=1
+            row.next_at=m.now()+timedelta(seconds=min(120,10*2**health.failures))
+            row.result='A system error interrupted this attempt. No progress from this attempt was saved.'
+            if health.failures>=3:
+                row.state='error'
+                row.result+=' The queue has stopped after three errors. Completed attempts are kept. Try a new queue after the issue is resolved.'
+                p=db.execute(select(m.Player).where(m.Player.channel_id==channel,m.Player.twitch_uid==uid)).scalar_one()
+                queue_notifications.stopped(m,db,p,row,'error',row.result)
+            db.commit()
+
 
 def install(m):
-    original=m.SessionLocal
-    def session_factory():
-        conn=connection_context.get()
-        return Session(bind=conn,expire_on_commit=False,join_transaction_mode='rollback_only') if conn is not None else original()
-    m.SessionLocal=session_factory
     TaskQueue.__table__.create(m.engine,checkfirst=True)
     QueueTotals.__table__.create(m.engine,checkfirst=True)
+    QueueHealth.__table__.create(m.engine,checkfirst=True)
     queue_notifications.install(m)
     async def loop():
         stop=m.app.state.queue_stop
@@ -316,6 +381,13 @@ def merge_accounts(m,db,channel,source_uid,target_uid):
     source=db.get(TaskQueue,(channel,source_uid));target=db.get(TaskQueue,(channel,target_uid))
     if source is None:return
     queue_notifications.merge(db,channel,source_uid,target_uid,target is None or (source.state in ACTIVE and target.state not in ACTIVE))
+    source_health=db.get(QueueHealth,(channel,source_uid))
+    target_health=db.get(QueueHealth,(channel,target_uid))
+    keep_health=target is None or (source.state in ACTIVE and target.state not in ACTIVE)
+    if keep_health:
+        if target_health:db.delete(target_health);db.flush()
+        if source_health:source_health.canonical_uid=target_uid
+    elif source_health:db.delete(source_health)
     source_totals=db.get(QueueTotals,(channel,source_uid))
     target_totals=db.get(QueueTotals,(channel,target_uid))
     keep_source=target is None or (source.state in ACTIVE and target.state not in ACTIVE)
