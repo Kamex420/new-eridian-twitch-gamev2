@@ -50,3 +50,35 @@ this table and never calls gameplay handlers. A stale button asks the player to
 run the command again; pages are snapshots, not live queue status. Private
 snapshot IDs are exposed only on the corresponding ephemeral response. Public
 snapshots contain only the already-public command text.
+
+## Reliability boundaries
+
+The shared `app.db.SessionLocal` observes a transaction ContextVar. Nested
+commits flush work into the outer transaction rather than independently saving
+needs, rewards or bookkeeping. HTTP game endpoints and signed Discord commands
+use the same boundary as queue attempts. A PostgreSQL advisory lock per world
+orders these operations, including shared society updates and account merges;
+SQLite uses its single-writer transaction. This favors consistency over parallel
+writes inside one world. Pure HTML responses and health checks do not take the
+world lock.
+
+`queue_health_v1` tracks consecutive rolled-back attempts. Two retry delays
+precede a terminal `error` state on the third failure. Successful processing
+clears the streak. No failed transaction decrements attempts or retains rewards.
+Health state follows the retained queue when accounts merge.
+
+`queue_notice_events_v1` adds run ID, event kind and creation time to outbox
+notices without altering existing columns. Pauses, cancellation, completion and
+terminal errors commit with their immutable snapshots. The completion notice
+retains the historical run-ID key. Other transitions use distinct notice IDs.
+Pending obsolete pause notices become `superseded`; already-sent alerts remain
+history. An alert already in flight can still arrive after recovery. At-least-once
+remote delivery cannot guarantee exactly one visible message after a crash.
+
+`discord_command_receipts_v1` stores interaction ID, a fingerprint of the actor,
+command and options, saved result text and creation time. The receipt and command
+commit together. Retransmission returns the saved response and never replays
+its rewards. Receipt rows are retained; no interaction tokens are stored. A new
+interaction ID represents a new command. Termination before a deferred background
+command begins still requires a new user request; this is not a durable incoming
+Discord job broker.
