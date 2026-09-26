@@ -25,7 +25,7 @@ def test_background_worker_finishes_and_notifies_without_requests(monkeypatch):
     monkeypatch.setattr(n,'send',send)
     clock[0]+=timedelta(seconds=10)
     with TestClient(m.app):assert sent.wait(8)
-    assert len(texts)==1 and 'QUEUE COMPLETED' in texts[0] and 'Hematite Ore ×1' in texts[0]
+    assert len(texts)==1 and 'QUEUE — COMPLETED' in texts[0] and 'Hematite Ore ×1' in texts[0]
     with m.SessionLocal() as db:assert db.query(n.Notice).one().state=='sent'
 
 
@@ -61,9 +61,11 @@ def test_new_queue_keeps_previous_notification_snapshot():
         assert row.id!=db.query(n.Destination).one().run_id
 
 
-def test_cancel_does_not_send_completion():
+def test_cancel_sends_cancellation_not_completion():
     enqueue(count=2);advance();q.control(m,'test','u','Citizen','discord','cancel')
-    with m.SessionLocal() as db:assert db.query(n.Notice).count()==0
+    with m.SessionLocal() as db:
+        assert db.query(n.NoticeEvent).one().kind=='cancelled'
+        assert 'QUEUE — CANCELLED' in db.query(n.Notice).one().content
 
 
 def test_discord_channel_mention_and_nonce(monkeypatch):
