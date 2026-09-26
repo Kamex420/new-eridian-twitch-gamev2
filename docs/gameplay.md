@@ -38,7 +38,7 @@ Queue status is private in Discord. Progress persists through restarts. The work
 
 An active queue checks its next action every ten seconds while the service is running, independently of player messages. The first attempt is due ten seconds after starting. Needs and missing requirements pause the queue without consuming attempts. Rare-ore cooldowns still require twenty seconds between prospecting steps. Coal appears in `/mine`, awards one unit per successful attempt, and trains Ore Mining; its existing purchase price remains 4 SC.
 
-On completion, the bot posts a result message in the originating Discord channel and mentions only the player who started the queue. The message includes success/failure counts and item totals. Twitch completion messages mention the player in the configured stream chat. Delivery failures never undo or repeat gameplay rewards; the journal and queue retain the result.
+On completion, cancellation, unmet requirements or a terminal error, the bot posts a result message in the originating Discord channel and mentions only the player who started the queue. The message includes success/failure counts and item totals. Twitch completion messages mention the player in the configured stream chat. Delivery failures never undo or repeat gameplay rewards; the journal and queue retain the result.
 
 ### Personal output per successful attempt
 
@@ -64,7 +64,7 @@ Specialist methods can be queued with task IDs such as `work:water@hydroponics`,
 
 ## Mining success and Stone Dust
 
-Common ores, Coal and rare prospecting now roll the same intrinsic and situational work success model: a 68% base, skill/equipment/specialization bonuses, life and world modifiers, relevant events and Determination, capped to a final 10–92% chance. Results show the actual final chance. Skill level and conditions determine the final probability; 68% is not a fixed success rate.
+Common ores, Coal and rare prospecting now roll the same intrinsic and situational work success model: a 68% base, skill/equipment/specialization bonuses, life and world modifiers, relevant events and Determination, capped to a final 10–92% chance. Detailed mining calculations use the actual final chance; action receipts emphasize the outcome and changes. Skill level and conditions determine the final probability; 68% is not a fixed success rate.
 
 A failed mining attempt awards one existing Stone Dust item, gives no ore or prospecting progress, spends the normal needs cost, starts the normal cooldown and consumes one queued attempt. It adds Determination and grants no success XP. Existing rare-ore progress is kept. Blocked attempts and cooldown waits grant no Stone Dust and spend no attempt. Stone Dust remains a catalog crafting ingredient with its existing recipes and item identity.
 
@@ -72,9 +72,28 @@ The same rule applies to extraction-machine recipes and legacy mining/training r
 
 ### Reading Discord cards
 
-Cards show a compact overview. Select **Details** for the complete response,
+Cards show a compact overview. Select **Details** for the rest of a long view or action receipt,
 then **Next**, **Previous** or **Overview** to navigate. Detail pages are private
 and available for 24 hours. Run the command again to refresh changing information.
 Queue needs use **current / needed to finish**, not current / maximum. The
 forecast excludes other actions, incidents and passive recovery. Full material
 sources, workstation requirements and mining rules remain in Details.
+
+
+### Queue pauses and stops
+
+Low Energy, Nutrition or Social pauses a queue and sends a channel @mention
+with the current value, required minimum and recovery command. Missing materials
+or access also pauses it. Remaining attempts are saved, and recovery automatically
+resumes the queue. Cooldown waits are not failures and do not produce pause alerts.
+A last successful or failed attempt completes the queue even if needs are now low.
+
+Completion and cancellation send their own alerts with recorded totals. Three
+consecutive internal errors stop automatic retries and send a system-error alert;
+completed work remains saved. A new queue can replace this stopped queue. Normal
+mining/work failures are game outcomes and do not count as internal errors.
+
+Action cards show this action's changes only. Inventory and currency include
+secondary materials and items consumed to zero. Permanent bonuses, routine world
+information and general instructions stay in their dedicated views. Recovery
+warnings and new injuries or milestones remain relevant to the current action.
