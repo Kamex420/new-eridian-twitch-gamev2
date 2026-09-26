@@ -286,8 +286,12 @@ def test_old_queue_history_is_not_invented():
 
 def test_crash_rolls_back_summary_too(monkeypatch):
     enqueue();due()
-    def broken(*args):raise RuntimeError('crash before commit')
-    monkeypatch.setattr(q,'specification',broken)
+    original=q.need_reason;calls=[]
+    def broken(*args):
+        calls.append(1)
+        if len(calls)==2:raise RuntimeError('crash after reward, before commit')
+        return original(*args)
+    monkeypatch.setattr(q,'need_reason',broken)
     with pytest.raises(RuntimeError):q.run_one(m,'test','discord:u')
     with m.SessionLocal() as db:
         p=db.query(m.Player).one();totals=db.query(q.QueueTotals).one()
