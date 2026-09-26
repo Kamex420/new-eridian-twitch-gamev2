@@ -101,7 +101,7 @@ def workshop(m,db,p,action='view',station='',page=1,provider='discord'):
         lines+=['','TIERS',*[tier_hint(t) for t,_,_ in TIERS],
                 'Only manufacturing recipes with ingredients count. Gathering, extraction, purchases and non-manufacturing training do not count.',
                 'Select Station and Unlock to purchase permanent access. Owning a matching machine also gives access; tier rules still apply.',
-                'Recipe previews show skill levels, tier and exact station. Survival Workbench is free.']
+                'Recipe previews show output and sale value for each station. Eligible material batches gain +2 per station tier above Starter, capped at 20; finished items stay at 1. Survival Workbench is free.']
     else:lines+=['!workshoppage <page>; !workshopunlock <station ID>. Tiers: 0/25/100/250 batches.']
     return '\n'.join(lines)
 
@@ -168,17 +168,20 @@ def rare_gather(m,db,p,key,provider='discord',workshop_bonus=0):
             f'+{xp} Harvesting/Ore Mining XP · −3 Energy · −1 Nutrition · −1 Comfort · 20s cooldown'+detail)
 
 # Price all catalog materials from existing base-resource values plus processing
-# labor. No-input extraction never makes ores free. These new supplies have no
-# NPC buyback, so starter trades cannot create a buy/craft/sell cash loop.
+# labor. No-input extraction never makes ores free. Market buyback is applied
+# centrally after legacy identities have been unified.
 def starter_market():
     prices={k:RARE_NAMES.get(s.ITEMS[k]['name'],6 if s.GATHER[k]['branch']=='ore_mining' else 4) for k in s.GATHER}
     # Moving Coal into the mining menu does not change its established price.
     prices['sd_183031416']=4
+    for r in s.RECIPES.values():
+        if not r['inputs']:
+            for k in r['outputs']:prices.setdefault(k,4)
     for _ in range(len(s.RECIPES)):
         changed=False
         for rid,r in s.RECIPES.items():
             if not r['inputs'] or not set(r['inputs'])<=prices.keys():continue
-            cost=sum(prices[k]*n for k,n in r['inputs'].items())+4+2*s.required_level(r)
+            cost=sum(prices[k]*n for k,n in r['inputs'].items())+12+6*s.required_level(r)
             for k,n in r['outputs'].items():
                 if k in s.GATHER:continue
                 value=max(2,math.ceil(cost/n))
