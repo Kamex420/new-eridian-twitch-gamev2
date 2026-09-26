@@ -26,8 +26,9 @@ source imports are covered, but that does not replace deployment verification.
 
 Workers require a running host and reachable database. A missing bot token or
 missing channel access prevents alerts; queue results remain stored. Five failed
-notification delivery attempts become terminal; fixing permissions does not
-resend that old failed alert automatically. A pending obsolete pause is suppressed,
+notification delivery attempts become terminal. The Discord.py sender performs
+one recovery scan after login for failed or missing current-run stop alerts from
+the previous 24 hours; sent alerts and older history are not replayed. A pending obsolete pause is suppressed,
 but an alert already being sent may arrive after recovery.
 
 A crash after Discord accepts a message but before local acknowledgement can
@@ -41,3 +42,7 @@ The per-world transaction lock deliberately serializes writes. This is appropria
 for this game's shared balances; large-scale load testing is still outstanding.
 Detail pages expire after 24 hours. Command receipts are retained and should be
 included in database sizing and backup planning.
+
+The Discord.py transport is tested with mocked text channels, including a complete
+startup/timer/outbox/channel-send/shutdown lifecycle. Actual server delivery still
+requires a valid bot token and channel permissions.
