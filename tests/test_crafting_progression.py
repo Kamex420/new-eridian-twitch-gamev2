@@ -46,8 +46,8 @@ def test_market_covers_raw_inputs_and_every_branch_starter_with_positive_prices(
     for k,v in cp.STARTER_MARKET.items():
         assert v['buy']>0 and v['sell']==0
     for k in cp.RARE:assert cp.STARTER_MARKET[k]['buy']>=4*6
-    # Existing economy and buyback remain unchanged.
-    assert {k:(m.SEED_INDUSTRIES[m.item_identity.canonical(k)]['buy'],m.SEED_INDUSTRIES[m.item_identity.canonical(k)]['sell']) for k in ('crops','ore','rare_ore','components','cargo')}=={'crops':(4,1),'ore':(6,2),'rare_ore':(24,8),'components':(10,4),'cargo':(12,5)}
+    # Legacy stock is preserved; catalog ore buyback reflects the new economy.
+    assert {k:(m.SEED_INDUSTRIES[m.item_identity.canonical(k)]['buy'],m.SEED_INDUSTRIES[m.item_identity.canonical(k)]['sell']) for k in ('crops','ore','rare_ore','components','cargo')}=={'crops':(4,1),'ore':(6,4),'rare_ore':(24,16),'components':(10,4),'cargo':(12,5)}
 
 
 @pytest.mark.parametrize('tag',sorted(cp.STATIONS))
@@ -148,7 +148,7 @@ def test_rare_cooldown_shared_across_ores_and_extractor_route():
         assert m.material_amount(db,p,second)==0
 
 
-def test_rare_market_requires_level_and_new_stock_has_no_buyback():
+def test_rare_market_requires_level_and_buyback_pays_exactly():
     key=next(k for k in cp.RARE if s.ITEMS[k]['name']=='Rutile Ore')
     with m.SessionLocal() as db:
         p=citizen(db);p.sc=1000;db.commit()
@@ -160,9 +160,9 @@ def test_rare_market_requires_level_and_new_stock_has_no_buyback():
     assert f'{price*2} SC' in result
     with m.SessionLocal() as db:
         p=citizen(db);assert p.sc==1000-price*2 and m.material_amount(db,p,key)==2
-    assert 'does not buy it back' in m.seed_industries('test','new',action='sell',item_name=key,provider='discord').body.decode()
+    assert 'sold 1 Rutile Ore' in m.seed_industries('test','new',action='sell',item_name=key,provider='discord').body.decode()
     with m.SessionLocal() as db:
-        p=citizen(db);assert p.sc==1000-price*2 and m.material_amount(db,p,key)==2
+        p=citizen(db);assert p.sc==1000-price*2+m.SEED_INDUSTRIES[key]['sell'] and m.material_amount(db,p,key)==1
 
 
 def test_market_pages_cover_all_stock_without_mutation():
