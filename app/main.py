@@ -2006,13 +2006,13 @@ def health():
     try:
         with engine.connect() as conn:conn.execute(sql_text('SELECT 1'))
         workers={}
-        for name in ('queue_worker','notification_worker'):
+        for name in ('queue_worker','notification_worker','discord_notification_worker'):
             worker=getattr(app.state,name,None)
             workers[name]='running' if worker is not None and not worker.done() else 'not started' if worker is None else 'stopped'
         if 'stopped' in workers.values():raise RuntimeError('worker stopped')
     except Exception:
         raise HTTPException(status_code=503,detail='Game service is temporarily unavailable') from None
-    return {"ok":True,"game":GAME_TITLE,"society":GAME_NAME,"version":"7.0.0","workers":workers}
+    return {"ok":True,"game":GAME_TITLE,"society":GAME_NAME,"version":"7.0.0","workers":workers,"discord_queue_sender":getattr(getattr(app.state,"discord_queue",None),"state","not started")}
 
 @app.get("/api/v1/start")
 @game_transaction
