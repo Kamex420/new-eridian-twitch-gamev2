@@ -62,3 +62,35 @@ stopped worker. Queue views report undelivered stop alerts. The outbox still
 needs the bot token and channel permissions listed above; a code update cannot
 grant them. Alerts never use DMs. Text fallback supports channels that allow
 messages but reject embeds. Unset/default administrative keys fail closed.
+
+## Discord.py queue sender
+
+`discord.py==2.6.4` is a runtime dependency. FastAPI startup launches a
+`discord.ext.tasks.Loop` for queue scheduling and a separate Discord outbox
+loop. The scheduler checks every two seconds and respects each queue's saved
+10-second attempt deadline and longer cooldowns. It does not depend on chat
+messages, an open Discord interaction, or a connected Twitch stream.
+
+The sender authenticates `discord.Client` with `DISCORD_BOT_TOKEN`, resolves the
+recorded channel through `get_channel`/`fetch_channel`, then awaits
+`channel.send` with an explicit `<@user_id>` and a user-only mention whitelist.
+It sends a new channel message. DMs, role pings and everyone pings are disabled.
+The slash-command Interactions Endpoint stays unchanged. This client uses
+asynchronous HTTP operations, without a gateway websocket or privileged intents;
+a gateway "online" presence is not a delivery-readiness signal.
+
+`/health` exposes `discord_queue_sender`: `ready`, `missing_token`,
+`invalid_token`, `wrong_application`, `connection_error`, or `stopped`.
+Railway logs report authentication, delivery and sanitized errors. The bot token
+must belong to `DISCORD_APPLICATION_ID` when that value is configured. The bot
+must be installed in the server and allowed to View Channel and Send Messages
+(or Send Messages in Threads); Embed Links enables styled cards. Forbidden
+embeds fall back to a text alert. Channel permissions still apply to that fallback.
+
+A missing or rejected token leaves notices unclaimed. After authentication,
+one recovery scan restores missing/failed alerts for the current stopped queue
+runs from the previous 24 hours. Sent alerts and older history are not replayed.
+Ongoing send failures retain bounded retries and become visible in `/queue`.
+
+References: [discord.py task helpers](https://discordpy.readthedocs.io/en/stable/ext/tasks/index.html),
+[discord.py channel and client APIs](https://discordpy.readthedocs.io/en/stable/api.html).
