@@ -33,12 +33,18 @@ def finish(m,payload,command,uid,name,options):
     origin=m.task_queue.queue_notifications.origin_channel
     token=origin.set(str(payload.get('channel_id') or ''))
     try:
-        result=m._discord_call_internal(command,uid,name,options,str(payload.get('id') or ''))
-        data=m._discord_json_message(result,ephemeral=True,message_type=command)['data']
+        result=m.discord_execution.execute(m,payload,command,uid,name,options)
     except Exception:
-        # Never print webhook URLs, credentials, response bodies or SQL parameters.
-        logging.getLogger(__name__).error('Deferred Discord command failed: %s',command)
-        data={'content':'New Eridian could not finish this request. Check /queue before retrying; your queue may already have started.',
+        logging.getLogger(__name__).error('Deferred Discord command rolled back: %s',command)
+        data={'content':'This request could not be completed. Check /queue for any existing queue before trying again.',
               'allowed_mentions':{'parse':[]}}
+    else:
+        # Public receipts omit private modifier calculations. No extra unsolicited
+        # follow-up: the action has one response, with only relevant changes.
+        try:
+            data=m._discord_json_message(result,message_type=command)['data']
+        except Exception:
+            logging.getLogger(__name__).error('Saved command result could not be formatted: %s',command)
+            data={'content':result[:1800], 'allowed_mentions':{'parse':[]}}
     finally:origin.reset(token)
     edit_original(str(payload['application_id']),str(payload['token']),data)
