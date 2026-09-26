@@ -60,3 +60,34 @@ Browsing is private and read-only; it never reruns a command. On private cards,
 Previous, Next and Overview update the same message. Public cards open a private
 copy so another player's view is not changed. Completion alerts still @mention
 the player in the game channel and now use the same compact card styling.
+
+## Queue reliability and action receipts
+
+Queues now record durable stop events for completion, unmet needs or materials,
+cancellation, and repeated internal errors. Needs are checked after each saved
+attempt, so a player receives the pause alert without waiting for another
+attempt. A pause retains its remaining work and resumes after recovery. Only
+state transitions create alerts; background checks do not repeatedly ping the
+player. A pending pause alert is superseded when its queue resumes or is replaced.
+
+Unexpected attempts roll back and retry with backoff. Three consecutive errors
+stop that queue and create an error alert. Completing an attempt, updating its
+totals and recording its stop event share one transaction. Delivery failures do
+not replay gameplay. Discord can fall back to a plain-text alert when embeds
+are forbidden. Missing credentials or channel permissions remain delivery errors.
+
+Discord slash commands acknowledge before database work. Saved interaction
+receipts prevent repeat deliveries of the same interaction from applying the
+command twice. Formatting failure falls back to the saved result. Shared
+transaction handling also covers HTTP game endpoints, account linking and
+shared-world balances. PostgreSQL URLs select the installed psycopg driver;
+connection/statement/lock timeouts bound database waits. Health checks now verify
+the database and detect stopped workers. Administrative routes reject unset or
+placeholder keys.
+
+Action receipts show the action outcome, inventory/currency changes, needs
+changes, practice and immediate recovery requirements. Secondary items and
+consumed-to-zero items are included. General world conditions, permanent item
+bonuses, handbook text and repeated guidance are omitted from action receipts;
+their dedicated views remain available. No unsolicited modifier follow-up is
+sent after an action. Queue and informational views retain private detail pages.
