@@ -80,3 +80,53 @@ Final layout and reliability checks
 
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
 37 passed, 1 warning in 2.61s
+
+Discord.py queue sender — full regression
+........................................................................ [ 11%]
+........................................................................ [ 22%]
+........................................................................ [ 34%]
+........................................................................ [ 45%]
+........................................................................ [ 57%]
+........................................................................ [ 68%]
+........................................................................ [ 80%]
+........................................................................ [ 91%]
+....................................................                     [100%]
+=============================== warnings summary ===============================
+../../../../root/.local/lib/python3.12/site-packages/starlette/testclient.py:51
+  /root/.local/lib/python3.12/site-packages/starlette/testclient.py:51: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.
+    _PortalFactoryType = Callable[[], AbstractContextManager[anyio.abc.BlockingPortal]]
+
+../../../../root/.local/lib/python3.12/site-packages/discord/player.py:30
+  /root/.local/lib/python3.12/site-packages/discord/player.py:30: DeprecationWarning: 'audioop' is deprecated and slated for removal in Python 3.13
+    import audioop
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+628 passed, 2 warnings in 58.53s
+
+Final Discord.py and autonomy checks
+................................................................         [100%]
+=============================== warnings summary ===============================
+../../../../root/.local/lib/python3.12/site-packages/discord/player.py:30
+  /root/.local/lib/python3.12/site-packages/discord/player.py:30: DeprecationWarning: 'audioop' is deprecated and slated for removal in Python 3.13
+    import audioop
+
+../../../../root/.local/lib/python3.12/site-packages/starlette/testclient.py:51
+  /root/.local/lib/python3.12/site-packages/starlette/testclient.py:51: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.
+    _PortalFactoryType = Callable[[], AbstractContextManager[anyio.abc.BlockingPortal]]
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+64 passed, 2 warnings in 13.54s
+
+Stable nonce verification
+.................                                                        [100%]
+=============================== warnings summary ===============================
+../../../../root/.local/lib/python3.12/site-packages/discord/player.py:30
+  /root/.local/lib/python3.12/site-packages/discord/player.py:30: DeprecationWarning: 'audioop' is deprecated and slated for removal in Python 3.13
+    import audioop
+
+../../../../root/.local/lib/python3.12/site-packages/starlette/testclient.py:51
+  /root/.local/lib/python3.12/site-packages/starlette/testclient.py:51: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.
+    _PortalFactoryType = Callable[[], AbstractContextManager[anyio.abc.BlockingPortal]]
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+17 passed, 2 warnings in 6.17s
