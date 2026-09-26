@@ -4,6 +4,7 @@ from datetime import date, timedelta
 import calendar, hashlib, random
 from sqlalchemy import Column, Integer, String, Boolean, Date, UniqueConstraint, select
 from .db import Base, engine, SessionLocal
+from .commands import transaction
 from .models import Player, Society
 
 class DailyChallenge(Base):
@@ -63,6 +64,7 @@ def install(app):
         return m.collection(channel=channel,uid=uid,name=name,provider=provider)
 
     @app.get("/api/v1/fun/vote")
+    @transaction
     def fun_vote(channel:str,uid:str,choice:str="greenhouse",provider:str="twitch"):
         from . import main as m
         if choice not in {"greenhouse","market","observatory"}:return "🗳️ Choose: greenhouse, market, observatory."
