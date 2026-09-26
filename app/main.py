@@ -5601,7 +5601,7 @@ DISCORD_PUBLIC_COMMANDS = {
 DISCORD_PRIVATE_COMMANDS = {
     "seed", "guide", "start", "me", "progress", "inventory", "job",
     "home", "business", "make", "seedindustries", "link", "specialize", "modlog",
-    "world", "linklookup", "ducks", "training", "catalog", "gather"
+    "world", "linklookup", "ducks", "training", "catalog", "gather", "workshop"
 }
 
 def discord_message_status(content):
