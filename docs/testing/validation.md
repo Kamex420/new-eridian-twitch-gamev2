@@ -36,3 +36,23 @@ One existing Starlette/AnyIO deprecation warning remains. Outbound messaging
 is mocked; no live Discord or Railway deployment was tested. Tests verify
 complete long-response preservation, compact queue totals and forecasts,
 private read-only navigation, expired views and short replies without buttons.
+
+
+## Queue reliability release
+
+The full regression run passed **613 tests**. The final focused run validates
+queue faults, Discord acknowledgements and message layouts after the final copy
+cleanup; its exact output is recorded in `results.txt`. Python compilation and
+`git diff --check` pass. The catalog and historical Discord fixture retain their
+previous SHA-256 hashes.
+
+New fault-injection checks cover pause/resume episodes, same-attempt needs stops,
+completion at low needs, missing materials, cooldown copy independence, retries
+and circuit breaking, outbox rollback, duplicate concurrent Discord interactions,
+partial-command rollback, formatting failure, consumed-to-zero inventory,
+secondary rewards, driver normalization, unavailable database health, default
+admin-key rejection and plain-text alert fallback. Existing catalog acquisition,
+crafting, economy, linking and overlay/API route-contract tests also pass.
+
+One existing Starlette/AnyIO deprecation warning remains. The production limits
+and delivery guarantees are documented in [Reliability review](../reliability.md).
