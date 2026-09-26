@@ -58,7 +58,8 @@ Current needs: Energy 88/100; Nutrition 95/100; Social 100/100; Comfort 96/100.
     rendered = json.dumps(card, ensure_ascii=False)
     for value in ('9/10', 'failed: 1', 'Stone Dust ×1', 'Aurite Ore ×3', 'Energy 88/20'):
         assert value in rendered
-    assert 'TOTAL ITEMS USED' not in rendered and 'wisdom' not in rendered
+    assert 'TOTAL ITEMS USED' not in rendered
+    assert card['footer']['text']=="New Eridian v2 • May Rocky's wisdom guide you."
     assert card['title'] == 'Queue · Running'
 
 
