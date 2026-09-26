@@ -56,3 +56,18 @@ crafting, economy, linking and overlay/API route-contract tests also pass.
 
 One existing Starlette/AnyIO deprecation warning remains. The production limits
 and delivery guarantees are documented in [Reliability review](../reliability.md).
+
+
+## Discord.py queue sender
+
+Full regression: **628 passed**, with two dependency deprecation warnings
+(Starlette/AnyIO and Python 3.12 audioop). Two additional recovery/lifecycle tests
+were then added; the final focused Discord.py file passed all 17 tests before
+final diagnostic copy cleanup. The final combined Discord.py/autonomy run passed **64 tests**; output is recorded in results.
+
+Coverage includes real async send arguments, channel fetching, allowed mentions,
+DM rejection, embed fallback, missing/invalid/wrong-app tokens, concurrent leases,
+rate-limit retry, visible permission errors, recent failed/missing notice repair,
+orphaned event repair, suppression of older/sent notices, and an end-to-end timer
+that produces the second channel message. Outbound Discord calls are mocked;
+no live Railway or Discord session was used.
