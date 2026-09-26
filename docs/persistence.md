@@ -82,3 +82,18 @@ its rewards. Receipt rows are retained; no interaction tokens are stored. A new
 interaction ID represents a new command. Termination before a deferred background
 command begins still requires a new user request; this is not a durable incoming
 Discord job broker.
+
+## Asynchronous channel delivery
+
+The Discord.py worker claims only Discord notices with the existing conditional
+SQL lease. Detached snapshots cross the thread/async boundary; a SQLAlchemy
+session never remains open during a network send. The send has a 45-second bound
+inside its 120-second lease. The library sends a stable nonce and enforces nonce
+deduplication. A crash outside Discord's deduplication window still permits a
+repeated alert; rewards are not replayed. Shutdown finishes the current delivery
+before closing the client. Twitch claims only Twitch notices in production.
+
+Successful authentication triggers one repair scan for current stopped queues
+whose saved deadline is within the last 24 hours. Failed notices are requeued;
+missing notices are reconstructed from saved totals. Already-sent notices are
+left alone. This repair does not modify inventory, needs or queue counters.
