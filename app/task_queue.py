@@ -5,6 +5,7 @@ from contextvars import ContextVar
 from datetime import timedelta
 from sqlalchemy import Column,String,Integer,DateTime,Text,select,text
 from .db import Base, connection_context
+from discord.ext import tasks
 from . import seed_content as s, crafting_progression as cp, task_yields, queue_notifications
 
 class TaskQueue(Base):
@@ -195,7 +196,7 @@ def status(m,db,p,row):
     if row.state in {'paused','error'}:text+='\n\nPAUSE REASON\n'+row.result
     if row.remaining and row.state in ACTIVE:
         text+='\n\n'+requirements(m,db,p,row.task,row.remaining)+'\n\nThe queue resumes automatically when needs and requirements are met. Use /sleep, /eat or /games to recover faster; /queue action:Cancel stops the remaining attempts.'
-    text+='\n'+queue_notifications.delivery_status(db,row)
+    text+='\n'+queue_notifications.delivery_status(db,row,m)
     return text
 
 @contextmanager
@@ -359,21 +360,16 @@ def install(m):
     QueueTotals.__table__.create(m.engine,checkfirst=True)
     QueueHealth.__table__.create(m.engine,checkfirst=True)
     queue_notifications.install(m)
-    async def loop():
-        stop=m.app.state.queue_stop
-        while not stop.is_set():
-            try:await asyncio.to_thread(tick,m)
-            except Exception:logging.getLogger(__name__).exception('Queue polling failed; retrying')
-            try:await asyncio.wait_for(stop.wait(),timeout=2)
-            except asyncio.TimeoutError:pass
+    @tasks.loop(seconds=2,reconnect=True)
+    async def timer():
+        try:await asyncio.to_thread(tick,m)
+        except Exception:logging.getLogger(__name__).error('Queue timer failed; retrying')
     async def start():
-        m.app.state.queue_stop=asyncio.Event()
-        m.app.state.queue_worker=asyncio.create_task(loop())
+        m.app.state.queue_worker=timer.start()
     async def stop():
-        task=getattr(m.app.state,'queue_worker',None)
-        if task:
-            m.app.state.queue_stop.set()
-            await task
+        timer.stop()
+        task=timer.get_task()
+        if task:await task
     m.app.add_event_handler('startup',start);m.app.add_event_handler('shutdown',stop)
 
 
