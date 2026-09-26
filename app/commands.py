@@ -12,12 +12,31 @@ from fastapi.responses import PlainTextResponse
 from .progression import notices
 context=ContextVar("colony_command",default=None)
 
+def transaction(fn):
+    """Wrap an endpoint without changing its response text or public signature."""
+    sig=signature(fn)
+    @wraps(fn)
+    def wrapped(*args,**kwargs):
+        from . import main as m
+        bound=sig.bind(*args,**kwargs);bound.apply_defaults()
+        queue=getattr(m,'task_queue',None)
+        if queue is not None and queue.connection_context.get() is None:
+            with queue.atomic(m,bound.arguments.get('channel')):
+                return fn(*args,**kwargs)
+        return fn(*args,**kwargs)
+    return wrapped
+
+
 def command(fn):
     sig=signature(fn)
     @wraps(fn)
     def wrapped(*args,**kwargs):
         from . import main as m
         bound=sig.bind(*args,**kwargs);bound.apply_defaults();params=bound.arguments
+        queue=getattr(m,'task_queue',None)
+        if queue is not None and queue.connection_context.get() is None:
+            with queue.atomic(m,params.get('channel')):
+                return wrapped(*args,**kwargs)
         token=context.set({"name":fn.__name__,"params":params,"before":None,"uid":None,"practice":[]})
         nt=notices.set([])
         try:
@@ -31,7 +50,7 @@ def command(fn):
                         after=snapshot(db,p);before=ctx["before"]
                         if before:
                             for section in ("Needs","Resources","Competency","Settlement"):
-                                changed=[f"{m.SKILL_LABELS.get(k,k) if section=='Competency' else m.resource_name(k) if section=='Resources' else k} {v-before[section].get(k,v):+d}" for k,v in after[section].items() if v!=before[section].get(k,v)]
+                                changed=[f"{m.SKILL_LABELS.get(k,k) if section=='Competency' else (m.task_queue.total_label(m,k) if k.startswith('gear:') else m.resource_name(k)) if section=='Resources' else k} {v-before[section].get(k,0):+d}" for k in sorted(after[section].keys()|before[section].keys()) for v in [after[section].get(k,0)] if v!=before[section].get(k,0)]
                                 if section=="Competency" and ctx["practice"]:
                                     extra.append("Aptitude practice: "+"; ".join(ctx["practice"]))
                                 elif changed:extra.append(("Aptitudes" if section=="Competency" else section)+": "+", ".join(changed))
@@ -97,7 +116,7 @@ def snapshot(db,p):
         partner=rel.uid_b if rel.uid_a==p.twitch_uid else rel.uid_a
         ranks["Relationship "+partner]=sum(rel.familiarity>=n for n in (10,35,90,180,300))+1
     return {"Ranks":ranks,"Needs":{k:getattr(life,k) for k in NEEDS} if life else {},
-            "Resources":{k:getattr(p,k) for k in ("sc","crops","ore","rare_ore","components","cargo","contribution")},
+            "Resources":m.task_queue.inventory_snapshot(m,db,p)|{k:getattr(p,k) for k in ("sc","contribution")},
             "Competency":{k:getattr(p,v) for k,v in FIELDS.items()},
             "Settlement":{k:getattr(s,k) for k in CORE}|{k:getattr(shared,k) for k in STOCKS}}
 
