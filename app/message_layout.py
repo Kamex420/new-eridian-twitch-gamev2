@@ -49,7 +49,8 @@ def clean_name(name):
 
 def queue_card(content):
     lines = content.splitlines()
-    card = {'title': 'Queue · ' + lines[0].split('—')[-1].strip().title(),
+    state=lines[0].split('—')[-1].strip().title().replace('Error','Stopped')
+    card = {'title': 'Queue · ' + state,
             'description': lines[1], 'color': 0x5865F2, 'fields': []}
     def field(name, value):
         card['fields'].append({'name': name, 'value': value, 'inline': False})
@@ -62,10 +63,16 @@ def queue_card(content):
             value = lines[lines.index(heading) + 1]
             if value != 'None':
                 field(label, value)
+    if state=='Completed':card['color']=0x57F287
+    if state in {'Stopped','Cancelled'}:card['color']=0xED4245
+    delivery=next((x for x in lines if 'notification could not be delivered' in x),'')
+    if delivery:field('Alert delivery',delivery)
+    if 'RETRY STATUS' in lines:field('Retrying',lines[lines.index('RETRY STATUS')+1])
     if 'PAUSE REASON' in lines:
-        reason = content.split('PAUSE REASON\n', 1)[1].split('\n\n', 1)[0]
-        field('Paused · action needed', reason)
-        card['color'] = 0xFEE75C
+        reason = content.split('PAUSE REASON\n', 1)[1].split('\nNEXT\n', 1)[0].split('\n\nFor ',1)[0]
+        if 'WHY\n' in reason:reason=reason.split('WHY\n',1)[1].split('\n\n',1)[0]
+        field('Result' if state=='Cancelled' else 'Action needed' if state=='Stopped' else 'Paused · action needed', reason)
+        if state=='Paused':card['color'] = 0xFEE75C
     forecast = re.search(r'To finish without recovery, start with at least (\d+) Energy, (\d+) Nutrition and (\d+) Social', content)
     current = re.search(r'Current needs: Energy (\d+)/100; Nutrition (\d+)/100; Social (\d+)/100', content)
     if forecast and current:
@@ -73,15 +80,63 @@ def queue_card(content):
     missing = [x for x in lines if re.search(r'missing [1-9]', x)]
     if missing:
         field('Materials needed', '\n'.join(missing))
-    if forecast:
-        field('Controls', 'Auto checks every 10s; task cooldowns apply.\nOne task, up to 10 attempts · /queue to cancel.')
+    if 'NEXT' in lines:
+        field('Next',content.split('\nNEXT\n',1)[-1])
     card['fields'].sort(key=lambda f: 0 if f['name'].startswith('Paused') else 1 if f['name'] == 'Materials needed' else 2)
     return card
 
 
-def render(m, embed, content):
+def action_card(m, embed, content, command):
+    """Action receipts contain changes and immediate blockers, not handbook text."""
+    if 'MENU' in content.splitlines()[0] or content.startswith('TASK QUEUE'):return None
+    performed=bool(re.search(r'TASK (?:COMPLETE|FAILED)|CRAFTING COMPLETE|GATHERING COMPLETE|MINING FAILED',content))
+    performed=performed or bool(re.search(r'^Needs: (?!unchanged)',content,re.M))
+    if not performed:return None
+    failed='FAILED' in content[:120]
+    title=m._discord_action_name(command) if command not in {'make','gather'} else ('Crafting' if command=='make' else 'Gathering')
+    title=re.sub(r'^[^\w]+','',title).title().replace(' Shift','')
+    performed_name=re.search(r' completes ([^.]+)\.',content)
+    if performed_name:title=performed_name[1]
+    card={'title':title+' · '+('Failed' if failed else 'Complete'),'color':0xED4245 if failed else 0x57F287,'fields':[]}
+    def add(name,value):
+        if value:card['fields'].append({'name':name,'value':value,'inline':False})
+    resource=re.search(r'^Resources: (.+)$',content,re.M)
+    needs=re.search(r'^Needs: (?!unchanged)(.+)$',content,re.M)
+    practice=re.search(r'^Aptitude practice: (.+)$',content,re.M)
+    def section(name):
+        match=re.search(r'(?:^|\n)'+name+r'\n(.*?)(?=\n\n|$)',content,re.S)
+        return match[1].strip() if match else ''
+    if resource:
+        add('Items & currency',resource[1])
+    else:
+        add('Gained',section('OUTPUT'))
+        add('Used',section('USED'))
+        change=section('CHANGE')
+        if change:add('Changes',change)
+    add('Needs',needs[1] if needs else next((x for x in content.splitlines() if re.match(r'^[−-]\d+ Energy',x)),''))
+    add('Practice',practice[1] if practice else section('PRACTICE'))
+    if failed:
+        # Keep the actual failure, injuries and byproducts, not generic retry rules.
+        reason=section('WHY') or next((x for x in content.splitlines()[1:] if x.strip() and x not in {'OUTPUT','PRACTICE'}),'')
+        reason=reason.split('🧬 Active life modifiers')[0].split('WHY THIS RESULT')[0]
+        add('Result',reason)
+    recovery=section('⚠️ RECOVERY NEEDED BEFORE MORE WORK')
+    if recovery:add('Recovery needed',recovery)
+    milestones=[x for x in m._discord_split_result(content) if 'LEVEL UP' in x or x.startswith(('🩹','🔎','🧳','📜','🏆')) or re.search(r'\b(unlocked|completed|started|ended)\b',x,re.I)]
+    add('New this action','\n'.join(milestones))
+    card['fields'].sort(key=lambda f:0 if f['name'] in {'Result','Recovery needed'} else 1)
+    if not card['fields']:return None
+    # Reward/cost receipts keep exact deltas; permanent bonuses and general rules
+    # remain in inventory, /me, /guide and recipe previews.
+    detail=card['title']+'\n\n'+'\n\n'.join(f['name']+'\n'+f['value'] for f in card['fields'])
+    return card,detail
+
+
+def render(m, embed, content, command=""):
     """Use a small overview and preserve the complete response behind Details."""
-    source = queue_card(content) if content.startswith('TASK QUEUE —') else copy.deepcopy(embed)
+    receipt=action_card(m,embed,content,command) if command else None
+    if receipt:source,content=receipt
+    else:source = queue_card(content) if content.startswith('TASK QUEUE —') else copy.deepcopy(embed)
     source['title'] = re.sub(r'^[🟩🟥🟨🟦🟪]\s*', '', source['title'])
     source['footer'] = {'text': 'New Eridian'}
     description = source.get('description', '')
@@ -89,7 +144,7 @@ def render(m, embed, content):
     fields = source.get('fields', [])
     # Blockers and actual changes precede flavor and calculation explanations.
     priority = ('paused', 'failed', 'needed', 'progress', 'gained', 'output', 'reward', 'used', 'needs', 'need changes', 'cost')
-    if not content.startswith('TASK QUEUE —'):
+    if not receipt and not content.startswith('TASK QUEUE —'):
         fields.sort(key=lambda f: next((i for i, word in enumerate(priority) if word in f['name'].lower()), len(priority)))
     kept = []
     budget = 850 - len(source['description'])
