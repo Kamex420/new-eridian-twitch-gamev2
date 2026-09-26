@@ -5,7 +5,7 @@ import threading
 import pytest
 from test_colony import m, reset, seed
 from test_task_queue import enqueue, advance, ORE, RARE
-from app import task_queue as q, queue_notifications as n, task_yields as y
+from app import task_queue as q, queue_notifications as n, task_yields as y, discord_queue_worker as dw
 
 
 def test_ten_second_schedule_without_messages(monkeypatch):
@@ -21,8 +21,10 @@ def test_background_worker_finishes_and_notifies_without_requests(monkeypatch):
     from fastapi.testclient import TestClient
     clock=[m.now()];monkeypatch.setattr(m,'now',lambda:clock[0])
     enqueue(count=1);sent=threading.Event();texts=[]
-    def send(module,notice):texts.append(notice.content);sent.set()
-    monkeypatch.setattr(n,'send',send)
+    async def login(runtime):runtime.client=SimpleNamespace(close=_nothing);runtime.state='ready';return True
+    async def _nothing():pass
+    async def send(module,client,notice):texts.append(notice.content);sent.set()
+    monkeypatch.setattr(dw.Runtime,'login',login);monkeypatch.setattr(dw,'send_notice',send)
     clock[0]+=timedelta(seconds=10)
     with TestClient(m.app):assert sent.wait(8)
     assert len(texts)==1 and 'QUEUE — COMPLETED' in texts[0] and 'Hematite Ore ×1' in texts[0]
