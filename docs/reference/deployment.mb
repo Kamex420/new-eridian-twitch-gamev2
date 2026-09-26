@@ -33,7 +33,7 @@ Only `requirements.txt`, `app/` and `scripts/` are runtime image inputs. Test fi
 
 The ASGI lifespan starts separate work and notification workers. The service must remain running for autonomous work; a stopped or sleeping host cannot execute timers. Queue state persists through downtime and resumes without a catch-up burst. The default container command enables normal Uvicorn lifespan handling.
 
-Discord channel notifications use the existing `DISCORD_BOT_TOKEN`. The bot requires View Channel and Send Messages in the originating game channel (and Send Messages in Threads if commands are used in a thread). New queues record the verified interaction channel. `DISCORD_GAME_CHANNEL_ID` is the fallback for queues whose original channel was not recorded. Only the initiating player is included in `allowed_mentions`.
+Discord channel notifications use the existing `DISCORD_BOT_TOKEN`. The bot requires View Channel, Send Messages and Embed Links in the originating game channel (and Send Messages in Threads if commands are used in a thread). New queues record the verified interaction channel. `DISCORD_GAME_CHANNEL_ID` is the fallback for queues whose original channel was not recorded. Only the initiating player is included in `allowed_mentions`.
 
 Twitch notifications require `TWITCH_CLIENT_ID`, `TWITCH_BOT_USER_ID`, `TWITCH_BOT_ACCESS_TOKEN` (a user access token with `user:write:chat`), and `TWITCH_QUEUE_CHANNELS`, a JSON mapping from game-world keys to broadcaster numeric IDs. This outbound permission is separate from StreamElements custom-API requests. Missing configuration or revoked credentials are reflected in notification status; completion results remain stored.
 
@@ -43,8 +43,22 @@ References: [Discord message creation and allowed mentions](https://docs.discord
 
 ## Interaction response timing
 
-Discord requires an initial response within three seconds. `/mine` and `/queue` return a deferred response immediately after signature and access validation, then update the original response using the request-local interaction token. The token is not persisted. Discord allows interaction-token responses for fifteen minutes.[^discord-timing]
+Discord requires an initial response within three seconds. All supported slash commands return a deferred response immediately after signature and access validation, then update the original response using the request-local interaction token. The token is not persisted. Discord allows interaction-token responses for fifteen minutes.[^discord-timing]
 
 Deferral operates only after the request reaches the running app. Startup failures, missing uploaded modules, sleeping hosts or an unreachable interaction endpoint still require deployment diagnosis. An in-flight deferred command is not durable across process termination; persistent queues already committed to the database still resume normally.
 
 [^discord-timing]: [Discord interaction response documentation](https://github.com/discord/discord-api-docs/blob/main/developers/interactions/receiving-and-responding.mdx).
+
+## Runtime reliability
+
+Plain `postgres://` and `postgresql://` URLs select `postgresql+psycopg`, matching
+the installed driver. PostgreSQL connections have a 10-second connection and
+lock timeout and a 30-second statement timeout. SQLite waits up to 30 seconds
+for a writer. Command and queue transactions share a world lock. These bounds
+surface contention as a retryable error rather than an indefinite wait.
+
+`/health` probes the database and returns HTTP 503 for database failure or a
+stopped worker. Queue views report undelivered stop alerts. The outbox still
+needs the bot token and channel permissions listed above; a code update cannot
+grant them. Alerts never use DMs. Text fallback supports channels that allow
+messages but reject embeds. Unset/default administrative keys fail closed.
