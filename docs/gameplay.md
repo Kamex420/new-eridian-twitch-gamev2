@@ -97,3 +97,12 @@ Action cards show this action's changes only. Inventory and currency include
 secondary materials and items consumed to zero. Permanent bonuses, routine world
 information and general instructions stay in their dedicated views. Recovery
 warnings and new injuries or milestones remain relevant to the current action.
+
+### Channel pings
+
+When your queue completes or pauses, a separate message @mentions you in the
+same game channel. A pause message states the reason and recovery action.
+The queue timer continues without new chat messages. `/queue` shows delivery
+errors when the bot cannot send the alert; the original private command response
+is not the completion notification. Discord notification settings can affect
+push notifications even when the channel mention is delivered.
