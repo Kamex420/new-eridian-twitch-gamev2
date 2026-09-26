@@ -317,7 +317,7 @@ def test_multi_output_recipe_queue_uses_actual_batch_yields(rid):
         p=db.query(m.Player).one();row=db.query(q.TaskQueue).one();totals=db.query(q.QueueTotals).one()
         assert row.state=='completed',row.result
         assert totals.succeeded==2
-        for key,n in r['outputs'].items():
+        for key,n in s.production_balance.current_outputs(m,db,p,rid).items():
             assert m.material_amount(db,p,key)-before[key]==n*2
             assert json.loads(totals.gained)[key]==n*2
 
