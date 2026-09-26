@@ -12,6 +12,7 @@ from datetime import timedelta
 from sqlalchemy import Column, String, Text, DateTime, delete
 from .db import Base
 
+FOOTER = "New Eridian v2 • May Rocky's wisdom guide you."
 
 class MessagePages(Base):
     __tablename__ = 'message_pages_v1'
@@ -138,7 +139,7 @@ def render(m, embed, content, command=""):
     if receipt:source,content=receipt
     else:source = queue_card(content) if content.startswith('TASK QUEUE —') else copy.deepcopy(embed)
     source['title'] = re.sub(r'^[🟩🟥🟨🟦🟪]\s*', '', source['title'])
-    source['footer'] = {'text': 'New Eridian'}
+    source['footer'] = {'text': FOOTER}
     description = source.get('description', '')
     source['description'] = preview(description, 320)
     fields = source.get('fields', [])
@@ -165,7 +166,7 @@ def render(m, embed, content, command=""):
     pages = [source]
     for part in chunks(content):
         pages.append({'title': source['title'][:230] + ' · Details', 'description': part,
-                      'color': source['color'], 'footer': {'text': 'New Eridian'}})
+                      'color': source['color'], 'footer': {'text': FOOTER}})
     token = secrets.token_hex(16)
     with m.SessionLocal() as db:
         db.execute(delete(MessagePages).where(MessagePages.expires_at < m.now()))
@@ -176,7 +177,7 @@ def render(m, embed, content, command=""):
 
 def page_data(token, pages, index):
     embed = copy.deepcopy(pages[index])
-    embed['footer'] = {'text': f'New Eridian · {"Overview" if index == 0 else "Details " + str(index) + "/" + str(len(pages)-1)}'}
+    embed['footer'] = {'text': FOOTER}
     buttons = []
     if index:
         buttons.append({'type': 2, 'style': 2, 'label': 'Overview', 'custom_id': f'page:{token}:0'})
