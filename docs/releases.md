@@ -91,3 +91,18 @@ consumed-to-zero items are included. General world conditions, permanent item
 bonuses, handbook text and repeated guidance are omitted from action receipts;
 their dedicated views remain available. No unsolicited modifier follow-up is
 sent after an action. Queue and informational views retain private detail pages.
+
+## Discord.py channel alert patch
+
+Queue scheduling now uses `discord.ext.tasks`. Discord delivery uses an
+independent asynchronous outbox worker and `await channel.send`, producing a
+second channel message with the initiating player's mention. Twitch delivery
+uses a separate filtered worker, preventing both senders from claiming the same
+Discord notice. Saved deadlines, attempts, totals and transactional stop events
+retain their existing behavior.
+
+Missing credentials no longer consume Discord delivery attempts. Authentication
+state and concrete channel errors are exposed through health/queue views and
+logs. Login checks the configured application identity. A startup recovery scan
+repairs recent current-run stop alerts after deployment, without replaying sent
+messages or granting gameplay rewards again. DMs remain disabled.
