@@ -1,5 +1,6 @@
 """Verify acknowledgement occurs before command execution, without live sends."""
 import asyncio
+import pytest
 import json
 from types import SimpleNamespace
 from nacl.signing import SigningKey
@@ -8,11 +9,12 @@ from test_colony import m,reset
 from app import discord_deferred as d
 
 
-def test_acknowledges_without_running_database_work(monkeypatch):
+@pytest.mark.parametrize('command,private',[('mine',True),('queue',True),('farm',False),('make',True),('eat',True),('sleep',False)])
+def test_acknowledges_without_running_database_work(monkeypatch,command,private):
     key=SigningKey.generate();monkeypatch.setattr(m,'DISCORD_PUBLIC_KEY',key.verify_key.encode().hex())
     monkeypatch.setattr(m,'DISCORD_GAME_CHANNEL_ID','')
     payload={'type':2,'id':'123','application_id':'app','token':'fake','channel_id':'678',
-             'member':{'user':{'id':'456','username':'Player'}},'data':{'name':'mine'}}
+             'member':{'user':{'id':'456','username':'Player'}},'data':{'name':command}}
     body=json.dumps(payload).encode();stamp='123';signature=key.sign(stamp.encode()+body).signature.hex()
     async def get_body():return body
     async def get_json():return payload
@@ -23,7 +25,7 @@ def test_acknowledges_without_running_database_work(monkeypatch):
     delivered=[];monkeypatch.setattr(d,'edit_original',lambda *args:delivered.append(args))
     tasks=BackgroundTasks()
     result=asyncio.run(m.discord_interactions(request,tasks))
-    assert result=={'type':5,'data':{'flags':64}}
+    assert result=={'type':5,'data':{'flags':64} if private else {}}
     assert calls==[] and delivered==[]
     asyncio.run(tasks())
     assert calls==['678'] and len(delivered)==1
