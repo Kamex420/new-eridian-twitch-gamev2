@@ -100,16 +100,22 @@ def complete(m,db,p,queue,summary):
     stopped(m,db,p,queue,'completed')
 
 
-def delivery_status(db,queue):
+def delivery_status(db,queue,m=None):
     dest=db.get(Destination,(queue.channel_id,queue.canonical_uid))
     notice=None
     if dest:
         notice=db.execute(select(Notice).join(NoticeEvent,Notice.id==NoticeEvent.notice_id).where(
             NoticeEvent.run_id==dest.run_id,Notice.state!='superseded').order_by(NoticeEvent.created_at.desc())).scalars().first()
         notice=notice or db.get(Notice,dest.run_id)
+    if notice and notice.state=='sent':return 'Queue notification sent.'
+    if notice and notice.state=='failed':return 'Queue notification could not be delivered. '+notice.error+'. Your results are saved here and in your journal.'
+    if dest and dest.provider=='discord' and not os.getenv('DISCORD_BOT_TOKEN','').strip():
+        return 'Queue notification could not be delivered: DISCORD_BOT_TOKEN is missing on the server. Your results are saved.'
+    runtime=getattr(m.app.state,'discord_queue',None) if m is not None else None
+    if dest and dest.provider=='discord' and runtime and runtime.state in {'invalid_token','wrong_application','connection_error','stopped'}:
+        reason={'wrong_application':'the bot token does not match DISCORD_APPLICATION_ID','invalid_token':'the Discord bot token was rejected','connection_error':'Discord authentication is temporarily unavailable','stopped':'the Discord sender is stopped'}[runtime.state]
+        return 'Queue notification could not be delivered: '+reason+'. Your results are saved.'
     if notice:
-        if notice.state=='sent':return 'Queue notification sent.'
-        if notice.state=='failed':return 'Queue notification could not be delivered. Your results are saved here and in your journal.'
         return 'Queue notification is waiting for delivery. Your results are saved.'
     return 'You will be @mentioned in the game channel when the queue pauses or stops, if delivery is configured.'
 
@@ -141,6 +147,10 @@ def post(url,headers,payload):
 
 
 def send(m,notice):
+    """Legacy synchronous transport; the production poller selects Twitch only.
+
+    Discord production delivery lives in discord_queue_worker.send_notice.
+    """
     provider=notice.provider;recipient=notice.recipient
     if provider=='discord':
         token=os.getenv('DISCORD_BOT_TOKEN','').strip()
@@ -185,9 +195,11 @@ def send(m,notice):
         raise DeliveryError('Twitch did not send the notification')
 
 
-def deliver(m):
+def deliver(m,provider=None):
     with m.SessionLocal() as db:
-        ids=list(db.execute(select(Notice.id).where(Notice.state.in_(['pending','sending']),Notice.next_at<=m.now()).limit(50)).scalars())
+        query=select(Notice.id).where(Notice.state.in_(['pending','sending']),Notice.next_at<=m.now())
+        if provider:query=query.where(Notice.provider==provider)
+        ids=list(db.scalars(query.limit(50)))
     for notice_id in ids:
         with m.SessionLocal() as db:
             claimed=db.execute(update(Notice).where(Notice.id==notice_id,Notice.state.in_(['pending','sending']),
@@ -211,7 +223,7 @@ def install(m):
     Destination.__table__.create(m.engine,checkfirst=True);Notice.__table__.create(m.engine,checkfirst=True);NoticeEvent.__table__.create(m.engine,checkfirst=True)
     async def loop():
         while not m.app.state.notification_stop.is_set():
-            try:await asyncio.to_thread(deliver,m)
+            try:await asyncio.to_thread(deliver,m,'twitch')
             except Exception:logging.getLogger(__name__).error('Notification worker will retry')
             try:await asyncio.wait_for(m.app.state.notification_stop.wait(),timeout=2)
             except asyncio.TimeoutError:pass
@@ -221,3 +233,5 @@ def install(m):
     async def stop_worker():
         m.app.state.notification_stop.set();await m.app.state.notification_worker
     m.app.add_event_handler('startup',start_worker);m.app.add_event_handler('shutdown',stop_worker)
+    from . import discord_queue_worker
+    discord_queue_worker.install(m)
