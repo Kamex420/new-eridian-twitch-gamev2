@@ -415,6 +415,8 @@ for command in commands:
 # Quality-of-life: one status view, personal settings, and options that connect
 # favourites, Ready now, fetching ingredients, follow-up queues and bulk selling.
 commands.append(cmd('status','Needs, queue, cooldowns, ready recipes and your next step in one view'))
+commands.append(cmd('find','Search recipes, items, buttons and the handbook for anything',[
+    {'type':STRING,'name':'query','description':'A word or name, e.g. campfire, lumber or comfort','required':True,'max_length':60}]))
 commands.append(cmd('settings','Queue alerts and auto-recovery; leave options blank to view them',[
     {'type':STRING,'name':'alerts','description':'How queue alerts reach you','required':False,
      'choices':[{'name':'Channel @mention (default)','value':'mention'},{'name':'Direct message','value':'dm'},

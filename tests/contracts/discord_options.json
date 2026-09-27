@@ -1428,6 +1428,15 @@
     }
   ],
   "status": [],
+  "find": [
+    {
+      "type": 3,
+      "name": "query",
+      "description": "A word or name, e.g. campfire, lumber or comfort",
+      "required": true,
+      "max_length": 60
+    }
+  ],
   "settings": [
     {
       "type": 3,

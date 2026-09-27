@@ -1,5 +1,33 @@
 # Release notes
 
+## Planning, repeating and tidying up
+
+**Live countdowns.** Discord replies show times as live timestamps that count down on their own ("ready in 4 minutes"): sleep, cooldowns, passive recovery and when a queue finishes. Twitch gets plain "in 4m" text.
+
+**Queue max.** Recipe, mine and gather panels gain **📦 Queue max ×N**: the most attempts your ingredients and needs allow (up to 10; auto-recover lifts the needs limit). Twitch: `!craftmax <recipe or resource>`.
+
+**Recent actions and !again.** `/menu` → 🕘 Recent lists your last ten actions as one-tap repeat buttons. On Twitch, `!again` repeats your last task, craft, gather, food or item.
+
+**Goal tracker.** 🎯 **Set goal** on any recipe pins it. The Goal view (`/menu` → Craft → Goal) shows ingredients ready, everything still to collect all the way down the ingredient tree, the sub-crafts on the way, and a **▶️ Fetch next** button that gathers, crafts or buys the next piece. `/status` shows the goal's next step; the goal clears itself (with a 🏆 note) when you craft it. Twitch: `!target <recipe>`, `!target`, `!target clear`.
+
+**Plans and routines.** While a queue runs, queue buttons become **➕ Add to plan**: up to six later steps run one after another. Selling can be a step too ("Sell it after my queue" on the sell confirmation). **💾 Save plan as routine** keeps up to five routines to start again with one tap (`/menu` → Queue → Plan & routines). Twitch: `!routines`, `!routines save`, `!routine <n>`, `!routine delete <n>`.
+
+**What can I make with this?** `/menu` → Bag → What can I make with… lists every recipe that uses an item, ready ones first. Twitch: `!uses <item>`.
+
+**Welcome back and reminders.** After 3 hours away, a private summary shows queue results, needs, the daily contract, any festival and your goal's next step. One-off notes arrive when sleep is ready while you are tired, a festival opens, a new daily contract starts or your goal becomes craftable. All go through the private popups and `/menu` → Notifications.
+
+**Auto-sell.** `/menu` → Bag → Auto-sell picks items (Stone Dust, surplus) to sell automatically whenever a queue finishes; ingredients of favourites and queued recipes are always kept. Twitch: `!autosell <item>` toggles, `!autosell` lists.
+
+**Undo last sale.** Sell-all and clear-out results carry an **↩️ Undo** button for 60 seconds: items, Seed Coin and the Commerce practice go back. Twitch: `!undo`.
+
+**Eat until full.** `/menu` → Life → Eat until full eats the cheapest everyday food until Nutrition reaches 80, in one go on one cooldown. Festival foods and Meal Kits are never used. Twitch: `!eatfull`.
+
+**/find.** Search recipes, items, menu buttons and handbook topics at once; results are buttons. Twitch: `!find <word>`. The Discord menu now has 33 commands.
+
+**Remember my place.** A bare `/make` reopens the Workbench category and page you last used.
+
+New state lives in three additive tables (`player_extras_v1`, `player_recent_actions_v1`, `player_routines_v1`), merged when accounts are linked. Guide panels 4, 5, 6 and 8 changed. StreamElements lines for the new Twitch commands are in `integrations/twitch/quality_of_life_2_commands_ready.txt`.
+
 ## Private notifications and a short queue status
 
 **Popups.** Queue results, pauses and warnings are kept in a per-citizen inbox (`player_inbox_v1`) and shown as a private "Only you can see this" message the next time that player uses any command or button (Discord only allows private messages as part of an interaction). `/settings popups:` chooses **Important** (default: queue results, pauses, warnings), **All** (also one-time tips) or **Off**. Queue alerts gain a **Private** mode: no channel ping, just the popup.

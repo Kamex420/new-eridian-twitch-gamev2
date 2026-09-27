@@ -1,0 +1,33 @@
+# Ready to paste into Twitch chat as the broadcaster or a moderator (StreamElements bot).
+# Second quality-of-life batch: paste one line at a time, a couple of seconds apart.
+# Check afterwards with: !find campfire  !target campfire  !again
+
+!command add !again $(customapi https://new-eridian-production.up.railway.app/api/v1/again?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender)))
+!command options !again -level 100 -cd 0 -usercd 3
+
+!command add !craftmax $(customapi https://new-eridian-production.up.railway.app/api/v1/craftmax?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&recipe=$(queryescape ${1:}))
+!command options !craftmax -level 100 -cd 0 -usercd 2
+
+!command add !target $(customapi https://new-eridian-production.up.railway.app/api/v1/target?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&recipe=$(queryescape ${1:}))
+!command options !target -level 100 -cd 0 -usercd 3
+
+!command add !routines $(customapi https://new-eridian-production.up.railway.app/api/v1/routines?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&action=$(queryescape $(1)))
+!command options !routines -level 100 -cd 0 -usercd 3
+
+!command add !routine $(customapi https://new-eridian-production.up.railway.app/api/v1/routine?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&n=$(queryescape ${1:}))
+!command options !routine -level 100 -cd 0 -usercd 3
+
+!command add !uses $(customapi https://new-eridian-production.up.railway.app/api/v1/uses?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&item=$(queryescape ${1:}))
+!command options !uses -level 100 -cd 0 -usercd 5
+
+!command add !autosell $(customapi https://new-eridian-production.up.railway.app/api/v1/autosell?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&item=$(queryescape ${1:}))
+!command options !autosell -level 100 -cd 0 -usercd 3
+
+!command add !undo $(customapi https://new-eridian-production.up.railway.app/api/v1/undo?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender)))
+!command options !undo -level 100 -cd 0 -usercd 2
+
+!command add !eatfull $(customapi https://new-eridian-production.up.railway.app/api/v1/eatfull?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender)))
+!command options !eatfull -level 100 -cd 0 -usercd 3
+
+!command add !find $(customapi https://new-eridian-production.up.railway.app/api/v1/find?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&query=$(queryescape ${1:}))
+!command options !find -level 100 -cd 0 -usercd 5

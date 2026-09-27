@@ -218,7 +218,7 @@ def _section(content, name):
     return match[1].strip() if match else ''
 
 
-ACTION_TITLES = {'relax': 'Relaxed', 'sleep': 'Slept', 'eat': 'Meal', 'games': 'Games', 'walk': 'Walk', 'hobby': 'Hobby practice',
+ACTION_TITLES = {'eatfull': 'Ate until full', 'eat_full': 'Ate until full', 'relax': 'Relaxed', 'sleep': 'Slept', 'eat': 'Meal', 'games': 'Games', 'walk': 'Walk', 'hobby': 'Hobby practice',
                  'meal': 'Community meal', 'hi': 'Said hi', 'hangout': 'Hung out', 'duo': 'Duo activity', 'mentor': 'Mentored',
                  'farm': 'Farming', 'harvest': 'Harvest', 'forage': 'Forage', 'water': 'Irrigation', 'scan': 'Scan',
                  'mine': 'Mining', 'rare': 'Prospecting', 'research': 'Research', 'cargo': 'Cargo prepared', 'delivery': 'Delivery',
@@ -432,10 +432,23 @@ def fit(text, limit=CHAT_LIMIT):
     return data[:limit - 3].decode('utf-8', errors='ignore').rstrip(' |·,') + '…'
 
 
+TIMESTAMP = re.compile(r'<t:(\d+)(?::[tTdDfFR])?>')
+
+
+def plain_times(text):
+    """Discord timestamps ('<t:…:R>') as plain chat text ('in 4m', 'now')."""
+    import time
+    from .needs import duration_text
+    def render(match):
+        left = int(match[1]) - int(time.time())
+        return 'now' if left <= 0 else 'in ' + duration_text(left)
+    return TIMESTAMP.sub(render, str(text or ''))
+
+
 def chat_fold(text):
     """One chat line: headers fold into their first line, empty pieces and noise disappear."""
     parts, header = [], ''
-    for raw in re.split(r'\n| \| ', str(text or '')):
+    for raw in re.split(r'\n| \| ', plain_times(text)):
         line = raw.strip()
         if line.startswith('• '):
             line = line[2:].strip()
@@ -466,6 +479,6 @@ def chat_receipt(m, text, command=''):
 
 
 def chat(m, text, command=''):
-    text = str(text or '')
+    text = plain_times(text)
     line = chat_receipt(m, text, command) if kind(text) == 'receipt' else chat_fold(text)
     return fit(line)

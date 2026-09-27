@@ -144,6 +144,10 @@ def deliver(m, payload, discord_uid):
         return False
     with m.SessionLocal() as db:
         uid = _canonical(m, db, discord_uid)
+        p = db.execute(select(m.Player).where(m.Player.channel_id == m.DISCORD_WORLD_ID, m.Player.twitch_uid == uid)).scalar_one_or_none()
+        if p is not None:
+            m.extras.touch(m, db, p)      # welcome-back summary and reminders
+            db.commit()
         items = pending(db, m.DISCORD_WORLD_ID, uid)
         if not items:
             return False
@@ -227,4 +231,5 @@ def after_command(m, discord_uid, name, command, options, result):
             tip(m, db, channel, uid, 'sleep_wait')
         if m.life_state(db, p).comfort < m.COMFORT_SLOW:
             tip(m, db, channel, uid, 'comfort_low')
+        m.extras.goal_completed(m, db, p, text)
         db.commit()

@@ -80,7 +80,7 @@ def test_comfort_costs_match_energy_and_relax_restores_more():
 
 def test_discord_menu_is_grouped():
     names = {c['name'] for c in command_catalog.commands}
-    assert len(names) == 32 and {'life', 'work', 'mod', 'menu'} <= names
+    assert len(names) == 33 and {'life', 'work', 'mod', 'menu', 'find'} <= names
     assert not names & command_catalog.RETIRED
     assert {c['name'] for c in command_catalog.legacy_commands} == command_catalog.RETIRED
 

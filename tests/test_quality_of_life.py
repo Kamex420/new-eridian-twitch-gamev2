@@ -1,6 +1,7 @@
 """Status, favourites, Ready now, fetching, follow-up queues, alerts, recovery, selling and search."""
 import asyncio
 import json
+import re
 from datetime import timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
@@ -225,7 +226,7 @@ def test_queue_plan_offers_queue_next_when_busy():
     citizen()
     press(find(press(ui.cid('111', 'qp', 'gather:' + LUMBER, 2))['data'], 'Start queue')['custom_id'])
     plan = press(ui.cid('111', 'qp', 'gather:' + LUMBER, 3))
-    button = find(plan['data'], 'Queue next ×3')
+    button = find(plan['data'], 'Add to plan ×3')
     result = press(button['custom_id'])
     assert 'Next queue set' in json.dumps(result, ensure_ascii=False)
     status = press(ui.cid('111', 'qv'))
@@ -248,7 +249,8 @@ def test_pause_reason_estimates_passive_recovery():
     with m.SessionLocal() as db:
         row = db.query(q.TaskQueue).one()
         assert row.state == 'paused'
-        assert 'Passive recovery reaches 20 in about 1h 15m' in row.result
+        stamp = re.search(r'Passive recovery reaches 20 <t:(\d+):R>', row.result)
+        assert stamp and abs(int(stamp.group(1)) - m.now().timestamp() - 75 * 60) < 120
         assert 'resumes automatically' in db.query(n.Notice).one().content
 
 

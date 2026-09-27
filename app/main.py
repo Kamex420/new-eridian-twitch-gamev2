@@ -1153,7 +1153,9 @@ def sleep_status(db,p,provider="discord"):
     """Plain wording for the long sleep timer, reused by every recovery hint."""
     wait=action_wait(db,p,"sleep") if p is not None else 0
     command="/sleep" if provider=="discord" else "!sleep"
-    return f"{command} (ready now)" if not wait else f"{command} (ready in {duration_text(wait)})"
+    if not wait:return f"{command} (ready now)"
+    # Discord timestamps count down on their own; chat gets plain text.
+    return f"{command} (ready <t:{int(now().timestamp()+wait)}:R>)" if provider=="discord" else f"{command} (ready in {duration_text(wait)})"
 
 def need_fix(field,provider="discord",db=None,p=None):
     """The recovery route for one need, identical in gates, guides and queues."""
@@ -5491,14 +5493,14 @@ DISCORD_PUBLIC_COMMANDS = {
     "cargo", "delivery", "spaceport",
     "explore", "market",
     "eat", "sleep", "social", "walk", "relax", "games", "hobby",
-    "district", "shift", "meal", "use", "recover", "life", "work",
+    "district", "shift", "meal", "use", "recover", "life", "work", "eatfull",
 }
 
 DISCORD_PRIVATE_COMMANDS = {
     "seed", "guide", "start", "me", "progress", "inventory", "job",
     "home", "business", "make", "seedindustries", "link", "specialize", "modlog",
     "world", "linklookup", "ducks", "training", "catalog", "gather", "workshop",
-    "status", "settings", "mod", "menu", "guidepanels", "inbox", "queuedetails"
+    "status", "settings", "mod", "menu", "guidepanels", "inbox", "queuedetails", "find", "undo"
 }
 
 def discord_message_status(content):
@@ -6804,6 +6806,12 @@ def _discord_call_internal(command: str, uid: str, name: str, options: dict, int
             text=player_inbox.inbox_text(__import__("sys").modules[__name__],db,p)
             player_inbox.mark_all_seen(db,p.channel_id,p.twitch_uid);db.commit()
             return text
+    if command == "eatfull":
+        return eat_full(channel,uid,name,"discord").body.decode()
+    if command == "undo":
+        return undo_sale(channel,uid,name,"discord").body.decode()
+    if command == "find":
+        return extras.find_text(__import__("sys").modules[__name__],str(options.get("query") or "").strip()[:60] or "?")
     if command == "queuedetails":
         with SessionLocal() as db:
             _,p=player(db,channel,"discord",uid,name)
@@ -7134,9 +7142,10 @@ def queue_task_menu(query:str='',page:int=1,provider:str='twitch'):
     return platform_response(provider,text,text.replace('\n',' | '))
 
 
-from . import qol, presentation, menu, inbox
+from . import qol, presentation, menu, inbox, extras
 game_menu=menu
 inbox.install(sys.modules[__name__])
+extras.install(sys.modules[__name__])
 presentation.SKILL_NAMES=tuple(SKILL_LABELS.values())
 
 
@@ -7232,6 +7241,173 @@ def recover_needs(channel:str,uid:str,name:str='Citizen',provider:str='twitch'):
     with SessionLocal() as db:
         _,p=player(db,channel,provider,uid,name)
         text=qol.recover_text(sys.modules[__name__],db,p,provider);db.commit()
+        return platform_response(provider,text,text)
+
+
+
+@app.get('/api/v1/eatfull')
+@colony_command
+def eat_full(channel:str,uid:str,name:str='Citizen',provider:str='twitch'):
+    """Eat the cheapest everyday food until Nutrition reaches 80 (festival foods and Meal Kits are kept)."""
+    with SessionLocal() as db:
+        _,p=player(db,channel,provider,uid,name)
+        text=extras.eat_full(sys.modules[__name__],db,p,provider);db.commit()
+        return platform_response(provider,text,text)
+
+
+@app.get('/api/v1/undo')
+@game_transaction
+def undo_sale(channel:str,uid:str,name:str='Citizen',provider:str='twitch'):
+    """Take back your last Seed Industries sale within 60 seconds."""
+    with SessionLocal() as db:
+        _,p=player(db,channel,provider,uid,name)
+        text=extras.undo_sale(sys.modules[__name__],db,p);db.commit()
+        return platform_response(provider,text,text)
+
+
+@app.get('/api/v1/find')
+def find_anything(query:str='',provider:str='twitch'):
+    """Search recipes, items, menu buttons and handbook topics."""
+    if not query.strip():return out('🔎 Search for anything: !find <word>, e.g. !find campfire.')
+    text=extras.find_text(sys.modules[__name__],query.strip()[:60],provider)
+    return platform_response(provider,text,text)
+
+
+@app.get('/api/v1/again')
+def again(channel:str,uid:str,name:str='Citizen',provider:str='twitch'):
+    """Repeat your last Twitch action (a task, craft, gather, food or item)."""
+    module=sys.modules[__name__]
+    with SessionLocal() as db:
+        _,p=player(db,channel,provider,uid,name)
+        rows=extras.recent(db,p.channel_id,p.twitch_uid,'twitch',1);db.commit()
+    if not rows:return out('🔁 Nothing to repeat yet. Do a task, craft, gather or eat first, then !again repeats it.')
+    last=rows[0];fn=globals().get(last.command)
+    if last.command not in extras.TWITCH_AGAIN or fn is None:return out('🔁 Your last action cannot be repeated. Nothing spent.')
+    options=json.loads(last.options or '{}')
+    if last.command=='action' and 'msg' not in options:options['msg']=f'again-{int(now().timestamp())}'
+    return fn(channel=channel,uid=uid,name=name,provider=provider,**options)
+
+
+@app.get('/api/v1/craftmax')
+def craft_max(channel:str,uid:str,name:str='Citizen',recipe:str='',provider:str='twitch'):
+    """Queue as many batches (or gathering attempts) as your items and needs allow, up to 10."""
+    module=sys.modules[__name__]
+    if not recipe.strip():return out('🔁 Queue the most you can: !craftmax <recipe or resource>. Nothing spent.')
+    with SessionLocal() as db:
+        _,p=player(db,channel,provider,uid,name)
+        note='';key=seed_content.find_item(recipe)
+        found=None if key in seed_content.GATHER else workbench.resolve(module,db,p,recipe)
+        if key in seed_content.GATHER:task=('mine:' if key in task_queue.ores() else 'gather:')+key
+        elif found is not None:task='make:'+found.id
+        else:
+            found,note,suggestions=qol.fuzzy_recipe(module,db,p,recipe)
+            if found is None:
+                key,_=qol.fuzzy_item(recipe,seed_content.GATHER)
+                if key is None:return out('🔁 No recipe or resource called that.'+qol.did_you_mean(suggestions)+' Nothing spent.')
+                task=('mine:' if key in task_queue.ores() else 'gather:')+key
+            else:task='make:'+found.id
+        if task not in task_queue.choices(module):return out('🔁 That cannot be queued. Nothing spent.')
+        count,reason=extras.max_attempts(module,db,p,task);db.commit()
+    label=task_queue.choices(module)[task]
+    if count<=0:return out(f'🔁 You cannot do {label} even once right now: short on {reason}. Nothing spent.')
+    result=queued_tasks(channel,uid,name,'start',task,str(count),provider).body.decode()
+    prefix=(note+' ' if note else '')+f'🔁 Max ×{count} ({"limited by "+reason if count<10 else "the 10-attempt maximum"}). '
+    return platform_response(provider,prefix+result,prefix+result)
+
+
+@app.get('/api/v1/target')
+@game_transaction
+def target(channel:str,uid:str,name:str='Citizen',recipe:str='',provider:str='twitch'):
+    """Pin a recipe as your goal; blank shows progress, 'clear' removes it."""
+    module=sys.modules[__name__]
+    with SessionLocal() as db:
+        _,p=player(db,channel,provider,uid,name)
+        wanted=recipe.strip()
+        if wanted.casefold() in {'clear','none','off','remove'}:
+            extras.clear_goal(db,p);db.commit()
+            return out('🎯 Goal cleared.')
+        if wanted:
+            found=workbench.resolve(module,db,p,wanted)
+            note=''
+            if found is None:
+                found,note,suggestions=qol.fuzzy_recipe(module,db,p,wanted)
+                if found is None:return out('🎯 No recipe called that.'+qol.did_you_mean(suggestions)+' Nothing changed.')
+            text=(note+' ' if note else '')+extras.set_goal(module,db,p,found.id);db.commit()
+            return platform_response(provider,text+'\n\n'+extras.goal_text(module,db,p,provider),text+' '+extras.goal_text(module,db,p,provider))
+        text=extras.goal_text(module,db,p,provider);db.commit()
+        return platform_response(provider,text,text)
+
+
+@app.get('/api/v1/routines')
+@game_transaction
+def routines_view(channel:str,uid:str,name:str='Citizen',action:str='view',provider:str='twitch'):
+    """Your plan and saved routines; action=save saves the current plan, action=clear empties the plan."""
+    module=sys.modules[__name__]
+    with SessionLocal() as db:
+        _,p=player(db,channel,provider,uid,name)
+        action=str(action or 'view').casefold()
+        if action=='save':text=extras.save_routine(module,db,p)
+        elif action=='clear':extras.clear_plan(db,p);text='🗺️ Later plan steps cleared. The running queue carries on.'
+        elif provider!='discord':
+            saved=extras.routines(db,p)
+            steps=extras.current_steps(module,db,p)
+            text=('🗺️ Plan: '+(' → '.join(extras.step_label(module,st) for st in steps) or 'nothing')+' | Routines: '+
+                  (', '.join(f'{i}. {r.name}' for i,r in enumerate(saved,1)) or 'none')+' | !routine <number> starts one; !routines save saves your plan')
+        else:text=extras.plan_text(module,db,p)
+        db.commit()
+        return platform_response(provider,text,text)
+
+
+@app.get('/api/v1/routine')
+def routine_start(channel:str,uid:str,name:str='Citizen',n:str='',provider:str='twitch'):
+    """Start saved routine number n (1–5); 'delete n' removes it."""
+    module=sys.modules[__name__]
+    words=str(n or '').split()
+    remove=bool(words) and words[0].casefold() in {'delete','remove','del'}
+    if remove:words=words[1:]
+    if not words or not words[0].isdigit():return out('🗺️ Choose a routine number: !routine 1. !routines lists them.')
+    with SessionLocal() as db:
+        _,p=player(db,channel,provider,uid,name)
+        saved=extras.routines(db,p);index=int(words[0])-1
+        if not 0<=index<len(saved):return out(f'🗺️ You have {len(saved)} saved routines. !routines lists them.')
+        chosen=saved[index].id
+        if remove:
+            extras.delete_routine(db,p,chosen);db.commit()
+            return out(f'🗺️ Routine {index+1} deleted.')
+        db.commit()
+    text=extras.start_routine(module,channel,uid,name,provider,chosen)
+    return platform_response(provider,text,text)
+
+
+@app.get('/api/v1/uses')
+def item_uses(channel:str,uid:str,name:str='Citizen',item:str='',provider:str='twitch'):
+    """Recipes that use an item, ready ones first."""
+    module=sys.modules[__name__]
+    key=seed_content.find_item(item or '')
+    if key not in seed_content.ITEMS:
+        key,suggestions=qol.fuzzy_item(item) if item else (None,[])
+        if key is None:return out('🔍 Which item? !uses <item name>.'+qol.did_you_mean(suggestions))
+    with SessionLocal() as db:
+        _,p=player(db,channel,provider,uid,name)
+        text,_=extras.uses_text(module,db,p,key,provider);db.commit()
+        return platform_response(provider,text,text)
+
+
+@app.get('/api/v1/autosell')
+@game_transaction
+def autosell(channel:str,uid:str,name:str='Citizen',item:str='',provider:str='twitch'):
+    """Toggle selling an item automatically when a queue finishes; blank lists them."""
+    module=sys.modules[__name__]
+    with SessionLocal() as db:
+        _,p=player(db,channel,provider,uid,name)
+        if not item.strip():
+            text=extras.autosell_text(module,db,p)
+            return platform_response(provider,text,text)
+        key=seed_content.find_item(item)
+        if key not in SEED_INDUSTRIES:
+            key,suggestions=qol.fuzzy_item(item,SEED_INDUSTRIES)
+            if key is None:return out('🧹 Choose an item Seed Industries buys.'+qol.did_you_mean(suggestions)+' Nothing changed.')
+        text=extras.toggle_autosell(module,db,p,key);db.commit()
         return platform_response(provider,text,text)
 
 

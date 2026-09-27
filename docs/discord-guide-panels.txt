@@ -106,6 +106,9 @@ with /mod action:Post guide panels here instead; the bot posts all eight with co
 [0;33m🧺 Fetch missing
 [0mOn a recipe you cannot make yet: gathers what is missing,
 [0mthen crafts it.
+[0;33m🎯 Set goal
+[0mPin a recipe. /status shows the next step all the way down
+[0mthe ingredient tree.
 [1;36mWORKSTATIONS & TIERS
 [0;33m/workshop
 [0mUnlock a station once for a fee, or own the matching
@@ -130,8 +133,11 @@ with /mod action:Post guide panels here instead; the bot posts all eight with co
 [0mProgress, items gained and used, and why it paused.
 [0;33m/queue → Action: Queue next
 [0mLine up one more task to start when this one ends.
-[0;33m/queue → Action: Repeat last
-[0mRun your last queue again.
+[0;33mQueue max
+[0mAs many attempts as your items and needs allow, up to 10.
+[0;33m➕ Add to plan
+[0mChain up to 6 more steps, including "sell all". Save a
+[0mplan as a routine.
 [1;36mALERTS
 [0;33m/settings → Alerts
 [0mChannel mention, direct message, private, quiet or off.
@@ -160,6 +166,9 @@ with /mod action:Post guide panels here instead; the bot posts all eight with co
 [0mfavourites use.
 [0;33m→ Action: View Production Orders
 [0mThree daily contracts that pay well for crafted goods.
+[0;33m↩️ Undo
+[0mTake back a sale within 60 seconds. Auto-sell junk when
+[0mqueues finish: /menu → Bag.
 [1;36mYOUR THINGS
 [0;33m/inventory
 [0mSearch, sort by value, or show what your ready recipes
@@ -203,6 +212,9 @@ with /mod action:Post guide panels here instead; the bot posts all eight with co
 [1;36mYOU
 [0;33m/status  /me  /inventory  /settings
 [0mNeeds, profile, skills, items and preferences.
+[0;33m/find
+[0mSearch recipes, items, buttons and the handbook for
+[0manything.
 [1;36mDO THINGS
 [0;33m/life  /work  /gather  /mine  /use
 [0mRecover, work, collect and use items.

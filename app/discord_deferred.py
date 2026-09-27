@@ -33,7 +33,10 @@ def finish(m,payload,command,uid,name,options):
     origin=m.task_queue.queue_notifications.origin_channel
     token=origin.set(str(payload.get('channel_id') or ''))
     try:
+        options=m.extras.default_options(m,command,options,uid)   # e.g. /make reopens where you left off
         result=m.discord_execution.execute(m,payload,command,uid,name,options)
+        try:m.extras.record_discord(m,uid,name,command,options)
+        except Exception:logging.getLogger(__name__).error('Recent action not recorded: %s',command)
     except Exception:
         logging.getLogger(__name__).error('Deferred Discord command rolled back: %s',command)
         data={'content':'This request could not be completed. Check /queue for any existing queue before trying again.',

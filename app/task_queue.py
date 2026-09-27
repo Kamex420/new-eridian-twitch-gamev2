@@ -216,6 +216,8 @@ def status(m,db,p,row,detail=False):
     if row is None:return 'You have no task queue. Start one from /mine, /gather or /make with Queue 5 or Queue 10, or /queue action:Start.'
     name=choices(m).get(row.task,row.task)
     text=f'TASK QUEUE — {row.state.upper()}\n{name}\nAttempts completed: {row.total-row.remaining}/{row.total}; remaining: {row.remaining}.'
+    if row.state=='running' and row.remaining and row.task in choices(m):
+        text+=f'\nFinishes about <t:{int(m.now().timestamp()+row.remaining*specification(m,row.task)[2])}:R>.'
     if detail:text+='\nOnly one task type can be queued at a time; maximum 10 attempts.\nThe worker checks your task every 10 seconds, even when nobody sends a message. Longer task cooldowns still apply.'
     text+='\n'+totals_text(m,db,row,compact=not detail)
     following=qol.next_label(m,db,row.channel_id,row.canonical_uid)
@@ -309,7 +311,11 @@ def control(m,channel,uid,name,provider,action='view',task='',count=1):
             if row and row.state in ACTIVE|{'error'}:
                 following=qol.next_label(m,db,channel,p.twitch_uid)
                 row.state='cancelled';row.result='Remaining attempts cancelled. Completed work was kept.'
-                if following and qol.clear_next(db,channel,p.twitch_uid):
+                from . import extras
+                planned=extras.playlist(db,channel,p.twitch_uid)
+                extras.clear_plan(db,p)
+                if planned and not following:following=f'{len(planned)} planned steps'
+                if following and (qol.clear_next(db,channel,p.twitch_uid) or planned):
                     note=f'⏭️ Your next queue ({following}) was cleared too.\n\n'
                     row.result+=' '+note.strip()
                 queue_notifications.stopped(m,db,p,row,'cancelled',row.result)
@@ -397,11 +403,16 @@ def run_one(m,channel,uid):
                 row.next_at=m.now()+timedelta(seconds=ATTEMPT_SECONDS)
                 if row.state=='completed':
                     db.flush()
+                    from . import extras
+                    notes=extras.autosell_after_queue(m,db,p)
                     task,count=qol.pop_next(db,channel,uid)
+                    if not task:
+                        task,count,sold=extras.pop_step(m,db,p)
+                        notes+=sold
                     task=normalize(m,task) if task else ''
-                    following=f'Starting your next queue: {choices(m)[task]} ×{count}.' if task in choices(m) else ''
+                    following='\n'.join(notes+([f'Starting your next queue: {choices(m)[task]} ×{count}.'] if task in choices(m) else []))
                     queue_notifications.complete(m,db,p,row,totals_text(m,db,row),following)
-                    if following:
+                    if task in choices(m):
                         db.flush()
                         begin(m,db,p,row,task,count,renew=db.get(queue_notifications.Destination,(channel,uid)))
                 db.commit()
@@ -461,6 +472,8 @@ def install(m):
 
 def merge_accounts(m,db,channel,source_uid,target_uid):
     qol.merge(db,channel,source_uid,target_uid)
+    from . import extras
+    extras.merge(db,channel,source_uid,target_uid)
     source=db.get(TaskQueue,(channel,source_uid));target=db.get(TaskQueue,(channel,target_uid))
     if source is None:return
     queue_notifications.merge(db,channel,source_uid,target_uid,target is None or (source.state in ACTIVE and target.state not in ACTIVE))

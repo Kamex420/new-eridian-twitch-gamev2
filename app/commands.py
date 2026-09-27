@@ -87,7 +87,9 @@ def command(fn):
             if params.get("provider")=="discord":
                 return PlainTextResponse("\n".join(prefix)+("\n\n" if prefix else "")+text+("\n\n"+"\n".join(extra) if extra else ""),status_code=response.status_code)
             # One tidy chat line: tasks become a short receipt (see presentation).
-            from . import presentation
+            from . import presentation, extras
+            try:extras.remember_twitch(m,fn.__name__,params,ctx.get("uid"))
+            except Exception:pass
             name=params.get("action") if fn.__name__=="action" else fn.__name__
             text=presentation.chat(m,"\n".join(prefix+[text]+extra),name)
             return PlainTextResponse(text,status_code=response.status_code)

@@ -248,7 +248,8 @@ def send(m,notice):
         response=requests.get('https://api.twitch.tv/helix/users',headers=headers,params={'id':recipient},timeout=8)
         response.raise_for_status();login=response.json()['data'][0]['login']
     except (requests.RequestException,ValueError,KeyError,IndexError):raise DeliveryError('Twitch recipient lookup failed') from None
-    text='@'+login+' '+notice.content.replace('\n',' | ')
+    from .presentation import plain_times
+    text='@'+login+' '+plain_times(notice.content).replace('\n',' | ')
     if len(text)>490:text=text[:440]+'… Use !queue for the full totals.'
     result=post('https://api.twitch.tv/helix/chat/messages',headers,
         {'broadcaster_id':str(broadcaster),'sender_id':sender,'message':text,'for_source_only':True})

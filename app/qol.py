@@ -221,7 +221,9 @@ def need_line(m, db, p, life, field, label, value, minimum, provider='discord'):
     text = f'{label}: {value}/100; need {minimum}. Use {m.need_fix(field, provider, db, p)}.'
     eta = passive_eta(m, life, value, minimum)
     if eta:
-        text += f' Passive recovery reaches {minimum} in about {eta_text(eta)}.'
+        # A timestamp stays correct wherever this text is shown later (queue status, alerts).
+        text += f' Passive recovery reaches {minimum} <t:{int(m.now().timestamp() + eta)}:R>.' if provider == 'discord' else \
+                f' Passive recovery reaches {minimum} in about {eta_text(eta)}.'
     return text
 
 
@@ -498,7 +500,9 @@ def sell_all(m, db, p, key, provider):
     m.material_change(db, p, key, -owned)
     p.sc += total
     xp = max(1, owned // 3)
-    m.gain_skill(p, 'commerce', xp)
+    banked = m.gain_skill(p, 'commerce', xp)
+    from . import extras
+    extras.remember_sale(m, db, p, {key: owned}, total, banked)
     note = ''
     users = [e.name for e in favorite_entries(m, db, p) if key in e.inputs]
     if users:
@@ -544,7 +548,9 @@ def clearout(m, db, p, provider, confirm=False):
         sold.append(f'{m.resource_name(key)} ×{n}')
     p.sc += earned
     xp = max(1, sum(n for _, n, _ in rows) // 3)
-    m.gain_skill(p, 'commerce', xp)
+    banked = m.gain_skill(p, 'commerce', xp)
+    from . import extras
+    extras.remember_sale(m, db, p, {key: n for key, n, _ in rows}, earned, banked)
     db.commit()
     text = f'🧹 Cleared out {len(rows)} item types for {earned} SC. Balance: {p.sc} SC. +{xp} Commerce XP.'
     if provider == 'discord':
@@ -712,7 +718,9 @@ def queue_summary(m, db, p, provider):
         done = row.total - row.remaining
         if row.state == 'running':
             _, _, interval = tq.specification(m, row.task) if row.task in tq.choices(m) else (0, 0, tq.ATTEMPT_SECONDS)
-            line = f'▶️ Running: {label} · {done}/{row.total} done · about {needs.duration_text(row.remaining * interval)} left'
+            left = row.remaining * interval
+            finish = f'finishes <t:{int(m.now().timestamp() + left)}:R>' if provider == 'discord' else f'about {needs.duration_text(left)} left'
+            line = f'▶️ Running: {label} · {done}/{row.total} done · {finish}'
         elif row.state == 'paused':
             reason = row.result.splitlines()[0] if row.result else 'requirements not met'
             line = f'⏸️ Paused: {label} · {done}/{row.total} done · {reason}'
@@ -728,6 +736,8 @@ def queue_summary(m, db, p, provider):
 def _cooldowns(m, db, p, provider, limit=3):
     rows = db.execute(select(m.Cooldown).where(m.Cooldown.channel_id == p.channel_id, m.Cooldown.canonical_uid == p.twitch_uid)).scalars().all()
     active = sorted((m.action_wait(db, p, r.action), r.action) for r in rows if r.action != 'sleep' and m.action_wait(db, p, r.action))
+    if provider == 'discord':
+        return [f'{m.cooldown_label(a, provider)} ready <t:{int(m.now().timestamp() + w)}:R>' for w, a in active[:limit]]
     return [f'{m.cooldown_label(a, provider)} {needs.duration_text(w)}' for w, a in active[:limit]]
 
 
@@ -752,6 +762,9 @@ def status_text(m, db, p, provider='discord'):
         cds = _cooldowns(m, db, p, provider, 2)
         if cds:
             parts.append('CD: ' + ', '.join(cds))
+        goal = m.extras.goal_entry(m, db, p)
+        if goal is not None:
+            parts.append(f'🎯 {goal.name}: ' + m.extras.next_step(m, db, p, provider)[0])
         if ready:
             parts.append('Ready: ' + ', '.join(('⭐' if e in favs else '') + e.name for e in ready))
         else:
@@ -771,6 +784,9 @@ def status_text(m, db, p, provider='discord'):
         lines += ['', 'COOLDOWNS', ' · '.join(cds)]
     lines += ['', 'READY TO CRAFT']
     lines += [f"{'⭐' if e in favs else '✅'} {e.name} ×{ctx.batch_size(e)} — {wb.station_label(e, ctx)}" for e in ready] or ['• Nothing is ready yet.']
+    goal = m.extras.goal_entry(m, db, p)
+    if goal is not None:
+        lines += ['', f'🎯 GOAL — {goal.name}', m.extras.next_step(m, db, p, provider)[0] + ' · /menu → Craft → Goal']
     lines += ['', 'NEXT STEP', next_step(m, db, p, provider, ctx),
               '', 'SETTINGS', f'Alerts: {ALERT_LABELS[mode]} · Auto-recover: {"on" if auto else "off"} · Favourites: {len(favs)}/{MAX_FAVORITES} · /settings changes these.']
     return '\n'.join(lines)

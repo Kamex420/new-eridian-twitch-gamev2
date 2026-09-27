@@ -37,7 +37,7 @@ from . import workbench as wb, seed_content as s, qol
 
 FOOTER = "New Eridian v2 • May Rocky's wisdom guide you."
 TICKET_HOURS = 24
-PANEL_COMMANDS = {'make', 'mine', 'gather', 'queue', 'status', 'seedindustries', 'menu'}
+PANEL_COMMANDS = {'make', 'mine', 'gather', 'queue', 'status', 'seedindustries', 'menu', 'find'}
 
 
 class UiTicket(Base):
@@ -214,9 +214,15 @@ def recipe_components(m, ctx, owner, e, category='', page=1, station=''):
                      [option(f'Queue {n} batch' + ('es' if n > 1 else ''), n, f'Shows totals before starting · up to {n * ctx.batch_size(e)} {e.name}')
                       for n in range(1, 11)])
     starred = e.id in ctx.favorites
+    most = 0
+    if ctx.p is not None and status.code not in {'locked', 'owned'}:
+        from . import extras as more
+        most, _ = more.max_attempts(m, ctx.db, ctx.p, task)
     extras = row(
         button('Unfavourite' if starred else 'Favourite', cid(owner, 'fv', e.id, 0 if starred else 1, category, page, st), emoji='☆' if starred else '⭐'),
         button('Fetch missing', cid(owner, 'fm', e.id, 1), style=1, emoji='🧺') if status.code == 'missing' else None,
+        button(f'Queue max ×{most}', cid(owner, 'qp', task, max(1, most)), disabled=not most, emoji='📦') if status.code not in {'locked', 'owned'} else None,
+        button('Set goal', cid(owner, 'gs', e.id), emoji='🎯'),
         button('Status', cid(owner, 'st'), emoji='📊'))
     return [buttons, extras] + ([amounts] if status.code not in {'locked', 'owned'} else [])
 
@@ -251,10 +257,10 @@ def queue_plan(m, db, p, owner, task, count):
         back = None
     current = db.get(m.task_queue.TaskQueue, (p.channel_id, p.twitch_uid)) if p is not None else None
     if current is not None and current.state in m.task_queue.ACTIVE:
-        ticket = issue(m, owner, {'do': 'next', 'task': task, 'count': count})
-        text += (f'\n\nYou already have a queue ({task_label(m, current.task)}). Press Queue next to run this one '
-                 'automatically when it completes.')
-        start = button(f'Queue next ×{count}', cid(owner, 't', ticket), style=3, emoji='⏭️')
+        ticket = issue(m, owner, {'do': 'plan', 'task': task, 'count': count})
+        text += (f'\n\nYou already have a queue ({task_label(m, current.task)}). Press Add to plan to run this one '
+                 'automatically after it (and after anything else you planned).')
+        start = button(f'Add to plan ×{count}', cid(owner, 't', ticket), style=3, emoji='➕')
     else:
         ticket = issue(m, owner, {'do': 'queue', 'task': task, 'count': count})
         start = button(f'Start queue ×{count}', cid(owner, 't', ticket), style=3, emoji='▶️')
@@ -359,9 +365,12 @@ def work_components(m, owner, task):
     kind, target = task.split(':', 1)
     ticket = issue(m, owner, {'do': 'queue', 'task': task, 'count': 1} if kind == 'mine' else {'do': 'gather', 'item': target})
     verb = 'Mine' if kind == 'mine' else 'Gather'
+    from . import extras as more
+    most = more.max_for_owner(m, owner, task)
     return [row(button(f'{verb} ×1', cid(owner, 't', ticket), style=3, emoji='⛏️' if kind == 'mine' else '🌿'),
                 button('Queue 5', cid(owner, 'qp', task, 5), emoji='⏱️'),
                 button('Queue 10', cid(owner, 'qp', task, 10), emoji='⏱️'),
+                button(f'Queue max ×{most}', cid(owner, 'qp', task, max(1, most)), disabled=not most, emoji='📦'),
                 button('Queue status', cid(owner, 'qv'), emoji='📋'))]
 
 
@@ -414,6 +423,8 @@ def slash_panel(m, command, uid, name, options, result):
         if command == 'menu':
             from . import menu
             return message(m, result, menu.area_components(m, uid, 'home'), command)
+        if command == 'find':
+            return message(m, result, find_components(m, uid, str(options.get('query') or '')), command)
         if command == 'seedindustries' and options.get('action') == 'clearout' and qol.clearout_plan(m, db, p):
             ticket = issue(m, uid, {'do': 'clearout'})
             total = sum(n * price for _, n, price in qol.clearout_plan(m, db, p))
@@ -511,6 +522,9 @@ def _navigate(m, payload, uid, name, owner, verb, args, values):
                 category, page, station = args[0], int(args[1] or 1), wb.station_from_code(args[2]) if len(args) > 2 and args[2] else ''
             if category not in wb.VIEW_INFO:
                 return _notice('Choose a category from the menu.')
+            from . import extras as more
+            more.remember_place(db, p, category, page, _code(station))
+            db.commit()
             text = wb.category_text(ctx, category, page, station)
             return _reply(message(m, text, category_components(m, ctx, owner, category, page, station)), payload)
         if verb in {'wr', 'sr'}:
@@ -535,6 +549,10 @@ def _navigate(m, payload, uid, name, owner, verb, args, values):
         if verb == 'qv':
             text = m.task_queue.status(m, db, p, db.get(m.task_queue.TaskQueue, (p.channel_id, p.twitch_uid)))
             return _reply(message(m, text, queue_components(m, db, p, owner), 'queue'), payload)
+        if verb in EXTRA_VERBS:
+            data = extra_view(m, db, p, owner, verb, args, values, name)
+            db.commit()
+            return _reply(data, payload)
         if verb == 'qd':
             text = m.task_queue.status(m, db, p, db.get(m.task_queue.TaskQueue, (p.channel_id, p.twitch_uid)), detail=True)
             return _reply(message(m, text, queue_components(m, db, p, owner)[:1], 'queue'), payload)
@@ -582,6 +600,8 @@ def _run(m, uid, name, action, kind, channel):
     if kind == 'cmd':
         from . import menu
         return menu.run(m, uid, name, action)
+    if kind in EXTRA_TICKETS:
+        return extra_ticket(m, uid, name, action, kind, channel)
     if kind == 'craft':
         result = m.make(channel, uid, name, action['recipe'], 'discord', action='craft').body.decode()
     elif kind == 'queue':
@@ -625,7 +645,9 @@ def _run(m, uid, name, action, kind, channel):
             e = wb.entry(m, action['recipe'])
             result = result + '\n\n' + wb.preview_text(ctx, e)
             components = recipe_components(m, ctx, uid, e)
-        elif kind in {'recover', 'clearout'}:
+        elif kind == 'clearout':
+            components = [row(button('Undo sale (60s)', cid(uid, 't', issue(m, uid, {'do': 'undo'})), style=4, emoji='↩️'))] + status_components(m, db, p, uid)[:1]
+        elif kind == 'recover':
             components = status_components(m, db, p, uid)
         else:
             components = queue_components(m, db, p, uid)
@@ -660,3 +682,170 @@ def _popups(m, payload, uid, command='', text=''):
     except Exception:
         import logging
         logging.getLogger(__name__).error('Private notifications could not be delivered after a button')
+
+
+# ---------------------------------------------------------------- goal, plans, auto-sell, uses, find, recent (see extras.py)
+
+EXTRA_VERBS = {'gv', 'gs', 'gc', 'pv', 'pc', 'rd', 'av', 'at', 'fu', 'fi', 'fd'}
+EXTRA_TICKETS = {'plan', 'sellstep', 'saveroutine', 'routine', 'undo', 'buyitem'}
+
+
+def _menu_row(owner, back=None):
+    buttons = [button('Back: ' + back[1], cid(owner, 'mn', back[0]), emoji='◀️')] if back else []
+    return row(*buttons, button('Menu', cid(owner, 'mn', 'home'), emoji='🏠'))
+
+
+def goal_components(m, db, p, owner):
+    from . import extras as more
+    e = more.goal_entry(m, db, p)
+    if e is None:
+        return [row(button('Ready now', cid(owner, 'wc', 'ready', 1, ''), emoji='✅'), button('Workbench', cid(owner, 'wh'), emoji='🛠️')),
+                _menu_row(owner, ('craft', 'Craft'))]
+    step, action = more.next_step(m, db, p)
+    buttons = []
+    if action is not None:
+        buttons.append(button(wb.clip('Fetch next: ' + step, 80), cid(owner, 't', issue(m, owner, action)), style=3, emoji='▶️'))
+    buttons += [button('Goal recipe', cid(owner, 'wr', e.id, e.category, 1, ''), emoji='📋'),
+                button('Refresh', cid(owner, 'gv'), emoji='🔄'), button('Clear goal', cid(owner, 'gc'), style=4, emoji='✖️')]
+    return [row(*buttons), _menu_row(owner, ('craft', 'Craft'))]
+
+
+def plan_components(m, db, p, owner):
+    from . import extras as more
+    rows = []
+    saved = more.routines(db, p)
+    if saved:
+        rows.append(row(*[button(f'Start #{i}', cid(owner, 't', issue(m, owner, {'do': 'routine', 'id': r.id})), style=3, emoji='▶️')
+                          for i, r in enumerate(saved, 1)]))
+        rows.append(row(*[button(f'Delete #{i}', cid(owner, 'rd', r.id), style=4, emoji='🗑️') for i, r in enumerate(saved, 1)]))
+    rows.append(row(button('Save plan as routine', cid(owner, 't', issue(m, owner, {'do': 'saveroutine'})), style=1, emoji='💾'),
+                    button('Clear plan', cid(owner, 'pc'), style=4, emoji='✖️'),
+                    button('Queue status', cid(owner, 'qv'), emoji='📋')))
+    rows.append(_menu_row(owner, ('queue', 'Queue')))
+    return rows
+
+
+def autosell_components(m, db, p, owner):
+    from . import extras as more
+    chosen = set(more.autosell_list(db, p))
+    stock = m.seed_content.stock(m, db, p)
+    keys = sorted({k for k, n in stock.items() if n > 0 and m.qol.sell_price(m, k)} | chosen, key=m.resource_name)[:25]
+    rows = []
+    if keys:
+        rows.append(select(cid(owner, 'at'), 'Add or remove an item',
+                           [option(('✅ ' if k in chosen else '') + m.resource_name(k), k, 'currently sold automatically' if k in chosen else
+                                   f'you have {stock.get(k, 0)} · sells {m.qol.sell_price(m, k)} SC each') for k in keys]))
+    rows.append(_menu_row(owner, ('bag', 'Bag')))
+    return rows
+
+
+def uses_components(owner, rows_):
+    buttons = [button(wb.clip(e.name, 80), cid(owner, 'wr', e.id, e.category, 1, ''), emoji='📋') for e in rows_[:5]]
+    return ([row(*buttons)] if buttons else []) + [_menu_row(owner, ('bag', 'Bag'))]
+
+
+def recent_components(m, db, p, owner):
+    from . import extras as more
+    actions = more.recent(db, p.channel_id, p.twitch_uid)
+    buttons = [button(wb.clip(a.label, 80), cid(owner, 't', issue(m, owner, {'do': 'cmd', 'raw': [a.command, json.loads(a.options)]})), style=3, emoji='🔁')
+               for a in actions]
+    return [row(*buttons[i:i + 5]) for i in range(0, len(buttons), 5)] + [_menu_row(owner)]
+
+
+def find_components(m, owner, query):
+    from . import extras as more, menu
+    found = more.find(m, query)
+    buttons = [button(wb.clip(e.name, 80), cid(owner, 'wr', e.id, e.category, 1, ''), emoji='📋') for e in found['recipes'][:3]]
+    shown = {e.name for e in found['recipes'][:3]}
+    buttons += [button(wb.clip(m.seed_content.ITEMS[k]['name'], 80), cid(owner, 'fi', k), emoji='📦')
+                for k in found['items'] if m.seed_content.ITEMS[k]['name'] not in shown][:2]
+    nav = [menu._button(m, owner, k) for k in found['menu'][:4]]
+    nav += [button('Handbook: ' + t, cid(owner, 'mv', 'h_' + t), emoji='📖') for t in found['topics'][:1]]
+    return [r for r in (row(*buttons[:5]), row(*nav[:5]), _menu_row(owner)) if r['components']]
+
+
+def item_text(m, db, p, key):
+    s_ = m.seed_content
+    name = s_.ITEMS[key]['name'] if key in s_.ITEMS else m.resource_name(key)
+    have = m.material_amount(db, p, key)
+    price = m.qol.sell_price(m, key)
+    lines = [f'📦 {name.upper()}', s_.ITEMS.get(key, {}).get('description', ''), '',
+             f'**You have:** {have}', f'**Get it:** {m.material_source(key)}',
+             f"**Use:** {s_.PURPOSE[key]['label']}" if key in s_.PURPOSE else '',
+             f'**Sells for:** {price} SC each' if price else '']
+    return '\n'.join(x for x in lines if x is not None)
+
+
+def extra_view(m, db, p, owner, verb, args, values, name):
+    from . import extras as more
+    if verb in {'gv', 'gs', 'gc'}:
+        note = ''
+        if verb == 'gs':
+            note = more.set_goal(m, db, p, args[0] if args else '') + '\n\n'
+        if verb == 'gc':
+            more.clear_goal(db, p)
+            note = '🎯 Goal cleared.\n\n'
+        db.flush()
+        text = more.goal_text(m, db, p)
+        return message(m, (text if not note else text.split('\n', 1)[0] + '\n' + note + text.split('\n', 1)[-1]), goal_components(m, db, p, owner), 'goal')
+    if verb in {'pv', 'pc', 'rd'}:
+        note = ''
+        if verb == 'pc':
+            more.clear_plan(db, p)
+            note = '✖️ Plan cleared (the running queue continues).\n'
+        if verb == 'rd':
+            note = '🗑️ Routine deleted.\n' if more.delete_routine(db, p, args[0]) else ''
+        db.flush()
+        text = more.plan_text(m, db, p)
+        return message(m, text.split('\n', 1)[0] + '\n' + note + text.split('\n', 1)[1], plan_components(m, db, p, owner), 'queue')
+    if verb in {'av', 'at'}:
+        note = more.toggle_autosell(m, db, p, values[0]) + '\n' if verb == 'at' and values else ''
+        db.flush()
+        text = more.autosell_text(m, db, p)
+        return message(m, text.split('\n', 1)[0] + '\n' + note + text.split('\n', 1)[1], autosell_components(m, db, p, owner), 'inventory')
+    if verb == 'fu':
+        text, rows_ = more.uses_text(m, db, p, args[0])
+        return message(m, text, uses_components(owner, rows_), 'catalog')
+    if verb == 'fi':
+        key = args[0]
+        return message(m, item_text(m, db, p, key), [row(button('What can I make with it?', cid(owner, 'fu', key), emoji='🔍')), _menu_row(owner)], 'catalog')
+    if verb == 'fd':
+        query = values[0] if values else (args[0] if args else '')
+        return message(m, more.find_text(m, query), find_components(m, owner, query), 'find')
+    return _notice('This control is no longer available.')['data']
+
+
+def extra_ticket(m, uid, name, action, kind, channel):
+    from . import extras as more
+    with m.SessionLocal() as db:
+        p = _player(m, db, uid, name)
+        if kind == 'plan':
+            text = more.add_step(m, db, p, {'task': action['task'], 'count': action['count']})
+            db.commit()
+            return message(m, text + '\n\n' + more.plan_text(m, db, p), plan_components(m, db, p, uid), 'queue')
+        if kind == 'sellstep':
+            text = more.add_step(m, db, p, {'sell': action['item']})
+            db.commit()
+            return message(m, text + '\n\n' + more.plan_text(m, db, p), plan_components(m, db, p, uid), 'queue')
+        if kind == 'saveroutine':
+            text = more.save_routine(m, db, p)
+            db.commit()
+            return message(m, text + '\n\n' + more.plan_text(m, db, p), plan_components(m, db, p, uid), 'queue')
+        if kind == 'undo':
+            text = more.undo_sale(m, db, p)
+            db.commit()
+            return message(m, text, [_menu_row(uid, ('bag', 'Bag'))], 'sell')
+        if kind == 'buyitem':
+            amount = int(action.get('amount') or 1)
+            lines = []
+            while amount > 0:
+                lines.append(m.seed_industries(channel, uid, name, 'buy', action['item'], min(25, amount), 'discord').body.decode())
+                amount -= 25
+            db.expire_all()
+            return message(m, '\n'.join(lines) + '\n\n' + more.goal_text(m, db, p), goal_components(m, db, p, uid), 'goal')
+    if kind == 'routine':
+        text = more.start_routine(m, channel, uid, name, 'discord', action['id'])
+        with m.SessionLocal() as db:
+            p = _player(m, db, uid, name)
+            return message(m, text, queue_components(m, db, p, uid) + [_menu_row(uid, ('queue', 'Queue'))], 'queue')
+    return message(m, 'This button is no longer supported. Nothing was spent.', [_menu_row(uid)])
