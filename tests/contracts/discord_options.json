@@ -1656,6 +1656,10 @@
         {
           "name": "Linked-account lookup (owner)",
           "value": "linklookup"
+        },
+        {
+          "name": "Post guide panels here",
+          "value": "guidepanels"
         }
       ]
     },

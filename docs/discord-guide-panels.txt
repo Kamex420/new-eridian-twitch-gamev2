@@ -1,0 +1,219 @@
+New Eridian — Discord guide panels
+Paste each block below (from ```ansi to the closing ```) as its own message.
+The colours use invisible control characters. If they disappear when you paste, post the panels
+with /mod action:Post guide panels here instead; the bot posts all eight with colours intact.
+
+
+----- PANEL 1 -----
+```ansi
+[1;32m╭────────────────────────╮
+[1;32m│      Start here!       │
+[1;32m╰────────────────────────╯
+[1;37mNew Eridian v2 is a Twitch + Discord community life game
+[1;37mon Avesta. Build your citizen, learn skills, make useful
+[1;37msupplies and help the settlement grow.
+[1;36mYOUR FIRST STEPS
+[0;33m/menu
+[0mEvery part of the game as buttons. Pick an area, then what
+[0mto do.
+[0;33m/start
+[0mCreate or load your citizen.
+[0;33m/job
+[0mChoose a profession. Matching work earns a job bonus.
+[0;33m/status
+[0mYour needs, queue, cooldowns and next step.
+[0;33m/guide
+[0mThe best thing to do next, and why.
+[1;36mPLAYING ON TWITCH TOO?
+[0;33m/link → Code
+[0mGet a code with !link in Twitch, then enter it here to
+[0mmerge your citizens.
+[1;32mRECOVER → WORK → GATHER → MAKE → IMPROVE → CONTRIBUTE
+```
+
+----- PANEL 2 -----
+```ansi
+[1;32m╭────────────────────────╮
+[1;32m│    Needs & recovery    │
+[1;32m╰────────────────────────╯
+[1;37mEvery task uses Energy, Nutrition and Comfort. Work stops
+[1;37mwhen Energy, Nutrition or Social drop below 20, or Comfort
+[1;37mbelow 10.
+[1;36mRECOVER
+[0;33m/life → Action: Relax
+[0m+25 Energy and +20 Comfort, every 30 seconds.
+[0;33m/life → Action: Sleep
+[0mEnergy and Comfort to 100, every 30 minutes.
+[0;33m/life → Action: Eat
+[0mPick a food. With no food and low Nutrition, a free
+[0memergency meal.
+[0;33m/life → Action: Games
+[0m+25 Social, no partner needed.
+[0;33m/life → Action: Recover
+[0mEvery recovery that is ready, in one press.
+[1;36mHANDS-FREE
+[0;33m/use
+[0mBeds, seats, baths and clothing restore Comfort and are
+[0mkept.
+[0;33m/settings → Autorecover: On
+[0mPaused queues recover by themselves, then carry on.
+[1;32mEAT → REST → STAY COMFORTABLE → KEEP WORKING
+```
+
+----- PANEL 3 -----
+```ansi
+[1;32m╭────────────────────────╮
+[1;32m│    Gathering & work    │
+[1;32m╰────────────────────────╯
+[1;37mRaw materials come from gathering and mining. Every
+[1;37msuccess gives items and practice in its skill.
+[1;36mCOLLECT
+[0;33m/gather
+[0mLumber, Berries, Herbs, Stone and every other natural
+[0mmaterial.
+[0;33m/mine
+[0mPick an ore or Coal. Mine once or queue up to 10 attempts.
+[1;36mJOBS
+[0;33m/work
+[0mFarming, scanning, research, cargo, deliveries, spaceport
+[0mand scouting.
+[0;33m/training
+[0mSee every skill and which tasks train it.
+[1;36mGOOD TO KNOW
+[0;33mMining can fail
+[0mA failed attempt gives Stone Dust instead of ore.
+[0;33mRare ores
+[0mNeed Harvesting level 3 and three good prospecting steps
+[0mper ore.
+[1;32mGATHER → MINE → WORK → LEVEL UP
+```
+
+----- PANEL 4 -----
+```ansi
+[1;32m╭────────────────────────╮
+[1;32m│        Crafting        │
+[1;32m╰────────────────────────╯
+[1;37mThe Workbench lists every recipe from easiest to hardest,
+[1;37mwith what you have and what you still need.
+[1;36mTHE WORKBENCH
+[0;33m/make
+[0mCategories, then recipes. Preview first; nothing is spent
+[0muntil you craft.
+[0;33m/make → Category: Ready now
+[0mEverything you can craft this moment.
+[0;33m/make → Category: Favourites
+[0mStar up to 10 recipes to keep them on top.
+[0;33m🧺 Fetch missing
+[0mOn a recipe you cannot make yet: gathers what is missing,
+[0mthen crafts it.
+[1;36mWORKSTATIONS & TIERS
+[0;33m/workshop
+[0mUnlock a station once for a fee, or own the matching
+[0mmachine.
+[0;33mPersonal tiers
+[0mUnlock at 25, 100 and 250 crafted batches.
+[1;32mGATHER → PREVIEW → CRAFT → UNLOCK → TIER UP
+```
+
+----- PANEL 5 -----
+```ansi
+[1;32m╭────────────────────────╮
+[1;32m│         Queues         │
+[1;32m╰────────────────────────╯
+[1;37mA queue repeats one task up to 10 times, one attempt every
+[1;37m10 seconds, even while you are away.
+[1;36mRUN A QUEUE
+[0;33mQueue 5 / Queue 10
+[0mOn any mine, gather or recipe panel. See the totals, then
+[0mpress Start.
+[0;33m/queue
+[0mProgress, items gained and used, and why it paused.
+[0;33m/queue → Action: Queue next
+[0mLine up one more task to start when this one ends.
+[0;33m/queue → Action: Repeat last
+[0mRun your last queue again.
+[1;36mALERTS
+[0;33m/settings → Alerts
+[0mChannel mention, direct message, quiet or off.
+[0;33mPauses
+[0mLow needs or missing items pause it. It resumes by itself.
+[1;32mQUEUE → WALK AWAY → GET PINGED → REPEAT
+```
+
+----- PANEL 6 -----
+```ansi
+[1;32m╭────────────────────────╮
+[1;32m│     Money & trade      │
+[1;32m╰────────────────────────╯
+[1;37mSeed Coin (SC) is your personal currency. Earn it by
+[1;37mselling what you make and by taking orders.
+[1;36mSEED INDUSTRIES
+[0;33m/seedindustries
+[0mBuy starter supplies and sell anything you have made.
+[0;33m→ Action: Sell all of one item
+[0mSell a whole stack at once.
+[0;33m→ Action: Clear out surplus
+[0mPreview first. Keeps 20 of each and anything your
+[0mfavourites use.
+[0;33m→ Action: View Production Orders
+[0mThree daily contracts that pay well for crafted goods.
+[1;36mYOUR THINGS
+[0;33m/inventory
+[0mSearch, sort by value, or show what your ready recipes
+[0muse.
+[0;33m/home and /business
+[0mUpgrade your Habitat and run your own company.
+[1;32mMAKE → SELL → SAVE → UPGRADE
+```
+
+----- PANEL 7 -----
+```ansi
+[1;32m╭─────────────────────────────────╮
+[1;32m│    Holidays & festival foods    │
+[1;32m╰─────────────────────────────────╯
+[1;37mEvery holiday has a festival that opens 30 days before it
+[1;37mand runs until 7 days after.
+[1;36mFESTIVAL FOODS
+[0;33m/world → Section: Holidays
+[0mWhat is on now, what is next, and each festival's foods.
+[0;33mCrafting
+[0mFree at the Survival Workbench from gathered ingredients,
+[0monly during the festival.
+[0;33mEating
+[0mNutrition plus extra Comfort and Morale.
+[0;33mKeeping
+[0mThey stack, sell and keep all year. Stock up before it
+[0mends.
+[1;36mCOMING UP
+[0;33m🎃 Halloween · opens October 1
+[0mPumpkin Bites, Moon Tart and Candy Herb Mix.
+[1;32mGATHER → COOK → FEAST → STOCK UP
+```
+
+----- PANEL 8 -----
+```ansi
+[1;32m╭────────────────────────╮
+[1;32m│      Command list      │
+[1;32m╰────────────────────────╯
+[1;37mEvery command, grouped. /menu shows all of them as
+[1;37mbuttons.
+[1;36mYOU
+[0;33m/status  /me  /inventory  /settings
+[0mNeeds, profile, skills, items and preferences.
+[1;36mDO THINGS
+[0;33m/life  /work  /gather  /mine  /use
+[0mRecover, work, collect and use items.
+[0;33m/make  /workshop  /catalog  /queue
+[0mCraft, unlock stations, look things up, automate.
+[1;36mTRADE & COMMUNITY
+[0;33m/seedindustries  /market  /home  /business
+[0mMoney, prices, your Habitat and company.
+[0;33m/social  /world  /district  /shift  /ducks
+[0mFriends, the settlement, events and holidays.
+[1;36mHELP
+[0;33m/guide  /seed  /start  /link  /job  /specialize
+[0mNext steps, the handbook and your setup.
+[0;33m/mod
+[0mModerators: events, logs, account lookups, these panels.
+[1;32mSTUCK? /menu HAS A BUTTON FOR EVERYTHING
+```

@@ -5498,7 +5498,7 @@ DISCORD_PRIVATE_COMMANDS = {
     "seed", "guide", "start", "me", "progress", "inventory", "job",
     "home", "business", "make", "seedindustries", "link", "specialize", "modlog",
     "world", "linklookup", "ducks", "training", "catalog", "gather", "workshop",
-    "status", "settings", "mod", "menu"
+    "status", "settings", "mod", "menu", "guidepanels"
 }
 
 def discord_message_status(content):
@@ -6742,6 +6742,14 @@ def _discord_call_internal(command: str, uid: str, name: str, options: dict, int
         return recover_needs(channel,uid,name,"discord").body.decode()
     if command=="menu":
         return game_menu.home_text(__import__("sys").modules[__name__],uid,name)
+    if command=="guidepanels":
+        from . import guide_panels
+        target=task_queue.queue_notifications.origin_channel.get() or DISCORD_GAME_CHANNEL_ID
+        sent=guide_panels.post(target)
+        total=len(guide_panels.PANELS)
+        if sent==total:return f"📖 Posted all {total} guide panels in this channel."
+        return (f"⚠️ Posted {sent} of {total} guide panels. Check that the bot can send messages here and that DISCORD_BOT_TOKEN is set. "
+                "docs/discord-guide-panels.txt has the same panels to paste by hand.")
 
     if command=='mine':
         return mining(channel,uid,name,str(options.get('ore') or ''),str(options.get('action') or 'view'),int(options.get('count') or 1),'discord').body.decode()
@@ -6997,7 +7005,7 @@ async def discord_interactions(request: Request, background_tasks: BackgroundTas
     if command not in (DISCORD_PUBLIC_COMMANDS | DISCORD_PRIVATE_COMMANDS):
         return _discord_json_message("Unknown New Eridian command.", ephemeral=True)
 
-    if command in {"eventstart","eventstop","modlog"} and not _discord_is_moderator(payload):
+    if command in {"eventstart","eventstop","modlog","guidepanels"} and not _discord_is_moderator(payload):
         return _discord_json_message("⛔ Moderator access is required for event controls.", ephemeral=True, message_type="moderator")
 
     if command == "linklookup" and not _discord_is_owner(payload):

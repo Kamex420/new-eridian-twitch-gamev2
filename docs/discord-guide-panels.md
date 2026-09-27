@@ -2,6 +2,8 @@
 
 Eight messages for the game's guide channel. Paste each block (between the `---` lines) as its own message, in order. Each one is under Discord's 2,000-character message limit.
 
+**Coloured version:** the same panels as Discord ANSI blocks (green title box, cyan headings, orange commands) are in [discord-guide-panels.txt](discord-guide-panels.txt). A moderator can post all eight with colours intact using `/mod action:Post guide panels here`; the source is `app/guide_panels.py`.
+
 ---
 
 ## 🌱 1 · Welcome to New Eridian
