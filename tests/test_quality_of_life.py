@@ -52,7 +52,7 @@ def test_status_panel_offers_recover_only_when_blocked():
     set_life(energy=5)
     panel = press(ui.cid('111', 'st'))
     assert 'Recover now' in labels(panel['data'])
-    assert 'Passive recovery reaches 20' in panel['data']['embeds'][0]['description'] or 'blocked' in json.dumps(panel, ensure_ascii=False)
+    assert 'Passive recovery reaches 20' in json.dumps(panel['data']['embeds'][0], ensure_ascii=False)
 
 
 def test_recover_now_uses_ordinary_recovery_actions_once():
@@ -106,7 +106,7 @@ def test_ready_now_view_lists_only_ready_recipes_on_every_platform():
     citizen()
     view = press(ui.cid('111', 'sc'), values=['ready'])
     text = json.dumps(view['data']['embeds'][0], ensure_ascii=False)
-    assert 'READY NOW' in text and 'Campfire' in text
+    assert 'Ready Now' in text and 'Campfire' in text
     db, p = player()
     with db:
         ctx = wb.Context(m, db, p)
@@ -139,7 +139,7 @@ def test_fetch_plan_gathers_then_crafts_via_one_ticket():
     preview = press(ui.cid('111', 'wr', CAMPFIRE.id, CAMPFIRE.category, 1, ''))
     fetch = find(preview['data'], 'Fetch missing')['custom_id']
     plan = press(fetch)
-    text = plan['data']['embeds'][0]['description']
+    text = json.dumps(plan['data']['embeds'][0], ensure_ascii=False)
     assert 'Lumber' in text and 'Then make Campfire' in text
     start = next(c for c in controls(plan['data']) if '→ craft' in c.get('label', ''))
     result = press(start['custom_id'])
@@ -410,7 +410,7 @@ def test_newcomer_craft_receipt_suggests_a_next_step():
     result = m.make(W, '111', 'Kam', CAMPFIRE.id, 'discord', action='craft').body.decode()
     assert 'CRAFTING COMPLETE' in result and 'NEXT STEP' in result
     card = m._discord_json_message(result, message_type='make')['data']
-    assert 'Next step' in json.dumps(card, ensure_ascii=False) or 'Details' in json.dumps(card, ensure_ascii=False)
+    assert '💡' in json.dumps(card, ensure_ascii=False)
 
 
 def test_tier_up_is_announced(monkeypatch):

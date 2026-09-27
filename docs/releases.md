@@ -1,5 +1,15 @@
 # Release notes
 
+## Readable, compact messages
+
+Every Discord reply and Twitch line now goes through one presentation layer (`app/presentation.py`), which picks one of three shapes:
+
+- **Task receipts** (work, crafting, gathering, eating, relaxing, selling, buying, unlocking) are small: a ✅/❌ title, what you got and spent (`**+3** Pumpkin · **+2** 🪙 SC · −2 Lumber`), needs spent (`⚡ −3 Energy · 🍲 −1 Nutrition · 🛋️ −3 Comfort`), practice (`📈 Farming +1 XP`), and at most a few lines for a failure reason, a level up, an encounter or a next-step hint. No footer and no Details button. Background numbers (society production, success chance, modifiers) stay out of the receipt.
+- **Notices** (cooldowns, refusals, confirmations) are a single coloured line.
+- **Information** (status, profile, guides, menus, previews, the handbook) keeps its full text: a short title-cased title, an intro with **bold labels**, and titled sections. Views longer than about 2,500 characters or 40 lines continue on Details pages.
+
+Twitch uses the same rules: a task is one short line (`✅ Harvest Pumpkins · +3 Pumpkin · … · 📈 Farming +1 XP`); other replies fold headings into their first line, with empty pieces and "Needs: unchanged" removed. Workbench category pages show each recipe name in bold with its ingredients underneath, and queue alerts have state icons (▶️ ⏸️ ✅ ⏹️ ⛔). Failed work (for example "No task rewards were earned") is now coloured and labelled as a failure.
+
 ## Comfort, festival foods and a shorter Discord menu
 
 ### Comfort drains half as fast

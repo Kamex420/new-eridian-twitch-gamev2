@@ -9,13 +9,15 @@ def test_long_response_keeps_every_line_in_details():
     data = m._discord_json_message(text, ephemeral=True, message_type='inventory')['data']
     assert data['flags'] == 64
     card = data['embeds'][0]
-    assert sum(len(f['value']) for f in card['fields']) <= 850
+    from app import presentation
+    assert len(card.get('description', '')) + sum(len(f['value']) for f in card['fields']) <= presentation.OVERVIEW_CHARS
     custom = data['components'][0]['components'][0]['custom_id']
     token = custom.split(':')[1]
     with m.SessionLocal() as db:
         pages = json.loads(db.get(layout.MessagePages, token).pages)
     all_details = '\n'.join(p['description'] for p in pages[1:])
-    assert all_details == m.discord_command_copy(text)
+    assert all_details == presentation.page_text(m, text)
+    assert all(f'Unique resource {i}:** {i+1}' in all_details for i in range(150))
     assert all(len(p['description']) <= 850 for p in pages[1:])
 
 
@@ -60,7 +62,7 @@ Current needs: Energy 88/100; Nutrition 95/100; Social 100/100; Comfort 96/100.
         assert value in rendered
     assert 'TOTAL ITEMS USED' not in rendered
     assert card['footer']['text']=="New Eridian v2 • May Rocky's wisdom guide you."
-    assert card['title'] == 'Queue · Running'
+    assert card['title'] == '▶️ Queue running'
 
 
 def test_short_reply_needs_no_pages():

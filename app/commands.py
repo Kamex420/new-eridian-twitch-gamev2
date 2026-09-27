@@ -86,11 +86,10 @@ def command(fn):
                     db.commit()
             if params.get("provider")=="discord":
                 return PlainTextResponse("\n".join(prefix)+("\n\n" if prefix else "")+text+("\n\n"+"\n".join(extra) if extra else ""),status_code=response.status_code)
-            # StreamElements limits bytes, not Unicode characters.
-            text=" | ".join(prefix+[text]+extra)
-            encoded=text.encode("utf-8")
-            if len(encoded)>380:
-                text=encoded[:377].decode("utf-8",errors="ignore")+"…"
+            # One tidy chat line: tasks become a short receipt (see presentation).
+            from . import presentation
+            name=params.get("action") if fn.__name__=="action" else fn.__name__
+            text=presentation.chat(m,"\n".join(prefix+[text]+extra),name)
             return PlainTextResponse(text,status_code=response.status_code)
         finally:
             context.reset(token);notices.reset(nt)

@@ -51,7 +51,8 @@ def clean_name(name):
 def queue_card(content):
     lines = content.splitlines()
     state=lines[0].split('—')[-1].strip().title().replace('Error','Stopped')
-    card = {'title': 'Queue · ' + state,
+    icon={'Running':'▶️','Paused':'⏸️','Completed':'✅','Cancelled':'⏹️','Stopped':'⛔'}.get(state,'⏱️')
+    card = {'title': f'{icon} Queue {state.lower()}',
             'description': lines[1], 'color': 0x5865F2, 'fields': []}
     def field(name, value):
         card['fields'].append({'name': name, 'value': value, 'inline': False})
@@ -137,39 +138,34 @@ def action_card(m, embed, content, command):
 
 
 def render(m, embed, content, command=""):
-    """Use a small overview and preserve the complete response behind Details."""
-    receipt=action_card(m,embed,content,command) if command else None
-    if receipt:source,content=receipt
-    else:source = queue_card(content) if content.startswith('TASK QUEUE —') else copy.deepcopy(embed)
-    source['title'] = re.sub(r'^[🟩🟥🟨🟦🟪]\s*', '', source['title'])
+    """Receipts and notices stay small; information shows in full, then Details pages."""
+    from . import presentation
+    if content.startswith('TASK QUEUE —'):
+        return _render_queue(m, content)
+    source, shape, overflow = presentation.card(m, content, command)
+    if shape == 'info':
+        source['footer'] = {'text': FOOTER}
+    if not overflow:
+        return {'embeds': [source], 'allowed_mentions': {'parse': []}}
+    title = source.get('title') or 'New Eridian'
+    pages = [source] + [{'title': title[:230] + ' · Details', 'description': part, 'color': source['color'], 'footer': {'text': FOOTER}}
+                        for part in chunks(presentation.page_text(m, content))]
+    return _store(m, pages)
+
+
+def _render_queue(m, content):
+    source = queue_card(content)
     source['footer'] = {'text': FOOTER}
-    description = source.get('description', '')
-    source['description'] = preview(description, 320)
-    fields = source.get('fields', [])
-    # Blockers and actual changes precede flavor and calculation explanations.
-    priority = ('paused', 'failed', 'needed', 'progress', 'gained', 'output', 'reward', 'used', 'needs', 'need changes', 'cost')
-    if not receipt and not content.startswith('TASK QUEUE —'):
-        fields.sort(key=lambda f: next((i for i, word in enumerate(priority) if word in f['name'].lower()), len(priority)))
-    kept = []
-    budget = 850 - len(source['description'])
-    for field in fields:
-        value = field['value']
-        if value.strip('• \n').lower() == 'none':
-            continue
-        if len(kept) >= 5 or budget < 80:
-            break
-        value = preview(value, min(280, budget))
-        kept.append({'name': clean_name(field['name']), 'value': value, 'inline': False})
-        budget -= len(value)
-    source['fields'] = kept
-    # Short replies need no navigation. Longer replies retain every original line.
     if len(content) <= 650 and len(content.splitlines()) <= 12:
-        if len(description) <= 320 and len(fields) <= 5 and all(len(f['value']) <= 280 for f in fields):
-            return {'embeds': [source], 'allowed_mentions': {'parse': []}}
+        return {'embeds': [source], 'allowed_mentions': {'parse': []}}
     pages = [source]
     for part in chunks(content):
         pages.append({'title': source['title'][:230] + ' · Details', 'description': part,
                       'color': source['color'], 'footer': {'text': FOOTER}})
+    return _store(m, pages)
+
+
+def _store(m, pages):
     token = secrets.token_hex(16)
     with m.SessionLocal() as db:
         db.execute(delete(MessagePages).where(MessagePages.expires_at < m.now()))

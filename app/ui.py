@@ -117,16 +117,13 @@ def claim(m, owner, token):
 # ---------------------------------------------------------------- embeds
 
 def embed_from_text(m, text, command='make'):
+    """Panels use the same card shapes as every other reply (see presentation)."""
+    from . import presentation
     text = (text or '').strip() or 'No information available.'
-    lines = text.splitlines()
-    title = lines[0].strip()
-    body = '\n'.join(lines[1:]).strip()
-    status = m.discord_message_status(text)
-    color = {'success': 0x57F287, 'failure': 0xED4245, 'cooldown': 0xFEE75C}.get(status, 0x3498DB)
-    body = m.discord_command_copy(body)
-    if len(body) > 4000:
-        body = body[:3990].rstrip() + '\n…'
-    return {'title': wb.clip(title, 256), 'description': body or '​', 'color': color, 'footer': {'text': FOOTER}}
+    embed, shape, _ = presentation.card(m, text, command)
+    if shape == 'info':
+        embed['footer'] = {'text': FOOTER}
+    return embed
 
 
 def message(m, text, components, command='make'):

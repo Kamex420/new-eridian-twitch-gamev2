@@ -1591,7 +1591,7 @@
           "value": "farm_hydroponics"
         },
         {
-          "name": "Scan:  · 2 Energy, 2 Comfort",
+          "name": "Scan · 2 Energy, 2 Comfort",
           "value": "scan"
         },
         {
@@ -1607,11 +1607,11 @@
           "value": "field_analysis"
         },
         {
-          "name": "Prepare Cargo:  · 2 Energy, 2 Comfort",
+          "name": "Prepare Cargo · 2 Energy, 2 Comfort",
           "value": "cargo"
         },
         {
-          "name": "Delivery · uses 1 Cargo:  · 2 Energy, 2 Comfort",
+          "name": "Delivery · 2 Energy, 2 Comfort · uses 1 Cargo",
           "value": "delivery"
         },
         {

@@ -58,7 +58,8 @@ def label_output(action,mode=''):
 def choice_name(title,action,mode='',requirement=''):
     """Dropdown label shared by every work command: yield, needs cost, requirement."""
     e=energy(action,mode)
-    text=f"{title}: {label_output(action,mode)} · {e} Energy, {needs.comfort_cost(e)} Comfort"
+    output=label_output(action,mode)
+    text=f"{title}: {output} · {e} Energy, {needs.comfort_cost(e)} Comfort" if output else f"{title} · {e} Energy, {needs.comfort_cost(e)} Comfort"
     return (text+(' · '+requirement if requirement else ''))[:100]
 
 def split(target):

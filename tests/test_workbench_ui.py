@@ -1,4 +1,5 @@
 """Workbench ordering, dropdown limits and single-use Discord buttons."""
+import json
 from datetime import timedelta
 from test_colony import m, reset, client
 from app import ui, workbench as wb, seed_content as s, crafting_progression as cp
@@ -86,7 +87,7 @@ def test_navigation_spends_nothing_and_craft_button_works_once():
     assert menu['type'] == 7 and CAMPFIRE.name in menu['data']['embeds'][0]['description']
     preview = press(ui.cid('111', 'wr', CAMPFIRE.id, CAMPFIRE.category, 1, ''))
     assert stock() == before
-    text = preview['data']['embeds'][0]['description']
+    text = json.dumps(preview['data']['embeds'][0], ensure_ascii=False)
     assert 'Lumber' in text
     craft = find(preview['data'], 'Craft 1 batch')
     assert not craft.get('disabled')

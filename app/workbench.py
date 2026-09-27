@@ -389,7 +389,7 @@ def home_text(ctx):
     lines = [f'🛠️ WORKBENCH — {ctx.p.display_name if ctx.p else "Citizen"}', tier_line(ctx),
              f"Workstations unlocked: {len(ctx.access)} of {len(cp.STATIONS)} (Survival Workbench is free). /workshop unlocks more.", '',
              f"✅ Ready now: {counts['ready'][0]} recipes · ⭐ Favourites: {counts['favorites'][1]}/{counts['favorites'][0]} ready", '',
-             'CATEGORIES · ready now / recipes · easiest tier']
+             'CATEGORIES · ready now / recipes, from the easiest tier']
     for key, emoji, label, text in CATEGORIES:
         total, ready, lowest = counts.get(key, (0, 0, 1))
         lines.append(f'{emoji} {label} — {ready}/{total} ready · from T{lowest}')
@@ -427,8 +427,8 @@ def category_text(ctx, category, page=1, station=''):
              f'{description} {len(rows)} recipes, easiest first · {ready} ready now · {tier_line(ctx)}', '']
     for number, e in enumerate(shown, start + 1):
         st = ctx.status(e)
-        lines.append(f'{number}. {st.emoji}{ctx.star(e)} {e.name} ×{ctx.batch_size(e)} — T{e.tier} · {station_label(e, ctx)} · {e.skill} Lv{e.level}')
-        lines.append(f'   {inputs_text(ctx, e)}' + ('' if st.code in {'ready', 'missing'} else f' · {st.short}'))
+        lines.append(f'`{number:>2}` {st.emoji}{ctx.star(e)} **{e.name}** ×{ctx.batch_size(e)} — T{e.tier} · {station_label(e, ctx)} · {e.skill} Lv{e.level}')
+        lines.append(f'  ╰ {inputs_text(ctx, e)}' + ('' if st.code in {'ready', 'missing'} else f' · {st.short}'))
     if not rows:
         lines.append(empty_view_text(category))
     lines += ['', '✅ ready · ❌ missing ingredients · 🔑 workstation to unlock · 🔒 tier, skill or society lock',

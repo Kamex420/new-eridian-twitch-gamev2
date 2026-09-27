@@ -461,7 +461,7 @@ WORK_TASKS=[(W('Tend Fields','farm'),'farm_tend'),(W('Harvest Pumpkins','harvest
             (W('Hydroponics','water','hydroponics','needs Small Water Filter'),'farm_hydroponics'),(W('Scan','scan'),'scan'),
             ('Rare prospecting · Harvesting Lv3','rare'),(W('Standard Research','research'),'research'),
             (W('Field Analysis','research','field_analysis','needs Siro Sampler'),'field_analysis'),(W('Prepare Cargo','cargo'),'cargo'),
-            (W('Delivery · uses 1 Cargo','delivery'),'delivery'),(W('Spaceport','spaceport'),'spaceport'),
+            (W('Delivery','delivery','','uses 1 Cargo'),'delivery'),(W('Spaceport','spaceport'),'spaceport'),
             (W('Expedite Spaceport','spaceport','expedite','uses 1 Power Cell'),'expedite'),(W('Scout','explore'),'scout'),
             (W('Survey','survey','','needs Resource Scanner'),'survey')]
 MOD_ACTIONS=[('Start event','eventstart'),('Stop event','eventstop'),('Moderator log','modlog'),('Linked-account lookup (owner)','linklookup')]

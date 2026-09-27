@@ -72,12 +72,8 @@ def clean(v): return ((v or "Citizen").strip()[:30] or "Citizen")
 def out(s):
     from .commands import context
     if context.get() is not None:return PlainTextResponse(s)
-    b=s.encode()
-    if len(b)<=380: return PlainTextResponse(s)
-    b=b[:377]
-    while True:
-        try: return PlainTextResponse(b.decode()+"…")
-        except UnicodeDecodeError: b=b[:-1]
+    from .presentation import chat_fold, fit
+    return PlainTextResponse(fit(chat_fold(s)))
 def chat_line(text):
     """One Twitch chat line from a multi-line card: blank lines dropped and
     section headers folded in, e.g. 'OUTPUT' + '• Campfire ×1' -> 'Output: Campfire ×1'."""
@@ -2227,11 +2223,11 @@ def inventory(channel:str,uid:str,name:str="Citizen",provider:str="twitch",searc
         gear=db.execute(select(QualityGear).where(QualityGear.channel_id==channel,QualityGear.canonical_uid==p.twitch_uid,QualityGear.qty>0)).scalars().all()
         next_step=workbench.next_step(sys.modules[__name__],db,p,provider)
         discord=(f"🎒 {p.display_name} — Inventory\n\n🪙 {p.sc} SC\n\n📦 KEY RESOURCES\n"+"\n".join(resources)+
-                 "\n\n🧰 EQUIPMENT\n"+("\n".join("• "+x for x in owned_equipment) if owned_equipment else "• None yet. Equipment appears under /make category:Tools & Equipment.")+
+                 "\n\n🧰 EQUIPMENT\n"+("\n".join("• "+x for x in owned_equipment) if owned_equipment else "• None yet. Equipment appears under /make category:equipment.")+
                  "\n\n🗃️ SUPPLIES\n"+("\n".join(f"• {resource_name(k)} ×{n}" for k,n in supplies[:12]) if supplies else "• None yet. /gather collects natural materials.")+
                  (f"\n{len(supplies)} supply types. /catalog owned:True lists everything by category." if len(supplies)>12 else "")+
                  f"\n\n⚙️ QUALITY GEAR\n• {sum(g.qty for g in gear)} item(s). /inventory section:Quality Gear shows condition."+
-                 "\n\n🔎 /inventory search:<name> sort:Value show:Used in ready recipes finds and sorts everything you own."+
+                 "\n\n🔎 /inventory search:<name> sort:value show:ready finds and sorts everything you own."+
                  f"\n\nSuggested next step: {next_step}")
         twitch=(f"🎒 {p.display_name} | {p.sc} SC | "+", ".join(f"{resource_name(k)} {material_amount(db,p,k)}" for _,k in key_rows)+
                 (" | Gear: "+", ".join(f"{resource_name(k)} {q}" for k,q in equipment if q) if owned_equipment else "")+
@@ -2847,7 +2843,7 @@ def seed_industries(channel:str,uid:str,name:str="Citizen",action:str="browse",i
             total=listing["buy"]*amount
             if p.sc<total:return out(f"🏭 {p.display_name} needs {total} SC to buy {amount} {resource_name(key)}. Current balance: {p.sc} SC.")
             p.sc-=total;material_change(db,p,key,amount);db.commit()
-            return out(f"🏭 {p.display_name} bought {amount} {resource_name(key)} from Seed Industries for {total} SC. Balance: {p.sc} SC. Use: {listing['purpose']}.")
+            return out(f"🏭 {p.display_name} bought {amount} {resource_name(key)} from Seed Industries for {total} SC. Balance: {p.sc} SC. Use: {listing['purpose'].rstrip('.')}.")
         owned=material_amount(db,p,key)
         if owned<amount:return out(f"🏭 {p.display_name} only has {owned} {resource_name(key)}.")
         total=listing["sell"]*amount;material_change(db,p,key,-amount);p.sc+=total;gain_skill(p,"commerce",max(1,amount//3));db.commit()
@@ -5508,7 +5504,7 @@ DISCORD_PRIVATE_COMMANDS = {
 def discord_message_status(content):
     lower=content.lower()
     if content.startswith(("❌","⛔","⚠️","🔒","🛑")) or any(term in lower for term in
-        ("+0 rewards", "empty-handed", "cannot ", "still needed:", "still needs ", "need ore first", "no cargo ready", "you only have", "gear not found")):
+        ("+0 rewards", "no task rewards were earned", "empty-handed", "cannot ", "still needed:", "still needs ", "need ore first", "no cargo ready", "you only have", "gear not found")):
         return "failure"
     if content.startswith(("⏱️","⏳")) or re.search(r"(?:is ready|again) in \d+[smh]",lower):return "cooldown"
     if content.startswith("✅") or any(term in lower for term in
@@ -6066,6 +6062,7 @@ def discord_command_copy(content):
             def render(m):
                 value=m[1]
                 label=next((v for k,v in candidates.items() if k.casefold()==value.casefold()),None)
+                if label and " · " in label and ("Energy" in label or ": " in label):label=label.split(": ")[0].split(" · ")[0]   # work choices: name only
                 if label is None:
                     label=value if value.startswith("<") else value.replace("_"," ").title()
                 return field.replace("_"," ").title()+": **"+label+"**"
@@ -6670,7 +6667,7 @@ def item_command_menu(command,uid,name):
             rows=db.execute(select(QualityGear).where(QualityGear.channel_id==p.channel_id,QualityGear.canonical_uid==p.twitch_uid,QualityGear.qty>0)).scalars().all()
             for row in rows:
                 lines.append(f"• {row.quality} {row.item_name} ×{row.qty} — {row.condition}% condition; {gear_repair_cost(row.condition)} Iron Nails to repair.")
-            if not rows:lines.append("No quality gear owned. Craft equipment with /make category:Tools & Equipment.")
+            if not rows:lines.append("No quality gear owned. Craft equipment with /make category:equipment.")
             lines.append("Choose /repair target:gear, then Item. Each selection repairs one quality entry; the dropdown shows cost and stock.")
         elif command in WORK_MENU_OPTIONS:
             option,choices=WORK_MENU_OPTIONS[command]
@@ -7116,7 +7113,8 @@ def queue_task_menu(query:str='',page:int=1,provider:str='twitch'):
     return platform_response(provider,text,text.replace('\n',' | '))
 
 
-from . import qol
+from . import qol, presentation
+presentation.SKILL_NAMES=tuple(SKILL_LABELS.values())
 
 
 @app.get('/api/v1/status')

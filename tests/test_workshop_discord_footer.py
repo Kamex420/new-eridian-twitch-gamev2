@@ -43,11 +43,13 @@ def test_signed_workshop_unlock_charges_once(monkeypatch):
         assert p.sc==10000-cost and cp.has_access(m,db,p,station)
     assert len(delivered)==2
     assert 'unlocked' in json.dumps(delivered[0]).lower()
-    assert delivered[0]['embeds'][0]['footer']['text']==m.message_layout.FOOTER
+    # A short confirmation stays small: no footer.
+    assert 'footer' not in delivered[0]['embeds'][0]
 
 
-def test_footer_on_short_queue_and_paginated_messages():
-    for content in ['Workshop unlocked.', 'TASK QUEUE — COMPLETED\nMine Coal\nSucceeded: 1; failed: 0.', 'INVENTORY\n'+'Resource ×1\n'*100]:
+def test_footer_on_information_queue_and_paginated_messages():
+    assert 'footer' not in m._discord_json_message('Workshop unlocked.')['data']['embeds'][0]
+    for content in ['TASK QUEUE — COMPLETED\nMine Coal\nSucceeded: 1; failed: 0.', 'INVENTORY\n'+'Resource ×1\n'*100]:
         data=m._discord_json_message(content)['data']
         assert data['embeds'][0]['footer']['text']==m.message_layout.FOOTER
         if data.get('components'):

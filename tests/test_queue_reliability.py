@@ -155,9 +155,9 @@ def test_discord_receipt_shows_secondary_rewards_and_hides_background_info():
     content=m.action('harvest','test','u',provider='discord').body.decode()
     data=m._discord_json_message(content,message_type='farm')['data']
     text=json.dumps(data,ensure_ascii=False)
-    assert 'Pumpkin +3' in text and 'Pumpkin Seeds +1' in text and 'Crop' not in text
+    assert '+3** Pumpkin' in text and '+1** Pumpkin Seeds' in text and 'Crop' not in text
     assert 'Final chance' not in text and 'Society condition' not in text and 'Daily Variety' not in text
-    assert 'energy -3' in text and 'comfort -3' in text
+    assert '−3 Energy' in text and '−3 Comfort' in text
 
 
 def test_used_up_material_is_in_receipt():
@@ -166,7 +166,7 @@ def test_used_up_material_is_in_receipt():
     content=m.action('delivery','test','u',provider='discord').body.decode()
     assert 'Cargo -1' in content
     data=m._discord_json_message(content,message_type='delivery')['data']
-    assert 'Cargo -1' in json.dumps(data)
+    assert '−1 Cargo' in json.dumps(data, ensure_ascii=False)
 
 
 def test_postgres_url_uses_installed_driver():
