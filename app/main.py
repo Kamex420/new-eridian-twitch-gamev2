@@ -2210,9 +2210,13 @@ def guide(channel:str,uid:str,name:str="Citizen",goal:str="auto",provider:str="t
 
 @app.get("/api/v1/inventory")
 @game_transaction
-def inventory(channel:str,uid:str,name:str="Citizen",provider:str="twitch"):
+def inventory(channel:str,uid:str,name:str="Citizen",provider:str="twitch",search:str="",sort:str="",show:str="",page:int=1,text:str=""):
     with SessionLocal() as db:
         c,p=player(db,channel,provider,uid,name)
+        if text:search,sort,show,page=qol.parse_inventory_text(text)
+        if search or sort or show or page>1:
+            result=qol.inventory_text(sys.modules[__name__],db,p,provider,search,sort or "quantity",show or "all",page)
+            return platform_response(provider,result,result)
         key_rows=[("🎃",item_identity.ALIASES['crops']),("⛏️",item_identity.ALIASES['ore']),("💎",item_identity.ALIASES['rare_ore']),("🔩",item_identity.ALIASES['components']),("🦆","cargo")]
         resources=[f"{emoji} {resource_name(key)}: {material_amount(db,p,key)}" for emoji,key in key_rows]
         equipment=[(key,equipment_count(db,p,key)) for key in ITEM_EFFECTS]
@@ -2227,10 +2231,11 @@ def inventory(channel:str,uid:str,name:str="Citizen",provider:str="twitch"):
                  "\n\n🗃️ SUPPLIES\n"+("\n".join(f"• {resource_name(k)} ×{n}" for k,n in supplies[:12]) if supplies else "• None yet. /gather collects natural materials.")+
                  (f"\n{len(supplies)} supply types. /catalog owned:True lists everything by category." if len(supplies)>12 else "")+
                  f"\n\n⚙️ QUALITY GEAR\n• {sum(g.qty for g in gear)} item(s). /inventory section:Quality Gear shows condition."+
+                 "\n\n🔎 /inventory search:<name> sort:Value show:Used in ready recipes finds and sorts everything you own."+
                  f"\n\nSuggested next step: {next_step}")
         twitch=(f"🎒 {p.display_name} | {p.sc} SC | "+", ".join(f"{resource_name(k)} {material_amount(db,p,k)}" for _,k in key_rows)+
                 (" | Gear: "+", ".join(f"{resource_name(k)} {q}" for k,q in equipment if q) if owned_equipment else "")+
-                f" | Supplies: {len(supplies)} types")
+                f" | Supplies: {len(supplies)} types | !inv <search|value|ready> for more")
         return platform_response(provider,discord,twitch)
 
 def equipment_count(db,p,key):
@@ -2425,7 +2430,7 @@ def life_change_summary(before,life,provider="discord"):
     if not changed:return ""
     return ("\n\nNEEDS\n• "+" · ".join(changed)) if provider=="discord" else " | Needs: "+", ".join(changed)
 
-WORKBENCH_ACTIONS={"preview","craft","queue"}
+WORKBENCH_ACTIONS={"preview","craft","queue","fetch","favorite"}
 
 def make_text_arguments(recipe,category,page):
     """Twitch passes free text: '!make parts 2', '!make Iron Plate' or '!make sr_123'."""
@@ -2445,7 +2450,7 @@ def make(channel:str,uid:str,name:str="Citizen",recipe:str="",provider:str="twit
     if cat is None:
         return out("⚙️ Unknown Workbench category. Choose: "+", ".join(label for _,_,label,_ in workbench.CATEGORIES)+". Nothing spent.")
     action=(action or "craft").strip().lower()
-    if action not in WORKBENCH_ACTIONS:return out("⚙️ Choose Preview, Craft or Queue. Nothing spent.")
+    if action not in WORKBENCH_ACTIONS:return out("⚙️ Choose Preview, Craft, Queue, Fetch missing or Favourite. Nothing spent.")
     station_tag=workbench.find_station(station)
     if station_tag is None:return out("⚙️ Unknown workstation. Pick one from the Workstation list. Nothing spent.")
     with SessionLocal() as db:
@@ -2454,22 +2459,44 @@ def make(channel:str,uid:str,name:str="Citizen",recipe:str="",provider:str="twit
         if not recipe:
             text=workbench.category_text(ctx,cat,page,station_tag) if cat else workbench.home_text(ctx)
             return platform_response(provider,text,chat_line(text))
-        found=workbench.resolve(module,db,p,recipe,cat)
+        found=workbench.resolve(module,db,p,recipe,cat);note="";suggestions=[]
         if found is None:
             gathered=item_identity.RETIRED_GATHERED.get((recipe or "").strip().lower().replace(" ","_"))
             if gathered:return out(f"🌿 {resource_name(recipe)} is now {resource_name(gathered)}, a natural resource. Collect it with {seed_content.source_hint(gathered,provider)} Nothing spent.")
-            return out(f"⚙️ Unknown recipe. Open {'/make' if provider=='discord' else '!make'} and choose a category, then a recipe. Nothing spent.")
+            found,note,suggestions=qol.fuzzy_recipe(module,db,p,recipe,cat)
+        if found is None:
+            return out(f"⚙️ Unknown recipe.{qol.did_you_mean(suggestions)} Open {'/make' if provider=='discord' else '!make'} and choose a category, then a recipe. Nothing spent.")
+        def noted(text):
+            if not note:return text
+            return text+"\n\n"+note if provider=="discord" else note+"\n"+text
         if action=="preview":
-            text=workbench.preview_text(ctx,found)
+            text=noted(workbench.preview_text(ctx,found))
             return platform_response(provider,text,chat_line(text))
+        if action=="favorite":
+            text=noted(qol.set_favorite(module,db,p,found.id));db.commit()
+            if provider=="discord":text+="\n\n"+workbench.preview_text(workbench.Context(module,db,p,provider),found)
+            return platform_response(provider,text,chat_line(text))
+        if action=="fetch":
+            text,_=qol.fetch_plan(ctx,found,max(1,min(10,int(count or 1))))
+            return platform_response(provider,noted(text),noted(text))
         if action=="queue":
             return queued_tasks(channel,uid,name,"start","make:"+found.id,count,provider)
         life=life_state(db,p);blocked=task_need_gate(db,p,"make",provider,life)
         if blocked:return platform_response(provider,blocked,blocked)
+        tier_before=ctx.tier
         if found.kind=="seed":
             result=seed_content.craft(module,db,p,found.id,provider)
+            if "CRAFTING COMPLETE" in result:
+                hint=qol.action_hint(module,db,p,provider,tier_before)
+                result=result+hint if provider=="discord" else (hint.strip()+"\n"+result if hint else result)
+            result=noted(result)
             return platform_response(provider,result,chat_line(result))
-        return craft_legacy(db,p,channel,found.id,provider,life)
+        response=craft_legacy(db,p,channel,found.id,provider,life)
+        if provider=="discord":
+            body=response.body.decode()
+            if "CRAFTING COMPLETE" in body:body+=qol.action_hint(module,db,p,provider,tier_before)
+            return PlainTextResponse(noted(body))
+        return response
 
 def craft_legacy(db,p,channel,recipe,provider,life):
     """New Eridian equipment without a catalog twin; ingredients are catalog items."""
@@ -2751,7 +2778,9 @@ def market_item_label(key):
 @colony_command
 def seed_industries(channel:str,uid:str,name:str="Citizen",action:str="browse",item_name:str="",amount:int=1,provider:str="twitch",page:int=1,category:str="all"):
     action=(action or "browse").lower().strip();key=(item_name or "").lower().strip().replace(" ","_");amount=max(1,min(25,int(amount or 1)))
-    if action not in {"browse","buy","sell","orders","fulfill","starters"}:return out("🏭 Seed Industries actions: browse, buy, sell, orders, fulfill, starters.")
+    if action not in {"browse","buy","sell","orders","fulfill","starters","sellall","clearout"}:return out("🏭 Seed Industries actions: browse, buy, sell, sellall, clearout, orders, fulfill, starters.")
+    if action=="sellall":return sell_all_items(channel,uid,name,item_name,provider)
+    if action=="clearout":return clearout(channel,uid,name,"",provider)
     if action=='starters':
         result=crafting_progression.starter_routes(page,provider)
         return platform_response(provider,result,result.replace('\n',' | '))
@@ -2802,6 +2831,9 @@ def seed_industries(channel:str,uid:str,name:str="Citizen",action:str="browse",i
                   f"• +2 Crafting XP · +1 Commerce XP\n• New Eridian +{numbers['development']} Development\n\n"
                   f"WHY IT MATTERED\n• {data['purpose']}\n\nNEXT\n• View the remaining Day {clock['day']} orders or continue your daily contract."+milestone)
             return PlainTextResponse(text) if provider=="discord" else out(chat_line(text))
+    if key not in SEED_INDUSTRIES and item_name:
+        key,suggestions=qol.fuzzy_item(item_name,SEED_INDUSTRIES)
+        if key is None:return out("🏭 Seed Industries does not trade that item."+qol.did_you_mean(suggestions)+" Browse the market for item names. Nothing spent.")
     if key not in SEED_INDUSTRIES:return out("🏭 Seed Industries trades: "+", ".join(resource_name(k) for k in SEED_INDUSTRIES)+".")
     listing=SEED_INDUSTRIES[key]
     if category!='all' and listing.get('category','legacy')!=category:return out('That item is in another market category. Nothing spent.')
@@ -5463,7 +5495,8 @@ DISCORD_PUBLIC_COMMANDS = {
 DISCORD_PRIVATE_COMMANDS = {
     "seed", "guide", "start", "me", "progress", "inventory", "job",
     "home", "business", "make", "seedindustries", "link", "specialize", "modlog",
-    "world", "linklookup", "ducks", "training", "catalog", "gather", "workshop"
+    "world", "linklookup", "ducks", "training", "catalog", "gather", "workshop",
+    "status", "settings"
 }
 
 def discord_message_status(content):
@@ -6384,7 +6417,8 @@ def _discord_validate_options(command,options):
         'business':('action',{'name':{'start'}}),
         'repair':('target',{'item':{'gear'}}),
         'market':('action',{'resource':{'sell'},'amount':{'sell'}}),
-        'seedindustries':('action',{'item':{'buy','sell','fulfill'},'amount':{'buy','sell'},'category':{'browse','buy','sell'},'page':{'browse','starters'}}),
+        'seedindustries':('action',{'item':{'buy','sell','fulfill','sellall'},'amount':{'buy','sell'},'category':{'browse','buy','sell'},'page':{'browse','starters'}}),
+        'inventory':('section',{'search':{None,'','all'},'sort':{None,'','all'},'show':{None,'','all'},'page':{None,'','all'}}),
         'social':('action',{'player':{'hi','hangout','mentor','duo_walk','duo_games','duo_research','duo_delivery','duo_explore'}}),
     }
     if command in restrictions:
@@ -6394,7 +6428,7 @@ def _discord_validate_options(command,options):
                 return options,f"ℹ️ {field.title()} is used with /{command} {selector}:"+' or '.join(sorted(allowed))+f". Choose that {selector}, or remove {field}. Nothing spent."
     required={
         ('market','sell'):('resource',),('seedindustries','buy'):('item',),
-        ('seedindustries','sell'):('item',),('seedindustries','fulfill'):('item',),
+        ('seedindustries','sell'):('item',),('seedindustries','fulfill'):('item',),('seedindustries','sellall'):('item',),
 
     }
     selector='target' if command=='repair' else 'action'
@@ -6405,8 +6439,8 @@ def _discord_validate_options(command,options):
     if command=='make':
         if options.get('action') and not options.get('recipe'):
             return options,"ℹ️ Choose a Recipe first, then Preview, Craft or Queue it. Nothing spent."
-        if options.get('count') and options.get('action')!='queue':
-            return options,"ℹ️ Count is used with Action: Queue batches. Choose that action, or remove Count. Nothing spent."
+        if options.get('count') and options.get('action') not in {'queue','fetch'}:
+            return options,"ℹ️ Count is used with Action: Queue batches or Fetch missing. Choose one of those, or remove Count. Nothing spent."
     return options,""
 
 def gain_branch(db,p,branch,amount):
@@ -6596,8 +6630,14 @@ def seed_supplies(channel:str,uid:str,name:str='Citizen',mode:str='catalog',item
     import sys
     with SessionLocal() as db:
         _,p=player(db,channel,provider,uid,name);module=sys.modules[__name__]
-        item=seed_content.find_item(item)
-        if mode=='gather' and item:result=seed_content.gather(module,db,p,item,provider)
+        typed=item;item=seed_content.find_item(item)
+        if mode=='gather' and item and item not in seed_content.ACTIVE:
+            found,suggestions=qol.fuzzy_item(typed,seed_content.GATHER)
+            if found is None:return out('🛑 Unknown natural resource.'+qol.did_you_mean(suggestions)+(' Browse /gather.' if provider=='discord' else ' !gatherpage 1 lists them.')+' Nothing spent.')
+            item=found
+        if mode=='gather' and item:
+            result=seed_content.gather(module,db,p,item,provider)
+            if 'GATHERING COMPLETE' in result:result+=qol.action_hint(module,db,p,provider)
         elif mode=='gather':result=seed_content.gather_menu(page,provider)
         elif mode=='catalog':
             if provider!='discord' and item in seed_content.ACTIVE:
@@ -6622,7 +6662,7 @@ def _discord_call_internal(command: str, uid: str, name: str, options: dict, int
             chosen=seed_content.find_item(str(options['item']))
             if category and seed_content.CATEGORY.get(chosen)!=category:return 'ℹ️ That item is not in this category. Nothing spent.'
     if command=='mine' and options.get('action')=='mine' and not options.get('ore'):return 'Choose Ore before selecting Mine. No queue was started.'
-    if command=='queue' and options.get('action')=='start' and not options.get('task'):return 'Choose Task before selecting Start. No queue was started.'
+    if command=='queue' and options.get('action') in {'start','next'} and not options.get('task'):return 'Choose Task before selecting Start or Queue next. No queue was started.'
     selectors={"eat":"food","use":"item","delivery":"action","meal":"action", "repair":"target",
                "research":"operation","farm":"action","spaceport":"operation","explore":"operation","market":"action","social":"action"}
     if command in selectors and (not options.get(selectors[command]) or
@@ -6672,7 +6712,12 @@ def _discord_call_internal(command: str, uid: str, name: str, options: dict, int
     if command == "inventory":
         if str(options.get("section") or "all").lower()=="gear":
             return gear(channel=channel,uid=uid,name=name,provider="discord").body.decode("utf-8")
-        return inventory(channel=channel, uid=uid, name=name, provider="discord").body.decode("utf-8")
+        return inventory(channel=channel, uid=uid, name=name, provider="discord",search=str(options.get("search") or ""),
+                         sort=str(options.get("sort") or ""),show=str(options.get("show") or ""),page=int(options.get("page") or 1)).body.decode("utf-8")
+    if command == "status":
+        return status_view(channel=channel,uid=uid,name=name,provider="discord").body.decode("utf-8")
+    if command == "settings":
+        return settings(channel=channel,uid=uid,name=name,alerts=str(options.get("alerts") or ""),autorecover=str(options.get("autorecover") or ""),provider="discord").body.decode("utf-8")
     if command == "job":
         return job(channel=channel, uid=uid, name=name, job=str(options.get("job") or ""), provider="discord").body.decode("utf-8")
     if command == "home":
@@ -6996,6 +7041,104 @@ def queue_task_menu(query:str='',page:int=1,provider:str='twitch'):
     lines.append('!queueadd <task ID> <1–10>; !queuetaskpage <page>. One task type at a time.')
     text='\n'.join(lines)
     return platform_response(provider,text,text.replace('\n',' | '))
+
+
+from . import qol
+
+
+@app.get('/api/v1/status')
+@game_transaction
+def status_view(channel:str,uid:str,name:str='Citizen',provider:str='twitch'):
+    """Needs, queue, cooldowns, ready recipes and the next step in one view."""
+    with SessionLocal() as db:
+        _,p=player(db,channel,provider,uid,name)
+        text=qol.status_text(sys.modules[__name__],db,p,provider);db.commit()
+        return platform_response(provider,text,text)
+
+
+@app.get('/api/v1/settings')
+@game_transaction
+def settings(channel:str,uid:str,name:str='Citizen',alerts:str='',autorecover:str='',provider:str='twitch',text:str=''):
+    with SessionLocal() as db:
+        _,p=player(db,channel,provider,uid,name)
+        return platform_response(provider,*(qol.settings_text(sys.modules[__name__],db,p,provider,alerts,autorecover,text),)*2)
+
+
+@app.get('/api/v1/favorite')
+@game_transaction
+def favorite(channel:str,uid:str,name:str='Citizen',recipe:str='',provider:str='twitch'):
+    """Toggle a favourite recipe; with no recipe, list favourites."""
+    module=sys.modules[__name__]
+    with SessionLocal() as db:
+        _,p=player(db,channel,provider,uid,name)
+        if not recipe.strip():return platform_response(provider,*(qol.favorites_text(module,db,p,provider),)*2)
+        found=workbench.resolve(module,db,p,recipe);note=''
+        if found is None:
+            found,note,suggestions=qol.fuzzy_recipe(module,db,p,recipe)
+            if found is None:return out('⭐ Unknown recipe.'+qol.did_you_mean(suggestions)+' Nothing changed.')
+        text=(note+' ' if note else '')+qol.set_favorite(module,db,p,found.id);db.commit()
+        return platform_response(provider,text,text)
+
+
+def batches_argument(text,batches):
+    """'Iron Plate 5' -> ('Iron Plate', 5); an explicit batches value wins."""
+    head,_,tail=(text or '').strip().rpartition(' ')
+    if tail.isdigit() and head and not batches:return head,int(tail)
+    return (text or '').strip(),batches or 1
+
+
+@app.get('/api/v1/fetch')
+@game_transaction
+def fetch_ingredients(channel:str,uid:str,name:str='Citizen',recipe:str='',batches:int=0,action:str='plan',provider:str='twitch'):
+    """Plan (or start) gathering a recipe's missing ingredients, then crafting it."""
+    module=sys.modules[__name__];recipe,batches=batches_argument(recipe,batches);batches=max(1,min(10,batches))
+    with SessionLocal() as db:
+        _,p=player(db,channel,provider,uid,name)
+        found=workbench.resolve(module,db,p,recipe) if recipe else None;note=''
+        if found is None:
+            found,note,suggestions=qol.fuzzy_recipe(module,db,p,recipe) if recipe else (None,'',[])
+            if found is None:return out('🧺 Choose a recipe: !fetch <recipe name> [batches].'+qol.did_you_mean(suggestions)+' Nothing spent.')
+        text,start=qol.fetch_plan(workbench.Context(module,db,p,provider),found,batches)
+        if note:text=note+' '+text
+        if action!='start':return platform_response(provider,text,text)
+    if not start:return out(text)
+    result=queued_tasks(channel,uid,name,'start',start['task'],start['count'],provider).body.decode()
+    if start['then'] and ('RUNNING' in result or 'PAUSED' in result):
+        queued_tasks(channel,uid,name,'next',start['then']['task'],start['then']['count'],provider)
+        result=f"🧺 Fetching for {found.name}; it is queued to craft next. "+result
+    return platform_response(provider,result,result)
+
+
+@app.get('/api/v1/sellall')
+@colony_command
+def sell_all_items(channel:str,uid:str,name:str='Citizen',item:str='',provider:str='twitch'):
+    key=seed_content.find_item(item or '')
+    if key not in SEED_INDUSTRIES:
+        key,suggestions=qol.fuzzy_item(item,SEED_INDUSTRIES) if item else (None,[])
+        if key is None:return out('🏭 Choose an item Seed Industries buys.'+qol.did_you_mean(suggestions)+' Nothing sold.')
+    with SessionLocal() as db:
+        _,p=player(db,channel,provider,uid,name)
+        return out(qol.sell_all(sys.modules[__name__],db,p,key,provider))
+
+
+@app.get('/api/v1/clearout')
+@colony_command
+def clearout(channel:str,uid:str,name:str='Citizen',confirm:str='',provider:str='twitch'):
+    """Preview selling surplus materials; confirm=confirm sells them."""
+    with SessionLocal() as db:
+        _,p=player(db,channel,provider,uid,name)
+        text=qol.clearout(sys.modules[__name__],db,p,provider,str(confirm).strip().casefold() in {'confirm','yes','1','true'})
+        return platform_response(provider,text,text)
+
+
+@app.get('/api/v1/recover')
+@colony_command
+def recover_needs(channel:str,uid:str,name:str='Citizen',provider:str='twitch'):
+    """One press: relax, games, cheapest food, comfort items or sleep for every blocking need."""
+    with SessionLocal() as db:
+        _,p=player(db,channel,provider,uid,name)
+        text=qol.recover_text(sys.modules[__name__],db,p,provider);db.commit()
+        return platform_response(provider,text,text)
 
 
 # Extension registration happens after core routes and models are available.

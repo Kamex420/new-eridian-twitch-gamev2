@@ -127,3 +127,36 @@ Specialist quality gear (for example the Mining Pick, Repair Kit or Comfort Pack
 ## Discord menus and buttons
 
 `/make`, `/mine`, `/gather` and `/queue` answer with dropdowns and buttons. Menus and page buttons only change the view and never spend anything. Buttons that spend (Craft, Unlock, Gather, Start queue, Cancel queue) are single-use: a second click, a Discord retry or an old message cannot repeat the action, and only the citizen who opened the panel can press them. Spending buttons expire after 24 hours; run the command again for a fresh panel. Every dropdown label follows the same pattern: status emoji, name, amount, then cost or blocker.
+
+
+## Quality-of-life tools
+
+These tools use the same game rules as manual play; none of them skips a cooldown, gate or cost.
+
+### Status and hints
+
+`/status` (`!status`) combines needs, work blockers with passive-recovery estimates, sleep readiness, the current or last queue with remaining time and its next queue, active cooldowns, up to three ready recipes (favourites first), one next step and your settings. Craft and gather receipts below personal Tier 3 end with a Next step; crossing a personal tier is announced on the receipt that crossed it.
+
+### Favourites, Ready now and fetching
+
+Up to 10 recipes can be starred from a preview (⭐ Favourite), with `/make action:Favourite` or `!fav <recipe>`. The Workbench lists **Ready now** (every recipe craftable this moment, favourites first) and **Favourites** before its categories.
+
+A ❌ recipe's **Fetch missing** plan lists each shortfall and its source. Gatherable materials become a queue sized to the shortfall: ore attempts are padded for the 68% base success rate and rare ores for three prospecting steps per ore, up to the 10-attempt maximum. When that queue covers everything missing, the craft is queued next automatically. Purchasable shortfalls can be bought together; crafted ingredients link to their recipe.
+
+### Follow-up queues, repeats and recovery
+
+One next queue can wait behind the active queue and starts when it completes (not when it is cancelled or stops after errors; cancelling clears it). Completion, cancellation and stop alerts offer Repeat, which re-opens the same task and count. Pause reasons state when passive recovery (+1 per 15 minutes up to 60) clears each need, rounded up to the minute.
+
+With **auto-recover** on, a queue that would pause for low needs first runs whichever recovery commands are ready: /relax for Energy or Comfort, /sleep if still needed, a durable comfort item, the lowest-Nutrition food you own (Meal Kits are never auto-eaten; the emergency meal is used only when you own no food), and /games for Social. Each command keeps its cooldown and effects. Recovery happens before the attempt, so recovery items never appear in the queue's item totals. **Recover now** runs one such round on request.
+
+### Alerts
+
+`/settings alerts:` chooses channel mention (default), direct message (Discord only; closed DMs fall back to the channel mention), quiet (completion, cancellation and error alerts only) or off. Alert buttons: Repeat, Status and Queue, plus Recover now on need pauses.
+
+### Inventory and selling
+
+`/inventory` accepts search, sort (quantity, name, value, category), show (all, used in ready recipes, used by favourites, sellable) and page. `!inv` accepts the same words in any order, e.g. `!inv ore value 2`. Sell all sells a whole stack at the Seed Industries price. Clear-out sells Materials & Ores beyond 20 of each, never touching ingredients of favourites or of the current or next queued recipe, and always shows a preview first.
+
+### Names
+
+Recipe and item names tolerate typos and partial names when one match is clearly best; otherwise replies suggest up to three names and nothing is spent.

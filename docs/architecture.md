@@ -18,6 +18,7 @@ The application now has one canonical Python package. Earlier releases stored im
 | `settlement.py`, `seedlings.py`, `occupations.py`, `events.py` | Shared simulation, citizen routines, jobs and incidents |
 | `command_catalog.py`, `twitch_help.py` | Platform command definitions and help text |
 | `fun_systems.py`, `seasonal.py` | Supplemental activities and calendar flavor |
+| `qol.py` | Status view, favourites, follow-up queues, alert and auto-recovery preferences, recovery estimates, fetch plans, bulk selling, inventory search and fuzzy names |
 
 ## Runtime boundaries
 

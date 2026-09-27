@@ -136,7 +136,7 @@ def test_make_slash_panel_offers_categories_and_recipe_buttons():
     citizen()
     home = ui.slash_panel(m, 'make', '111', 'Kam', {}, '🛠️ WORKBENCH\nChoose a category.')
     menu = next(controls(home))
-    assert [o['value'] for o in menu['options']] == [key for key, *_ in wb.CATEGORIES]
+    assert [o['value'] for o in menu['options']] == ['ready', 'favorites'] + [key for key, *_ in wb.CATEGORIES]
     recipe = ui.slash_panel(m, 'make', '111', 'Kam', {'recipe': CAMPFIRE.id}, 'CAMPFIRE\npreview')
     labels = [c.get('label', '') for c in controls(recipe)]
     assert any(label.startswith('Craft 1 batch') for label in labels) and 'Queue 5' in labels

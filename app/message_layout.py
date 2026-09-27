@@ -72,6 +72,7 @@ def queue_card(content):
     if 'PAUSE REASON' in lines:
         reason = content.split('PAUSE REASON\n', 1)[1].split('\nNEXT\n', 1)[0].split('\n\nFor ',1)[0]
         if 'WHY\n' in reason:reason=reason.split('WHY\n',1)[1].split('\n\n',1)[0]
+        reason=reason.strip()
         field('Result' if state=='Cancelled' else 'Action needed' if state=='Stopped' else 'Paused · action needed', reason)
         if state=='Paused':card['color'] = 0xFEE75C
     forecast = re.search(r'To finish without recovery, start with at least (\d+) Energy, (\d+) Nutrition(?:,| and) (\d+) Social(?: and (\d+) Comfort)?', content)
@@ -126,6 +127,7 @@ def action_card(m, embed, content, command):
     if recovery:add('Recovery needed',recovery)
     milestones=[x for x in m._discord_split_result(content) if 'LEVEL UP' in x or x.startswith(('🩹','🔎','🧳','📜','🏆')) or re.search(r'\b(unlocked|completed|started|ended)\b',x,re.I)]
     add('New this action','\n'.join(milestones))
+    add('Next step',section('NEXT STEP'))
     card['fields'].sort(key=lambda f:0 if f['name'] in {'Result','Recovery needed'} else 1)
     if not card['fields']:return None
     # Reward/cost receipts keep exact deltas; permanent bonuses and general rules

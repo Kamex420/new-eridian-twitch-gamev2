@@ -1,5 +1,39 @@
 # Release notes
 
+## Quality-of-life update
+
+Fourteen connected improvements aimed at the gather → check needs → craft → queue → wait loop. They share one additive preferences table (`player_preferences_v1`), so favourites, alert mode, auto-recovery and the follow-up queue show up consistently in every view.
+
+### One place to look
+
+- **`/status` and `!status`** show needs (with what blocks work and when passive recovery clears it), sleep readiness, the current or last queue with its remaining time and follow-up, active cooldowns, the top ready recipes (favourites first), a concrete next step and your settings. The Discord panel has Refresh, Ready now, Favourites, Workbench, Queue, Repeat and (when blocked) Recover now. The old `!status` society summary is now `!society`.
+- **Next-step hints.** Craft and gather receipts for citizens below personal Tier 3 end with a Next step (a ready favourite, a ready recipe, or what to gather). Reaching a new personal tier is announced on the receipt that crossed it.
+
+### Crafting
+
+- **Ready now** and **Favourites** are listed before the fifteen Workbench categories (`/make category:`, the category menu, `!make ready`, `!make favs`). Ready now lists every recipe you can craft this moment, favourites first.
+- **Favourites**: ⭐ Favourite / Unfavourite on every recipe preview, `/make action:Favourite`, `!fav <recipe>`. Up to 10. Starred recipes carry ⭐ in lists and dropdowns.
+- **Fetch missing ingredients**: ❌ recipes have a 🧺 Fetch missing button (`/make action:Fetch missing`, `!fetch <recipe> [batches]`). The plan lists every shortfall with its best source: a gather or mine queue (ore attempts include spare attempts for failures), the recipe that makes it, or its Seed Industries price. One press starts the gather queue and queues the craft next; if a queue is already running it becomes the next queue instead. Buy missing buys every purchasable shortfall at once. `!fetchgo` starts the plan on Twitch.
+- **Fuzzy names**: misspelled or partial recipe and item names resolve when the match is clear (`!make iron plat`, `!gather lumbr`, `!sellall ston dust`); otherwise the reply suggests up to three names. Nothing is spent on a suggestion.
+
+### Queues
+
+- **Repeat**: completion, cancellation and stop alerts carry 🔁 Repeat ×N, which opens the same queue's plan with Start. `/queue action:Repeat last` and `!queuerepeat` start it directly.
+- **Next queue**: one follow-up slot starts automatically when the current queue completes (`/queue action:Queue next`, `!queuenext <task> <count>`, or the Queue next button that replaces Start while a queue is active). The completion alert says what started next. Cancelling a queue clears its next queue; Clear next removes it.
+- **Recovery estimates**: pause reasons and alerts say when passive recovery clears each blocking need (rounded up to the minute) and when sleep is ready.
+- **Auto-recover** (off by default; `/settings autorecover:On`, `!settings autorecover on`): before a queue pauses for low needs it runs the ordinary recovery commands that are ready — /relax, /sleep, a durable comfort item, your cheapest food (never Meal Kits; the emergency meal when you have none) and /games — then continues. Their normal cooldowns and effects apply, and pause alerts list what was tried. **Recover now** (`/status` button, pause-alert button, `!recover`) does the same once, on demand.
+- **Alert preferences** (`/settings alerts:`, `!settings alerts`): channel mention (default), direct message (Discord; falls back to the channel when DMs are closed), quiet (finish and stop alerts only) or off. Results are always kept in `/queue`, `/status` and the journal.
+
+### Inventory and selling
+
+- **Inventory search**: `/inventory search: sort: show: page:` and `!inv <words>` find items by name or category; sort by quantity, name, sale value or category; show everything, items used in recipes ready now, items used by favourites, or sellable items. Each row shows its category, sale price and how many recipes use it.
+- **Sell all**: `/seedindustries action:Sell all of one item` and `!sellall <item>` sell a whole stack at the listed price, with a note when a favourite uses it.
+- **Clear-out**: `/seedindustries action:Clear out surplus materials` and `!clearout` preview selling Materials & Ores beyond 20 of each. Ingredients of favourites and of the current or next queued recipe are never included. Discord confirms with a single-use Sell button; Twitch with `!clearout confirm`.
+
+### Deployment
+
+Discord commands are re-registered by the container start command; `/status` and `/settings` are new and `/make`, `/queue`, `/inventory` and `/seedindustries` have new choices or options. New additive tables (`player_preferences_v1`, `queue_notice_tasks_v1`) are created automatically. Add the new StreamElements commands from `integrations/twitch/` (`!status` now points to `/api/v1/status`; the society view moved to `!society`).
+
 ## Workbench, Comfort and catalog-only items
 
 ### Crafting through the Workbench

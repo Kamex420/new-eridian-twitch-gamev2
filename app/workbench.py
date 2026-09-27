@@ -19,7 +19,24 @@ CATEGORIES = s.DISPLAY_CATEGORIES
 CATEGORY_INFO = s.DISPLAY_INFO
 SEED_TO_WORKBENCH = s.SEED_TO_DISPLAY
 CATEGORY_ALIASES = s.DISPLAY_ALIASES
-normalize_category = s.display_category
+# Personal views listed before the categories: what you can craft right now,
+# and the recipes you starred. They are filters over the same recipe index.
+VIEWS = (
+    ('ready', '✅', 'Ready now', 'Every recipe you can craft right now, favourites first.'),
+    ('favorites', '⭐', 'Favourites', 'Your starred recipes (up to 10), in the order you added them.'),
+)
+VIEW_INFO = {**CATEGORY_INFO, **{key: (emoji, label, text) for key, emoji, label, text in VIEWS}}
+VIEW_ALIASES = {'ready': 'ready', 'ready_now': 'ready', 'craftable': 'ready', 'can_craft': 'ready',
+                'favorites': 'favorites', 'favourites': 'favorites', 'favs': 'favorites', 'fav': 'favorites',
+                'favorite': 'favorites', 'favourite': 'favorites', 'starred': 'favorites', 'stars': 'favorites'}
+
+
+def normalize_category(value):
+    """Category or personal view key, '' for the overview, or None when unknown."""
+    key = str(value or '').strip().casefold().replace('-', '_').replace(' ', '_').strip('✅⭐_')
+    if key in VIEW_ALIASES:
+        return VIEW_ALIASES[key]
+    return s.display_category(value)
 PAGE_SIZE = 10
 CHAT_PAGE_SIZE = 8   # Twitch pages must fit one 380-byte chat message
 STATUS_ORDER = {'ready': 0, 'missing': 1, 'station': 2, 'owned': 3, 'locked': 4}
@@ -90,6 +107,17 @@ def in_category(m, category, station=''):
     return [e for e in index(m) if (not category or e.category == category) and (not station or station in e.tags)]
 
 
+def in_view(ctx, category, station=''):
+    """Recipes for a category, or for the Ready now / Favourites views."""
+    if category == 'ready':
+        favorites = set(ctx.favorites)
+        rows = [e for e in index(ctx.m) if (not station or station in e.tags) and ctx.status(e).code == 'ready']
+        return sorted(rows, key=lambda e: (e.id not in favorites, e.sort_key))
+    if category == 'favorites':
+        return [e for e in (entry(ctx.m, i) for i in ctx.favorites) if e is not None and (not station or station in e.tags)]
+    return in_category(ctx.m, category, station)
+
+
 def station_code(tag):
     return sorted(cp.STATIONS).index(tag) if tag in cp.STATIONS else -1
 
@@ -135,6 +163,17 @@ class Context:
         self.harvesting = m.lvl(m.skill_xp(p, 'extraction')) if p is not None else 1
         self._statuses = {}
         self._unique = None
+        self._favorites = None
+
+    @property
+    def favorites(self):
+        if self._favorites is None:
+            from . import qol
+            self._favorites = qol.favorite_ids(self.m, self.db, self.p) if self.p is not None else []
+        return self._favorites
+
+    def star(self, e):
+        return '⭐' if e.id in self.favorites else ''
 
     def have(self, key):
         key = self.m.item_identity.canonical(key)
@@ -242,7 +281,7 @@ def clip(text, limit=100):
 def choice_label(ctx, e):
     """Dropdown label: status, name, batch, tier/station and the key blocker."""
     st = ctx.status(e)
-    head = f'{st.emoji} {e.name} ×{ctx.batch_size(e)}'
+    head = f'{st.emoji}{ctx.star(e)} {e.name} ×{ctx.batch_size(e)}'
     tail = f' · T{e.tier} {station_label(e, ctx)}'
     reason = '' if st.code == 'ready' else ' · ' + st.short
     return clip(head + tail + reason)
@@ -257,7 +296,7 @@ def option_description(ctx, e):
 
 def autocomplete_rows(ctx, category='', station='', query=''):
     q = str(query or '').casefold().strip()
-    rows = in_category(ctx.m, category, station)
+    rows = in_view(ctx, category, station)
     if q:
         rows = [e for e in rows if q in e.name.casefold() or q in e.id.casefold()
                 or any(q in cp.STATIONS[t]['name'].casefold() for t in e.tags)]
@@ -272,6 +311,8 @@ def resolve(m, db, p, value, category=''):
     if not value:
         return None
     key = value.casefold().replace(' ', '_')
+    if category not in CATEGORY_INFO:
+        category = ''   # Ready now / Favourites filter the same recipes
     retired = m.item_identity.RETIRED_RECIPES.get(key)
     for candidate in (value, key, retired):
         found = entry(m, candidate) if candidate else None
@@ -292,6 +333,10 @@ def category_counts(ctx):
     for e in index(ctx.m):
         total, ready, lowest = counts.get(e.category, (0, 0, 9))
         counts[e.category] = (total + 1, ready + (ctx.status(e).code == 'ready'), min(lowest, e.tier))
+    all_ready = sum(ready for _, ready, _ in counts.values())
+    counts['ready'] = (all_ready, all_ready, 1)
+    favorites = [entry(ctx.m, i) for i in ctx.favorites]
+    counts['favorites'] = (len(favorites), sum(ctx.status(e).code == 'ready' for e in favorites), min((e.tier for e in favorites), default=1))
     return counts
 
 
@@ -327,11 +372,18 @@ def home_text(ctx):
     counts = category_counts(ctx)
     if ctx.provider != 'discord':
         # Category keys are what players type, so they are shown instead of labels.
-        parts = [f"{k} {counts.get(k, (0, 0, 1))[1]}/{counts.get(k, (0, 0, 1))[0]}" for k, *_ in CATEGORIES]
-        return (f'🛠️ Workbench T{ctx.tier} ({ctx.batches} batches). !make <category> [page] lists recipes easiest first'
-                ' (ready/total): ' + ' · '.join(parts) + ' | !make <recipe> crafts one batch.')
+        # Totals are dropped before the line could exceed one 380-byte chat message.
+        views = [f'ready {counts["ready"][0]}'] + ([f'favs {counts["favorites"][0]}'] if counts['favorites'][0] else [])
+        for totals in (True, False):
+            parts = views + [f"{k} {counts.get(k, (0, 0, 1))[1]}" + (f"/{counts.get(k, (0, 0, 1))[0]}" if totals else '') for k, *_ in CATEGORIES]
+            text = (f'🛠️ Workbench T{ctx.tier} ({ctx.batches} batches), ' + ('ready/total' if totals else 'ready now') + ': '
+                    + ' · '.join(parts) + ' | !make <category> [page] lists easiest first; !make <recipe> crafts one batch.')
+            if len(text.encode()) <= 380:
+                return text
+        return text
     lines = [f'🛠️ WORKBENCH — {ctx.p.display_name if ctx.p else "Citizen"}', tier_line(ctx),
              f"Workstations unlocked: {len(ctx.access)} of {len(cp.STATIONS)} (Survival Workbench is free). /workshop unlocks more.", '',
+             f"✅ Ready now: {counts['ready'][0]} recipes · ⭐ Favourites: {counts['favorites'][1]}/{counts['favorites'][0]} ready", '',
              'CATEGORIES · ready now / recipes · easiest tier']
     for key, emoji, label, text in CATEGORIES:
         total, ready, lowest = counts.get(key, (0, 0, 1))
@@ -358,8 +410,8 @@ def page_bounds(total, page, size=PAGE_SIZE):
 
 def category_text(ctx, category, page=1, station=''):
     m = ctx.m
-    emoji, label, description = CATEGORY_INFO[category]
-    rows = in_category(m, category, station)
+    emoji, label, description = VIEW_INFO[category]
+    rows = in_view(ctx, category, station)
     station_note = f" · {cp.STATIONS[station]['name']} only" if station else ''
     if ctx.provider != 'discord':
         return _chat_category(ctx, category, rows, page, station_note)
@@ -370,10 +422,10 @@ def category_text(ctx, category, page=1, station=''):
              f'{description} {len(rows)} recipes, easiest first · {ready} ready now · {tier_line(ctx)}', '']
     for number, e in enumerate(shown, start + 1):
         st = ctx.status(e)
-        lines.append(f'{number}. {st.emoji} {e.name} ×{ctx.batch_size(e)} — T{e.tier} · {station_label(e, ctx)} · {e.skill} Lv{e.level}')
+        lines.append(f'{number}. {st.emoji}{ctx.star(e)} {e.name} ×{ctx.batch_size(e)} — T{e.tier} · {station_label(e, ctx)} · {e.skill} Lv{e.level}')
         lines.append(f'   {inputs_text(ctx, e)}' + ('' if st.code in {'ready', 'missing'} else f' · {st.short}'))
     if not rows:
-        lines.append('No recipes match this filter.')
+        lines.append(empty_view_text(category))
     lines += ['', '✅ ready · ❌ missing ingredients · 🔑 workstation to unlock · 🔒 tier, skill or society lock',
               'Choose a recipe in the menu below (or /make recipe:<name>) to see its full preview before crafting.']
     return '\n'.join(lines)
@@ -382,7 +434,9 @@ def category_text(ctx, category, page=1, station=''):
 def _chat_category(ctx, category, rows, page, station_note):
     """Twitch: one line per page. A name crafted at several benches is listed
     once with its best status, because '!make <name>' picks that variant."""
-    emoji, label, _ = CATEGORY_INFO[category]
+    emoji, label, _ = VIEW_INFO[category]
+    if not rows:
+        return f'{emoji} {label}: {empty_view_text(category, ctx.provider)}'
     best, order = {}, []
     for e in rows:
         name = e.name.casefold()
@@ -408,6 +462,16 @@ def _chat_category(ctx, category, rows, page, station_note):
         items = ' · '.join(f"{ctx.status(e).emoji}{e.name}" for e in shown)
         text = f'{emoji} {label} {page}/{pages}{station_note}: {items} | !make <recipe name> crafts; {more}.'
     return text
+
+
+def empty_view_text(category, provider='discord'):
+    if category == 'favorites':
+        return ('No favourites yet. Open a recipe and press ⭐ Favourite.' if provider == 'discord'
+                else 'No favourites yet. !fav <recipe name> stars one.')
+    if category == 'ready':
+        return ('Nothing is ready yet. Open a ❌ recipe and press 🧺 Fetch missing, or /gather materials.' if provider == 'discord'
+                else 'Nothing is ready yet. !fetch <recipe> shows how to get its ingredients.')
+    return 'No recipes match this filter.'
 
 
 def used_for(m, key):

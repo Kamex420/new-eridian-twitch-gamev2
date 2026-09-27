@@ -41,6 +41,14 @@ class Notice(Base):
     error=Column(String(200),nullable=False,default='')
 
 
+class NoticeTask(Base):
+    """The queue each alert describes, so its Repeat button restarts exactly that task."""
+    __tablename__='queue_notice_tasks_v1'
+    notice_id=Column(String(32),primary_key=True)
+    task=Column(String(96),nullable=False)
+    total=Column(Integer,nullable=False)
+
+
 class NoticeEvent(Base):
     """Additive event metadata supports old completion notices without migration."""
     __tablename__='queue_notice_events_v1'
@@ -67,24 +75,48 @@ def destination(m,db,p):
     return dest
 
 
-def stopped(m,db,p,queue,kind,reason=''):
+def stopped(m,db,p,queue,kind,reason='',following=''):
     dest=destination(m,db,p)
     dismiss_pause(db,dest)
     from .task_queue import choices, totals_text
+    from . import qol
+    mode=qol.alert_mode(db,p.channel_id,p.twitch_uid)
     title={'paused':'PAUSED','cancelled':'CANCELLED','error':'STOPPED','completed':'COMPLETED'}[kind]
     content=(f'TASK QUEUE — {title}\n{choices(m).get(queue.task,queue.task)}\n'
              f'Attempts completed: {queue.total-queue.remaining}/{queue.total}; remaining: {queue.remaining}.\n'
              +totals_text(m,db,queue))
     if reason:content+='\n\nPAUSE REASON\n'+reason
-    if kind=='paused':content+='\n\nNEXT\nRemaining attempts are saved. The queue resumes automatically when requirements are met.'
+    if kind=='paused':
+        content+='\n\nNEXT\nRemaining attempts are saved. The queue resumes automatically when requirements are met.'
+        life=m.life_state(db,p);eta=qol.resume_eta(m,life)
+        if eta and len(qol.needs.blocked_needs(life))>1:content+=f' Passive recovery clears every blocking need in about {qol.eta_text(eta)}.'
+        if needs_blocked(m,db,p) and not qol.autorecover_on(db,p.channel_id,p.twitch_uid):
+            content+=' Tip: turn on auto-recover in settings so queues recover by themselves.'
+    if following:content+='\n\nNEXT\n'+following
     if kind=='error':content+='\n\nNEXT\nAutomatic retries stopped. Check /queue before starting another queue.'
     # Completion retains the historical run ID to deduplicate pre-update rows.
     notice_id=dest.run_id if kind=='completed' else uuid.uuid4().hex
     if db.get(Notice,notice_id) is None:
-        db.add(Notice(id=notice_id,provider=dest.provider,recipient=dest.recipient,
-                      channel_id=p.channel_id,message_channel=dest.message_channel,content=content,next_at=m.now()))
-        db.add(NoticeEvent(notice_id=notice_id,run_id=dest.run_id,kind=kind,created_at=m.now()))
+        # Alert preferences decide whether a chat message is sent; the journal
+        # and /queue keep every result either way.
+        if mode!='off' and not (mode=='quiet' and kind=='paused'):
+            target=dest.message_channel
+            if mode=='dm' and dest.provider=='discord':target=DM_PREFIX+(dest.message_channel or os.getenv('DISCORD_GAME_CHANNEL_ID',''))
+            db.add(Notice(id=notice_id,provider=dest.provider,recipient=dest.recipient,
+                          channel_id=p.channel_id,message_channel=target,content=content,next_at=m.now()))
+            db.add(NoticeEvent(notice_id=notice_id,run_id=dest.run_id,kind=kind,created_at=m.now()))
+            info=db.get(NoticeTask,notice_id)
+            if info is None:db.add(NoticeTask(notice_id=notice_id,task=queue.task,total=queue.total))
+            else:info.task,info.total=queue.task,queue.total
         m.announce(db,p,content[:1800],m.now())
+
+
+DM_PREFIX='dm|'
+
+
+def needs_blocked(m,db,p):
+    from .needs import blocked_needs
+    return bool(blocked_needs(m.life_state(db,p)))
 
 
 def start(m,db,p,provider,uid):
@@ -96,11 +128,21 @@ def start(m,db,p,provider,uid):
     row.message_channel=origin_channel.get() or os.getenv('DISCORD_GAME_CHANNEL_ID','') if provider=='discord' else ''
 
 
-def complete(m,db,p,queue,summary):
-    stopped(m,db,p,queue,'completed')
+def complete(m,db,p,queue,summary,following=''):
+    stopped(m,db,p,queue,'completed',following=following)
+
+
+def renew(db,row):
+    """A new run for a chained queue, keeping where its alerts are delivered."""
+    if row is None:return
+    dismiss_pause(db,row)
+    row.run_id=uuid.uuid4().hex
 
 
 def delivery_status(db,queue,m=None):
+    from . import qol
+    mode=qol.alert_mode(db,queue.channel_id,queue.canonical_uid)
+    if mode=='off':return 'Queue alerts are off (/settings or !settings alerts mention turns them back on). Your results are saved here.'
     dest=db.get(Destination,(queue.channel_id,queue.canonical_uid))
     notice=None
     if dest:
@@ -117,6 +159,8 @@ def delivery_status(db,queue,m=None):
         return 'Queue notification could not be delivered: '+reason+'. Your results are saved.'
     if notice:
         return 'Queue notification is waiting for delivery. Your results are saved.'
+    if mode=='quiet':return 'Quiet alerts: you will be notified when the queue finishes or stops, not when it pauses.'
+    if mode=='dm':return 'You will get a direct message when the queue pauses or stops (or a channel @mention if your DMs are closed).'
     return 'You will be @mentioned in the game channel when the queue pauses or stops, if delivery is configured.'
 
 
@@ -221,6 +265,7 @@ def deliver(m,provider=None):
 
 def install(m):
     Destination.__table__.create(m.engine,checkfirst=True);Notice.__table__.create(m.engine,checkfirst=True);NoticeEvent.__table__.create(m.engine,checkfirst=True)
+    NoticeTask.__table__.create(m.engine,checkfirst=True)
     async def loop():
         while not m.app.state.notification_stop.is_set():
             try:await asyncio.to_thread(deliver,m,'twitch')

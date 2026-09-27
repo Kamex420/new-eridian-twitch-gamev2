@@ -411,3 +411,36 @@ for command in commands:
                 for choice in option.get('choices',[]):
                     if choice['value']=='work':choice['name']=W('Work','business','','business required')
                     if choice['value']=='contract':choice['name']=W('Contract','businesscontract','','business required')
+
+# Quality-of-life: one status view, personal settings, and options that connect
+# favourites, Ready now, fetching ingredients, follow-up queues and bulk selling.
+commands.append(cmd('status','Needs, queue, cooldowns, ready recipes and your next step in one view'))
+commands.append(cmd('settings','Queue alerts and auto-recovery; leave options blank to view them',[
+    {'type':STRING,'name':'alerts','description':'How queue alerts reach you','required':False,
+     'choices':[{'name':'Channel @mention (default)','value':'mention'},{'name':'Direct message','value':'dm'},
+                {'name':'Quiet: finish/stop only, no pause alerts','value':'quiet'},{'name':'Off: check /status','value':'off'}]},
+    {'type':STRING,'name':'autorecover','description':'Paused queues try relax, games, cheapest food, comfort items or sleep','required':False,
+     'choices':[{'name':'On','value':'on'},{'name':'Off','value':'off'}]}]))
+for command in commands:
+    if command['name']=='make':
+        from .workbench import VIEWS
+        category=next(o for o in command['options'] if o['name']=='category')
+        category['choices']=[{'name':f'{emoji} {label}','value':key} for key,emoji,label,_ in VIEWS]+category['choices']
+        action=next(o for o in command['options'] if o['name']=='action')
+        action['choices']+=[{'name':'Fetch missing ingredients (plan first)','value':'fetch'},{'name':'Favourite / unfavourite','value':'favorite'}]
+        next(o for o in command['options'] if o['name']=='count')['description']='Batches to queue or fetch for, 1–10'
+    if command['name']=='queue':
+        action=command['options'][0]
+        action['choices']+=[{'name':'Queue next (runs after the current queue)','value':'next'},{'name':'Repeat last queue','value':'repeat'},{'name':'Clear next queue','value':'clearnext'}]
+    if command['name']=='seedindustries':
+        next(o for o in command['options'] if o['name']=='action')['choices']+=[
+            {'name':'Sell all of one item','value':'sellall'},{'name':'Clear out surplus materials (preview first)','value':'clearout'}]
+    if command['name']=='inventory':
+        command['options']+=[
+            {'type':STRING,'name':'search','description':'Find items by name or category','required':False},
+            {'type':STRING,'name':'sort','description':'Order the list','required':False,
+             'choices':[{'name':'Quantity','value':'quantity'},{'name':'Name','value':'name'},{'name':'Sale value','value':'value'},{'name':'Category','value':'category'}]},
+            {'type':STRING,'name':'show','description':'Filter the list','required':False,
+             'choices':[{'name':'Everything','value':'all'},{'name':'Used in recipes ready now','value':'ready'},
+                        {'name':'Used by favourites','value':'favorites'},{'name':'Sellable','value':'sellable'}]},
+            {'type':4,'name':'page','description':'Page of the list (15 per page)','required':False,'min_value':1,'max_value':1000}]

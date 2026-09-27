@@ -17,7 +17,14 @@ custom_id grammar (max 100 characters):  ne|<owner id>|<verb>|<args...>
   qp|<task>|<count>       queue plan before starting
   sq|<task>               queue amount menu (value = 1–10)
   qv                      queue status
+  st                      status dashboard
+  fv|<id>|<on>|<cat>|<page>|<st>  set favourite on (1) or off (0), then show the recipe
+  fm|<id>|<batches>       fetch-missing-ingredients plan
+  cn                      clear the next (follow-up) queue
   t|<ticket>              one-time action
+
+Category keys include the personal views 'ready' and 'favorites'. Setting a
+favourite or clearing the next queue is idempotent, so neither needs a ticket.
 """
 import copy
 import json
@@ -25,11 +32,11 @@ import secrets
 from datetime import timedelta
 from sqlalchemy import Column, String, Text, DateTime, delete, update
 from .db import Base
-from . import workbench as wb, seed_content as s
+from . import workbench as wb, seed_content as s, qol
 
 FOOTER = "New Eridian v2 • May Rocky's wisdom guide you."
 TICKET_HOURS = 24
-PANEL_COMMANDS = {'make', 'mine', 'gather', 'queue'}
+PANEL_COMMANDS = {'make', 'mine', 'gather', 'queue', 'status', 'seedindustries'}
 
 
 class UiTicket(Base):
@@ -143,7 +150,10 @@ def _code(station):
 
 def category_menu(m, ctx, owner, current=''):
     counts = wb.category_counts(ctx)
-    options = []
+    total, ready, _ = counts['ready']
+    options = [option('Ready now', 'ready', f'{total} recipes you can craft right now · favourites first', '✅', current == 'ready')]
+    total, ready, _ = counts['favorites']
+    options.append(option('Favourites', 'favorites', f'{ready} ready of {total}/{qol.MAX_FAVORITES} starred recipes', '⭐', current == 'favorites'))
     for key, emoji, label, text in wb.CATEGORIES:
         total, ready, lowest = counts.get(key, (0, 0, 1))
         options.append(option(label, key, f'{ready} ready of {total} · from Tier {lowest} · {text}', emoji, key == current))
@@ -155,17 +165,17 @@ def home_components(m, ctx, owner):
 
 
 def category_components(m, ctx, owner, category, page, station=''):
-    rows = wb.in_category(m, category, station)
+    rows = wb.in_view(ctx, category, station)
     page, pages, start, end = wb.page_bounds(len(rows), page)
     st = _code(station)
     components = []
     shown = rows[start:end]
     if shown:
         components.append(select(cid(owner, 'sr', category, page, st), f'Choose a recipe to preview (page {page}/{pages})',
-                                 [option(f'{e.name} ×{ctx.batch_size(e)}', e.id, wb.option_description(ctx, e), ctx.status(e).emoji)
+                                 [option(f'{ctx.star(e)}{e.name} ×{ctx.batch_size(e)}', e.id, wb.option_description(ctx, e), ctx.status(e).emoji)
                                   for e in shown]))
     components.append(category_menu(m, ctx, owner, category))
-    stations = sorted({t for e in wb.in_category(m, category) for t in e.tags},
+    stations = sorted({t for e in wb.in_view(ctx, category) for t in e.tags},
                       key=lambda t: (wb.cp.STATIONS[t]['tier'], wb.cp.STATIONS[t]['name']))
     if len(stations) > 1:
         options = [option('All workstations', 'all', 'Show every recipe in this category', '🧭', not station)]
@@ -205,7 +215,12 @@ def recipe_components(m, ctx, owner, e, category='', page=1, station=''):
     amounts = select(cid(owner, 'sq', task), 'Queue a different number of batches (1–10)',
                      [option(f'Queue {n} batch' + ('es' if n > 1 else ''), n, f'Shows totals before starting · up to {n * ctx.batch_size(e)} {e.name}')
                       for n in range(1, 11)])
-    return [buttons] + ([amounts] if status.code not in {'locked', 'owned'} else [])
+    starred = e.id in ctx.favorites
+    extras = row(
+        button('Unfavourite' if starred else 'Favourite', cid(owner, 'fv', e.id, 0 if starred else 1, category, page, st), emoji='☆' if starred else '⭐'),
+        button('Fetch missing', cid(owner, 'fm', e.id, 1), style=1, emoji='🧺') if status.code == 'missing' else None,
+        button('Status', cid(owner, 'st'), emoji='📊'))
+    return [buttons, extras] + ([amounts] if status.code not in {'locked', 'owned'} else [])
 
 
 def after_craft_components(m, ctx, owner, e, back):
@@ -214,6 +229,7 @@ def after_craft_components(m, ctx, owner, e, back):
     return [row(button('Craft again', cid(owner, 't', ticket), style=3, emoji='🛠️'),
                 button('Queue 5', cid(owner, 'qp', 'make:' + e.id, 5), emoji='⏱️'),
                 button('Recipe', cid(owner, 'wr', e.id, category or e.category, page, st), emoji='📋'),
+                button('Ready now', cid(owner, 'wc', 'ready', 1, ''), emoji='✅'),
                 button('Workbench', cid(owner, 'wh'), emoji='🛠️'))]
 
 
@@ -235,9 +251,16 @@ def queue_plan(m, db, p, owner, task, count):
         text = (f'⏱️ QUEUE {count} × {task_label(m, task).upper()}\n' + m.task_queue.requirements(m, db, p, task, count) +
                 '\n\nPress Start to begin. The queue works one attempt every 10 seconds, pauses when a need or item runs short, and resumes by itself.')
         back = None
-    ticket = issue(m, owner, {'do': 'queue', 'task': task, 'count': count})
-    return text, [row(button(f'Start queue ×{count}', cid(owner, 't', ticket), style=3, emoji='▶️'), back,
-                      button('Queue status', cid(owner, 'qv'), emoji='📋'))]
+    current = db.get(m.task_queue.TaskQueue, (p.channel_id, p.twitch_uid)) if p is not None else None
+    if current is not None and current.state in m.task_queue.ACTIVE:
+        ticket = issue(m, owner, {'do': 'next', 'task': task, 'count': count})
+        text += (f'\n\nYou already have a queue ({task_label(m, current.task)}). Press Queue next to run this one '
+                 'automatically when it completes.')
+        start = button(f'Queue next ×{count}', cid(owner, 't', ticket), style=3, emoji='⏭️')
+    else:
+        ticket = issue(m, owner, {'do': 'queue', 'task': task, 'count': count})
+        start = button(f'Start queue ×{count}', cid(owner, 't', ticket), style=3, emoji='▶️')
+    return text, [row(start, back, button('Queue status', cid(owner, 'qv'), emoji='📋'))]
 
 
 def queue_components(m, db, p, owner):
@@ -246,6 +269,87 @@ def queue_components(m, db, p, owner):
     if row_ is not None and row_.state in m.task_queue.ACTIVE | {'error'}:
         ticket = issue(m, owner, {'do': 'cancel'})
         buttons.insert(0, button('Cancel queue', cid(owner, 't', ticket), style=4, emoji='⏹️'))
+    repeat = repeat_button(m, owner, row_)
+    if repeat:
+        buttons.insert(0, repeat)
+    if p is not None and qol.next_task(db, p.channel_id, p.twitch_uid)[0]:
+        buttons.append(button('Clear next', cid(owner, 'cn'), emoji='⏭️'))
+    buttons.append(button('Status', cid(owner, 'st'), emoji='📊'))
+    return [row(*buttons)]
+
+
+def repeat_button(m, owner, queue_row):
+    """Repeat a finished queue: opens its plan, so nothing starts without Start."""
+    if queue_row is None or queue_row.state in m.task_queue.ACTIVE or queue_row.task not in m.task_queue.choices(m):
+        return None
+    try:
+        return button(f'Repeat ×{queue_row.total}', cid(owner, 'qp', queue_row.task, queue_row.total), style=1, emoji='🔁')
+    except ValueError:
+        return None
+
+
+# ---------------------------------------------------------------- status, fetch and alerts
+
+def status_components(m, db, p, owner):
+    tq = m.task_queue
+    queue_row = db.get(tq.TaskQueue, (p.channel_id, p.twitch_uid)) if p is not None else None
+    first = [button('Refresh', cid(owner, 'st'), emoji='🔄'),
+             button('Ready now', cid(owner, 'wc', 'ready', 1, ''), emoji='✅'),
+             button('Favourites', cid(owner, 'wc', 'favorites', 1, ''), emoji='⭐'),
+             button('Workbench', cid(owner, 'wh'), emoji='🛠️'),
+             button('Queue', cid(owner, 'qv'), emoji='📋')]
+    second = [repeat_button(m, owner, queue_row)]
+    if p is not None and m.blocked_needs(m.life_state(db, p)):
+        ticket = issue(m, owner, {'do': 'recover'})
+        second.append(button('Recover now', cid(owner, 't', ticket), style=3, emoji='🩹'))
+    return [row(*first)] + ([row(*second)] if any(second) else [])
+
+
+def fetch_components(m, ctx, owner, e, batches, start):
+    buttons = []
+    if start:
+        current = ctx.db.get(m.task_queue.TaskQueue, (ctx.p.channel_id, ctx.p.twitch_uid))
+        label = task_label(m, start['task'])
+        if current is not None and current.state in m.task_queue.ACTIVE:
+            ticket = issue(m, owner, {'do': 'next', 'task': start['task'], 'count': start['count']})
+            buttons.append(button(f"Queue next: {label} ×{start['count']}", cid(owner, 't', ticket), style=3, emoji='⏭️'))
+        else:
+            ticket = issue(m, owner, {'do': 'queue', 'task': start['task'], 'count': start['count'], 'then': start['then']})
+            verb = f"{label} ×{start['count']}" + (' → craft' if start['then'] else '')
+            buttons.append(button(verb, cid(owner, 't', ticket), style=3, emoji='▶️'))
+    routes = qol.fetch_routes(ctx, e, batches)
+    cost = sum(r['price'] * r['short'] for r in routes if r['price'])
+    if cost:
+        ticket = issue(m, owner, {'do': 'buy', 'recipe': e.id, 'batches': batches})
+        buttons.append(button(f'Buy missing · {cost} SC', cid(owner, 't', ticket), style=1,
+                              disabled=ctx.p is not None and ctx.p.sc < cost, emoji='🪙'))
+    source = next((r for r in routes if r['kind'] == 'recipe'), None)
+    if source:
+        buttons.append(button(f"{source['recipe_name']} recipe", cid(owner, 'wr', source['recipe'], '', 1, ''), emoji='📋'))
+    other = 5 if batches == 1 else 1
+    navigation = [button(f'Plan for {other} batch' + ('es' if other > 1 else ''), cid(owner, 'fm', e.id, other), emoji='🔢'),
+                  button('Back to recipe', cid(owner, 'wr', e.id, e.category, 1, ''), emoji='◀️')]
+    return [row(*buttons[:5]), row(*navigation)] if buttons else [row(*navigation)]
+
+
+def alert_components(m, notice):
+    """Buttons under a Discord queue alert: repeat it, check status, or recover now."""
+    owner = str(notice.recipient)
+    if not owner.isdigit():
+        return []
+    with m.SessionLocal() as db:
+        info = db.get(m.task_queue.queue_notifications.NoticeTask, notice.id)
+    buttons = []
+    paused = 'QUEUE — PAUSED' in notice.content
+    if info is not None and not paused and info.task in m.task_queue.choices(m):
+        try:
+            buttons.append(button(f'Repeat ×{info.total}', cid(owner, 'qp', info.task, info.total), style=1, emoji='🔁'))
+        except ValueError:
+            pass
+    if paused and 'need ' in notice.content:
+        ticket = issue(m, owner, {'do': 'recover'})
+        buttons.append(button('Recover now', cid(owner, 't', ticket), style=3, emoji='🩹'))
+    buttons += [button('Status', cid(owner, 'st'), emoji='📊'), button('Queue', cid(owner, 'qv'), emoji='📋')]
     return [row(*buttons)]
 
 
@@ -276,12 +380,19 @@ def slash_panel(m, command, uid, name, options, result):
             recipe = options.get('recipe')
             action = options.get('action') or 'preview'
             e = wb.resolve(m, db, p, recipe, category) if recipe else None
+            if recipe and e is None:
+                e = qol.fuzzy_recipe(m, db, p, recipe, category)[0]
             if e is None:
                 components = category_components(m, ctx, uid, category, page, station) if category else home_components(m, ctx, uid)
             elif action == 'preview':
                 components = recipe_components(m, ctx, uid, e, category, page, station)
             elif action == 'queue':
                 components = queue_components(m, db, p, uid)
+            elif action == 'fetch':
+                batches = max(1, min(10, int(options.get('count') or 1)))
+                components = fetch_components(m, ctx, uid, e, batches, qol.fetch_plan(ctx, e, batches)[1])
+            elif action == 'favorite':
+                components = recipe_components(m, ctx, uid, e, category, page, station)
             else:
                 components = after_craft_components(m, ctx, uid, e, [category or e.category, page, _code(station)])
             return message(m, result, components, command)
@@ -297,6 +408,13 @@ def slash_panel(m, command, uid, name, options, result):
             return message(m, result, work_components(m, uid, 'gather:' + item), command)
         if command == 'queue':
             return message(m, result, queue_components(m, db, p, uid), command)
+        if command == 'status':
+            return message(m, result, status_components(m, db, p, uid), command)
+        if command == 'seedindustries' and options.get('action') == 'clearout' and qol.clearout_plan(m, db, p):
+            ticket = issue(m, uid, {'do': 'clearout'})
+            total = sum(n * price for _, n, price in qol.clearout_plan(m, db, p))
+            return message(m, result, [row(button(f'Sell for {total} SC', cid(uid, 't', ticket), style=3, emoji='🧹'),
+                                           button('Status', cid(uid, 'st'), emoji='📊'))], command)
     return None
 
 
@@ -375,7 +493,7 @@ def _navigate(m, payload, uid, name, owner, verb, args, values):
                 page = 1
             else:
                 category, page, station = args[0], int(args[1] or 1), wb.station_from_code(args[2]) if len(args) > 2 and args[2] else ''
-            if category not in wb.CATEGORY_INFO:
+            if category not in wb.VIEW_INFO:
                 return _notice('Choose a category from the menu.')
             text = wb.category_text(ctx, category, page, station)
             return _reply(message(m, text, category_components(m, ctx, owner, category, page, station)), payload)
@@ -401,6 +519,30 @@ def _navigate(m, payload, uid, name, owner, verb, args, values):
         if verb == 'qv':
             text = m.task_queue.status(m, db, p, db.get(m.task_queue.TaskQueue, (p.channel_id, p.twitch_uid)))
             return _reply(message(m, text, queue_components(m, db, p, owner), 'queue'), payload)
+        if verb == 'st':
+            return _reply(message(m, qol.status_text(m, db, p), status_components(m, db, p, owner), 'status'), payload)
+        if verb == 'cn':
+            qol.clear_next(db, p.channel_id, p.twitch_uid)
+            db.commit()
+            text = m.task_queue.status(m, db, p, db.get(m.task_queue.TaskQueue, (p.channel_id, p.twitch_uid)))
+            return _reply(message(m, '⏭️ Next queue cleared.\n\n' + text, queue_components(m, db, p, owner), 'queue'), payload)
+        if verb == 'fv':
+            e = wb.entry(m, args[0])
+            if e is None:
+                return _notice('That recipe is no longer available. Open /make again.')
+            note = qol.set_favorite(m, db, p, e.id, args[1] == '1')
+            db.commit()
+            ctx = wb.Context(m, db, p)
+            category, page, station = (args[2] if len(args) > 2 else ''), int(args[3] or 1) if len(args) > 3 else 1, wb.station_from_code(args[4]) if len(args) > 4 and args[4] else ''
+            text = note + '\n\n' + wb.preview_text(ctx, e)
+            return _reply(message(m, text, recipe_components(m, ctx, owner, e, category, page, station)), payload)
+        if verb == 'fm':
+            e = wb.entry(m, args[0])
+            if e is None:
+                return _notice('That recipe is no longer available. Open /make again.')
+            batches = max(1, min(10, int(args[1] if len(args) > 1 else 1)))
+            text, start = qol.fetch_plan(ctx, e, batches)
+            return _reply(message(m, text, fetch_components(m, ctx, owner, e, batches, start)), payload)
     return _notice('This control is no longer available. Run the command again.')
 
 
@@ -417,6 +559,20 @@ def _run(m, uid, name, action, kind, channel):
         result = m.make(channel, uid, name, action['recipe'], 'discord', action='craft').body.decode()
     elif kind == 'queue':
         result = m.queued_tasks(channel, uid, name, 'start', action['task'], action['count'], 'discord').body.decode()
+        follow = action.get('then')
+        if follow and result.startswith('TASK QUEUE'):
+            result = m.queued_tasks(channel, uid, name, 'next', follow['task'], follow['count'], 'discord').body.decode()
+    elif kind == 'next':
+        result = m.queued_tasks(channel, uid, name, 'next', action['task'], action['count'], 'discord').body.decode()
+    elif kind == 'recover':
+        result = m.recover_needs(channel, uid, name, 'discord').body.decode()
+    elif kind == 'buy':
+        with m.SessionLocal() as db:
+            p = _player(m, db, uid, name)
+            e = wb.entry(m, action['recipe'])
+            result = qol.buy_missing(m, db, p, e, int(action.get('batches') or 1)) if e else 'That recipe is no longer available. Nothing spent.'
+    elif kind == 'clearout':
+        result = m.clearout(channel, uid, name, 'confirm', 'discord').body.decode()
     elif kind == 'cancel':
         result = m.queued_tasks(channel, uid, name, 'cancel', '', 1, 'discord').body.decode()
     elif kind == 'gather':
@@ -438,10 +594,16 @@ def _run(m, uid, name, action, kind, channel):
             components = recipe_components(m, ctx, uid, e, category, page, wb.station_from_code(st) if st != '' else '')
         elif kind == 'gather':
             components = work_components(m, uid, 'gather:' + action['item'])
+        elif kind == 'buy':
+            e = wb.entry(m, action['recipe'])
+            result = result + '\n\n' + wb.preview_text(ctx, e)
+            components = recipe_components(m, ctx, uid, e)
+        elif kind in {'recover', 'clearout'}:
+            components = status_components(m, db, p, uid)
         else:
             components = queue_components(m, db, p, uid)
         db.commit()
-    return message(m, result, components, 'queue' if kind in {'queue', 'cancel'} else 'make')
+    return message(m, result, components, 'queue' if kind in {'queue', 'cancel', 'next'} else 'make')
 
 
 def finish_ticket(m, payload, uid, name, action):

@@ -6,7 +6,7 @@ from datetime import timedelta
 from sqlalchemy import Column,String,Integer,DateTime,Text,select,text
 from .db import Base, connection_context
 from discord.ext import tasks
-from . import seed_content as s, crafting_progression as cp, task_yields, queue_notifications, needs
+from . import seed_content as s, crafting_progression as cp, task_yields, queue_notifications, needs, qol
 
 class TaskQueue(Base):
     """One saved task per canonical citizen and world; remaining counts attempts.
@@ -54,8 +54,19 @@ def lock_world(conn, channel):
 
 def need_reason(m, db, p):
     life = m.life_state(db, p)
-    return '\n'.join(f'{label}: {value}/100; need {minimum}. Use {m.need_fix(field, "discord", db, p)}.'
-                      for field, label, value, minimum in needs.blocked_needs(life))
+    return '\n'.join(qol.need_line(m, db, p, life, *row) for row in needs.blocked_needs(life))
+
+
+def recovered_reason(m, db, p, channel, uid):
+    """Blocking needs after opt-in auto-recovery; notes say what recovery did."""
+    reason = need_reason(m, db, p)
+    notes = []
+    if reason and qol.autorecover_on(db, channel, uid):
+        notes = qol.recover(m, db, p, channel, uid)
+        if notes:
+            db.expire_all()
+            reason = need_reason(m, db, p)
+    return reason, notes
 
 
 def inventory_snapshot(m, db, p):
@@ -199,6 +210,9 @@ def status(m,db,p,row):
     name=choices(m).get(row.task,row.task)
     text=f'TASK QUEUE — {row.state.upper()}\n{name}\nAttempts completed: {row.total-row.remaining}/{row.total}; remaining: {row.remaining}.\nOnly one task type can be queued at a time; maximum 10 attempts.\nThe worker checks your task every 10 seconds, even when nobody sends a message. Longer task cooldowns still apply.'
     text+='\n'+totals_text(m,db,row)
+    following=qol.next_label(m,db,row.channel_id,row.canonical_uid)
+    if following:text+=f'\n\nNEXT QUEUE\n{following} starts automatically when this queue completes.'
+    if row.state not in ACTIVE:text+='\n\nRepeat this queue with the Repeat button, /queue action:Repeat last, or !queuerepeat.'
     health=db.get(QueueHealth,(row.channel_id,row.canonical_uid))
     if health and health.failures and row.state in ACTIVE:
         wait=max(0,int((m.as_utc(row.next_at)-m.now()).total_seconds()))
@@ -224,6 +238,30 @@ def atomic(m, channel=None):
             conn.rollback();raise
         finally:connection_context.reset(token)
 
+def begin(m,db,p,row,task,count,target=None,renew=None):
+    """Start `task` on the citizen's queue row.
+
+    `target` is the (provider, uid) that alerts go to; `renew` instead keeps an
+    existing alert destination, so a chained queue reports where the first did.
+    """
+    channel=p.channel_id
+    totals=db.get(QueueTotals,(channel,p.twitch_uid))
+    if totals is not None:db.delete(totals);db.flush()
+    db.add(QueueTotals(channel_id=channel,canonical_uid=p.twitch_uid))
+    health=db.get(QueueHealth,(channel,p.twitch_uid))
+    if health:health.failures=0
+    if row is None:
+        row=TaskQueue(channel_id=channel,canonical_uid=p.twitch_uid);db.add(row)
+    row.task=task;row.total=count;row.remaining=count;row.state='running';row.result='Waiting for the first attempt.';row.next_at=m.now()+timedelta(seconds=ATTEMPT_SECONDS)
+    if renew is None:queue_notifications.start(m,db,p,*(target or ('twitch',p.twitch_uid)))
+    else:queue_notifications.renew(db,renew)
+    reason,notes=recovered_reason(m,db,p,channel,p.twitch_uid)
+    if reason:
+        row.state='paused';row.result=reason+('\nAuto-recover tried: '+'; '.join(notes)+'.' if notes else '')
+        queue_notifications.stopped(m,db,p,row,'paused',row.result)
+    return row
+
+
 def control(m,channel,uid,name,provider,action='view',task='',count=1):
     if connection_context.get() is None:
         with atomic(m,channel):return control(m,channel,uid,name,provider,action,task,count)
@@ -232,30 +270,38 @@ def control(m,channel,uid,name,provider,action='view',task='',count=1):
         # Serialize competing starts even when no queue row exists yet.
         db.execute(select(m.Player.id).where(m.Player.id==p.id).with_for_update()).scalar_one()
         row=db.execute(select(TaskQueue).where(TaskQueue.channel_id==channel,TaskQueue.canonical_uid==p.twitch_uid).with_for_update()).scalar_one_or_none()
+        prefix='/' if provider=='discord' else '!'
+        if action=='repeat':
+            if row is None:return f'You have no earlier queue to repeat. Start one with {prefix}queue, {prefix}mine or {prefix}make.'
+            if row.state in ACTIVE:return 'Your queue is still active. Use Queue next to run another task after it. No queue was changed.\n'+status(m,db,p,row)
+            action,task,count='start',row.task,row.total
         if action=='start':
             if not 1<=count<=10:return 'Count must be a whole number from 1 to 10. No queue was changed.'
             task=normalize(m,task)
             if task not in choices(m):return 'Choose a valid Task from /queue. No queue was changed.'
-            if row and row.state in ACTIVE:return 'You already have a queue. Only one task type can be queued at a time. Cancel it before starting another.\n'+status(m,db,p,row)
-            totals=db.get(QueueTotals,(channel,p.twitch_uid))
-            if totals is not None:db.delete(totals);db.flush()
-            db.add(QueueTotals(channel_id=channel,canonical_uid=p.twitch_uid))
-            health=db.get(QueueHealth,(channel,p.twitch_uid))
-            if health:health.failures=0
-            if row is None:
-                row=TaskQueue(channel_id=channel,canonical_uid=p.twitch_uid);db.add(row)
-            row.task=task;row.total=count;row.remaining=count;row.state='running';row.result='Waiting for the first attempt.';row.next_at=m.now()+timedelta(seconds=ATTEMPT_SECONDS)
-            queue_notifications.start(m,db,p,provider,uid)
-            reason=need_reason(m,db,p)
-            if reason:
-                row.state='paused';row.result=reason
-                queue_notifications.stopped(m,db,p,row,'paused',reason)
-        elif action=='cancel':
+            if row and row.state in ACTIVE:
+                hint='/queue action:Queue next' if provider=='discord' else '!queuenext <task ID> <1–10>'
+                return f'You already have a queue. Only one task type can run at a time. Cancel it, or use {hint} to run this task after it.\n'+status(m,db,p,row)
+            row=begin(m,db,p,row,task,count,target=(provider,uid))
+        elif action=='next':
+            if not row or row.state not in ACTIVE:return f'You have no active queue, so there is nothing to follow. Start this task with {prefix}queue action:Start instead.' if provider=='discord' else 'No active queue. Use !queueadd <task ID> <1–10> to start now.'
+            ok,text=qol.set_next(m,db,p,task,count)
+            if not ok:return text
+            db.commit();return text+'\n\n'+status(m,db,p,row)
+        elif action=='clearnext':
+            cleared=qol.clear_next(db,channel,p.twitch_uid);db.commit()
+            return ('⏭️ Next queue cleared.' if cleared else 'No next queue was set.')+('\n\n'+status(m,db,p,row) if row else '')
+        note=''
+        if action=='cancel':
             if row and row.state in ACTIVE|{'error'}:
+                following=qol.next_label(m,db,channel,p.twitch_uid)
                 row.state='cancelled';row.result='Remaining attempts cancelled. Completed work was kept.'
+                if following and qol.clear_next(db,channel,p.twitch_uid):
+                    note=f'⏭️ Your next queue ({following}) was cleared too.\n\n'
+                    row.result+=' '+note.strip()
                 queue_notifications.stopped(m,db,p,row,'cancelled',row.result)
-        elif action!='view':return 'Choose View, Start or Cancel. No queue was changed.'
-        db.commit();return status(m,db,p,row)
+        elif action not in {'view','start'}:return 'Choose View, Start, Queue next, Repeat last, Clear next or Cancel. No queue was changed.'
+        db.commit();return note+status(m,db,p,row)
 
 def run_one(m,channel,uid):
     # Existing handlers commit internally. Binding their sessions to this outer
@@ -278,6 +324,10 @@ def run_one(m,channel,uid):
                     queue_notifications.stopped(m,db,p,row,'cancelled',row.result)
                     db.commit();conn.commit();return
                 previous_state=row.state
+                recovery=[]
+                if need_reason(m,db,p) and qol.autorecover_on(db,channel,uid):
+                    recovery=qol.recover(m,db,p,channel,uid)
+                    if recovery:db.expire_all()
                 cp.mining_outcome.set(None)
                 cooldown_wait.set(0)
                 before=p.actions;success_before=p.successes
@@ -320,8 +370,11 @@ def run_one(m,channel,uid):
                 row.state='completed' if row.remaining==0 else ('running' if attempted or cooldown_wait.get()>0 else 'paused')
                 row.result=result[:4000]
                 if row.remaining and attempted:
-                    reason=need_reason(m,db,p)
+                    reason,notes=recovered_reason(m,db,p,channel,uid)
+                    recovery+=notes
                     if reason:row.state='paused';row.result=reason
+                if row.state=='paused' and recovery:
+                    row.result+='\nAuto-recover tried: '+'; '.join(recovery)+'.'
                 if attempted and previous_state=='paused':
                     queue_notifications.dismiss_pause(db,db.get(queue_notifications.Destination,(channel,uid)))
                 if row.state=='paused' and (previous_state!='paused' or attempted):
@@ -331,7 +384,13 @@ def run_one(m,channel,uid):
                 row.next_at=m.now()+timedelta(seconds=ATTEMPT_SECONDS)
                 if row.state=='completed':
                     db.flush()
-                    queue_notifications.complete(m,db,p,row,totals_text(m,db,row))
+                    task,count=qol.pop_next(db,channel,uid)
+                    task=normalize(m,task) if task else ''
+                    following=f'Starting your next queue: {choices(m)[task]} ×{count}.' if task in choices(m) else ''
+                    queue_notifications.complete(m,db,p,row,totals_text(m,db,row),following)
+                    if following:
+                        db.flush()
+                        begin(m,db,p,row,task,count,renew=db.get(queue_notifications.Destination,(channel,uid)))
                 db.commit()
             conn.commit()
         except BaseException:
@@ -373,6 +432,7 @@ def install(m):
     QueueTotals.__table__.create(m.engine,checkfirst=True)
     QueueHealth.__table__.create(m.engine,checkfirst=True)
     queue_notifications.install(m)
+    qol.install(m)
     @tasks.loop(seconds=2,reconnect=True)
     async def timer():
         try:await asyncio.to_thread(tick,m)
@@ -387,6 +447,7 @@ def install(m):
 
 
 def merge_accounts(m,db,channel,source_uid,target_uid):
+    qol.merge(db,channel,source_uid,target_uid)
     source=db.get(TaskQueue,(channel,source_uid));target=db.get(TaskQueue,(channel,target_uid))
     if source is None:return
     queue_notifications.merge(db,channel,source_uid,target_uid,target is None or (source.state in ACTIVE and target.state not in ACTIVE))
@@ -421,9 +482,12 @@ def short_status(m,channel,uid,name,provider):
         _,energy,_=specification(m,row.task);n=row.remaining
         text=f'{row.state.upper()}: {choices(m).get(row.task,row.task)} | {row.total-n}/{row.total} attempts done. '
         text+=totals_text(m,db,row,short=True)+' '
+        following=qol.next_label(m,db,channel,p.twitch_uid)
+        if following:text+=f'Next: {following}. '
+        if row.state not in ACTIVE:text+='!queuerepeat runs it again. '
         if n and row.state in ACTIVE:
             life=m.life_state(db,p)
             need=needs.finish_forecast(energy,n)
             text+=f'Finish without recovery: Energy {need["energy"]}, Nutrition {need["nutrition"]}, Social {need["social"]}, Comfort {need["comfort"]}. Now: {life.energy}/{life.nutrition}/{life.social}/{life.comfort}. '
             if row.state=='paused':text+='Paused: '+row.result.replace('\n',' ')[:95]+'. '
-        return text+'One task type; max 10. !queuecancel. /queue shows full requirements.'
+        return text+'One task type; max 10. !queuenext adds a follow-up; !queuecancel stops.'

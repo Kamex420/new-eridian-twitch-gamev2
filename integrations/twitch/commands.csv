@@ -20,7 +20,6 @@
 !market,$(customapi https://YOUR-API-DOMAIN/api/v1/action/market?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&msg=$(msgid)),100,3,45
 !eat,$(customapi https://YOUR-API-DOMAIN/api/v1/action/eat?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&msg=$(msgid)),100,3,15
 !sleep,$(customapi https://YOUR-API-DOMAIN/api/v1/action/sleep?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&msg=$(msgid)),100,3,60
-!status,$(customapi https://YOUR-API-DOMAIN/api/v1/society?channel=$(channel.provider_id)),100,8,20
 !progress,$(customapi https://YOUR-API-DOMAIN/api/v1/progress?channel=$(channel.provider_id)),100,8,20
 !event,$(customapi https://YOUR-API-DOMAIN/api/v1/event?channel=$(channel.provider_id)),100,8,20
 !rocky,$(customapi https://YOUR-API-DOMAIN/api/v1/rocky?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))),100,8,60
@@ -54,3 +53,15 @@
 !queuecancel,$(customapi https://YOUR-API-DOMAIN/api/v1/queue?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&action=cancel),100,0,2
 !queuetasks,$(customapi https://YOUR-API-DOMAIN/api/v1/queue-tasks?query=$(queryescape $(1:))),100,0,2
 !queuetaskpage,$(customapi https://YOUR-API-DOMAIN/api/v1/queue-tasks?page=$(1)),100,0,2
+!status,$(customapi https://YOUR-API-DOMAIN/api/v1/status?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))),100,0,5
+!society,$(customapi https://YOUR-API-DOMAIN/api/v1/society?channel=$(channel.provider_id)),100,8,20
+!recover,$(customapi https://YOUR-API-DOMAIN/api/v1/recover?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))),100,0,10
+!settings,$(customapi https://YOUR-API-DOMAIN/api/v1/settings?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&text=$(queryescape ${1:})),100,0,5
+!fav,$(customapi https://YOUR-API-DOMAIN/api/v1/favorite?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&recipe=$(queryescape ${1:})),100,0,5
+!fetch,$(customapi https://YOUR-API-DOMAIN/api/v1/fetch?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&recipe=$(queryescape ${1:})),100,0,5
+!fetchgo,$(customapi https://YOUR-API-DOMAIN/api/v1/fetch?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&action=start&recipe=$(queryescape ${1:})),100,0,5
+!sellall,$(customapi https://YOUR-API-DOMAIN/api/v1/sellall?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&item=$(queryescape ${1:})),100,0,5
+!clearout,$(customapi https://YOUR-API-DOMAIN/api/v1/clearout?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&confirm=$(queryescape $(1))),100,0,5
+!inv,$(customapi https://YOUR-API-DOMAIN/api/v1/inventory?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&text=$(queryescape ${1:})),100,0,5
+!queuenext,$(customapi https://YOUR-API-DOMAIN/api/v1/queue?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&action=next&task=$(queryescape $(1))&count=$(2)),100,0,2
+!queuerepeat,$(customapi https://YOUR-API-DOMAIN/api/v1/queue?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&action=repeat),100,0,2

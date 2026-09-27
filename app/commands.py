@@ -55,7 +55,7 @@ def command(fn):
                                     extra.append("Aptitude practice: "+"; ".join(ctx["practice"]))
                                 elif changed:extra.append(("Aptitudes" if section=="Competency" else section)+": "+", ".join(changed))
                             # Browsing views and refusals spend nothing; "Needs: unchanged" would only be noise there.
-                            if not any(x.startswith("Needs:") for x in extra) and fn.__name__ not in {"profile","skills","life_status","guide","job","make","workshop","seed_supplies","training","seed_industries","use_item","inventory"}:
+                            if not any(x.startswith("Needs:") for x in extra) and fn.__name__ not in {"profile","skills","life_status","guide","job","make","workshop","seed_supplies","training","seed_industries","use_item","inventory","sell_all_items","clearout"}:
                                 extra.insert(0,"Needs: unchanged")
                         if before:
                             for label,new in after["Ranks"].items():

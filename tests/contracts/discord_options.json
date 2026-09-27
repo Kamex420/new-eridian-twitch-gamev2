@@ -223,6 +223,68 @@
           "value": "gear"
         }
       ]
+    },
+    {
+      "type": 3,
+      "name": "search",
+      "description": "Find items by name or category",
+      "required": false
+    },
+    {
+      "type": 3,
+      "name": "sort",
+      "description": "Order the list",
+      "required": false,
+      "choices": [
+        {
+          "name": "Quantity",
+          "value": "quantity"
+        },
+        {
+          "name": "Name",
+          "value": "name"
+        },
+        {
+          "name": "Sale value",
+          "value": "value"
+        },
+        {
+          "name": "Category",
+          "value": "category"
+        }
+      ]
+    },
+    {
+      "type": 3,
+      "name": "show",
+      "description": "Filter the list",
+      "required": false,
+      "choices": [
+        {
+          "name": "Everything",
+          "value": "all"
+        },
+        {
+          "name": "Used in recipes ready now",
+          "value": "ready"
+        },
+        {
+          "name": "Used by favourites",
+          "value": "favorites"
+        },
+        {
+          "name": "Sellable",
+          "value": "sellable"
+        }
+      ]
+    },
+    {
+      "type": 4,
+      "name": "page",
+      "description": "Page of the list (15 per page)",
+      "required": false,
+      "min_value": 1,
+      "max_value": 1000
     }
   ],
   "job": [
@@ -469,6 +531,14 @@
       "required": false,
       "choices": [
         {
+          "name": "✅ Ready now",
+          "value": "ready"
+        },
+        {
+          "name": "⭐ Favourites",
+          "value": "favorites"
+        },
+        {
           "name": "🧱 Materials & Ores",
           "value": "materials"
         },
@@ -554,13 +624,21 @@
         {
           "name": "Queue batches (set Count)",
           "value": "queue"
+        },
+        {
+          "name": "Fetch missing ingredients (plan first)",
+          "value": "fetch"
+        },
+        {
+          "name": "Favourite / unfavourite",
+          "value": "favorite"
         }
       ]
     },
     {
       "type": 4,
       "name": "count",
-      "description": "Batches to queue, 1–10 (Queue only)",
+      "description": "Batches to queue or fetch for, 1–10",
       "required": false,
       "min_value": 1,
       "max_value": 10
@@ -611,6 +689,14 @@
         {
           "name": "Starter Routes by Branch",
           "value": "starters"
+        },
+        {
+          "name": "Sell all of one item",
+          "value": "sellall"
+        },
+        {
+          "name": "Clear out surplus materials (preview first)",
+          "value": "clearout"
         }
       ]
     },
@@ -1580,6 +1666,18 @@
         {
           "name": "Cancel",
           "value": "cancel"
+        },
+        {
+          "name": "Queue next (runs after the current queue)",
+          "value": "next"
+        },
+        {
+          "name": "Repeat last queue",
+          "value": "repeat"
+        },
+        {
+          "name": "Clear next queue",
+          "value": "clearnext"
         }
       ]
     },
@@ -1597,6 +1695,49 @@
       "required": false,
       "min_value": 1,
       "max_value": 10
+    }
+  ],
+  "status": [],
+  "settings": [
+    {
+      "type": 3,
+      "name": "alerts",
+      "description": "How queue alerts reach you",
+      "required": false,
+      "choices": [
+        {
+          "name": "Channel @mention (default)",
+          "value": "mention"
+        },
+        {
+          "name": "Direct message",
+          "value": "dm"
+        },
+        {
+          "name": "Quiet: finish/stop only, no pause alerts",
+          "value": "quiet"
+        },
+        {
+          "name": "Off: check /status",
+          "value": "off"
+        }
+      ]
+    },
+    {
+      "type": 3,
+      "name": "autorecover",
+      "description": "Paused queues try relax, games, cheapest food, comfort items or sleep",
+      "required": false,
+      "choices": [
+        {
+          "name": "On",
+          "value": "on"
+        },
+        {
+          "name": "Off",
+          "value": "off"
+        }
+      ]
     }
   ]
 }
