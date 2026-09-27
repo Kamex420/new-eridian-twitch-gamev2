@@ -196,13 +196,20 @@ def kind(content):
     changed = any(re.match(r'^(?:Needs: (?!unchanged)|Resources: )', x) for x in rows)
     if changed and len(body) <= 2:
         return 'receipt'
-    if len(rows) <= 2 and len(text) <= 320:
+    if len(rows) <= 2 and len(text) <= 320 and not (len(rows) == 2 and is_header(rows[0].strip().split(' — ')[0])):
         return 'notice'
     return 'info'
 
 
 def notice(m, content, status):
-    text = ' '.join(x.strip() for x in lines_of(content) if x.strip())
+    parts = []
+    for line in (x.strip() for x in lines_of(content)):
+        formatted = change_line(line) if line else ''
+        if line and formatted is None:
+            parts.append(line)
+        elif formatted:
+            parts.append(formatted)
+    text = '\n'.join(parts)
     return {'description': text[:DESCRIPTION_LIMIT] or '​', 'color': COLORS.get(status, COLORS['info'])}
 
 
@@ -213,7 +220,7 @@ def _section(content, name):
 
 ACTION_TITLES = {'relax': 'Relaxed', 'sleep': 'Slept', 'eat': 'Meal', 'games': 'Games', 'walk': 'Walk', 'hobby': 'Hobby practice',
                  'meal': 'Community meal', 'hi': 'Said hi', 'hangout': 'Hung out', 'duo': 'Duo activity', 'mentor': 'Mentored',
-                 'farm': 'Tended fields', 'harvest': 'Harvest', 'forage': 'Forage', 'water': 'Irrigation', 'scan': 'Scan',
+                 'farm': 'Farming', 'harvest': 'Harvest', 'forage': 'Forage', 'water': 'Irrigation', 'scan': 'Scan',
                  'mine': 'Mining', 'rare': 'Prospecting', 'research': 'Research', 'cargo': 'Cargo prepared', 'delivery': 'Delivery',
                  'spaceport': 'Spaceport shift', 'explore': 'Expedition', 'survey': 'Survey', 'market': 'Market work',
                  'repair': 'Repair', 'build': 'Build', 'project': 'Project work', 'craft': 'Crafting', 'work': 'Work shift',

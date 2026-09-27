@@ -1,5 +1,7 @@
 # Validation record
 
+The button-menu update passed **857 tests**. It adds `tests/test_menu.py`: every area opens within Discord limits (≤5 rows, ≤25 buttons, custom IDs ≤100), every leaf maps to a real command and options, every view button renders, action buttons run once and bring back their area, choice lists run or confirm (selling needs Confirm), social choices offer activities, and replies carry Again/area/Menu buttons.
+
 The message-readability update passed **787 tests**, including `tests/test_presentation.py` (8 tests): small task receipts without footer or fields, one-line notices, title-cased information cards with bold labels and sections, short titles for long first lines, level-up notes kept out of titles, formatted need/item/practice changes, one-line Twitch task replies, and Details pages for very long views.
 
 The Comfort, festival-food and command-menu update passed **779 tests**. It adds `tests/test_festivals_and_commands.py` (17 tests): all 27 festival foods are edible, sellable Survival Workbench recipes from gathered ingredients; recipes lock outside their window and craft inside it; eating adds the festival Comfort bonus; Comfort costs equal Energy and relax restores +20; the registered menu has 31 commands; every grouped command translates to its original handler; and game text is rewritten to the grouped commands.

@@ -9,10 +9,11 @@ Eight messages for the game's guide channel. Paste each block (between the `---`
 New Eridian is a settlement on Avesta that everyone here builds together. You gather and mine, craft at workstations, keep your citizen healthy, and help the whole society grow.
 
 **Get started**
-1. `/start` creates your citizen, or loads your linked character.
-2. `/job` picks a profession bonus. You can change it later.
-3. `/status` is your home screen: needs, queue, cooldowns, what you can craft now, and your next step.
-4. `/guide` suggests the best thing to do next, and why.
+1. `/menu` opens everything as buttons: pick an area, then what to do. After each action the next buttons are right there.
+2. `/start` creates your citizen, or loads your linked character.
+3. `/job` picks a profession bonus. You can change it later.
+4. `/status` shows your needs, queue, cooldowns, what you can craft now, and your next step.
+5. `/guide` suggests the best thing to do next, and why.
 
 **Playing on Twitch too?** Type `!link` in Twitch chat, then enter the code with `/link` here. Both accounts share one inventory and one set of progress.
 
@@ -102,6 +103,7 @@ Each festival has three **festival foods**. They're real items:
 
 ## 📖 8 · Command reference
 
+**Everything as buttons** · `/menu`
 **You** · `/status` · `/me` (profile, needs, skills, daily contract, achievements, titles) · `/inventory` · `/settings`
 **Recover** · `/life` · `/use`
 **Work** · `/gather` · `/mine` · `/work` · `/training` · `/repair`
@@ -112,6 +114,6 @@ Each festival has three **festival foods**. They're real items:
 **Help** · `/guide` · `/seed` (full handbook) · `/start` · `/link` · `/job` · `/specialize`
 **Moderators** · `/mod` (start or stop events, moderator log, linked-account lookup)
 
-Stuck? `/status` always shows your next step.
+Stuck? `/menu` has a button for everything, and `/status` always shows your next step. Every reply ends with 🔁 Again and 🏠 Menu buttons.
 
 ---

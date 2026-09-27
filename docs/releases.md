@@ -1,5 +1,25 @@
 # Release notes
 
+## Buttons for everything: /menu
+
+`/menu` opens one window with a button for every area: Status, Life & Recovery, Work, Craft, Queue, Bag, Trade, World, Me, Social, Settings and Help. Pressing an area shows a button for each of its actions and views, with a one-line explanation of each:
+
+| Area | Buttons |
+| --- | --- |
+| Life & Recovery | Relax, Sleep, Eat (food list), Games, Walk, Hobby (list), Share meal, Recover, Needs, Cooldowns |
+| Work | Mine (ore list → Mine ×1 / Queue 5 / Queue 10), Gather (material list → same), all 14 work tasks, Training |
+| Craft | Workbench, Ready now, Favourites, Workshops, Catalog and all 15 categories |
+| Queue | Queue status, Repeat last, Cancel, Clear next, Status |
+| Bag | Inventory, By value, For ready recipes, Quality gear, Use item (list), Eat (list), Sell all of… (list → Confirm), Clear out |
+| Trade | Seed Industries, Starter routes, Orders, Deliver order (list → Confirm), Prices, Commerce work, Market analysis, Habitat, Upgrade home, Business, Business work, Contract, Invest |
+| World | Overview, Conditions, Society, Next tier, Leaderboard, Event, Past events, Holidays, Project, Story, Bulletin, Rumor, Market |
+| Me | Profile, Skills, Daily contract, Achievements, Collection, Bonuses, Traits, Relationships, Journal, Tutorial, Titles, Choices (Job, District, Shift, Delivery partner, Title, Specialize → Confirm, result style) |
+| Social | With a citizen (list → Say hi, Hang out, Mentor, five duo activities), Games, Recreation Set, Share meal, Relationships |
+| Settings | Alert modes, Auto-recover on/off, Favourites, Status |
+| Help | What next?, Tutorial, Holidays and every handbook topic |
+
+After an action the result appears with the same area's buttons again, plus Back and Menu, so repeating or moving on is one tap. Every slash-command reply also gets a row with 🔁 Again (for tasks), its area, and 🏠 Menu. Buttons run the same commands as the slash commands. Action buttons are single-use tickets; menus, lists and views spend nothing; irreversible choices (selling a stack, delivering an order, specializing) ask for confirmation. The Discord menu now has 32 commands.
+
 ## Readable, compact messages
 
 Every Discord reply and Twitch line now goes through one presentation layer (`app/presentation.py`), which picks one of three shapes:

@@ -5498,7 +5498,7 @@ DISCORD_PRIVATE_COMMANDS = {
     "seed", "guide", "start", "me", "progress", "inventory", "job",
     "home", "business", "make", "seedindustries", "link", "specialize", "modlog",
     "world", "linklookup", "ducks", "training", "catalog", "gather", "workshop",
-    "status", "settings", "mod"
+    "status", "settings", "mod", "menu"
 }
 
 def discord_message_status(content):
@@ -6740,6 +6740,8 @@ def _discord_call_internal(command: str, uid: str, name: str, options: dict, int
         return action("eat",channel,uid,name,msg="food:"+str(options["food"]),provider="discord").body.decode()
     if command=="recover":
         return recover_needs(channel,uid,name,"discord").body.decode()
+    if command=="menu":
+        return game_menu.home_text(__import__("sys").modules[__name__],uid,name)
 
     if command=='mine':
         return mining(channel,uid,name,str(options.get('ore') or ''),str(options.get('action') or 'view'),int(options.get('count') or 1),'discord').body.decode()
@@ -7113,7 +7115,8 @@ def queue_task_menu(query:str='',page:int=1,provider:str='twitch'):
     return platform_response(provider,text,text.replace('\n',' | '))
 
 
-from . import qol, presentation
+from . import qol, presentation, menu
+game_menu=menu
 presentation.SKILL_NAMES=tuple(SKILL_LABELS.values())
 
 

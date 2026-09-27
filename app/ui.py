@@ -21,6 +21,7 @@ custom_id grammar (max 100 characters):  ne|<owner id>|<verb>|<args...>
   fv|<id>|<on>|<cat>|<page>|<st>  set favourite on (1) or off (0), then show the recipe
   fm|<id>|<batches>       fetch-missing-ingredients plan
   cn                      clear the next (follow-up) queue
+  mn|mv|mk|mp             game menu areas, views and choices (see menu.py)
   t|<ticket>              one-time action
 
 Category keys include the personal views 'ready' and 'favorites'. Setting a
@@ -36,7 +37,7 @@ from . import workbench as wb, seed_content as s, qol
 
 FOOTER = "New Eridian v2 • May Rocky's wisdom guide you."
 TICKET_HOURS = 24
-PANEL_COMMANDS = {'make', 'mine', 'gather', 'queue', 'status', 'seedindustries'}
+PANEL_COMMANDS = {'make', 'mine', 'gather', 'queue', 'status', 'seedindustries', 'menu'}
 
 
 class UiTicket(Base):
@@ -407,6 +408,9 @@ def slash_panel(m, command, uid, name, options, result):
             return message(m, result, queue_components(m, db, p, uid), command)
         if command == 'status':
             return message(m, result, status_components(m, db, p, uid), command)
+        if command == 'menu':
+            from . import menu
+            return message(m, result, menu.area_components(m, uid, 'home'), command)
         if command == 'seedindustries' and options.get('action') == 'clearout' and qol.clearout_plan(m, db, p):
             ticket = issue(m, uid, {'do': 'clearout'})
             total = sum(n * price for _, n, price in qol.clearout_plan(m, db, p))
@@ -457,6 +461,16 @@ def handle_component(m, payload, schedule=None):
     if uid != owner:
         return _notice('This menu belongs to another citizen. Open your own with the same command. Nothing was spent.')
     values = data.get('values') or []
+    if verb == 'mp':
+        from . import menu
+        item = menu.LEAVES.get(args[0] if args else '')
+        if item is not None and item.get('then') == 'do':
+            # Choosing from an action list (a food, a hobby…) performs it, like a slash command.
+            action = {'do': 'cmd', 'leaf': args[0], 'value': values[0] if values else ''}
+            if schedule is None:
+                return _reply(run_ticket(m, uid, name, action, payload), payload)
+            schedule(finish_ticket, m, payload, uid, name, action)
+            return {'type': 6}
     if verb == 't':
         with m.task_queue.atomic(m, m.DISCORD_WORLD_ID):
             action, reason = claim(m, owner, args[0] if args else '')
@@ -518,6 +532,11 @@ def _navigate(m, payload, uid, name, owner, verb, args, values):
             return _reply(message(m, text, queue_components(m, db, p, owner), 'queue'), payload)
         if verb == 'st':
             return _reply(message(m, qol.status_text(m, db, p), status_components(m, db, p, owner), 'status'), payload)
+        if verb in {'mn', 'mv', 'mk', 'mp'}:
+            from . import menu
+            data = menu.navigate(m, db, p, owner, verb, args, values, name)
+            db.commit()
+            return _reply(data, payload) if data is not None else _notice('This control is no longer available. Open /menu again.')
         if verb == 'cn':
             qol.clear_next(db, p.channel_id, p.twitch_uid)
             db.commit()
@@ -552,6 +571,9 @@ def run_ticket(m, uid, name, action, payload=None):
 
 
 def _run(m, uid, name, action, kind, channel):
+    if kind == 'cmd':
+        from . import menu
+        return menu.run(m, uid, name, action)
     if kind == 'craft':
         result = m.make(channel, uid, name, action['recipe'], 'discord', action='craft').body.decode()
     elif kind == 'queue':

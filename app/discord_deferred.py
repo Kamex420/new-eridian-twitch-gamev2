@@ -44,6 +44,13 @@ def finish(m,payload,command,uid,name,options):
         try:
             # Workbench, mining, gathering and queue replies carry dropdowns and buttons.
             data=m.ui.slash_panel(m,command,uid,name,options,result) or m._discord_json_message(result,message_type=command)['data']
+            # Every reply offers the next step as buttons: Again, its menu area, and Menu.
+            if command!='menu':
+                try:
+                    rows=[r for r in data.get('components') or [] if r.get('components')]
+                    if len(rows)<5:data['components']=rows+[m.menu.after_command(m,command,options,uid)]
+                except Exception:
+                    logging.getLogger(__name__).error('Menu buttons could not be added: %s',command)
         except Exception:
             logging.getLogger(__name__).error('Saved command result could not be formatted: %s',command)
             data={'content':result[:1800], 'allowed_mentions':{'parse':[]}}

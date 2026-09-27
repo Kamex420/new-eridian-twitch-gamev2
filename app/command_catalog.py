@@ -489,5 +489,6 @@ for command in commands:
     if command['name']=='world':
         command['options'][0]['choices']+=[{'name':n,'value':v} for n,v in WORLD_SECTIONS]
         command['description']='Avesta and New Eridian: society, events, holidays, market and news'
+new_commands.insert(0,cmd('menu','Every area of the game as buttons: pick one, then pick what to do'))
 legacy_commands=[c for c in commands if c['name'] in RETIRED]
 commands=[c for c in commands if c['name'] not in RETIRED]+new_commands
