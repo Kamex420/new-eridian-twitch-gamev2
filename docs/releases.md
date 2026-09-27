@@ -1,5 +1,29 @@
 # Release notes
 
+## Comfort, festival foods and a shorter Discord menu
+
+### Comfort drains half as fast
+
+Every task now costs as much Comfort as Energy: 2 for standard work, 3 for heavy work (it was double). `/relax` restores +20 Comfort (was +10). A full Comfort bar lasts roughly twice as many tasks. The rate is one constant, `COMFORT_PER_ENERGY` in `app/needs.py`, and the relax amount is `RELAX_COMFORT`.
+
+### Festival foods are real items
+
+The three festival recipes for each of the nine holidays (27 in total) are now catalog items. They are crafted at the free Survival Workbench from gathered ingredients, and only while that holiday's festival runs (30 days before to 7 days after, UTC). Outside the window the recipe shows 🔒 with its dates. The items keep, stack and sell all year. Eating one gives Nutrition plus bonus Comfort and Morale, and counts as prepared food (Rocky's Favor). The holiday calendar lists each festival's foods with ingredients and effects.
+
+### A shorter Discord command list
+
+51 slash commands became 31. Grouped commands run the original handlers, so rules, cooldowns and receipts are unchanged:
+
+| New | Replaces |
+| --- | --- |
+| `/life action:` Relax, Sleep, Eat (+ Food), Games, Walk, Hobby (+ Hobby), Share meal, Recover | `/relax` `/sleep` `/eat` `/games` `/walk` `/hobby` `/meal` |
+| `/work task:` every farming, scanning, research, logistics, spaceport and frontier option | `/farm` `/scan` `/rare` `/research` `/cargo` `/delivery` `/spaceport` `/explore` |
+| `/mod action:` Start event, Stop event, Moderator log, Linked-account lookup | `/eventstart` `/eventstop` `/modlog` `/linklookup` |
+| `/world section:` Society, Next tier, Leaderboard, Event, Event history, Holidays | `/society` `/event` `/holiday` |
+| `/me section:` Skills, Daily contract, Achievements, Collection | `/progress` |
+
+Game messages that mention a retired command are rewritten to the new one (for example "/relax" shows as `/life` → Action: Relax). Registration on deploy removes the retired commands from the server. Twitch commands are unchanged. [Discord guide panels](discord-guide-panels.md) has eight ready-to-post how-to-play messages.
+
 ## Quality-of-life update
 
 Fourteen connected improvements aimed at the gather → check needs → craft → queue → wait loop. They share one additive preferences table (`player_preferences_v1`), so favourites, alert mode, auto-recovery and the follow-up queue show up consistently in every view.

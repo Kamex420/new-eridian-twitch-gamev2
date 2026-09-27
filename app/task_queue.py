@@ -174,7 +174,7 @@ def requirements(m,db,p,task,count):
     lines=[f'For {count} remaining {noun}: up to {energy*count} Energy, {count} Nutrition and {needs.comfort_cost(energy)*count} Comfort ({needs.cost_text(energy,", ")} each).',
            f'To finish without recovery, start with at least {need["energy"]} Energy, {need["nutrition"]} Nutrition, {need["social"]} Social and {need["comfort"]} Comfort.',
            f'Current needs: Energy {life.energy}/100; Nutrition {life.nutrition}/100; Social {life.social}/100; Comfort {life.comfort}/100.',
-           f'Every attempt requires Energy, Nutrition and Social of at least {needs.TASK_NEED_MINIMUM} and Comfort of at least {needs.COMFORT_BLOCK}. Comfort drains twice as fast as Energy; below {needs.COMFORT_SLOW} it also lowers success.']
+           f'Every attempt requires Energy, Nutrition and Social of at least {needs.TASK_NEED_MINIMUM} and Comfort of at least {needs.COMFORT_BLOCK}. Comfort drains at the same rate as Energy; below {needs.COMFORT_SLOW} it also lowers success.']
     for key,n in costs.items():
         have=m.material_amount(db,p,key)
         lines.append(f'{m.resource_name(key)}: have {have}; need {n} for the next attempt (missing {max(0,n-have)}); up to {n*count} for the queue (missing {max(0,n*count-have)}). Get it: {m.material_source(key)}')

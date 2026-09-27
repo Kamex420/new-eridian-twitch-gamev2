@@ -39,7 +39,7 @@ def test_pause_message_includes_reason_and_recovery():
     asyncio.run(w.send_notice(m,client,notice(text)))
     args=room.send.call_args.kwargs
     assert 'paused' in args['content']
-    assert '/sleep' in str(args['embeds'][0].to_dict())
+    assert '/life' in str(args['embeds'][0].to_dict()) and 'Sleep' in str(args['embeds'][0].to_dict())
 
 
 def test_dm_channel_is_rejected():

@@ -2,9 +2,9 @@
 
 ## Mining and gathering
 
-`/mine` exposes ore selection, a requirements preview, and a count from 1 to 10. Common ore attempts cost 2 Energy, 1 Nutrition and 4 Comfort, with the existing 5-second shared gathering cooldown. They require no tools or skill unlock.
+`/mine` exposes ore selection, a requirements preview, and a count from 1 to 10. Common ore attempts cost 2 Energy, 1 Nutrition and 2 Comfort, with the existing 5-second shared gathering cooldown. They require no tools or skill unlock.
 
-Argentite, Bauxite, Rutile and Aurite require Harvesting level 3. One prospecting attempt costs 3 Energy, 1 Nutrition and 6 Comfort; all rare ores share a 20-second cooldown. Three successful prospecting steps produce one ore. With no failures, a ten-attempt queue beginning with no saved progress produces three ores and one remaining step. Failures produce Stone Dust instead, so ten attempts no longer guarantee three ores.[^1]
+Argentite, Bauxite, Rutile and Aurite require Harvesting level 3. One prospecting attempt costs 3 Energy, 1 Nutrition and 3 Comfort; all rare ores share a 20-second cooldown. Three successful prospecting steps produce one ore. With no failures, a ten-attempt queue beginning with no saved progress produces three ores and one remaining step. Failures produce Stone Dust instead, so ten attempts no longer guarantee three ores.[^1]
 
 `/gather` browses non-ore resources. Older ore-gathering routes remain compatible with the same requirements. No alternate route skips rare-ore gates.
 
@@ -20,9 +20,9 @@ Ingredient-consuming manufacturing training uses the matching catalog recipe's i
 
 ## Needs and queues
 
-Energy, Nutrition and Social must each be at least 20 before an attempt. Every task costs twice as much Comfort as Energy (a standard task: 2 Energy, 1 Nutrition, 4 Comfort). Below 20 Comfort, work has −10% success and costs 1 Morale per task; below 10 Comfort, work stops until Comfort recovers. A task may finish below these thresholds; its next attempt then pauses.
+Energy, Nutrition and Social must each be at least 20 before an attempt. Every task costs as much Comfort as Energy (a standard task: 2 Energy, 1 Nutrition, 2 Comfort). Below 20 Comfort, work has −10% success and costs 1 Morale per task; below 10 Comfort, work stops until Comfort recovers. A task may finish below these thresholds; its next attempt then pauses.
 
-Sleep restores Energy and Comfort to 100 but can only be used once every 30 minutes (`SLEEP_COOLDOWN_MINUTES`). Between sleeps, Comfort comes from `/relax` (+10), owned beds, seats, baths and clothing through `/use` (kept after use) and the Habitat Comfort Pack (+40 Comfort). Passive recovery adds one point to each need every 15 minutes, up to 60, including elapsed time away. Recovery never lowers a value already above that cap.
+Sleep restores Energy and Comfort to 100 but can only be used once every 30 minutes (`SLEEP_COOLDOWN_MINUTES`). Between sleeps, Comfort comes from `/relax` (+20), owned beds, seats, baths and clothing through `/use` (kept after use) and the Habitat Comfort Pack (+40 Comfort). Passive recovery adds one point to each need every 15 minutes, up to 60, including elapsed time away. Recovery never lowers a value already above that cap.
 
 A queue contains one exact task/resource/recipe and at most ten attempts. Starting a second active queue is rejected even when its task matches. Failed attempts count; attempts blocked by needs, materials, ownership, skill, tier, workstation access or cooldown do not. Paused queues resume automatically after their requirements are met.
 
@@ -30,8 +30,8 @@ Queue results show successes, failures, total items gained and total items used.
 
 | Ten attempts | Base needs spent | Starting needs sufficient without recovery |
 | --- | --- | --- |
-| Common ore or ordinary crafting | 20 Energy, 10 Nutrition, 40 Comfort | 38 Energy, 29 Nutrition, 20 Social, 46 Comfort |
-| Rare prospecting or heavy work | 30 Energy, 10 Nutrition, 60 Comfort | 47 Energy, 29 Nutrition, 20 Social, 64 Comfort |
+| Common ore or ordinary crafting | 20 Energy, 10 Nutrition, 20 Comfort | 38 Energy, 29 Nutrition, 20 Social, 28 Comfort |
+| Rare prospecting or heavy work | 30 Energy, 10 Nutrition, 30 Comfort | 47 Energy, 29 Nutrition, 20 Social, 37 Comfort |
 
 Forecasts exclude other activities, passive recovery and incident effects. Morale also falls by 1 per task while Comfort is below 20. Material budgets are upper bounds because unsuccessful work generally retains its ingredients. Requirement messages distinguish amounts needed, owned and missing, and include acquisition routes.
 
@@ -160,3 +160,8 @@ With **auto-recover** on, a queue that would pause for low needs first runs whic
 ### Names
 
 Recipe and item names tolerate typos and partial names when one match is clearly best; otherwise replies suggest up to three names and nothing is spent.
+
+
+## Festival foods
+
+Each holiday festival (30 days before the holiday through 7 days after, UTC) unlocks three festival recipes at the Survival Workbench, made from gathered ingredients with Cooking practice. Outside the window the recipes are locked; the foods themselves never expire. Eating one gives its Nutrition, +10 to +18 Comfort and +5 to +9 Morale, and Rocky's Favor as prepared food. `/world section:Holidays & Festival Foods` (`!holiday` on Twitch) lists them.

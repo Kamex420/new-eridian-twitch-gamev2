@@ -50,6 +50,8 @@ def station_gate(m,db,p,station_tags,tier,provider='discord'):
     return f'🔒 Required workstation: {choices}. Own the matching machine instead to avoid the fee. Nothing spent.'
 
 def recipe_gate(m,db,p,recipe,provider='discord'):
+    from . import seasonal
+    if not seasonal.festival_open(recipe):return '🎉 '+seasonal.festival_lock_text(recipe)+' Nothing spent.'
     blocked=station_gate(m,db,p,tags(recipe),recipe_tier(recipe),provider)
     if blocked:return blocked
     if any(k in RARE for k in s.RECIPES[recipe]['outputs']) and m.lvl(m.skill_xp(p,'extraction'))<RARE_LEVEL:

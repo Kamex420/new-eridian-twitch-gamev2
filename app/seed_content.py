@@ -8,6 +8,8 @@ from .needs import cost_text as need_cost
 from pathlib import Path
 
 DATA=json.loads((Path(__file__).parent/'data/seed_catalog.json').read_text())
+from . import seasonal as _seasonal
+_seasonal.extend_catalog(DATA,station_tiers.SURVIVAL)
 ITEMS=DATA['items']; RECIPES=copy.deepcopy(DATA['recipes']); GATHER={k:dict(v) for k,v in DATA['gather'].items()}
 # Gameplay classification: coal is mined; the imported catalog stays historical.
 GATHER['sd_183031416']['branch']='ore_mining'
@@ -352,6 +354,8 @@ def purpose(key):
     return dict(mode='research',label='Analyze surplus: consumes 1; +1 Research XP and +1 society Knowledge. Costs work needs.',consume=True)
 
 PURPOSE={k:purpose(k) for k in ACTIVE}
+for _key,_row in _seasonal.FESTIVAL_ITEMS.items():
+    PURPOSE[_key]=dict(PURPOSE[_key],label=f"Festival food: +{nutrition(_key)} Nutrition, +{_row['comfort']} Comfort, +{_row['morale']} Morale; consumes 1. Use /eat.")
 
 def stock(m,db,p):
     from . import item_identity

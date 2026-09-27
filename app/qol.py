@@ -644,9 +644,10 @@ def match(query, names):
         return names[contains[0]], []
     close = difflib.get_close_matches(q, list(names), n=3, cutoff=0.7)
     if close:
+        # One clearly closest name wins (e.g. "campfir" -> Campfire, not Campfire Pie).
         best = difflib.SequenceMatcher(None, q, close[0]).ratio()
         second = difflib.SequenceMatcher(None, q, close[1]).ratio() if len(close) > 1 else 0
-        if best >= 0.85 and best - second >= 0.05 and not contains:
+        if best >= 0.85 and best - second >= 0.1:
             return names[close[0]], []
     return None, (starts or contains or close)[:3]
 

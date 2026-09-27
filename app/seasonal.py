@@ -76,6 +76,123 @@ SPECIAL_RECIPES = {
 }
 
 
+# Festival foods are real catalog items: crafted at the free Survival Workbench
+# from gathered ingredients, but only while their holiday's festival runs. The
+# items themselves never expire; they can be eaten, sold or stored all year.
+# (name, description, ingredients by catalog name, Food value, Comfort, Morale)
+FESTIVAL_FOODS = {
+    "New Year": [
+        ("Firework Tea", "Herbal tea with a crackle of berry sweetness, brewed for the midnight toast.", {"Herbs": 2, "Berries": 1}, 0.4, 10, 5),
+        ("Midnight Pastry", "A flaky corn pastry filled with berries, shared as the year turns.", {"Corn": 2, "Berries": 2}, 0.7, 12, 6),
+        ("Spark Cider", "Fizzy pressed-berry cider that tastes like a fresh start.", {"Berries": 3, "Herbs": 1}, 0.5, 10, 6),
+    ],
+    "Valentine's Day": [
+        ("Rose Tart", "A delicate berry tart with a nutty crust, baked to share.", {"Berries": 2, "Corn": 1, "Nuts": 1}, 0.6, 12, 6),
+        ("Sweet Berry Cake", "Soft corn cake layered with sweet berries.", {"Berries": 3, "Corn": 2}, 0.8, 14, 7),
+        ("Heart Tea", "A warming herb tea said to steady nervous hearts.", {"Herbs": 2, "Berries": 1}, 0.4, 10, 5),
+    ],
+    "Memorial Day": [
+        ("Patriotic Stew", "A hearty tomato, corn and mushroom stew served to every table.", {"Tomato": 2, "Corn": 1, "Mushroom": 1}, 0.8, 12, 6),
+        ("Field Lunch", "A simple packed lunch for a quiet day of remembrance.", {"Corn": 1, "Tomato": 1, "Nuts": 1}, 0.6, 10, 5),
+        ("Memorial Loaf", "Dense corn bread baked from an old settlement recipe.", {"Corn": 3, "Nuts": 1}, 0.7, 10, 6),
+    ],
+    "Father's Day": [
+        ("Grill Basket", "Charred corn, mushrooms and tomatoes, straight off the grill.", {"Corn": 2, "Mushroom": 2, "Tomato": 1}, 0.9, 14, 7),
+        ("Mentor Roast", "Herb-roasted pumpkin and mushroom, a dish for thanking a mentor.", {"Pumpkin": 2, "Mushroom": 1, "Herbs": 1}, 0.8, 12, 6),
+        ("Campfire Pie", "Berry pie with a rustic corn crust, baked in the embers.", {"Berries": 2, "Corn": 2, "Nuts": 1}, 0.8, 12, 6),
+    ],
+    "Independence Day": [
+        ("Patriot Pie", "A bright berry pie for fireworks night.", {"Berries": 2, "Corn": 2}, 0.7, 12, 6),
+        ("Spark Grill", "Grilled corn and tomato skewers with a herb glaze.", {"Corn": 2, "Tomato": 2, "Herbs": 1}, 0.8, 12, 6),
+        ("Red-White-Blue Jam", "Three-layer berry jam, sweet enough for the whole parade.", {"Berries": 3}, 0.5, 10, 6),
+    ],
+    "Labor Day": [
+        ("Builder Stew", "A filling pumpkin stew that keeps crews working.", {"Pumpkin": 2, "Mushroom": 1, "Tomato": 1}, 0.8, 12, 6),
+        ("Overtime Pie", "Pumpkin pie with a nut crust, saved for the last shift.", {"Pumpkin": 2, "Corn": 1, "Nuts": 1}, 0.8, 12, 6),
+        ("Welders' Bread", "Herbed corn bread tough enough to survive a toolbox.", {"Corn": 3, "Herbs": 1}, 0.7, 10, 5),
+    ],
+    "Halloween": [
+        ("Pumpkin Bites", "Roasted pumpkin nuggets rolled in crushed nuts.", {"Pumpkin": 2, "Nuts": 1}, 0.6, 10, 6),
+        ("Moon Tart", "A pale pumpkin and berry tart with a crescent crust.", {"Pumpkin": 1, "Berries": 2, "Corn": 1}, 0.7, 12, 7),
+        ("Candy Herb Mix", "Candied herbs and dried berries handed out at every door.", {"Herbs": 2, "Berries": 2}, 0.5, 10, 7),
+    ],
+    "Thanksgiving": [
+        ("Harvest Feast", "A full table: pumpkin, corn, tomato and mushroom, meant for sharing.", {"Pumpkin": 2, "Corn": 2, "Tomato": 1, "Mushroom": 1}, 1.0, 18, 9),
+        ("Gourd Roast", "Slow-roasted pumpkin with herbs.", {"Pumpkin": 3, "Herbs": 1}, 0.8, 12, 6),
+        ("Gratitude Pie", "Pumpkin and berry pie baked to say thank you.", {"Pumpkin": 2, "Berries": 1, "Corn": 1}, 0.8, 12, 7),
+    ],
+    "Christmas": [
+        ("Holiday Spiced Tea", "Warm herb tea with berry spice for long winter shifts.", {"Herbs": 2, "Berries": 1}, 0.4, 12, 5),
+        ("Winter Roast", "Pumpkin and mushroom roast with herbs, the centrepiece of the feast.", {"Pumpkin": 2, "Mushroom": 2, "Herbs": 1}, 0.9, 16, 8),
+        ("Gift Cookie", "Nutty corn cookies wrapped as gifts for neighbours.", {"Corn": 2, "Nuts": 1, "Berries": 1}, 0.6, 12, 7),
+    ],
+}
+
+
+def _slug(text):
+    return ''.join(c if c.isalnum() else '_' for c in text.lower()).strip('_').replace('__', '_')
+
+
+FESTIVAL_ITEMS = {}      # item key -> details
+FESTIVAL_RECIPES = {}    # recipe id -> holiday
+for _holiday, _rows in FESTIVAL_FOODS.items():
+    for _name, _text, _inputs, _food, _comfort, _morale in _rows:
+        _key = 'fest_' + _slug(_name)
+        FESTIVAL_ITEMS[_key] = dict(name=_name, holiday=_holiday, description=_text, inputs=_inputs,
+                                    food=_food, comfort=_comfort, morale=_morale, recipe='fr_' + _slug(_name))
+        FESTIVAL_RECIPES['fr_' + _slug(_name)] = _holiday
+
+
+SURVIVAL_TAG = 'TAG_MACHINE_SURVIVAL_WORKBENCH'
+
+
+def extend_catalog(data, survival_tag=SURVIVAL_TAG):
+    """Add festival foods and recipes to the loaded catalog before it is indexed."""
+    by_name = {}
+    for key in data['gather']:
+        by_name.setdefault(data['items'][key]['name'], key)
+    for key, row in FESTIVAL_ITEMS.items():
+        data['items'][key] = {
+            'name': row['name'], 'description': row['description'] + f" Festival food from {row['holiday']}.",
+            'properties': {'Volume': 0.1, 'Food': row['food']},
+            'tags': ['TAG_RESOURCE_HAULABLE', 'TAG_RESOURCE_PRODUCEABLE', 'TAG_FOOD', 'TAG_RESOURCE_CONSUMABLE', 'TAG_FESTIVAL'],
+            'categories': ['CAT_MAIN_CONSUMABLE', 'CAT_SUB_CONSUMABLE_FOOD'],
+            'aging': None, 'consumable': {}, 'ailment_risk': None, 'remedy': None,
+            'source': 'FESTIVAL_' + key[5:].upper()}
+        data['recipes'][row['recipe']] = {
+            'name': row['name'], 'inputs': {by_name[n]: q for n, q in row['inputs'].items()}, 'outputs': {key: 1},
+            'machines': [survival_tag], 'timing': {}, 'requirement': {'Skill': 'SK_COOKING', 'Level': 0},
+            'xp': {'TrainedSkills': ['SK_COOKING'], 'ExperienceMultiplier': 1.0},
+            'source': 'SCH_FESTIVAL_' + key[5:].upper()}
+
+
+def festival_window(holiday, today=None):
+    """(start, end) of the current or next festival for a holiday."""
+    today = today or datetime.now(timezone.utc).date()
+    for year in (today.year - 1, today.year, today.year + 1):
+        day = _holiday_date_for(holiday, year)
+        if day + timedelta(days=7) >= today:
+            return day - timedelta(days=30), day + timedelta(days=7)
+    day = _holiday_date_for(holiday, today.year + 1)
+    return day - timedelta(days=30), day + timedelta(days=7)
+
+
+def festival_open(recipe, today=None):
+    """True unless `recipe` is a festival recipe outside its festival window."""
+    holiday = FESTIVAL_RECIPES.get(recipe)
+    if holiday is None:
+        return True
+    today = today or datetime.now(timezone.utc).date()
+    start, end = festival_window(holiday, today)
+    return start <= today <= end
+
+
+def festival_lock_text(recipe, today=None):
+    holiday = FESTIVAL_RECIPES[recipe]
+    start, end = festival_window(holiday, today)
+    return f'{holiday} festival recipe: craftable {start.isoformat()} to {end.isoformat()} (UTC).'
+
+
 def _nth_weekday_of_month(year, month, weekday, occurrence):
     first = date(year, month, 1)
     offset = (weekday - first.weekday()) % 7
@@ -158,8 +275,16 @@ def holiday_message(now=None):
               f"Starts {stamp(row['start'])} ({stamp(row['start'], 'R')})",
               f"Holiday date: {row['holiday_date'].isoformat()}",
               f"Window: {row['start'].isoformat()} through {row['end'].isoformat()} (UTC dates).",
+              'Festival foods: ' + ', '.join(food[0] for food in FESTIVAL_FOODS[row['name']]) + '.',
               'Festivals begin 30 days before the holiday at 00:00 UTC and include the 7 days after it. Discord timestamps show your local time.',
-              'This is the seasonal festival calendar. Use /event for society challenges. Festival recipe names are flavor text; /make lists craftable items.']
+              'Festival foods are real items: craft them from gathered ingredients at the free Survival Workbench while their festival runs. '
+              'Eating one gives Nutrition plus bonus Comfort and Morale; they keep, sell and stack all year.']
+    for row in sorted(active, key=lambda row: row['end']):
+        lines += ['', f"{row['emoji']} {row['name'].upper()} FESTIVAL FOODS"]
+        for name, _, inputs, food, comfort, morale in FESTIVAL_FOODS[row['name']]:
+            key = 'fest_' + _slug(name)
+            uses = ', '.join(f'{n} ×{q}' for n, q in inputs.items())
+            lines.append(f"• {name} — {uses} → +{max(1, round(food * 50))} Nutrition, +{comfort} Comfort, +{morale} Morale · /make recipe:{FESTIVAL_ITEMS[key]['recipe']}")
     return '\n'.join(lines)
 
 
@@ -174,7 +299,7 @@ def festive_message_for(channel: str = "new-eridian", today=None):
     lines = DAY_TEXT[label]
     hash_seed = hashlib.sha256(f"{channel}:{label}:{today.isoformat()}".encode()).hexdigest()
     idx = int(hash_seed[:8], 16) % len(lines)
-    recipe = SPECIAL_RECIPES[label][int(hash_seed[-1], 16) % len(SPECIAL_RECIPES[label])]
+    recipe = [row[0] for row in FESTIVAL_FOODS[label]][int(hash_seed[-1], 16) % len(FESTIVAL_FOODS[label])]
     return {
         "active": True,
         "name": label,
@@ -186,8 +311,9 @@ def festive_message_for(channel: str = "new-eridian", today=None):
         "days_after_holiday": pick["days_after_holiday"],
         "message": f"{pick['emoji']} {label}: {lines[idx]}",
         "special_recipe": recipe,
-        "special_recipe_craftable": False,
-        "special_recipe_note": "Festival flavor only; available crafting recipes are listed in /make.",
+        "special_recipe_craftable": True,
+        "special_recipe_id": FESTIVAL_ITEMS.get('fest_' + _slug(recipe), {}).get('recipe', ''),
+        "special_recipe_note": "Festival food: craft it at the Survival Workbench while the festival runs.",
         "holiday": pick["holiday_date"].isoformat(),
         "days_to_holiday": pick["days_until_holiday"],
     }
@@ -201,4 +327,5 @@ def install(app):
     return app
 
 
-__all__ = ["festive_message_for", "holidays_active_for", "next_holiday_window", "holiday_message", "install"]
+__all__ = ["festive_message_for", "holidays_active_for", "next_holiday_window", "holiday_message", "install",
+           "FESTIVAL_ITEMS", "FESTIVAL_RECIPES", "extend_catalog", "festival_open", "festival_lock_text"]

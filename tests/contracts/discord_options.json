@@ -154,6 +154,22 @@
         {
           "name": "Display Style & Color Key",
           "value": "display"
+        },
+        {
+          "name": "Skills & Level Unlocks",
+          "value": "skills"
+        },
+        {
+          "name": "Daily Contract",
+          "value": "daily"
+        },
+        {
+          "name": "Achievements",
+          "value": "achievements"
+        },
+        {
+          "name": "Collection",
+          "value": "collection"
         }
       ]
     },
@@ -177,32 +193,6 @@
         {
           "name": "Detailed",
           "value": "detailed"
-        }
-      ]
-    }
-  ],
-  "progress": [
-    {
-      "type": 3,
-      "name": "section",
-      "description": "Which progression system?",
-      "required": false,
-      "choices": [
-        {
-          "name": "Skills & Level Unlocks",
-          "value": "skills"
-        },
-        {
-          "name": "Daily Contract",
-          "value": "daily"
-        },
-        {
-          "name": "Achievements",
-          "value": "achievements"
-        },
-        {
-          "name": "Collection",
-          "value": "collection"
         }
       ]
     }
@@ -501,11 +491,11 @@
           "value": "start"
         },
         {
-          "name": "Work: 1 Cargo · 2 Energy, 4 Comfort · business required",
+          "name": "Work: 1 Cargo · 2 Energy, 2 Comfort · business required",
           "value": "work"
         },
         {
-          "name": "Contract: 2 Cargo + 1 Lumber · 4 Energy, 8 Comfort · business required",
+          "name": "Contract: 2 Cargo + 1 Lumber · 4 Energy, 4 Comfort · business required",
           "value": "contract"
         },
         {
@@ -786,46 +776,30 @@
         {
           "name": "Market",
           "value": "market"
-        }
-      ]
-    }
-  ],
-  "society": [
-    {
-      "type": 3,
-      "name": "section",
-      "description": "Society information",
-      "required": false,
-      "choices": [
-        {
-          "name": "Overview",
-          "value": "overview"
         },
         {
-          "name": "Next Tier Progress",
-          "value": "progress"
+          "name": "Society Overview",
+          "value": "society"
+        },
+        {
+          "name": "Society Next Tier",
+          "value": "society_progress"
         },
         {
           "name": "Contribution Leaderboard",
           "value": "leaderboard"
-        }
-      ]
-    }
-  ],
-  "event": [
-    {
-      "type": 3,
-      "name": "section",
-      "description": "Event information",
-      "required": false,
-      "choices": [
-        {
-          "name": "Active Event",
-          "value": "status"
         },
         {
-          "name": "Recent Event History",
-          "value": "history"
+          "name": "Active Event",
+          "value": "event"
+        },
+        {
+          "name": "Event History",
+          "value": "event_history"
+        },
+        {
+          "name": "Holidays & Festival Foods",
+          "value": "holidays"
         }
       ]
     }
@@ -971,87 +945,6 @@
       "autocomplete": true
     }
   ],
-  "relax": [],
-  "walk": [],
-  "games": [],
-  "hobby": [
-    {
-      "type": 3,
-      "name": "hobby",
-      "description": "Hobby",
-      "required": true,
-      "choices": [
-        {
-          "name": "Gardening",
-          "value": "gardening"
-        },
-        {
-          "name": "Exploration",
-          "value": "exploration"
-        },
-        {
-          "name": "Mechanics",
-          "value": "mechanics"
-        },
-        {
-          "name": "Research",
-          "value": "research"
-        },
-        {
-          "name": "Games",
-          "value": "games"
-        },
-        {
-          "name": "Rockwatching",
-          "value": "rockwatching"
-        },
-        {
-          "name": "Cooking",
-          "value": "cooking"
-        },
-        {
-          "name": "Collecting",
-          "value": "collecting"
-        },
-        {
-          "name": "Trading",
-          "value": "trading"
-        },
-        {
-          "name": "Scanning",
-          "value": "scanning"
-        }
-      ]
-    }
-  ],
-  "meal": [
-    {
-      "type": 3,
-      "name": "action",
-      "description": "View supplies first, or choose an action to spend the listed item",
-      "required": false,
-      "choices": [
-        {
-          "name": "View Supplies",
-          "value": "view"
-        },
-        {
-          "name": "Share a Pumpkin (+25 Nutrition, +10 Social)",
-          "value": "share"
-        }
-      ]
-    }
-  ],
-  "eat": [
-    {
-      "type": 3,
-      "name": "food",
-      "description": "Owned food, strongest first, with its exact effect; blank = food menu",
-      "required": false,
-      "autocomplete": true
-    }
-  ],
-  "sleep": [],
   "use": [
     {
       "type": 3,
@@ -1068,7 +961,7 @@
           "value": "parts"
         },
         {
-          "name": "🍲 Food & Drink (35)",
+          "name": "🍲 Food & Drink (62)",
           "value": "food"
         },
         {
@@ -1175,94 +1068,6 @@
       "required": true
     }
   ],
-  "linklookup": [
-    {
-      "type": 3,
-      "name": "player",
-      "description": "Select a player or enter a provider ID",
-      "required": false,
-      "autocomplete": true
-    }
-  ],
-  "eventstart": [
-    {
-      "type": 3,
-      "name": "event",
-      "description": "Event",
-      "required": true,
-      "choices": [
-        {
-          "name": "Siro Bloom",
-          "value": "siro"
-        },
-        {
-          "name": "Food Crisis",
-          "value": "food"
-        },
-        {
-          "name": "Mining Boom",
-          "value": "mining"
-        },
-        {
-          "name": "Delivery Surge",
-          "value": "delivery"
-        },
-        {
-          "name": "Market Boom",
-          "value": "market"
-        },
-        {
-          "name": "Water Treatment Emergency",
-          "value": "water"
-        },
-        {
-          "name": "Infrastructure Breakdown",
-          "value": "machine"
-        },
-        {
-          "name": "Spaceport Rush",
-          "value": "spaceport"
-        },
-        {
-          "name": "Fire Emergency",
-          "value": "fire"
-        },
-        {
-          "name": "Clinic Supply Shortage",
-          "value": "clinic"
-        }
-      ]
-    }
-  ],
-  "eventstop": [],
-  "modlog": [],
-  "farm": [
-    {
-      "type": 3,
-      "name": "action",
-      "description": "Choose work: yield per success · Energy and Comfort spent per attempt",
-      "required": false,
-      "choices": [
-        {
-          "name": "Tend Fields: 1 Pumpkin + 1 Pumpkin Seeds · 2 Energy, 4 Comfort",
-          "value": "tend"
-        },
-        {
-          "name": "Harvest Pumpkins: 3 Pumpkin + 1 Pumpkin Seeds · 3 Energy, 6 Comfort",
-          "value": "harvest"
-        },
-        {
-          "name": "Irrigate: 3 Pumpkin + 1 Murky Water (1000ml) · 4 Energy, 8 Comfort",
-          "value": "irrigate"
-        },
-        {
-          "name": "Hydroponics: 4 Pumpkin + 1 Raw Algae · 5 Energy, 10 Comfort · needs Small Water Filter",
-          "value": "hydroponics"
-        }
-      ]
-    }
-  ],
-  "scan": [],
   "mine": [
     {
       "type": 3,
@@ -1296,25 +1101,6 @@
       "max_value": 10
     }
   ],
-  "rare": [],
-  "research": [
-    {
-      "type": 3,
-      "name": "operation",
-      "description": "Choose work: yield per success · Energy and Comfort spent per attempt",
-      "required": false,
-      "choices": [
-        {
-          "name": "Standard Research: 1 Stone · 2 Energy, 4 Comfort",
-          "value": "standard"
-        },
-        {
-          "name": "Field Analysis: 2 Stone + 1 Herbs · 4 Energy, 8 Comfort · needs Siro Sampler",
-          "value": "field_analysis"
-        }
-      ]
-    }
-  ],
   "repair": [
     {
       "type": 3,
@@ -1340,61 +1126,6 @@
       "autocomplete": true
     }
   ],
-  "cargo": [],
-  "delivery": [
-    {
-      "type": 3,
-      "name": "action",
-      "description": "View supplies first, or choose an action to spend the listed item",
-      "required": false,
-      "choices": [
-        {
-          "name": "View Supplies",
-          "value": "view"
-        },
-        {
-          "name": "Send Delivery (uses 1 Cargo on success)",
-          "value": "send"
-        }
-      ]
-    }
-  ],
-  "spaceport": [
-    {
-      "type": 3,
-      "name": "operation",
-      "description": "Choose work: yield per success · Energy and Comfort spent per attempt",
-      "required": false,
-      "choices": [
-        {
-          "name": "Standard: 1 Cargo + 1 Lumber · 2 Energy, 4 Comfort",
-          "value": "standard"
-        },
-        {
-          "name": "Expedite: 2 Cargo + 2 Lumber · 4 Energy, 8 Comfort · uses 1 Power Cell",
-          "value": "expedite"
-        }
-      ]
-    }
-  ],
-  "explore": [
-    {
-      "type": 3,
-      "name": "operation",
-      "description": "Choose work: yield per success · Energy and Comfort spent per attempt",
-      "required": false,
-      "choices": [
-        {
-          "name": "Scout: 1 Stone + 1 Berries · 3 Energy, 6 Comfort",
-          "value": "scout"
-        },
-        {
-          "name": "Survey: 2 Stone + 1 Clay + 1 Coal · 5 Energy, 10 Comfort · needs Resource Scanner",
-          "value": "survey"
-        }
-      ]
-    }
-  ],
   "market": [
     {
       "type": 3,
@@ -1411,11 +1142,11 @@
           "value": "sell"
         },
         {
-          "name": "Commerce: 1 Cargo · 2 Energy, 4 Comfort",
+          "name": "Commerce: 1 Cargo · 2 Energy, 2 Comfort",
           "value": "work"
         },
         {
-          "name": "Analyze: 2 Cargo + 1 Lumber · 4 Energy, 8 Comfort · needs Market Analyzer",
+          "name": "Analyze: 2 Cargo + 1 Lumber · 4 Energy, 4 Comfort · needs Market Analyzer",
           "value": "analyze"
         }
       ]
@@ -1506,7 +1237,6 @@
       "autocomplete": true
     }
   ],
-  "holiday": [],
   "catalog": [
     {
       "type": 3,
@@ -1523,7 +1253,7 @@
           "value": "parts"
         },
         {
-          "name": "🍲 Food & Drink (35)",
+          "name": "🍲 Food & Drink (62)",
           "value": "food"
         },
         {
@@ -1739,5 +1469,559 @@
         }
       ]
     }
-  ]
+  ],
+  "life": [
+    {
+      "type": 3,
+      "name": "action",
+      "description": "Relax +25 Energy/+20 Comfort · Sleep fills both · Games +25 Social · blank shows needs",
+      "required": false,
+      "choices": [
+        {
+          "name": "Relax",
+          "value": "relax"
+        },
+        {
+          "name": "Sleep",
+          "value": "sleep"
+        },
+        {
+          "name": "Eat",
+          "value": "eat"
+        },
+        {
+          "name": "Games",
+          "value": "games"
+        },
+        {
+          "name": "Walk",
+          "value": "walk"
+        },
+        {
+          "name": "Hobby",
+          "value": "hobby"
+        },
+        {
+          "name": "Share meal",
+          "value": "meal"
+        },
+        {
+          "name": "Recover",
+          "value": "recover"
+        }
+      ]
+    },
+    {
+      "type": 3,
+      "name": "food",
+      "description": "Eat: owned food, strongest first, with its exact effect",
+      "required": false,
+      "autocomplete": true
+    },
+    {
+      "type": 3,
+      "name": "hobby",
+      "description": "Hobby: which one to practice",
+      "required": false,
+      "choices": [
+        {
+          "name": "Gardening",
+          "value": "gardening"
+        },
+        {
+          "name": "Exploration",
+          "value": "exploration"
+        },
+        {
+          "name": "Mechanics",
+          "value": "mechanics"
+        },
+        {
+          "name": "Research",
+          "value": "research"
+        },
+        {
+          "name": "Games",
+          "value": "games"
+        },
+        {
+          "name": "Rockwatching",
+          "value": "rockwatching"
+        },
+        {
+          "name": "Cooking",
+          "value": "cooking"
+        },
+        {
+          "name": "Collecting",
+          "value": "collecting"
+        },
+        {
+          "name": "Trading",
+          "value": "trading"
+        },
+        {
+          "name": "Scanning",
+          "value": "scanning"
+        }
+      ]
+    }
+  ],
+  "work": [
+    {
+      "type": 3,
+      "name": "task",
+      "description": "Yield per success · Energy and Comfort per attempt; blank lists every skill",
+      "required": false,
+      "choices": [
+        {
+          "name": "Tend Fields: 1 Pumpkin + 1 Pumpkin Seeds · 2 Energy, 2 Comfort",
+          "value": "farm_tend"
+        },
+        {
+          "name": "Harvest Pumpkins: 3 Pumpkin + 1 Pumpkin Seeds · 3 Energy, 3 Comfort",
+          "value": "farm_harvest"
+        },
+        {
+          "name": "Irrigate: 3 Pumpkin + 1 Murky Water (1000ml) · 4 Energy, 4 Comfort",
+          "value": "farm_irrigate"
+        },
+        {
+          "name": "Hydroponics: 4 Pumpkin + 1 Raw Algae · 5 Energy, 5 Comfort · needs Small Water Filter",
+          "value": "farm_hydroponics"
+        },
+        {
+          "name": "Scan:  · 2 Energy, 2 Comfort",
+          "value": "scan"
+        },
+        {
+          "name": "Rare prospecting · Harvesting Lv3",
+          "value": "rare"
+        },
+        {
+          "name": "Standard Research: 1 Stone · 2 Energy, 2 Comfort",
+          "value": "research"
+        },
+        {
+          "name": "Field Analysis: 2 Stone + 1 Herbs · 4 Energy, 4 Comfort · needs Siro Sampler",
+          "value": "field_analysis"
+        },
+        {
+          "name": "Prepare Cargo:  · 2 Energy, 2 Comfort",
+          "value": "cargo"
+        },
+        {
+          "name": "Delivery · uses 1 Cargo:  · 2 Energy, 2 Comfort",
+          "value": "delivery"
+        },
+        {
+          "name": "Spaceport: 1 Cargo + 1 Lumber · 2 Energy, 2 Comfort",
+          "value": "spaceport"
+        },
+        {
+          "name": "Expedite Spaceport: 2 Cargo + 2 Lumber · 4 Energy, 4 Comfort · uses 1 Power Cell",
+          "value": "expedite"
+        },
+        {
+          "name": "Scout: 1 Stone + 1 Berries · 3 Energy, 3 Comfort",
+          "value": "scout"
+        },
+        {
+          "name": "Survey: 2 Stone + 1 Clay + 1 Coal · 5 Energy, 5 Comfort · needs Resource Scanner",
+          "value": "survey"
+        }
+      ]
+    }
+  ],
+  "mod": [
+    {
+      "type": 3,
+      "name": "action",
+      "description": "Moderator tool",
+      "required": true,
+      "choices": [
+        {
+          "name": "Start event",
+          "value": "eventstart"
+        },
+        {
+          "name": "Stop event",
+          "value": "eventstop"
+        },
+        {
+          "name": "Moderator log",
+          "value": "modlog"
+        },
+        {
+          "name": "Linked-account lookup (owner)",
+          "value": "linklookup"
+        }
+      ]
+    },
+    {
+      "type": 3,
+      "name": "event",
+      "description": "Start event: which event",
+      "required": false,
+      "choices": [
+        {
+          "name": "Siro Bloom",
+          "value": "siro"
+        },
+        {
+          "name": "Food Crisis",
+          "value": "food"
+        },
+        {
+          "name": "Mining Boom",
+          "value": "mining"
+        },
+        {
+          "name": "Delivery Surge",
+          "value": "delivery"
+        },
+        {
+          "name": "Market Boom",
+          "value": "market"
+        },
+        {
+          "name": "Water Treatment Emergency",
+          "value": "water"
+        },
+        {
+          "name": "Infrastructure Breakdown",
+          "value": "machine"
+        },
+        {
+          "name": "Spaceport Rush",
+          "value": "spaceport"
+        },
+        {
+          "name": "Fire Emergency",
+          "value": "fire"
+        },
+        {
+          "name": "Clinic Supply Shortage",
+          "value": "clinic"
+        }
+      ]
+    },
+    {
+      "type": 3,
+      "name": "player",
+      "description": "Linked-account lookup: player or provider ID",
+      "required": false,
+      "autocomplete": true
+    }
+  ],
+  "progress": [
+    {
+      "type": 3,
+      "name": "section",
+      "description": "Which progression system?",
+      "required": false,
+      "choices": [
+        {
+          "name": "Skills & Level Unlocks",
+          "value": "skills"
+        },
+        {
+          "name": "Daily Contract",
+          "value": "daily"
+        },
+        {
+          "name": "Achievements",
+          "value": "achievements"
+        },
+        {
+          "name": "Collection",
+          "value": "collection"
+        }
+      ]
+    }
+  ],
+  "society": [
+    {
+      "type": 3,
+      "name": "section",
+      "description": "Society information",
+      "required": false,
+      "choices": [
+        {
+          "name": "Overview",
+          "value": "overview"
+        },
+        {
+          "name": "Next Tier Progress",
+          "value": "progress"
+        },
+        {
+          "name": "Contribution Leaderboard",
+          "value": "leaderboard"
+        }
+      ]
+    }
+  ],
+  "event": [
+    {
+      "type": 3,
+      "name": "section",
+      "description": "Event information",
+      "required": false,
+      "choices": [
+        {
+          "name": "Active Event",
+          "value": "status"
+        },
+        {
+          "name": "Recent Event History",
+          "value": "history"
+        }
+      ]
+    }
+  ],
+  "relax": [],
+  "walk": [],
+  "games": [],
+  "hobby": [
+    {
+      "type": 3,
+      "name": "hobby",
+      "description": "Hobby",
+      "required": true,
+      "choices": [
+        {
+          "name": "Gardening",
+          "value": "gardening"
+        },
+        {
+          "name": "Exploration",
+          "value": "exploration"
+        },
+        {
+          "name": "Mechanics",
+          "value": "mechanics"
+        },
+        {
+          "name": "Research",
+          "value": "research"
+        },
+        {
+          "name": "Games",
+          "value": "games"
+        },
+        {
+          "name": "Rockwatching",
+          "value": "rockwatching"
+        },
+        {
+          "name": "Cooking",
+          "value": "cooking"
+        },
+        {
+          "name": "Collecting",
+          "value": "collecting"
+        },
+        {
+          "name": "Trading",
+          "value": "trading"
+        },
+        {
+          "name": "Scanning",
+          "value": "scanning"
+        }
+      ]
+    }
+  ],
+  "meal": [
+    {
+      "type": 3,
+      "name": "action",
+      "description": "View supplies first, or choose an action to spend the listed item",
+      "required": false,
+      "choices": [
+        {
+          "name": "View Supplies",
+          "value": "view"
+        },
+        {
+          "name": "Share a Pumpkin (+25 Nutrition, +10 Social)",
+          "value": "share"
+        }
+      ]
+    }
+  ],
+  "eat": [
+    {
+      "type": 3,
+      "name": "food",
+      "description": "Owned food, strongest first, with its exact effect; blank = food menu",
+      "required": false,
+      "autocomplete": true
+    }
+  ],
+  "sleep": [],
+  "linklookup": [
+    {
+      "type": 3,
+      "name": "player",
+      "description": "Select a player or enter a provider ID",
+      "required": false,
+      "autocomplete": true
+    }
+  ],
+  "eventstart": [
+    {
+      "type": 3,
+      "name": "event",
+      "description": "Event",
+      "required": true,
+      "choices": [
+        {
+          "name": "Siro Bloom",
+          "value": "siro"
+        },
+        {
+          "name": "Food Crisis",
+          "value": "food"
+        },
+        {
+          "name": "Mining Boom",
+          "value": "mining"
+        },
+        {
+          "name": "Delivery Surge",
+          "value": "delivery"
+        },
+        {
+          "name": "Market Boom",
+          "value": "market"
+        },
+        {
+          "name": "Water Treatment Emergency",
+          "value": "water"
+        },
+        {
+          "name": "Infrastructure Breakdown",
+          "value": "machine"
+        },
+        {
+          "name": "Spaceport Rush",
+          "value": "spaceport"
+        },
+        {
+          "name": "Fire Emergency",
+          "value": "fire"
+        },
+        {
+          "name": "Clinic Supply Shortage",
+          "value": "clinic"
+        }
+      ]
+    }
+  ],
+  "eventstop": [],
+  "modlog": [],
+  "farm": [
+    {
+      "type": 3,
+      "name": "action",
+      "description": "Choose work: yield per success · Energy and Comfort spent per attempt",
+      "required": false,
+      "choices": [
+        {
+          "name": "Tend Fields: 1 Pumpkin + 1 Pumpkin Seeds · 2 Energy, 2 Comfort",
+          "value": "tend"
+        },
+        {
+          "name": "Harvest Pumpkins: 3 Pumpkin + 1 Pumpkin Seeds · 3 Energy, 3 Comfort",
+          "value": "harvest"
+        },
+        {
+          "name": "Irrigate: 3 Pumpkin + 1 Murky Water (1000ml) · 4 Energy, 4 Comfort",
+          "value": "irrigate"
+        },
+        {
+          "name": "Hydroponics: 4 Pumpkin + 1 Raw Algae · 5 Energy, 5 Comfort · needs Small Water Filter",
+          "value": "hydroponics"
+        }
+      ]
+    }
+  ],
+  "scan": [],
+  "rare": [],
+  "research": [
+    {
+      "type": 3,
+      "name": "operation",
+      "description": "Choose work: yield per success · Energy and Comfort spent per attempt",
+      "required": false,
+      "choices": [
+        {
+          "name": "Standard Research: 1 Stone · 2 Energy, 2 Comfort",
+          "value": "standard"
+        },
+        {
+          "name": "Field Analysis: 2 Stone + 1 Herbs · 4 Energy, 4 Comfort · needs Siro Sampler",
+          "value": "field_analysis"
+        }
+      ]
+    }
+  ],
+  "cargo": [],
+  "delivery": [
+    {
+      "type": 3,
+      "name": "action",
+      "description": "View supplies first, or choose an action to spend the listed item",
+      "required": false,
+      "choices": [
+        {
+          "name": "View Supplies",
+          "value": "view"
+        },
+        {
+          "name": "Send Delivery (uses 1 Cargo on success)",
+          "value": "send"
+        }
+      ]
+    }
+  ],
+  "spaceport": [
+    {
+      "type": 3,
+      "name": "operation",
+      "description": "Choose work: yield per success · Energy and Comfort spent per attempt",
+      "required": false,
+      "choices": [
+        {
+          "name": "Standard: 1 Cargo + 1 Lumber · 2 Energy, 2 Comfort",
+          "value": "standard"
+        },
+        {
+          "name": "Expedite: 2 Cargo + 2 Lumber · 4 Energy, 4 Comfort · uses 1 Power Cell",
+          "value": "expedite"
+        }
+      ]
+    }
+  ],
+  "explore": [
+    {
+      "type": 3,
+      "name": "operation",
+      "description": "Choose work: yield per success · Energy and Comfort spent per attempt",
+      "required": false,
+      "choices": [
+        {
+          "name": "Scout: 1 Stone + 1 Berries · 3 Energy, 3 Comfort",
+          "value": "scout"
+        },
+        {
+          "name": "Survey: 2 Stone + 1 Clay + 1 Coal · 5 Energy, 5 Comfort · needs Resource Scanner",
+          "value": "survey"
+        }
+      ]
+    }
+  ],
+  "holiday": []
 }

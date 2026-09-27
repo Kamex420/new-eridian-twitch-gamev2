@@ -1,9 +1,9 @@
 """Passive recovery uses elapsed time; saved legacy timestamps remain compatible.
 
 Work costs are defined here so every command, queue forecast and message uses
-the same numbers. Comfort drains twice as fast as Energy, so it becomes the
-first need a busy citizen has to look after; /sleep refills it but is on a long
-timer, which makes relaxing, furniture, baths and clothing worth using.
+the same numbers. Comfort drains at the same rate as Energy; /sleep refills it
+but is on a long timer, which makes relaxing, furniture, baths and clothing
+worth using between sleeps.
 """
 import os
 from datetime import timedelta, timezone
@@ -13,11 +13,12 @@ RECOVERY_CAP=60
 RECOVERY_PER_TICK=1
 RECOVERY_HELP="Life needs recover +1 every 15 real minutes, up to 60/100, including while away. Food, sleep and social activities recover faster."
 
-# Work costs. Heavy work spends more Energy; Comfort always drains 2x Energy.
+# Work costs. Heavy work spends more Energy; Comfort drains 1 per Energy spent.
 STANDARD_ENERGY=2
 HEAVY_ENERGY=3
 NUTRITION_PER_TASK=1
-COMFORT_PER_ENERGY=2
+COMFORT_PER_ENERGY=1
+RELAX_COMFORT=20
 HEAVY_ACTIONS=frozenset({"mine","rare","repair","project","explore","survey","machine","work"})
 
 # Minimum needs before an attempt. Comfort has a warning band before it blocks.

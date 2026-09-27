@@ -29,9 +29,9 @@ def main():
     guild_id = os.getenv('DISCORD_GUILD_ID', '').strip()
     if not app_id or not token or not guild_id:
         raise RuntimeError('Set DISCORD_APPLICATION_ID, DISCORD_BOT_TOKEN and DISCORD_GUILD_ID on this game service.')
-    eat = next(c for c in commands if c['name'] == 'eat')
-    if not any(o['name'] == 'food' and o.get('autocomplete') for o in eat.get('options', [])):
-        raise RuntimeError('The deployed command catalog does not define /eat Food autocomplete.')
+    life = next(c for c in commands if c['name'] == 'life')
+    if not any(o['name'] == 'food' and o.get('autocomplete') for o in life.get('options', [])):
+        raise RuntimeError('The deployed command catalog does not define /life Food autocomplete.')
     source = Path(__file__).resolve().parents[1] / 'app' / 'main.py'
     functions = {n.name for n in ast.parse(source.read_text()).body
                  if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
@@ -66,7 +66,7 @@ def main():
         if command['name'] not in saved or signature(saved[command['name']]) != signature(command):
             raise RuntimeError(f"Verification failed for /{command['name']}. No global commands were deleted.")
     print(f'CONFIRMED: all {len(commands)} server commands match the current catalog.', flush=True)
-    print('CONFIRMED: server /eat has Food autocomplete.', flush=True)
+    print('CONFIRMED: server /life has Food autocomplete.', flush=True)
     names = {c['name'] for c in commands} | {'agriculture'}  # Retired command name.
     removed = 0
     for command in api('GET', base + '/commands'):

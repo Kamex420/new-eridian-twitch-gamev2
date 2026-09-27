@@ -812,7 +812,7 @@ def clamp100(value):
     return max(0,min(100,int(value)))
 
 from .needs import (decay as decay_needs, RECOVERY_HELP, TASK_NEED_MINIMUM, COMFORT_SLOW, COMFORT_BLOCK,
-    STANDARD_ENERGY, HEAVY_ENERGY, COMFORT_FIXES_DISCORD, COMFORT_FIXES_TWITCH, work_energy, comfort_cost,
+    STANDARD_ENERGY, HEAVY_ENERGY, COMFORT_FIXES_DISCORD, COMFORT_FIXES_TWITCH, work_energy, comfort_cost, RELAX_COMFORT,
     cost_text as need_cost_text, duration_text, blocked_needs, finish_forecast)
 
 def life_state(db,p):
@@ -950,7 +950,7 @@ def task_energy(action,mode=""):
     return task_yields.energy(action,mode)
 
 def spend_life_for_action(life,action,energy=None):
-    """Spend one task's needs. Comfort always drains twice as fast as Energy."""
+    """Spend one task's needs. Comfort drains at the same rate as Energy."""
     if action in {"eat","sleep"}:return
     energy=work_energy(action) if energy is None else max(0,int(energy))
     social_action=action in {"market","business","businesscontract","businessinvest","delivery","spaceport"}
@@ -1181,7 +1181,7 @@ def life_status_text(db,p,provider):
     blocked=[f"{NEED_EMOJI[field]} {label} {value}/100 (needs {minimum}) → {need_fix(field,provider,db,p)}" for field,label,value,minimum in blocked_needs(life)]
     warning=comfort_status_line(life) if life.comfort>=COMFORT_BLOCK else ""
     rules=(f"Work, crafting and gear repair need Energy, Nutrition and Social of {TASK_NEED_MINIMUM}+ and Comfort of {COMFORT_BLOCK}+. "
-           f"Every task costs {need_cost_text()} (heavy work: {need_cost_text(HEAVY_ENERGY)}). Comfort drains twice as fast as Energy.")
+           f"Every task costs {need_cost_text()} (heavy work: {need_cost_text(HEAVY_ENERGY)}). Comfort drains at the same rate as Energy.")
     if provider=="discord":
         effects="\n".join("• "+n for n in notes) if notes else "• No active life penalties."
         readiness=("⛔ WORK BLOCKED\n"+"\n".join("• "+x for x in blocked)
@@ -2200,7 +2200,7 @@ def guide(channel:str,uid:str,name:str="Citizen",goal:str="auto",provider:str="t
                 lines.extend([f"🏢 A business costs 75 SC; you have {p.sc}.",(f"Earn {75-p.sc} more SC with "+("/guide goal:seed_coin" if provider=="discord" else "!guide seed_coin")+f", then use {business_start_command}." if p.sc<75 else f"✅ You can afford to start now. Use {business_start_command}.")])
         if selected!="event" and event_lines:lines.extend(["",*event_lines])
         steps=guide_three_steps(db,p,s,w,clock,provider)
-        lines.extend(["","🧬 TASK COST FORECAST",f"• Standard work and /make: {need_cost_text(STANDARD_ENERGY,'/','-')}. Heavy extraction, frontier, and repair work: {need_cost_text(HEAVY_ENERGY,'/','-')}. Comfort drains twice as fast as Energy.",
+        lines.extend(["","🧬 TASK COST FORECAST",f"• Standard work and /make: {need_cost_text(STANDARD_ENERGY,'/','-')}. Heavy extraction, frontier, and repair work: {need_cost_text(HEAVY_ENERGY,'/','-')}. Comfort drains at the same rate as Energy.",
                       f"• Current readiness: Energy {life.energy} · Nutrition {life.nutrition} · Social {life.social} (each {TASK_NEED_MINIMUM}+) · Comfort {life.comfort} ({COMFORT_BLOCK}+; below {COMFORT_SLOW} slows work).",
                       f"• Sleep: {sleep_status(db,p,provider)}. It fully restores Energy and Comfort once every {duration_text(SLEEP_COOLDOWN_SECONDS)}."])
         if goal=="auto":lines.extend(["","NEXT THREE STEPS",*[f"{i}. {step}" for i,step in enumerate(steps,1)]])
@@ -2653,8 +2653,8 @@ def relax(channel:str,uid:str,name:str="Citizen",provider:str="twitch"):
         _,p=player(db,channel,provider,uid,name);wait=check_cooldown(db,p,"relax")
         if wait:return out(f"⏱️ {p.display_name}, relax is ready in {duration_text(wait)}.")
         life=life_state(db,p);eg=25;mg=random.randint(4,7)
-        life.energy=clamp100(life.energy+eg);life.morale=clamp100(life.morale+mg);life.comfort=clamp100(life.comfort+10);db.commit()
-        msg=f"🛋️ {p.display_name} takes real downtime. +{eg} Energy, +{mg} Morale, +10 Comfort (capped at 100)."
+        life.energy=clamp100(life.energy+eg);life.morale=clamp100(life.morale+mg);life.comfort=clamp100(life.comfort+RELAX_COMFORT);db.commit()
+        msg=f"🛋️ {p.display_name} takes real downtime. +{eg} Energy, +{mg} Morale, +{RELAX_COMFORT} Comfort (capped at 100)."
         log_action(db,channel,p.twitch_uid,"relax",msg);return out(msg)
 
 @app.get("/api/v1/walk")
@@ -5190,7 +5190,13 @@ def action(action:str,channel:str,uid:str,name:str="Citizen",msg:str="",provider
                 if prepared_food(food_key):
                     grant_rockys_favor(db,p,10);life.morale=clamp100(life.morale+2)
                     favor=" Prepared meal: +2 Morale and Rocky's Favor (+3 percentage points success) for 10 minutes; time stacks."
-                base=f"🍲 {p.display_name} eats {resource_name(food_key)} (−1). Nutrition {before}→{life.nutrition}."+favor+recovery_note
+                festival=""
+                from .seasonal import FESTIVAL_ITEMS
+                treat=FESTIVAL_ITEMS.get(food_key)
+                if treat:
+                    comfort_before=life.comfort;life.comfort=clamp100(life.comfort+treat['comfort']);life.morale=clamp100(life.morale+treat['morale'])
+                    festival=f" Festival treat: Comfort {comfort_before}→{life.comfort}, +{treat['morale']} Morale."
+                base=f"🍲 {p.display_name} eats {resource_name(food_key)} (−1). Nutrition {before}→{life.nutrition}."+favor+festival+recovery_note
             elif food_key=="meal_kit":
                 kits=db.execute(select(QualityGear).where(QualityGear.channel_id==channel,QualityGear.canonical_uid==c,QualityGear.item_key=="meal_kit",QualityGear.qty>0)).scalars().all()
                 kit=max(kits,key=lambda row:list(QUALITY_TIERS).index(row.quality))
@@ -5208,7 +5214,7 @@ def action(action:str,channel:str,uid:str,name:str="Citizen",msg:str="",provider
             life.energy=100;life.comfort=100;life.morale=clamp100(life.morale+3)
             pw.siro_exposure=max(0,pw.siro_exposure-8)
             base=(f"🛏️ {p.display_name} clocks out for the cycle. Energy 100/100 (+{sleep_gain}); Comfort 100/100 (+{comfort_gain}); +3 Morale; Siro exposure reduced by up to 8. "
-                  f"Next sleep in {duration_text(SLEEP_COOLDOWN_SECONDS)}: Comfort drains twice as fast as Energy, so keep it up with {COMFORT_FIXES_DISCORD if provider=='discord' else COMFORT_FIXES_TWITCH}.")
+                  f"Next sleep in {duration_text(SLEEP_COOLDOWN_SECONDS)}: Comfort drains as you work, so keep it up with {COMFORT_FIXES_DISCORD if provider=='discord' else COMFORT_FIXES_TWITCH}.")
         else:raise HTTPException(404,"Unknown action")
         if action=="craft":base=base.replace(" completes craft."," completes craft (-1 Hematite Ore).")
         if action=="delivery":base=base.replace(" completes delivery."," completes delivery (-1 Cargo).")
@@ -5311,7 +5317,7 @@ BEST USE: /guide goal:crafting, /guide goal:home, or /guide goal:business.""",
 /me section:Life Needs — Energy, Nutrition, Social, Comfort, Morale, and active effects.
 /eat — Opens your food list, strongest first, with owned quantities. Raw food (Pumpkin, Berries, Corn…) gives +10 Nutrition; prepared food from /make (Roasted Pumpkin, Dried Berries, stews…) gives +15 to +50 plus +2 Morale and 10 minutes of Rocky's Favor (+3 percentage-point success). A Meal Kit restores Nutrition based on quality and +5 Morale. If Nutrition is below 20 and you own no food, a free emergency meal restores Nutrition to 40. All needs cap at 100.
 /sleep — Fully restores Energy and Comfort to 100; reduces Siro exposure by up to 8. Available once every 30 minutes.
-/relax — +25 Energy, +10 Comfort and Morale (30-second cooldown).
+/relax — +25 Energy, +20 Comfort and Morale (30-second cooldown).
 /use — Beds (+Energy/+Comfort), seats (+Comfort/+Social), baths (+Comfort/+Morale), clothing (+Comfort/+Morale) and a Comfort Pack restore Comfort between sleeps.
 /walk — Improves Morale and Exploration hobby progress.
 /games — Free solo activity: +25 Social, +4–8 Morale, and Games hobby progress. No partner or item required.
@@ -5328,7 +5334,7 @@ Energy, Nutrition, and Social must each be 20 or higher, and Comfort 10 or highe
 • Low Comfort: /relax, or /use a bed, seat, bath, clothing item or Comfort Pack; /sleep when ready
 
 COMFORT
-Every task costs twice as much Comfort as Energy (a standard task: −2 Energy, −1 Nutrition, −4 Comfort). Below 20 Comfort, work is slower (−10% success, −1 Morale per task); below 10 it stops. Sleep refills Comfort but runs on a 30-minute timer, so furniture, baths, clothing and relaxing keep you working in between.
+Every task costs as much Comfort as Energy (a standard task: −2 Energy, −1 Nutrition, −2 Comfort). Below 20 Comfort, work is slower (−10% success, −1 Morale per task); below 10 it stops. Sleep refills Comfort but runs on a 30-minute timer, so furniture, baths, clothing and relaxing keep you working in between.
 
 Recovery and information commands remain available while work is blocked. This recovery loop always provides a way back into work without requiring work first.""",
 "production":"""🏭 WORK ACTIONS
@@ -5412,7 +5418,7 @@ Primary event role — Each successful matching action adds +1 progress.
 Support event role — Every two matching successes add +1 progress.
 Cooldown — Standard work, /eat, /make and /gather use 5 seconds. Social and recovery actions use 20–60 seconds. /sleep is available once every 30 minutes. Linked Twitch/Discord accounts share cooldowns.
 Task readiness — Energy, Nutrition, and Social must each be at least 20, and Comfort at least 10, for work, /make crafting, and personal gear repair. A blocked attempt spends nothing and starts no cooldown. Recovery commands remain usable; /eat supplies an emergency meal when a starving player has no food.
-Task cost — Standard work and /make use 2 Energy/1 Nutrition/4 Comfort. Heavy extraction, frontier, and repair tasks use 3 Energy/1 Nutrition/6 Comfort. Comfort always drains twice as fast as Energy; below 20 it lowers success and Morale. All five life needs recharge by 1 per 15 real minutes, up to 60/100, including while away. Needs above 60 are not reduced. Food, sleep and social activities recover faster. Results warn when recovery is required.
+Task cost — Standard work and /make use 2 Energy/1 Nutrition/2 Comfort. Heavy extraction, frontier, and repair tasks use 3 Energy/1 Nutrition/3 Comfort. Comfort drains at the same rate as Energy; below 20 it lowers success and Morale. All five life needs recharge by 1 per 15 real minutes, up to 60/100, including while away. Needs above 60 are not reduced. Food, sleep and social activities recover faster. Results warn when recovery is required.
 Personal bonus — Temporary success, SC, Contribution, or XP boost. Each activation lasts 10 minutes; matching time stacks.
 Workbench — /make. Every recipe grouped by category and listed easiest first. Personal tier, skill level and crafting steps decide the order.
 Catalog item — Every material, part, food and tool is a SEED catalog item. Old names (Crops, Components, Alloy Plate, Biofiber, Sealant, Precision Lens, Ration, Water Filter, Sensor, Crate) now mean Pumpkin, Iron Nails, Iron Plate, Flaxa, Mortar, Glass, Dried Berries, Small Water Filter, Resource Scanner and Storage Platform.
@@ -5489,14 +5495,14 @@ DISCORD_PUBLIC_COMMANDS = {
     "cargo", "delivery", "spaceport",
     "explore", "market",
     "eat", "sleep", "social", "walk", "relax", "games", "hobby",
-    "district", "shift", "meal", "use",
+    "district", "shift", "meal", "use", "recover", "life", "work",
 }
 
 DISCORD_PRIVATE_COMMANDS = {
     "seed", "guide", "start", "me", "progress", "inventory", "job",
     "home", "business", "make", "seedindustries", "link", "specialize", "modlog",
     "world", "linklookup", "ducks", "training", "catalog", "gather", "workshop",
-    "status", "settings"
+    "status", "settings", "mod"
 }
 
 def discord_message_status(content):
@@ -5929,8 +5935,61 @@ def _discord_pretty_embed(content,command,status):
     return _discord_generic_embed(content,command,status)
 
 # The published flat option schema is also used to validate requests.
-from .command_catalog import commands as DISCORD_COMMAND_CATALOG
-DISCORD_OPTION_SCHEMA = {row["name"]: row.get("options", []) for row in DISCORD_COMMAND_CATALOG}
+from .command_catalog import commands as DISCORD_COMMAND_CATALOG, legacy_commands as DISCORD_LEGACY_COMMANDS
+# Registered commands plus retired ones that grouped commands translate into.
+DISCORD_OPTION_SCHEMA = {row["name"]: row.get("options", []) for row in DISCORD_COMMAND_CATALOG+DISCORD_LEGACY_COMMANDS}
+DISCORD_REGISTERED = {row["name"] for row in DISCORD_COMMAND_CATALOG}
+
+# Grouped slash commands -> the original command and options they run.
+WORK_ROUTES={"farm_tend":("farm",{"action":"tend"}),"farm_harvest":("farm",{"action":"harvest"}),
+    "farm_irrigate":("farm",{"action":"irrigate"}),"farm_hydroponics":("farm",{"action":"hydroponics"}),
+    "scan":("scan",{}),"rare":("rare",{}),"research":("research",{"operation":"standard"}),
+    "field_analysis":("research",{"operation":"field_analysis"}),"cargo":("cargo",{}),
+    "delivery":("delivery",{"action":"send"}),"spaceport":("spaceport",{"operation":"standard"}),
+    "expedite":("spaceport",{"operation":"expedite"}),"scout":("explore",{"operation":"scout"}),
+    "survey":("explore",{"operation":"survey"})}
+WORLD_ROUTES={"society":("society",{"section":"overview"}),"society_progress":("society",{"section":"progress"}),
+    "leaderboard":("society",{"section":"leaderboard"}),"event":("event",{"section":"status"}),
+    "event_history":("event",{"section":"history"}),"holidays":("holiday",{})}
+
+def discord_legacy_route(command,options):
+    """Translate /life, /work, /mod and grouped /world and /me sections."""
+    options=dict(options or {})
+    if command=="life":
+        action=str(options.get("action") or "")
+        if not action:return "me",{"section":"life"}
+        if action=="eat":return "eat",({"food":options["food"]} if options.get("food") else {})
+        if action=="hobby":return "hobby",({"hobby":options["hobby"]} if options.get("hobby") else {})
+        if action=="meal":return "meal",{"action":"share"}
+        return action,{}
+    if command=="work":
+        return WORK_ROUTES.get(str(options.get("task") or ""),("training",{}))
+    if command=="mod":
+        action=str(options.get("action") or "modlog")
+        if action=="eventstart":return "eventstart",({"event":options["event"]} if options.get("event") else {})
+        if action=="linklookup":return "linklookup",({"player":options["player"]} if options.get("player") else {})
+        return action,{}
+    if command=="world" and options.get("section") in WORLD_ROUTES:
+        return WORLD_ROUTES[options["section"]]
+    if command=="me" and options.get("section") in {"skills","daily","achievements","collection"}:
+        return "progress",{"section":options["section"]}
+    return command,options
+
+# Retired commands named in game text -> the grouped command players type now.
+LEGACY_COPY=[("/farm action:Harvest Pumpkins","/work task:farm_harvest"),("/farm action:Tend Fields","/work task:farm_tend"),
+    ("/farm action:Irrigate","/work task:farm_irrigate"),("/farm action:Hydroponics","/work task:farm_hydroponics"),
+    ("/explore operation:Advanced Survey","/work task:survey"),("/explore operation:survey","/work task:survey"),
+    ("/spaceport operation:expedite","/work task:expedite"),("/research operation:field_analysis","/work task:field_analysis"),
+    ("/meal action:share","/life action:meal"),("/delivery action:send","/work task:delivery"),
+    ("/society section:leaderboard","/world section:leaderboard"),("/society section:Next Tier Progress","/world section:society_progress"),
+    ("/society section:progress","/world section:society_progress"),("/event section:history","/world section:event_history")]
+LEGACY_BARE={"relax":"/life action:relax","sleep":"/life action:sleep","eat":"/life action:eat","games":"/life action:games",
+    "walk":"/life action:walk","hobby":"/life action:hobby","meal":"/life action:meal","farm":"/work task:farm_tend",
+    "scan":"/work task:scan","rare":"/work task:rare","research":"/work task:research","cargo":"/work task:cargo",
+    "delivery":"/work task:delivery","spaceport":"/work task:spaceport","explore":"/work task:scout",
+    "eventstart":"/mod action:eventstart","eventstop":"/mod action:eventstop","modlog":"/mod action:modlog",
+    "linklookup":"/mod action:linklookup","society":"/world section:society","event":"/world section:event",
+    "holiday":"/world section:holidays","progress":"/me section:skills"}
 
 _RECIPE_LABELS=None
 def recipe_display_labels():
@@ -5950,8 +6009,8 @@ def discord_command_copy(content):
     retain their original spelling. Running this twice is harmless.
     """
     aliases = dict(DISCORD_ACTION_ROUTES)
-    aliases.update({"skills":"/progress section:skills", "contracts":"/progress section:daily",
-        "achievements":"/progress section:achievements", "collection":"/progress section:collection",
+    aliases.update({"skills":"/me section:skills", "contracts":"/me section:daily",
+        "achievements":"/me section:achievements", "collection":"/me section:collection",
         "life":"/me section:life", "bonuses":"/me section:bonuses", "cooldowns":"/me section:cooldowns",
         "traits":"/me section:traits", "relationships":"/me section:relationships",
         "journal":"/me section:journal", "tutorial":"/me section:tutorial",
@@ -5960,13 +6019,21 @@ def discord_command_copy(content):
         "businessstart":"/business action:start", "businesswork":"/business action:work",
         "gear":"/inventory section:gear", "recipes":"/make",
         "marketboard":"/market action:view", "projectstatus":"/world section:project",
-        "eventhistory":"/event section:history", "leaderboard":"/society section:leaderboard",
+        "eventhistory":"/world section:event_history", "leaderboard":"/world section:leaderboard",
         "conditions":"/world section:conditions", "story":"/world section:story",
         "bulletin":"/world section:bulletin", "rumor":"/world section:rumor"})
     text=str(content or "")
     # Match whole commands only; never substrings, URLs, fractions or backticks.
     pattern=r"(?<![\w`:/])/([a-z][a-z0-9_]*)(?![\w`])"
-    text=re.sub(pattern,lambda m:aliases.get(m[1],m[0]) if m[1] not in DISCORD_OPTION_SCHEMA else m[0],text)
+    for old,new in LEGACY_COPY:
+        text=re.sub(r"(?<![\w`:/])"+re.escape(old)+r"(?![\w`])",new,text,flags=re.I)
+    text=re.sub(r"(?<![\w`:/])/progress section:([A-Za-z_&]+(?: [A-Z][a-z]+)*)",lambda m:"/me section:"+m[1].split()[0].lower(),text)
+    def route(m):
+        if m[1] in DISCORD_REGISTERED:return m[0]
+        found=aliases.get(m[1],m[0])
+        name=found[1:].split(" ",1)[0] if found.startswith("/") else ""
+        return LEGACY_BARE.get(name,found) if name not in DISCORD_REGISTERED else found
+    text=re.sub(pattern,route,text)
     choice_aliases={
         ("home","action","view"):"view",("home","action","upgrade"):"upgrade",
         ("business","action","view"):"view",("business","action","start"):"start",
@@ -5976,7 +6043,7 @@ def discord_command_copy(content):
     matches=list(re.finditer(pattern,text))
     for match in reversed(matches):
         command=match[1]
-        if command not in DISCORD_OPTION_SCHEMA:continue
+        if command not in DISCORD_REGISTERED:continue
         # Option values are confined to this command's sentence/line, before the next command.
         end=next((m.start() for m in matches if m.start()>match.start()),len(text))
         span=text[match.end():end]
@@ -6283,6 +6350,8 @@ def _discord_autocomplete(payload:dict):
     option=str(focused.get("name") or "").lower()
     query=str(focused.get("value") or "")
     selected=_discord_options(payload)
+    if command=='life' and option=='food':command='eat'
+    if command=='mod' and option=='player':command='linklookup'
     if command=='mine' and option=='ore':
         _,_,p=_discord_existing_player(payload)
         with SessionLocal() as db:
@@ -6647,6 +6716,7 @@ def seed_supplies(channel:str,uid:str,name:str='Citizen',mode:str='catalog',item
         return platform_response(provider,result,result.replace('\n',' | '))
 
 def _discord_call_internal(command: str, uid: str, name: str, options: dict, interaction_id: str):
+    command,options=discord_legacy_route(command,options)
     options,error=_discord_validate_options(command,options)
     if error:return error
     # Reuse the same game functions the Twitch API uses.
@@ -6671,6 +6741,8 @@ def _discord_call_internal(command: str, uid: str, name: str, options: dict, int
         return item_command_menu(command,uid,name)
     if command=="eat":
         return action("eat",channel,uid,name,msg="food:"+str(options["food"]),provider="discord").body.decode()
+    if command=="recover":
+        return recover_needs(channel,uid,name,"discord").body.decode()
 
     if command=='mine':
         return mining(channel,uid,name,str(options.get('ore') or ''),str(options.get('action') or 'view'),int(options.get('count') or 1),'discord').body.decode()
@@ -6917,6 +6989,7 @@ async def discord_interactions(request: Request, background_tasks: BackgroundTas
     command = ((payload.get("data") or {}).get("name") or "").lower()
     uid, name = _discord_user(payload)
     options = _discord_options(payload)
+    command, options = discord_legacy_route(command, options)
     interaction_id = str(payload.get("id") or "")
 
     if not uid:

@@ -225,14 +225,14 @@ def test_low_comfort_has_success_penalty_and_morale_cost():
 
 
 @pytest.mark.parametrize('action,energy',[('harvest',3),('research',2),('explore',3),('survey',5),('repair',3),('cargo',2)])
-def test_comfort_drains_twice_as_fast_as_energy(action,energy,monkeypatch):
+def test_comfort_drains_at_the_same_rate_as_energy(action,energy,monkeypatch):
     seed(provider='discord');monkeypatch.setattr(m.random,'random',lambda:0.0)
     with m.SessionLocal() as db:
         p=db.query(m.Player).one();m.material_change(db,p,'sensor',1);db.commit()
     m.action(action,'test','u',provider='discord')
     with m.SessionLocal() as db:
         life=m.life_state(db,db.query(m.Player).one())
-        assert (100-life.energy,100-life.comfort)==(energy,2*energy)
+        assert (100-life.energy,100-life.comfort)==(energy,energy)
 
 
 def test_very_low_comfort_blocks_work_without_spending():
@@ -274,7 +274,7 @@ def test_sleep_has_a_long_timer_so_comfort_needs_other_sources():
     with m.SessionLocal() as db:
         life=db.query(m.LifeState).one();assert (life.energy,life.comfort)==(10,10)
     relaxed=m.relax('test','u').body.decode()
-    assert '+10 Comfort' in relaxed
+    assert '+20 Comfort' in relaxed
 
 def test_emergency_meal_remains_recoverable():
     seed()

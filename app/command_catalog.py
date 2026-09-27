@@ -297,7 +297,7 @@ for command in commands:
 
 for command in commands:
     if command["name"]=="sleep":command["description"]=f"Fully restore Energy and Comfort to 100 (once every {_duration(_SLEEP)}); reduce Siro exposure"
-    if command["name"]=="relax":command["description"]="Recover +25 Energy, +10 Comfort, +4–7 Morale (30s cooldown)"
+    if command["name"]=="relax":command["description"]="Recover +25 Energy, +20 Comfort, +4–7 Morale (30s cooldown)"
     if command["name"]=="games":command["description"]="Free solo recovery: +25 Social, +4–8 Morale; no partner needed"
     if command["name"]=="use":
         command["options"][0].pop("choices",None)
@@ -444,3 +444,50 @@ for command in commands:
              'choices':[{'name':'Everything','value':'all'},{'name':'Used in recipes ready now','value':'ready'},
                         {'name':'Used by favourites','value':'favorites'},{'name':'Sellable','value':'sellable'}]},
             {'type':4,'name':'page','description':'Page of the list (15 per page)','required':False,'min_value':1,'max_value':1000}]
+
+# ---------------------------------------------------------------- simplified menu
+# Related commands are grouped so the Discord / menu stays short. The retired
+# commands keep their handlers: a grouped command is translated to the original
+# command and options before it runs (see LEGACY_ROUTES in main), so rules,
+# receipts and cooldowns are unchanged. Their definitions stay available for
+# validating those translated calls, but are no longer registered with Discord.
+RETIRED={'relax','sleep','eat','games','walk','hobby','meal',
+         'farm','scan','rare','research','cargo','delivery','spaceport','explore',
+         'eventstart','eventstop','modlog','linklookup','society','event','holiday','progress'}
+_by_name={c['name']:c for c in commands}
+LIFE_ACTIONS=[('Relax','relax'),('Sleep','sleep'),('Eat','eat'),('Games','games'),('Walk','walk'),
+              ('Hobby','hobby'),('Share meal','meal'),('Recover','recover')]
+WORK_TASKS=[(W('Tend Fields','farm'),'farm_tend'),(W('Harvest Pumpkins','harvest'),'farm_harvest'),(W('Irrigate','water'),'farm_irrigate'),
+            (W('Hydroponics','water','hydroponics','needs Small Water Filter'),'farm_hydroponics'),(W('Scan','scan'),'scan'),
+            ('Rare prospecting · Harvesting Lv3','rare'),(W('Standard Research','research'),'research'),
+            (W('Field Analysis','research','field_analysis','needs Siro Sampler'),'field_analysis'),(W('Prepare Cargo','cargo'),'cargo'),
+            (W('Delivery · uses 1 Cargo','delivery'),'delivery'),(W('Spaceport','spaceport'),'spaceport'),
+            (W('Expedite Spaceport','spaceport','expedite','uses 1 Power Cell'),'expedite'),(W('Scout','explore'),'scout'),
+            (W('Survey','survey','','needs Resource Scanner'),'survey')]
+MOD_ACTIONS=[('Start event','eventstart'),('Stop event','eventstop'),('Moderator log','modlog'),('Linked-account lookup (owner)','linklookup')]
+PROGRESS_SECTIONS=[('Skills & Level Unlocks','skills'),('Daily Contract','daily'),('Achievements','achievements'),('Collection','collection')]
+WORLD_SECTIONS=[('Society Overview','society'),('Society Next Tier','society_progress'),('Contribution Leaderboard','leaderboard'),
+                ('Active Event','event'),('Event History','event_history'),('Holidays & Festival Foods','holidays')]
+
+new_commands=[
+    cmd('life','Relax, sleep, eat, play games, walk, hobbies, meals or one-press recovery',[
+        {'type':STRING,'name':'action','description':'Relax +25 Energy/+20 Comfort · Sleep fills both · Games +25 Social · blank shows needs','required':False,'choices':[{'name':n,'value':v} for n,v in LIFE_ACTIONS]},
+        {'type':STRING,'name':'food','description':'Eat: owned food, strongest first, with its exact effect','required':False,'autocomplete':True},
+        dict(_by_name['hobby']['options'][0],required=False,description='Hobby: which one to practice')]),
+    cmd('work','Farming, research, logistics and frontier work in one list',[
+        {'type':STRING,'name':'task','description':'Yield per success · Energy and Comfort per attempt; blank lists every skill','required':False,
+         'choices':[{'name':n[:100],'value':v} for n,v in WORK_TASKS]}]),
+    cmd('mod','Moderator and owner tools: events, moderator log, linked accounts',[
+        {'type':STRING,'name':'action','description':'Moderator tool','required':True,'choices':[{'name':n,'value':v} for n,v in MOD_ACTIONS]},
+        dict(_by_name['eventstart']['options'][0],required=False,description='Start event: which event'),
+        dict(_by_name['linklookup']['options'][0],description='Linked-account lookup: player or provider ID')]),
+]
+for command in commands:
+    if command['name']=='me':
+        command['options'][0]['choices']+=[{'name':n,'value':v} for n,v in PROGRESS_SECTIONS]
+        command['description']='Your citizen: profile, needs, progress, skills, achievements and more'
+    if command['name']=='world':
+        command['options'][0]['choices']+=[{'name':n,'value':v} for n,v in WORLD_SECTIONS]
+        command['description']='Avesta and New Eridian: society, events, holidays, market and news'
+legacy_commands=[c for c in commands if c['name'] in RETIRED]
+commands=[c for c in commands if c['name'] not in RETIRED]+new_commands

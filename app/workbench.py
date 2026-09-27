@@ -229,6 +229,11 @@ class Context:
         return result
 
     def _status(self, e):
+        from . import seasonal
+        if not seasonal.festival_open(e.id):
+            holiday = seasonal.FESTIVAL_RECIPES[e.id]
+            start, _ = seasonal.festival_window(holiday)
+            return Status('locked', '🔒', f'{holiday} festival (opens {start.isoformat()})', '🎉 ' + seasonal.festival_lock_text(e.id))
         base_tier = s.base_tier(e.id) if e.kind == 'seed' else cp.STATIONS[e.tags[0]]['tier']
         need = cp.TIERS[base_tier - 1][2]
         if self.tier < base_tier:
