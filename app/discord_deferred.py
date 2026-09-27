@@ -56,3 +56,10 @@ def finish(m,payload,command,uid,name,options):
             data={'content':result[:1800], 'allowed_mentions':{'parse':[]}}
     finally:origin.reset(token)
     edit_original(str(payload['application_id']),str(payload['token']),data)
+    # Private notifications: warnings and tips raised by this command, and anything
+    # waiting in the player's inbox, shown only to them.
+    try:
+        m.inbox.after_command(m,uid,name,command,options,locals().get('result',''))
+        m.inbox.deliver(m,payload,uid)
+    except Exception:
+        logging.getLogger(__name__).error('Private notifications could not be delivered: %s',command)

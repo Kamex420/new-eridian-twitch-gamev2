@@ -22,10 +22,11 @@ MINING_SUCCESS_GUESS = 0.68  # base work success; fetch plans pad ore attempts b
 ALERT_MODES = {
     'mention': 'Channel @mention when a queue pauses or stops',
     'dm': 'Direct message; falls back to the channel if your DMs are closed',
+    'private': 'No ping; shown only to you, the next time you use a command or button',
     'quiet': 'Only when a queue finishes or stops; no pause alerts',
     'off': 'No alerts; check /status or /queue',
 }
-ALERT_LABELS = {'mention': 'channel mention', 'dm': 'direct message', 'quiet': 'quiet (finish/stop only)', 'off': 'off'}
+ALERT_LABELS = {'mention': 'channel mention', 'dm': 'direct message', 'private': 'private popup', 'quiet': 'quiet (finish/stop only)', 'off': 'off'}
 INVENTORY_SORTS = ('quantity', 'name', 'value', 'category')
 INVENTORY_SHOWS = ('all', 'ready', 'favorites', 'sellable')
 INVENTORY_PAGE = 15
@@ -777,7 +778,7 @@ def status_text(m, db, p, provider='discord'):
 
 # ---------------------------------------------------------------- settings
 
-def settings_text(m, db, p, provider, alerts='', autorecover='', text=''):
+def settings_text(m, db, p, provider, alerts='', autorecover='', text='', popups=''):
     words = str(text or '').casefold().split()
     if words:
         head, value = words[0], (words[1] if len(words) > 1 else '')
@@ -792,9 +793,9 @@ def settings_text(m, db, p, provider, alerts='', autorecover='', text=''):
     changed = []
     if alerts:
         if alerts not in ALERT_MODES:
-            return '⚙️ Alerts must be mention, dm, quiet or off. Nothing changed.'
-        if alerts == 'dm' and provider != 'discord':
-            return '⚙️ Direct-message alerts are a Discord option. On Twitch choose mention, quiet or off. Nothing changed.'
+            return '⚙️ Alerts must be mention, dm, private, quiet or off. Nothing changed.'
+        if alerts in {'dm', 'private'} and provider != 'discord':
+            return '⚙️ Direct-message and private alerts are Discord options. On Twitch choose mention, quiet or off. Nothing changed.'
         row = prefs(db, p.channel_id, p.twitch_uid, create=True)
         row.alerts = alerts
         changed.append(f'Alerts: {ALERT_LABELS[alerts]} — {ALERT_MODES[alerts]}.')
@@ -805,14 +806,23 @@ def settings_text(m, db, p, provider, alerts='', autorecover='', text=''):
         row.autorecover = int(autorecover in {'on', 'true', 'yes', '1'})
         changed.append('Auto-recover: ' + ('on — paused queues use /relax, /games, your cheapest food, comfort items and /sleep (when ready), then resume.'
                                             if row.autorecover else 'off — queues pause until you recover.'))
+    from . import inbox
+    popups = str(popups or '').strip().casefold()
+    if popups:
+        if popups not in inbox.POPUP_MODES:
+            return '⚙️ Popups must be important, all or off. Nothing changed.'
+        inbox.prefs(db, p.channel_id, p.twitch_uid, create=True).popups = popups
+        changed.append(f'Popups: {popups} — {inbox.POPUP_MODES[popups]}.')
     db.commit()
     mode = alert_mode(db, p.channel_id, p.twitch_uid)
     auto = autorecover_on(db, p.channel_id, p.twitch_uid)
+    popup = inbox.popup_mode(db, p.channel_id, p.twitch_uid)
     if provider != 'discord':
         current = f'Alerts {mode} · Auto-recover {"on" if auto else "off"}'
         return ('⚙️ ' + ' '.join(changed) + ' | ' if changed else '⚙️ ') + current + ' | !settings alerts <mention|quiet|off> · !settings autorecover <on|off>'
     lines = ['⚙️ SETTINGS'] + (['', 'CHANGED'] + ['• ' + x for x in changed] if changed else [])
     lines += ['', 'CURRENT', f'• Alerts: {ALERT_LABELS[mode]} — {ALERT_MODES[mode]}',
               f'• Auto-recover: {"on" if auto else "off"} — when a queue pauses for low needs it tries relax, games, your cheapest food, a comfort item or sleep first.',
-              '', 'Change with /settings alerts:<choice> autorecover:<On/Off>.']
+              f'• Popups: {popup} — {inbox.POPUP_MODES[popup]}. Popups are private ("only you can see this") and appear with your next command or button.',
+              '', 'Change with /settings alerts:<choice> autorecover:<On/Off> popups:<choice>.']
     return '\n'.join(lines)

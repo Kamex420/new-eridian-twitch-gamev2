@@ -5498,7 +5498,7 @@ DISCORD_PRIVATE_COMMANDS = {
     "seed", "guide", "start", "me", "progress", "inventory", "job",
     "home", "business", "make", "seedindustries", "link", "specialize", "modlog",
     "world", "linklookup", "ducks", "training", "catalog", "gather", "workshop",
-    "status", "settings", "mod", "menu", "guidepanels"
+    "status", "settings", "mod", "menu", "guidepanels", "inbox", "queuedetails"
 }
 
 def discord_message_status(content):
@@ -6796,7 +6796,18 @@ def _discord_call_internal(command: str, uid: str, name: str, options: dict, int
     if command == "status":
         return status_view(channel=channel,uid=uid,name=name,provider="discord").body.decode("utf-8")
     if command == "settings":
-        return settings(channel=channel,uid=uid,name=name,alerts=str(options.get("alerts") or ""),autorecover=str(options.get("autorecover") or ""),provider="discord").body.decode("utf-8")
+        return settings(channel=channel,uid=uid,name=name,alerts=str(options.get("alerts") or ""),autorecover=str(options.get("autorecover") or ""),provider="discord",popups=str(options.get("popups") or "")).body.decode("utf-8")
+    if command == "inbox":
+        from . import inbox as player_inbox
+        with SessionLocal() as db:
+            _,p=player(db,channel,"discord",uid,name)
+            text=player_inbox.inbox_text(__import__("sys").modules[__name__],db,p)
+            player_inbox.mark_all_seen(db,p.channel_id,p.twitch_uid);db.commit()
+            return text
+    if command == "queuedetails":
+        with SessionLocal() as db:
+            _,p=player(db,channel,"discord",uid,name)
+            return task_queue.status(__import__("sys").modules[__name__],db,p,db.get(task_queue.TaskQueue,(p.channel_id,p.twitch_uid)),detail=True)
     if command == "job":
         return job(channel=channel, uid=uid, name=name, job=str(options.get("job") or ""), provider="discord").body.decode("utf-8")
     if command == "home":
@@ -7123,8 +7134,9 @@ def queue_task_menu(query:str='',page:int=1,provider:str='twitch'):
     return platform_response(provider,text,text.replace('\n',' | '))
 
 
-from . import qol, presentation, menu
+from . import qol, presentation, menu, inbox
 game_menu=menu
+inbox.install(sys.modules[__name__])
 presentation.SKILL_NAMES=tuple(SKILL_LABELS.values())
 
 
@@ -7140,10 +7152,10 @@ def status_view(channel:str,uid:str,name:str='Citizen',provider:str='twitch'):
 
 @app.get('/api/v1/settings')
 @game_transaction
-def settings(channel:str,uid:str,name:str='Citizen',alerts:str='',autorecover:str='',provider:str='twitch',text:str=''):
+def settings(channel:str,uid:str,name:str='Citizen',alerts:str='',autorecover:str='',provider:str='twitch',text:str='',popups:str=''):
     with SessionLocal() as db:
         _,p=player(db,channel,provider,uid,name)
-        return platform_response(provider,*(qol.settings_text(sys.modules[__name__],db,p,provider,alerts,autorecover,text),)*2)
+        return platform_response(provider,*(qol.settings_text(sys.modules[__name__],db,p,provider,alerts,autorecover,text,popups),)*2)
 
 
 @app.get('/api/v1/favorite')

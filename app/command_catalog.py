@@ -418,9 +418,13 @@ commands.append(cmd('status','Needs, queue, cooldowns, ready recipes and your ne
 commands.append(cmd('settings','Queue alerts and auto-recovery; leave options blank to view them',[
     {'type':STRING,'name':'alerts','description':'How queue alerts reach you','required':False,
      'choices':[{'name':'Channel @mention (default)','value':'mention'},{'name':'Direct message','value':'dm'},
+                {'name':'Private: only you see it, at your next command','value':'private'},
                 {'name':'Quiet: finish/stop only, no pause alerts','value':'quiet'},{'name':'Off: check /status','value':'off'}]},
     {'type':STRING,'name':'autorecover','description':'Paused queues try relax, games, cheapest food, comfort items or sleep','required':False,
-     'choices':[{'name':'On','value':'on'},{'name':'Off','value':'off'}]}]))
+     'choices':[{'name':'On','value':'on'},{'name':'Off','value':'off'}]},
+    {'type':STRING,'name':'popups','description':'Private "only you can see this" notifications at your next command','required':False,
+     'choices':[{'name':'Important: queue results, pauses and warnings','value':'important'},{'name':'All: also tips and milestones','value':'all'},
+                {'name':'Off: keep them in /menu → Notifications','value':'off'}]}]))
 for command in commands:
     if command['name']=='make':
         from .workbench import VIEWS

@@ -204,9 +204,10 @@ def test_worker_starts_and_stops_with_app(monkeypatch):
 def test_twitch_status_retains_needs_forecast_within_limit():
     enqueue(count=10)
     text=m.queued_tasks('test','u',provider='discord').body.decode()
-    assert '38 Energy' in text and '29 Nutrition' in text
-    text=m.queued_tasks('test','u',provider='discord').body.decode()
-    assert 'Only one task type' in text
+    assert 'Attempts completed: 0/10' in text and '38 Energy' not in text    # short view
+    with m.SessionLocal() as db:
+        p=db.query(m.Player).one();text=q.status(m,db,p,db.query(q.TaskQueue).one(),detail=True)
+    assert '38 Energy' in text and '29 Nutrition' in text and 'Only one task type' in text
     with m.SessionLocal() as db:
         p=db.query(m.Player).one();db.add(m.Identity(channel_id='test',provider='twitch',provider_uid='linked',canonical_uid=p.twitch_uid));db.commit()
     text=m.queued_tasks('test','linked').body.decode()

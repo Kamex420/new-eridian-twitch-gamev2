@@ -1,5 +1,13 @@
 # Release notes
 
+## Private notifications and a short queue status
+
+**Popups.** Queue results, pauses and warnings are kept in a per-citizen inbox (`player_inbox_v1`) and shown as a private "Only you can see this" message the next time that player uses any command or button (Discord only allows private messages as part of an interaction). `/settings popups:` chooses **Important** (default: queue results, pauses, warnings), **All** (also one-time tips) or **Off**. Queue alerts gain a **Private** mode: no channel ping, just the popup.
+
+**When it's needed.** Starting a queue that will run out of needs or ingredients raises a warning right away ("Needs won't last all 10 attempts (Energy 30/38)…", "Pumpkin: enough for 4 of 10 attempts…"). One-time explanations appear the first time a player hits low Comfort, a mining failure, a blocked task, the sleep timer, or starts their first queue.
+
+**Where to find everything.** `/menu` → 📬 Notifications lists the last 12 items and marks them read. The queue status is now short: progress, results, items gained and used (when there are any), the next queue, and a ⚠️ Heads up section only when something will stop the queue. Every requirement and rule moved behind **📘 Details & requirements** on the queue panel (also in `/menu` → Queue).
+
 ## Buttons for everything: /menu
 
 `/menu` opens one window with a button for every area: Status, Life & Recovery, Work, Craft, Queue, Bag, Trade, World, Me, Social, Settings and Help. Pressing an area shows a button for each of its actions and views, with a one-line explanation of each:

@@ -94,7 +94,7 @@ def total_label(m, key):
     return m.resource_name(key)
 
 
-def totals_text(m, db, row, short=False):
+def totals_text(m, db, row, short=False, compact=False):
     totals = db.get(QueueTotals, (row.channel_id, row.canonical_uid))
     completed = row.total - row.remaining
     succeeded = totals.succeeded if totals else 0
@@ -110,6 +110,11 @@ def totals_text(m, db, row, short=False):
     used = json.loads(totals.used) if totals else {}
     def listing(values):
         return ', '.join(f'{total_label(m, k)} ×{v}' for k, v in sorted(values.items())) or 'None'
+    if compact:
+        # The short status leaves out empty sections.
+        if gained:text += '\n\nTOTAL ITEMS GAINED\n' + listing(gained)
+        if used:text += '\n\nTOTAL ITEMS USED\n' + listing(used)
+        return text
     text += (' | Items gained: ' if short else '\n\nTOTAL ITEMS GAINED\n') + listing(gained)
     if not short:
         text += '\n\nTOTAL ITEMS USED\n' + listing(used)
@@ -205,22 +210,30 @@ def requirements(m,db,p,task,count):
     lines.append('These are task costs, excluding other activities, passive recovery and incident effects. Failed attempts count; blocked attempts do not.')
     return '\n'.join(lines)
 
-def status(m,db,p,row):
-    if row is None:return 'You have no task queue. Use /queue action:Start, choose Task, and set Count from 1 to 10. Only one task type can be queued at a time.'
+def status(m,db,p,row,detail=False):
+    """Queue status. The short view shows progress, results and only the warnings
+    that apply; `detail` adds every requirement and rule (the Details button)."""
+    if row is None:return 'You have no task queue. Start one from /mine, /gather or /make with Queue 5 or Queue 10, or /queue action:Start.'
     name=choices(m).get(row.task,row.task)
-    text=f'TASK QUEUE — {row.state.upper()}\n{name}\nAttempts completed: {row.total-row.remaining}/{row.total}; remaining: {row.remaining}.\nOnly one task type can be queued at a time; maximum 10 attempts.\nThe worker checks your task every 10 seconds, even when nobody sends a message. Longer task cooldowns still apply.'
-    text+='\n'+totals_text(m,db,row)
+    text=f'TASK QUEUE — {row.state.upper()}\n{name}\nAttempts completed: {row.total-row.remaining}/{row.total}; remaining: {row.remaining}.'
+    if detail:text+='\nOnly one task type can be queued at a time; maximum 10 attempts.\nThe worker checks your task every 10 seconds, even when nobody sends a message. Longer task cooldowns still apply.'
+    text+='\n'+totals_text(m,db,row,compact=not detail)
     following=qol.next_label(m,db,row.channel_id,row.canonical_uid)
     if following:text+=f'\n\nNEXT QUEUE\n{following} starts automatically when this queue completes.'
-    if row.state not in ACTIVE:text+='\n\nRepeat this queue with the Repeat button, /queue action:Repeat last, or !queuerepeat.'
+    if detail and row.state not in ACTIVE:text+='\n\nRepeat this queue with the Repeat button, /queue action:Repeat last, or !queuerepeat.'
     health=db.get(QueueHealth,(row.channel_id,row.canonical_uid))
     if health and health.failures and row.state in ACTIVE:
         wait=max(0,int((m.as_utc(row.next_at)-m.now()).total_seconds()))
         text+=f'\n\nRETRY STATUS\nTemporary system error ({health.failures}/3). Retrying in about {wait}s; the interrupted attempt was not spent.'
     if row.state in {'paused','error'}:text+='\n\nPAUSE REASON\n'+row.result
-    if row.remaining and row.state in ACTIVE:
+    if detail and row.remaining and row.state in ACTIVE:
         text+='\n\n'+requirements(m,db,p,row.task,row.remaining)+'\n\nThe queue resumes automatically when needs and requirements are met. Recover faster with /relax, /eat, /games or comfort items (/sleep when ready); /queue action:Cancel stops the remaining attempts.'
-    text+='\n'+queue_notifications.delivery_status(db,row,m)
+    elif row.remaining and row.state=='running':
+        from .inbox import queue_warnings
+        warnings=queue_warnings(m,db,p,row.task,row.remaining)
+        if warnings:text+='\n\n⚠️ HEADS UP\n'+'\n'.join('• '+w for w in warnings)
+    delivery=queue_notifications.delivery_status(db,row,m)
+    if detail or not delivery.startswith(('You will be','Queue notification sent')):text+='\n'+delivery
     return text
 
 @contextmanager

@@ -273,7 +273,10 @@ def queue_components(m, db, p, owner):
     if p is not None and qol.next_task(db, p.channel_id, p.twitch_uid)[0]:
         buttons.append(button('Clear next', cid(owner, 'cn'), emoji='⏭️'))
     buttons.append(button('Status', cid(owner, 'st'), emoji='📊'))
-    return [row(*buttons)]
+    rows = [row(*buttons)]
+    if row_ is not None:
+        rows.append(row(button('Details & requirements', cid(owner, 'qd'), emoji='📘')))
+    return rows
 
 
 def repeat_button(m, owner, queue_row):
@@ -480,6 +483,8 @@ def handle_component(m, payload, schedule=None):
             return _reply(run_ticket(m, uid, name, action, payload), payload)
         schedule(finish_ticket, m, payload, uid, name, action)
         return {'type': 6}
+    if schedule is not None:
+        schedule(_popups, m, payload, uid)
     with m.task_queue.atomic(m, m.DISCORD_WORLD_ID):
         try:
             return _navigate(m, payload, uid, name, owner, verb, args, values)
@@ -530,6 +535,9 @@ def _navigate(m, payload, uid, name, owner, verb, args, values):
         if verb == 'qv':
             text = m.task_queue.status(m, db, p, db.get(m.task_queue.TaskQueue, (p.channel_id, p.twitch_uid)))
             return _reply(message(m, text, queue_components(m, db, p, owner), 'queue'), payload)
+        if verb == 'qd':
+            text = m.task_queue.status(m, db, p, db.get(m.task_queue.TaskQueue, (p.channel_id, p.twitch_uid)), detail=True)
+            return _reply(message(m, text, queue_components(m, db, p, owner)[:1], 'queue'), payload)
         if verb == 'st':
             return _reply(message(m, qol.status_text(m, db, p), status_components(m, db, p, owner), 'status'), payload)
         if verb in {'mn', 'mv', 'mk', 'mp'}:
@@ -638,3 +646,17 @@ def finish_ticket(m, payload, uid, name, action):
     finally:
         origin.reset(token)
     m.discord_deferred.edit_original(str(payload['application_id']), str(payload['token']), data)
+    kind = action.get('do')
+    command = 'queue' if kind in {'queue', 'next', 'cancel'} else (m.menu.options_for(action['leaf'])[0] if kind == 'cmd' and 'leaf' in action else '')
+    _popups(m, payload, uid, command, json.dumps(data, ensure_ascii=False))
+
+
+def _popups(m, payload, uid, command='', text=''):
+    """Raise any warnings or tips from this interaction, then show waiting notifications privately."""
+    try:
+        if command or text:
+            m.inbox.after_command(m, uid, 'Citizen', command, {}, text)
+        m.inbox.deliver(m, payload, uid)
+    except Exception:
+        import logging
+        logging.getLogger(__name__).error('Private notifications could not be delivered after a button')

@@ -134,7 +134,10 @@ with /mod action:Post guide panels here instead; the bot posts all eight with co
 [0mRun your last queue again.
 [1;36mALERTS
 [0;33m/settings → Alerts
-[0mChannel mention, direct message, quiet or off.
+[0mChannel mention, direct message, private, quiet or off.
+[0;33m/settings → Popups
+[0mPrivate "only you can see this" notes at your next
+[0mcommand.
 [0;33mPauses
 [0mLow needs or missing items pause it. It resumes by itself.
 [1;32mQUEUE → WALK AWAY → GET PINGED → REPEAT

@@ -73,7 +73,8 @@ PANELS = [
          ('/queue → Action: Queue next', 'Line up one more task to start when this one ends.'),
          ('/queue → Action: Repeat last', 'Run your last queue again.')]),
       ('ALERTS', [
-          ('/settings → Alerts', 'Channel mention, direct message, quiet or off.'),
+          ('/settings → Alerts', 'Channel mention, direct message, private, quiet or off.'),
+          ('/settings → Popups', 'Private "only you can see this" notes at your next command.'),
           ('Pauses', 'Low needs or missing items pause it. It resumes by itself.')])],
      'QUEUE → WALK AWAY → GET PINGED → REPEAT'),
     ('Money & trade',

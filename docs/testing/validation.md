@@ -1,5 +1,7 @@
 # Validation record
 
+The private-notification update passed **868 tests**, including `tests/test_inbox.py`: queue events reach the inbox, private alerts skip the channel ping, pinged events are already read, popups follow the Important/All/Off setting and are sent once as ephemeral follow-ups, starting a short queue warns immediately, tips show once, the short queue status hides requirements behind Details, and the inbox view marks items read.
+
 The button-menu update passed **857 tests**. It adds `tests/test_menu.py`: every area opens within Discord limits (≤5 rows, ≤25 buttons, custom IDs ≤100), every leaf maps to a real command and options, every view button renders, action buttons run once and bring back their area, choice lists run or confirm (selling needs Confirm), social choices offer activities, and replies carry Again/area/Menu buttons.
 
 The message-readability update passed **787 tests**, including `tests/test_presentation.py` (8 tests): small task receipts without footer or fields, one-line notices, title-cased information cards with bold labels and sections, short titles for long first lines, level-up notes kept out of titles, formatted need/item/practice changes, one-line Twitch task replies, and Details pages for very long views.

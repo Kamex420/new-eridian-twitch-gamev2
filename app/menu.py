@@ -23,7 +23,7 @@ from . import ui, workbench as wb
 # area keys or leaf keys; the order is the button order.
 AREAS = {
     'home': ('🏠', 'New Eridian', 'Pick an area. Menus and views spend nothing; action buttons do their task once.',
-             ['status', 'life', 'work', 'craft', 'queue', 'bag', 'trade', 'world', 'me', 'social', 'settings', 'help']),
+             ['status', 'inbox', 'life', 'work', 'craft', 'queue', 'bag', 'trade', 'world', 'me', 'social', 'settings', 'help']),
     'life': ('❤️', 'Life & Recovery', 'Keep Energy, Nutrition, Social and Comfort up so work never stops.',
              ['relax', 'sleep', 'eat', 'games', 'walk', 'hobby', 'meal', 'recover', 'needs', 'cooldowns']),
     'work': ('⛏️', 'Work', 'Mine, gather or pick a job. Each success gives items and practice.',
@@ -32,7 +32,7 @@ AREAS = {
     'craft': ('🛠️', 'Craft', 'Open the Workbench, a category, what is ready now, or your favourites.',
               ['workbench', 'ready', 'favs', 'workshop', 'catalog'] + ['c_' + key for key, *_ in wb.CATEGORIES]),
     'queue': ('⏱️', 'Queue', 'Your automatic task queue. Check it, repeat it or stop it.',
-              ['qstatus', 'repeat', 'cancel', 'clearnext', 'status']),
+              ['qstatus', 'qdetails', 'repeat', 'cancel', 'clearnext', 'status']),
     'bag': ('🎒', 'Bag', 'Everything you own. Use it, eat it, sell it or sort it.',
             ['inventory', 'by_value', 'ready_items', 'gear', 'use', 'eat', 'sell', 'clearout']),
     'trade': ('🪙', 'Trade', 'Seed Industries, production orders, market work, your Habitat and business.',
@@ -49,7 +49,8 @@ AREAS = {
     'social': ('🤝', 'Social', 'Spend time with other citizens, or recover Social on your own.',
                ['friend', 'games', 'recreation', 'meal', 'me_relationships']),
     'settings': ('⚙️', 'Settings', 'How queue alerts reach you and whether queues recover by themselves.',
-                 ['alerts_mention', 'alerts_dm', 'alerts_quiet', 'alerts_off', 'auto_on', 'auto_off', 'favs', 'status']),
+                 ['alerts_mention', 'alerts_dm', 'alerts_private', 'alerts_quiet', 'alerts_off', 'auto_on', 'auto_off',
+                  'popups_important', 'popups_all', 'popups_off', 'inbox', 'favs', 'status']),
     'help': ('📖', 'Help', 'What to do next, and the full handbook by topic.',
              ['guide', 'me_tutorial', 'wd_holidays'] + ['h_' + t for t in ('start', 'character', 'property', 'life', 'production',
                                                                           'operations', 'society', 'other', 'terms')]),
@@ -70,6 +71,8 @@ def leaf(key, label, emoji, kind, cmd='', opts=None, hint='', **extra):
 
 
 leaf('status', 'Status', '📊', 'view', 'status', hint='needs, queue, cooldowns and what to do next')
+leaf('inbox', 'Notifications', '📬', 'view', 'inbox', hint='queue results, warnings and tips sent only to you')
+leaf('qdetails', 'Details & requirements', '📘', 'nav', nav=('qd',), hint='every requirement and rule for your queue')
 # Life
 leaf('relax', 'Relax', '🛋️', 'do', 'relax', hint='+25 Energy, +20 Comfort')
 leaf('sleep', 'Sleep', '🛏️', 'do', 'sleep', hint='Energy and Comfort to 100 (long cooldown)')
@@ -159,8 +162,11 @@ SOCIAL = [('hi', 'Say hi', '👋'), ('hangout', 'Hang out', '☕'), ('mentor', '
 for _action, _label, _emoji in SOCIAL:
     leaf('s_' + _action, _label, _emoji, 'do', 'social', {'action': _action}, hint='')
 # Settings
-for _mode, _label, _emoji in [('mention', 'Alerts: mention', '🔔'), ('dm', 'Alerts: DM', '✉️'), ('quiet', 'Alerts: quiet', '🔕'), ('off', 'Alerts: off', '🚫')]:
+for _mode, _label, _emoji in [('mention', 'Alerts: mention', '🔔'), ('dm', 'Alerts: DM', '✉️'), ('private', 'Alerts: private', '🔒'),
+                              ('quiet', 'Alerts: quiet', '🔕'), ('off', 'Alerts: off', '🚫')]:
     leaf('alerts_' + _mode, _label, _emoji, 'do', 'settings', {'alerts': _mode}, hint='')
+for _mode, _label, _emoji in [('important', 'Popups: important', '📬'), ('all', 'Popups: all', '📣'), ('off', 'Popups: off', '📭')]:
+    leaf('popups_' + _mode, _label, _emoji, 'do', 'settings', {'popups': _mode}, hint='')
 leaf('auto_on', 'Auto-recover on', '🩹', 'do', 'settings', {'autorecover': 'on'}, hint='paused queues recover by themselves')
 leaf('auto_off', 'Auto-recover off', '✋', 'do', 'settings', {'autorecover': 'off'}, hint='')
 # Help

@@ -1444,6 +1444,10 @@
           "value": "dm"
         },
         {
+          "name": "Private: only you see it, at your next command",
+          "value": "private"
+        },
+        {
           "name": "Quiet: finish/stop only, no pause alerts",
           "value": "quiet"
         },
@@ -1465,6 +1469,26 @@
         },
         {
           "name": "Off",
+          "value": "off"
+        }
+      ]
+    },
+    {
+      "type": 3,
+      "name": "popups",
+      "description": "Private \"only you can see this\" notifications at your next command",
+      "required": false,
+      "choices": [
+        {
+          "name": "Important: queue results, pauses and warnings",
+          "value": "important"
+        },
+        {
+          "name": "All: also tips and milestones",
+          "value": "all"
+        },
+        {
+          "name": "Off: keep them in /menu → Notifications",
           "value": "off"
         }
       ]

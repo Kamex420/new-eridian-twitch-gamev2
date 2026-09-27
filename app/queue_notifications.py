@@ -90,8 +90,6 @@ def stopped(m,db,p,queue,kind,reason='',following=''):
         content+='\n\nNEXT\nRemaining attempts are saved. The queue resumes automatically when requirements are met.'
         life=m.life_state(db,p);eta=qol.resume_eta(m,life)
         if eta and len(qol.needs.blocked_needs(life))>1:content+=f' Passive recovery clears every blocking need in about {qol.eta_text(eta)}.'
-        if needs_blocked(m,db,p) and not qol.autorecover_on(db,p.channel_id,p.twitch_uid):
-            content+=' Tip: turn on auto-recover in settings so queues recover by themselves.'
     if following:content+='\n\nNEXT\n'+following
     if kind=='error':content+='\n\nNEXT\nAutomatic retries stopped. Check /queue before starting another queue.'
     # Completion retains the historical run ID to deduplicate pre-update rows.
@@ -99,7 +97,10 @@ def stopped(m,db,p,queue,kind,reason='',following=''):
     if db.get(Notice,notice_id) is None:
         # Alert preferences decide whether a chat message is sent; the journal
         # and /queue keep every result either way.
-        if mode!='off' and not (mode=='quiet' and kind=='paused'):
+        pinged=mode in {'mention','dm'} or (mode=='quiet' and kind!='paused')
+        from . import inbox
+        inbox.add(m,db,p.channel_id,p.twitch_uid,'queue',inbox_text(m,db,queue,kind,reason,following),seen=pinged)
+        if pinged:
             target=dest.message_channel
             if mode=='dm' and dest.provider=='discord':target=DM_PREFIX+(dest.message_channel or os.getenv('DISCORD_GAME_CHANNEL_ID',''))
             db.add(Notice(id=notice_id,provider=dest.provider,recipient=dest.recipient,
@@ -112,6 +113,21 @@ def stopped(m,db,p,queue,kind,reason='',following=''):
 
 
 DM_PREFIX='dm|'
+
+
+def inbox_text(m,db,queue,kind,reason='',following=''):
+    """One or two lines for the private inbox and popups."""
+    from .task_queue import choices, QueueTotals
+    import json as _json
+    name=choices(m).get(queue.task,queue.task)
+    head={'paused':'⏸️ **Queue paused**','cancelled':'⏹️ **Queue cancelled**','error':'⛔ **Queue stopped**','completed':'✅ **Queue finished**'}[kind]
+    text=f'{head}: {name} · {queue.total-queue.remaining}/{queue.total}'
+    totals=db.get(QueueTotals,(queue.channel_id,queue.canonical_uid))
+    gained=_json.loads(totals.gained) if totals else {}
+    if gained:text+=' · gained '+', '.join(f'{m.resource_name(k)} ×{v}' for k,v in sorted(gained.items())[:4])
+    if kind=='paused' and reason:text+='\n'+reason.split('\n')[0][:200]+' It resumes by itself.'
+    if following:text+='\n'+following
+    return text
 
 
 def needs_blocked(m,db,p):
@@ -160,6 +176,7 @@ def delivery_status(db,queue,m=None):
     if notice:
         return 'Queue notification is waiting for delivery. Your results are saved.'
     if mode=='quiet':return 'Quiet alerts: you will be notified when the queue finishes or stops, not when it pauses.'
+    if mode=='private':return 'Private alerts: results appear only to you, the next time you use a command or button.'
     if mode=='dm':return 'You will get a direct message when the queue pauses or stops (or a channel @mention if your DMs are closed).'
     return 'You will be @mentioned in the game channel when the queue pauses or stops, if delivery is configured.'
 

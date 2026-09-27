@@ -249,7 +249,7 @@ def test_pause_reason_estimates_passive_recovery():
         row = db.query(q.TaskQueue).one()
         assert row.state == 'paused'
         assert 'Passive recovery reaches 20 in about 1h 15m' in row.result
-        assert 'turn on auto-recover' in db.query(n.Notice).one().content
+        assert 'resumes automatically' in db.query(n.Notice).one().content
 
 
 def test_auto_recover_keeps_the_queue_running():
