@@ -42,7 +42,8 @@ def finish(m,payload,command,uid,name,options):
         # Public receipts omit private modifier calculations. No extra unsolicited
         # follow-up: the action has one response, with only relevant changes.
         try:
-            data=m._discord_json_message(result,message_type=command)['data']
+            # Workbench, mining, gathering and queue replies carry dropdowns and buttons.
+            data=m.ui.slash_panel(m,command,uid,name,options,result) or m._discord_json_message(result,message_type=command)['data']
         except Exception:
             logging.getLogger(__name__).error('Saved command result could not be formatted: %s',command)
             data={'content':result[:1800], 'allowed_mentions':{'parse':[]}}

@@ -4,7 +4,7 @@ The society remains New Eridian. The production balance layer adapts the version
 
 ## Batch sizes
 
-Finished goods, machines, furniture, clothing, tools, and prepared food produce one item per batch. Materials, components, seeds, and medical supplies produce bulk batches. Material water is included even though it appears in the drinks browser.
+Finished goods, machines, furniture, clothing, tools, and prepared food produce one item per batch. Materials, components, seeds, and medical supplies produce bulk batches. Material water is included even though it is listed under Food & Drink.
 
 Base output is 15 when an ingredient is used by at least 20 distinct recipes or any recipe needs at least 20 units. Otherwise it is 10 when at least five recipes use it or a recipe needs five units. Other bulk items produce five. Every ingredient recipe counts once; quantities refer to the existing recipe inputs.
 

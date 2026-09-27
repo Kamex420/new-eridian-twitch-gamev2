@@ -7,6 +7,13 @@ from app import task_queue as q,seed_content as s
 
 ORE=m.item_identity.ALIASES['ore']
 RARE=m.item_identity.ALIASES['rare_ore']
+PUMPKIN=m.item_identity.ALIASES['crops']
+NAILS=m.item_identity.ALIASES['components']
+INGOT=s.key('Iron Ingot')
+
+def unlock_nails(db,p):
+    cp=m.crafting_progression;rid=m.item_identity.RETIRED_RECIPES['component']
+    m.material_change(db,p,cp.permit_key(cp.tags(rid)[0]),1)
 
 def due():
     with m.SessionLocal() as db:
@@ -87,20 +94,24 @@ def test_low_needs_mid_queue_stop_next_attempt():
         row=db.query(q.TaskQueue).one();assert row.remaining==2 and row.state=='paused'
         assert db.query(m.Player).one().ore==101
 
+def test_legacy_make_task_names_resolve_to_workbench_recipes():
+    assert q.normalize(m,'make:component')=='make:'+m.item_identity.RETIRED_RECIPES['component']
+    assert q.normalize(m,'make:Iron Plate').startswith('make:sr_')
+
 def test_missing_materials_pause_crafting_then_resume_same_account():
     enqueue('make:component',2)
     with m.SessionLocal() as db:
-        p=db.query(m.Player).one();p.ore=0;db.commit()
+        p=db.query(m.Player).one();unlock_nails(db,p);db.commit()
     advance()
     with m.SessionLocal() as db:
         p=db.query(m.Player).one();row=db.query(q.TaskQueue).one()
         assert row.remaining==2 and row.state=='paused'
         assert 'have 0' in row.result and 'missing 1' in row.result
-        p.ore=2;db.commit()
+        m.material_change(db,p,INGOT,2);db.commit()
     advance();advance()
     with m.SessionLocal() as db:
         assert db.query(m.Player).count()==1
-        p=db.query(m.Player).one();assert p.ore==0 and p.components==102
+        p=db.query(m.Player).one();assert m.material_amount(db,p,INGOT)==0 and p.components==130
         assert db.query(q.TaskQueue).one().remaining==0
 
 def test_failure_counts_as_attempt(monkeypatch):
@@ -244,25 +255,25 @@ def test_mixed_failures_rewards_and_repeated_view(monkeypatch):
     with m.SessionLocal() as db:
         p=db.query(m.Player).one();row=db.query(q.TaskQueue).one();totals=db.query(q.QueueTotals).one()
         assert (totals.succeeded,totals.failed,totals.progress)==(5,5,0)
-        assert p.crops==110
-        assert json.loads(totals.gained).get('crops')==10
+        assert p.crops==115
+        assert json.loads(totals.gained).get(PUMPKIN)==15
         for _ in range(2):
             text=q.status(m,db,p,row)
-            assert 'Succeeded: 5; failed: 5.' in text and 'Crop ×10' in text
-        assert p.crops==110
+            assert 'Succeeded: 5; failed: 5.' in text and 'Pumpkin ×15' in text
+        assert p.crops==115
 
 
 def test_crafting_totals_spending_pause_and_restart():
     enqueue('make:component',3)
     with m.SessionLocal() as db:
-        p=db.query(m.Player).one();p.ore=2;db.commit()
+        p=db.query(m.Player).one();unlock_nails(db,p);m.material_change(db,p,INGOT,2);db.commit()
     advance();advance();advance()
     with m.SessionLocal() as db:
         row=db.query(q.TaskQueue).one();totals=db.query(q.QueueTotals).one()
         assert row.state=='paused' and row.remaining==1
         assert (totals.succeeded,totals.failed)==(2,0)
-        assert json.loads(totals.gained)=={'components':2}
-        assert json.loads(totals.used)=={ORE:2}
+        assert json.loads(totals.gained)=={NAILS:30}
+        assert json.loads(totals.used)=={INGOT:2}
     q.control(m,'test','u','Citizen','discord','cancel')
     q.control(m,'test','u','Citizen','discord','start','mine:'+ORE,1)
     advance()
@@ -327,5 +338,5 @@ def test_bonus_items_are_counted_from_real_inventory(monkeypatch):
     advance()
     with m.SessionLocal() as db:
         p=db.query(m.Player).one();totals=db.query(q.QueueTotals).one()
-        assert totals.succeeded==1 and p.crops==103
-        assert json.loads(totals.gained)['crops']==3
+        assert totals.succeeded==1 and p.crops==104
+        assert json.loads(totals.gained)[PUMPKIN]==4

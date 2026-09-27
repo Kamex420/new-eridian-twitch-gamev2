@@ -127,14 +127,14 @@ def test_specialist_modes_can_be_queued_and_keep_requirements(monkeypatch):
     with m.SessionLocal() as db:
         p=db.query(m.Player).one();row=db.query(q.TaskQueue).one()
         assert row.state=='completed' and p.crops==108
-        assert 'Crop ×8' in q.status(m,db,p,row)
+        assert 'Pumpkin ×8' in q.status(m,db,p,row)
 
 
 def test_byproducts_are_real_useful_catalog_materials():
     for energy,outputs in y.YIELDS.values():
         assert energy>=2
         for key in outputs:
-            if key in {'crops','cargo'}:continue
+            if key=='cargo':continue
             assert key in m.seed_content.ACTIVE
             assert any(key in r['inputs'] for r in m.seed_content.RECIPES.values()) or key in m.seed_content.EDIBLE or m.seed_content.PURPOSE[key]['mode']=='plant'
 

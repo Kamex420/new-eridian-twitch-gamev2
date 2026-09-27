@@ -2,13 +2,17 @@
 
 ## Mining and gathering
 
-`/mine` exposes ore selection, a requirements preview, and a count from 1 to 10. Common ore attempts cost 2 Energy, 1 Nutrition and 1 Comfort, with the existing 5-second shared gathering cooldown. They require no tools or skill unlock.
+`/mine` exposes ore selection, a requirements preview, and a count from 1 to 10. Common ore attempts cost 2 Energy, 1 Nutrition and 4 Comfort, with the existing 5-second shared gathering cooldown. They require no tools or skill unlock.
 
-Argentite, Bauxite, Rutile and Aurite require Harvesting level 3. One prospecting attempt costs 3 Energy, 1 Nutrition and 1 Comfort; all rare ores share a 20-second cooldown. Three successful prospecting steps produce one ore. With no failures, a ten-attempt queue beginning with no saved progress produces three ores and one remaining step. Failures produce Stone Dust instead, so ten attempts no longer guarantee three ores.[^1]
+Argentite, Bauxite, Rutile and Aurite require Harvesting level 3. One prospecting attempt costs 3 Energy, 1 Nutrition and 6 Comfort; all rare ores share a 20-second cooldown. Three successful prospecting steps produce one ore. With no failures, a ten-attempt queue beginning with no saved progress produces three ores and one remaining step. Failures produce Stone Dust instead, so ten attempts no longer guarantee three ores.[^1]
 
 `/gather` browses non-ore resources. Older ore-gathering routes remain compatible with the same requirements. No alternate route skips rare-ore gates.
 
 ## Crafting and progression
+
+`/make` opens the Workbench: fifteen categories (Materials & Ores, Components, Food & Drink, Medicine & Clinic, Seeds & Farming, Tools & Equipment, Machines & Workstations, Building Parts, Beds & Camping, Chairs & Sofas, Bathroom & Washing, Clothing, Storage & Shelves, Tables & Counters, Decor & Recreation). Each category lists recipes from easiest to most complex: the personal tier the whole ingredient chain needs, then skill level, then the number of crafting steps from raw materials. The same categories are used by `/catalog` and `/use`; old names such as `basic_components` or `final_products` still open the matching category.
+
+Every recipe shows ✅ ready, ❌ missing ingredients, 🔑 workstation fee or 🔒 tier/skill lock, with the key blocker in the dropdown label. Selecting a recipe previews it without spending anything: ingredients as owned/needed with where to get each one, output per batch, workstation, tier, skill, needs cost and cooldown. In Discord the preview has buttons for Unlock, Craft 1 batch, Queue 5, Queue 10 and a 1–10 amount menu; a queue first shows its totals and starts only when Start is pressed. On Twitch, `!make` shows the categories, `!make parts 2` a page and `!make Iron Plate` crafts.
 
 Recipes require their corresponding bench or machine access, personal tier and listed skill. Personal tiers unlock at 0, 25, 100 and 250 completed manufacturing batches. Matching station ownership can replace a permanent access fee; it cannot bypass tier or skill requirements.
 
@@ -16,7 +20,9 @@ Ingredient-consuming manufacturing training uses the matching catalog recipe's i
 
 ## Needs and queues
 
-Energy, Nutrition and Social must each be at least 20 before an attempt. Comfort affects performance but does not block work. A task may finish below 20; its next attempt then pauses. Passive recovery adds one point to each need every 15 minutes, up to 60, including elapsed time away. Recovery never lowers a value already above that cap.
+Energy, Nutrition and Social must each be at least 20 before an attempt. Every task costs twice as much Comfort as Energy (a standard task: 2 Energy, 1 Nutrition, 4 Comfort). Below 20 Comfort, work has −10% success and costs 1 Morale per task; below 10 Comfort, work stops until Comfort recovers. A task may finish below these thresholds; its next attempt then pauses.
+
+Sleep restores Energy and Comfort to 100 but can only be used once every 30 minutes (`SLEEP_COOLDOWN_MINUTES`). Between sleeps, Comfort comes from `/relax` (+10), owned beds, seats, baths and clothing through `/use` (kept after use) and the Habitat Comfort Pack (+40 Comfort). Passive recovery adds one point to each need every 15 minutes, up to 60, including elapsed time away. Recovery never lowers a value already above that cap.
 
 A queue contains one exact task/resource/recipe and at most ten attempts. Starting a second active queue is rejected even when its task matches. Failed attempts count; attempts blocked by needs, materials, ownership, skill, tier, workstation access or cooldown do not. Paused queues resume automatically after their requirements are met.
 
@@ -24,10 +30,10 @@ Queue results show successes, failures, total items gained and total items used.
 
 | Ten attempts | Base needs spent | Starting needs sufficient without recovery |
 | --- | --- | --- |
-| Common ore or ordinary crafting | 20 Energy, 10 Nutrition, 10 Comfort | 38 Energy, 29 Nutrition, 20 Social |
-| Rare prospecting or heavy work | 30 Energy, 10 Nutrition, 10 Comfort | 47 Energy, 29 Nutrition, 20 Social |
+| Common ore or ordinary crafting | 20 Energy, 10 Nutrition, 40 Comfort | 38 Energy, 29 Nutrition, 20 Social, 46 Comfort |
+| Rare prospecting or heavy work | 30 Energy, 10 Nutrition, 60 Comfort | 47 Energy, 29 Nutrition, 20 Social, 64 Comfort |
 
-Forecasts exclude other activities, passive recovery and incident effects. Morale can also fall when Comfort is below 20. Material budgets are upper bounds because unsuccessful work generally retains its ingredients. Requirement messages distinguish amounts needed, owned and missing, and include acquisition routes.
+Forecasts exclude other activities, passive recovery and incident effects. Morale also falls by 1 per task while Comfort is below 20. Material budgets are upper bounds because unsuccessful work generally retains its ingredients. Requirement messages distinguish amounts needed, owned and missing, and include acquisition routes.
 
 Queue status is private in Discord. Progress persists through restarts. The worker runs while the app is online, without posting unsolicited chat messages. Cancellation preserves completed work and stops remaining attempts.
 
@@ -42,21 +48,21 @@ On completion, cancellation, unmet requirements or a terminal error, the bot pos
 
 ### Personal output per successful attempt
 
-| Task | Output | Energy per attempt | Additional requirement |
+| Task | Output | Energy / Comfort per attempt | Additional requirement |
 | --- | --- | --- | --- |
-| Tend Fields | 1 Crop + 1 Pumpkin Seed | 2 | None |
-| Harvest Crops | 2 Crops + 1 Pumpkin + 1 Pumpkin Seed | 3 | None |
-| Irrigate | 3 Crops + 1 reclaimed Murky Water | 4 | None |
-| Hydroponics | 4 Crops + 1 Raw Algae | 5 | Water Filter, kept |
-| Standard Research | 1 Stone sample | 2 | None |
-| Field Analysis | 2 Stone + 1 Herbs | 4 | Siro Sampler, kept |
-| Standard Spaceport Operations | 1 Cargo + 1 Lumber from packaging | 2 | None |
-| Expedited Spaceport Operations | 2 Cargo + 2 Lumber | 4 | 1 Power Cell consumed on success |
-| Scout | 1 Stone + 1 Berries | 3 | None |
-| Advanced Survey | 2 Stone + 1 Clay + 1 Coal | 5 | Sensor, kept |
-| Commerce Work / Business Work | 1 Cargo | 2 | Registered business for Business Work |
-| Market Analysis / Business Contract | 2 Cargo + 1 Lumber | 4 | Market Analyzer / registered business |
-| Forage | 2 Berries + 1 Herbs | 3 | None |
+| Tend Fields | 1 Pumpkin + 1 Pumpkin Seeds | 2 / 4 | None |
+| Harvest Pumpkins | 3 Pumpkin + 1 Pumpkin Seeds | 3 / 6 | None |
+| Irrigate | 3 Pumpkin + 1 Murky Water | 4 / 8 | None |
+| Hydroponics | 4 Pumpkin + 1 Raw Algae | 5 / 10 | Small Water Filter, kept |
+| Standard Research | 1 Stone | 2 / 4 | None |
+| Field Analysis | 2 Stone + 1 Herbs | 4 / 8 | Siro Sampler, kept |
+| Standard Spaceport Operations | 1 Cargo + 1 Lumber | 2 / 4 | None |
+| Expedited Spaceport Operations | 2 Cargo + 2 Lumber | 4 / 8 | 1 Power Cell consumed on success |
+| Scout | 1 Stone + 1 Berries | 3 / 6 | None |
+| Advanced Survey | 2 Stone + 1 Clay + 1 Coal | 5 / 10 | Resource Scanner, kept |
+| Commerce Work / Business Work | 1 Cargo | 2 / 4 | Registered business for Business Work |
+| Market Analysis / Business Contract | 2 Cargo + 1 Lumber | 4 / 8 | Market Analyzer / registered business |
+| Forage | 2 Berries + 1 Herbs | 3 / 6 | None |
 
 Higher-output methods trade more Energy for better yields. Failure still spends needs but grants none of these outputs. Existing random bonus yields are additional and included in queue totals. XP, society rewards and SC pay remain in place. Pumpkin Seeds have an existing planting use: one seed plus Clean Water yields three Pumpkins. Stone samples use the same Stone inventory as crafting; no duplicate item identities were introduced.
 
@@ -111,3 +117,13 @@ push notifications even when the channel mention is delivered.
 ## Production batch and resale update
 
 Catalog materials now produce demand-based batches of 5–20, including station efficiency; finished products produce one. /make recipe previews show the current output and NPC sale value. Seed Industries buys all obtainable catalog items. Newly listed finished goods are sell-only. See [Production economy](production-economy.md) for examples and price rules.
+
+## Catalog items replace legacy items
+
+Every item is a SEED catalog item. Old names still work in commands and share one stock with their catalog item, merged one-for-one: Crops = Pumpkin, Components = Iron Nails, Ore = Hematite Ore, Rare Ore = Argentite Ore, Biofiber = Flaxa, Alloy Plate = Iron Plate, Sealant = Mortar, Precision Lens = Glass, Ration = Dried Berries, Water Filter = Small Water Filter, Sensor = Resource Scanner, Crate = Storage Platform, Preserved Food = Quito Pumpkin Paste, Storage Jar = Ceramic Basin, Furniture = Garden Chair, Workwear = Seed Industries Long Sleeve Top and Medicine = Painkillers. Old recipe names such as `component` open the matching catalog recipe.
+
+Specialist quality gear (for example the Mining Pick, Repair Kit or Comfort Pack) stays an upgrade system with its own bonuses, but every ingredient is now a catalog item (Iron Plate, Iron Nails, Wood Planks, Glass, Fabric and so on). Gear repair uses Iron Nails; Habitat upgrades use SC and Iron Nails.
+
+## Discord menus and buttons
+
+`/make`, `/mine`, `/gather` and `/queue` answer with dropdowns and buttons. Menus and page buttons only change the view and never spend anything. Buttons that spend (Craft, Unlock, Gather, Start queue, Cancel queue) are single-use: a second click, a Discord retry or an old message cannot repeat the action, and only the citizen who opened the panel can press them. Spending buttons expire after 24 hours; run the command again for a fresh panel. Every dropdown label follows the same pattern: status emoji, name, amount, then cost or blocker.

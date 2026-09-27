@@ -1,5 +1,7 @@
 # Validation record
 
+The Workbench, Comfort and catalog-item update passed **729 tests** (one environment-specific source-boundary test deselected locally because the sandbox installs dependencies through `PYTHONPATH`). New coverage in `tests/test_workbench_ui.py`: easiest-first ordering in every category, Discord label and custom_id limits, read-only navigation, single-use Craft and Start buttons, other-citizen and expired-button rejection, queue plans, slash panels and Twitch pages within 380 bytes. The registrar dry run emits 49 command definitions, each under Discord's size limits. Live Discord and Twitch delivery were not exercised.
+
 The mining update passed 576 full-suite tests before this timing fix. The Discord acknowledgement fix then passed **50 focused tests**, covering response ordering, delivery retries, error replies, signed channel capture and background queues. Live Railway and Discord delivery were not exercised. The raw outputs are preserved in [results.txt](results.txt).
 
 ## Coverage

@@ -125,13 +125,17 @@ def test_blocked_action_preserves_inputs():
         assert db.query(m.Cooldown).count()==0
 
 def test_crafting_levelup_and_inputs():
+    # The legacy "component" recipe is now the catalog Iron Nails recipe.
     seed(provider='discord')
+    cp=m.crafting_progression;rid=m.item_identity.RETIRED_RECIPES['component']
+    ingot=m.seed_content.key('Iron Ingot')
     with m.SessionLocal() as db:
-        p=db.query(m.Player).one();p.fabrication_xp=4;p.job='technician';db.commit()
+        p=db.query(m.Player).one();p.environmental_xp=4;p.job='technician'
+        m.material_change(db,p,cp.permit_key(cp.tags(rid)[0]),1);m.material_change(db,p,ingot,2);db.commit()
     r=client.get('/api/v1/make',params=dict(channel='test',uid='u',recipe='component',provider='discord'))
-    assert r.status_code==200 and 'LEVEL UP' in r.text,r.text
+    assert r.status_code==200 and 'LEVEL UP' in r.text and 'CRAFTING COMPLETE' in r.text,r.text
     with m.SessionLocal() as db:
-        p=db.query(m.Player).one();assert p.ore==99 and p.components==101
+        p=db.query(m.Player).one();assert m.material_amount(db,p,ingot)==1 and p.components==115
 
 def test_mentor_notifies_target():
     seed('u',name='Mentor');seed('v',name='Learner')
@@ -213,10 +217,34 @@ def test_low_comfort_has_success_penalty_and_morale_cost():
     with m.SessionLocal() as db:
         p=db.query(m.Player).one();life=m.life_state(db,p)
         high=m.life_modifiers(db,p,'extraction')[0]
-        life.comfort=5
+        life.comfort=15
         low,notes,_=m.life_modifiers(db,p,'extraction')
         assert low<high and any('Comfort' in n for n in notes)
+        assert m.task_need_gate(db,p,'mine','discord')==''  # slowed, not yet blocked
         old=life.morale;m.spend_life_for_action(life,'mine');assert life.morale<old
+
+
+@pytest.mark.parametrize('action,energy',[('harvest',3),('research',2),('explore',3),('survey',5),('repair',3),('cargo',2)])
+def test_comfort_drains_twice_as_fast_as_energy(action,energy,monkeypatch):
+    seed(provider='discord');monkeypatch.setattr(m.random,'random',lambda:0.0)
+    with m.SessionLocal() as db:
+        p=db.query(m.Player).one();m.material_change(db,p,'sensor',1);db.commit()
+    m.action(action,'test','u',provider='discord')
+    with m.SessionLocal() as db:
+        life=m.life_state(db,db.query(m.Player).one())
+        assert (100-life.energy,100-life.comfort)==(energy,2*energy)
+
+
+def test_very_low_comfort_blocks_work_without_spending():
+    seed(provider='discord')
+    with m.SessionLocal() as db:
+        p=db.query(m.Player).one();m.life_state(db,p).comfort=m.COMFORT_BLOCK-1;db.commit()
+    r=m.action('harvest','test','u',provider='discord').body.decode()
+    assert 'TASK BLOCKED' in r and 'Comfort' in r and '/relax' in r
+    with m.SessionLocal() as db:
+        assert db.query(m.Player).one().crops==100 and db.query(m.Cooldown).count()==0
+        p=db.query(m.Player).one();m.life_state(db,p).comfort=m.COMFORT_BLOCK;db.commit()
+    assert 'TASK COMPLETE' in m.action('harvest','test','u',provider='discord').body.decode()
 
 def test_social_cooperation_fades_without_erasing_relationship():
     seed();seed('friend',name='Friend')
@@ -233,6 +261,20 @@ def test_sleep_fully_restores_energy_and_comfort():
     m.action('sleep','test','u')
     with m.SessionLocal() as db:
         life=db.query(m.LifeState).one();assert life.energy==100 and life.comfort==100
+
+
+def test_sleep_has_a_long_timer_so_comfort_needs_other_sources():
+    seed()
+    assert m.ACTION_COOLDOWNS['sleep']==m.SLEEP_COOLDOWN_SECONDS>=30*60
+    m.action('sleep','test','u')
+    with m.SessionLocal() as db:
+        life=db.query(m.LifeState).one();life.energy=10;life.comfort=10;db.commit()
+    again=m.action('sleep','test','u').body.decode()
+    assert 'sleep again in' in again and 'Nothing was spent' in again
+    with m.SessionLocal() as db:
+        life=db.query(m.LifeState).one();assert (life.energy,life.comfort)==(10,10)
+    relaxed=m.relax('test','u').body.decode()
+    assert '+10 Comfort' in relaxed
 
 def test_emergency_meal_remains_recoverable():
     seed()

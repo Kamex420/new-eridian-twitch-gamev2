@@ -4,7 +4,9 @@ Existing table names, player identifiers, route signatures and catalog IDs remai
 
 ## Item identities
 
-Twelve overlapping legacy item types map to canonical catalog items. Conversion adds quantities one-for-one to existing destination stock, then zeros source quantities within the same transaction. Repeated conversion cannot award the same stock again. Hematite and Argentite remain backed by the existing `ore` and `rare_ore` player columns; their public names and catalog IDs refer to those same balances.[^2]
+Every legacy item type maps to a canonical SEED catalog item (27 aliases, listed in `app/item_identity.py` and the [gameplay reference](gameplay.md#catalog-items-replace-legacy-items)). Conversion adds quantities one-for-one to existing destination stock, then zeros source quantities within the same transaction. Repeated conversion cannot award the same stock again. Hematite Ore, Argentite Ore, Pumpkin and Iron Nails are backed by the existing `ore`, `rare_ore`, `crops` and `components` player columns; any catalog stock of Pumpkin or Iron Nails is added to those columns once, so Crops/Pumpkin and Components/Iron Nails are a single balance. Owned legacy quality gear keeps its rows; only its crafting and repair ingredients changed to catalog items.[^2]
+
+One-time Discord button tickets live in the additive `ui_tickets_v1` table (owner, action, used time, expiry). Claiming a ticket is a single conditional update, so a second press cannot spend twice. Expired rows are deleted when new tickets are issued.
 
 The catalog JSON is unchanged by this cleanup. Historical `legacy_discord_options.json`, route fixtures and the old SQL schema are retained under `tests/fixtures/`; they are evidence for regression tests, not live command definitions.
 

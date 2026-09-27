@@ -439,11 +439,11 @@
           "value": "start"
         },
         {
-          "name": "Work: 1 Cargo on success · 2 Energy",
+          "name": "Work: 1 Cargo · 2 Energy, 4 Comfort · business required",
           "value": "work"
         },
         {
-          "name": "Contract: 2 Cargo + Lumber on success · 4 Energy",
+          "name": "Contract: 2 Cargo + 1 Lumber · 4 Energy, 8 Comfort · business required",
           "value": "contract"
         },
         {
@@ -465,110 +465,117 @@
     {
       "type": 3,
       "name": "category",
-      "description": "Production stage or complete item tree",
+      "description": "Recipe category; lists run from easiest to most complex",
       "required": false,
       "choices": [
         {
-          "name": "Basic Components",
-          "value": "basic_components"
+          "name": "🧱 Materials & Ores",
+          "value": "materials"
         },
         {
-          "name": "Advanced Components",
-          "value": "advanced_components"
+          "name": "⚙️ Components",
+          "value": "parts"
         },
         {
-          "name": "Final Products",
-          "value": "final_products"
+          "name": "🍲 Food & Drink",
+          "value": "food"
         },
         {
-          "name": "Raw Materials",
-          "value": "raw_materials"
+          "name": "💊 Medicine & Clinic",
+          "value": "medicine"
         },
         {
-          "name": "Production Tree",
-          "value": "tree"
+          "name": "🌱 Seeds & Farming",
+          "value": "seeds"
         },
         {
-          "name": "Food",
-          "value": "seed_food"
+          "name": "🧰 Tools & Equipment",
+          "value": "equipment"
         },
         {
-          "name": "Drinks & Water",
-          "value": "seed_drinks"
+          "name": "🏭 Machines & Workstations",
+          "value": "machines"
         },
         {
-          "name": "Seeds & Saplings",
-          "value": "seed_seeds"
+          "name": "🏗️ Building Parts",
+          "value": "building"
         },
         {
-          "name": "Raw Materials & Ores",
-          "value": "seed_raw"
+          "name": "🛏️ Beds & Camping",
+          "value": "beds"
         },
         {
-          "name": "Processed Materials",
-          "value": "seed_processed"
+          "name": "🪑 Chairs & Sofas",
+          "value": "seating"
         },
         {
-          "name": "Components",
-          "value": "seed_parts"
+          "name": "🛁 Bathroom & Washing",
+          "value": "bathroom"
         },
         {
-          "name": "Medicine & Clinic Supplies",
-          "value": "seed_medicine"
+          "name": "👕 Clothing",
+          "value": "clothing"
         },
         {
-          "name": "Clothing & Accessories",
-          "value": "seed_clothing"
+          "name": "📦 Storage & Shelves",
+          "value": "storage"
         },
         {
-          "name": "Machines & Workstations",
-          "value": "seed_machines"
+          "name": "🍽️ Tables & Counters",
+          "value": "tables"
         },
         {
-          "name": "Storage & Shelves",
-          "value": "seed_storage"
-        },
-        {
-          "name": "Chairs, Sofas & Benches",
-          "value": "seed_seating"
-        },
-        {
-          "name": "Beds & Camping",
-          "value": "seed_beds"
-        },
-        {
-          "name": "Bathroom & Washing",
-          "value": "seed_bathroom"
-        },
-        {
-          "name": "Tables & Counters",
-          "value": "seed_tables"
-        },
-        {
-          "name": "Decor, Lighting & Recreation",
-          "value": "seed_decor"
-        },
-        {
-          "name": "Building Parts",
-          "value": "seed_building"
-        },
-        {
-          "name": "Tools & Logistics",
-          "value": "seed_tools"
+          "name": "🖼️ Decor & Recreation",
+          "value": "decor"
         }
       ]
     },
     {
       "type": 3,
       "name": "recipe",
-      "description": "Optional: select to craft; with Production Tree, preview only",
+      "description": "Recipe (✅ ready ❌ missing 🔑 unlock 🔒 locked); shows a preview first",
+      "required": false,
+      "autocomplete": true
+    },
+    {
+      "type": 3,
+      "name": "action",
+      "description": "What to do with the selected recipe (default: Preview)",
+      "required": false,
+      "choices": [
+        {
+          "name": "Preview requirements (spends nothing)",
+          "value": "preview"
+        },
+        {
+          "name": "Craft 1 batch now",
+          "value": "craft"
+        },
+        {
+          "name": "Queue batches (set Count)",
+          "value": "queue"
+        }
+      ]
+    },
+    {
+      "type": 4,
+      "name": "count",
+      "description": "Batches to queue, 1–10 (Queue only)",
+      "required": false,
+      "min_value": 1,
+      "max_value": 10
+    },
+    {
+      "type": 3,
+      "name": "station",
+      "description": "Optional: only show recipes for one workstation",
       "required": false,
       "autocomplete": true
     },
     {
       "type": 4,
       "name": "page",
-      "description": "Page of recipes in a category",
+      "description": "Page of the category (10 recipes per page)",
       "required": false,
       "min_value": 1,
       "max_value": 1000
@@ -943,7 +950,7 @@
           "value": "view"
         },
         {
-          "name": "Share a Crop",
+          "name": "Share a Pumpkin (+25 Nutrition, +10 Social)",
           "value": "share"
         }
       ]
@@ -953,7 +960,7 @@
     {
       "type": 3,
       "name": "food",
-      "description": "Owned food and quantity; leave blank to view your food menu",
+      "description": "Owned food, strongest first, with its exact effect; blank = food menu",
       "required": false,
       "autocomplete": true
     }
@@ -967,72 +974,64 @@
       "required": false,
       "choices": [
         {
-          "name": "Food (28)",
-          "value": "food"
+          "name": "🧱 Materials & Ores (57)",
+          "value": "materials"
         },
         {
-          "name": "Drinks & Water (7)",
-          "value": "drinks"
-        },
-        {
-          "name": "Seeds & Saplings (7)",
-          "value": "seeds"
-        },
-        {
-          "name": "Raw Materials & Ores (25)",
-          "value": "raw"
-        },
-        {
-          "name": "Processed Materials (32)",
-          "value": "processed"
-        },
-        {
-          "name": "Components (80)",
+          "name": "⚙️ Components (80)",
           "value": "parts"
         },
         {
-          "name": "Medicine & Clinic Supplies (43)",
+          "name": "🍲 Food & Drink (35)",
+          "value": "food"
+        },
+        {
+          "name": "💊 Medicine & Clinic (43)",
           "value": "medicine"
         },
         {
-          "name": "Clothing & Accessories (66)",
-          "value": "clothing"
+          "name": "🌱 Seeds & Farming (7)",
+          "value": "seeds"
         },
         {
-          "name": "Machines & Workstations (38)",
+          "name": "🧰 Tools & Equipment (4)",
+          "value": "equipment"
+        },
+        {
+          "name": "🏭 Machines & Workstations (38)",
           "value": "machines"
         },
         {
-          "name": "Storage & Shelves (58)",
-          "value": "storage"
-        },
-        {
-          "name": "Chairs, Sofas & Benches (50)",
-          "value": "seating"
-        },
-        {
-          "name": "Beds & Camping (20)",
-          "value": "beds"
-        },
-        {
-          "name": "Bathroom & Washing (26)",
-          "value": "bathroom"
-        },
-        {
-          "name": "Tables & Counters (40)",
-          "value": "tables"
-        },
-        {
-          "name": "Decor, Lighting & Recreation (97)",
-          "value": "decor"
-        },
-        {
-          "name": "Building Parts (30)",
+          "name": "🏗️ Building Parts (30)",
           "value": "building"
         },
         {
-          "name": "Tools & Logistics (4)",
-          "value": "tools"
+          "name": "🛏️ Beds & Camping (20)",
+          "value": "beds"
+        },
+        {
+          "name": "🪑 Chairs & Sofas (50)",
+          "value": "seating"
+        },
+        {
+          "name": "🛁 Bathroom & Washing (26)",
+          "value": "bathroom"
+        },
+        {
+          "name": "👕 Clothing (66)",
+          "value": "clothing"
+        },
+        {
+          "name": "📦 Storage & Shelves (58)",
+          "value": "storage"
+        },
+        {
+          "name": "🍽️ Tables & Counters (40)",
+          "value": "tables"
+        },
+        {
+          "name": "🖼️ Decor & Recreation (97)",
+          "value": "decor"
         }
       ]
     },
@@ -1155,23 +1154,23 @@
     {
       "type": 3,
       "name": "action",
-      "description": "Choose work; listed yields are per success and Energy is spent per attempt",
+      "description": "Choose work: yield per success · Energy and Comfort spent per attempt",
       "required": false,
       "choices": [
         {
-          "name": "Tend Fields: 1 Crop + Pumpkin Seed · 2 Energy",
+          "name": "Tend Fields: 1 Pumpkin + 1 Pumpkin Seeds · 2 Energy, 4 Comfort",
           "value": "tend"
         },
         {
-          "name": "Harvest Crops: 2 Crops + Pumpkin + Seed · 3 Energy",
+          "name": "Harvest Pumpkins: 3 Pumpkin + 1 Pumpkin Seeds · 3 Energy, 6 Comfort",
           "value": "harvest"
         },
         {
-          "name": "Irrigate: 3 Crops + reclaimed Murky Water · 4 Energy",
+          "name": "Irrigate: 3 Pumpkin + 1 Murky Water (1000ml) · 4 Energy, 8 Comfort",
           "value": "irrigate"
         },
         {
-          "name": "Hydroponics: 4 Crops + Raw Algae · 5 Energy (Filter)",
+          "name": "Hydroponics: 4 Pumpkin + 1 Raw Algae · 5 Energy, 10 Comfort · needs Small Water Filter",
           "value": "hydroponics"
         }
       ]
@@ -1182,7 +1181,7 @@
     {
       "type": 3,
       "name": "ore",
-      "description": "Ore or Coal to mine; select View Requirements before starting",
+      "description": "Ore or Coal (shows owned, costs and locks); View Requirements spends nothing",
       "required": false,
       "autocomplete": true
     },
@@ -1216,15 +1215,15 @@
     {
       "type": 3,
       "name": "operation",
-      "description": "Choose work; listed yields are per success and Energy is spent per attempt",
+      "description": "Choose work: yield per success · Energy and Comfort spent per attempt",
       "required": false,
       "choices": [
         {
-          "name": "Standard: 1 Stone sample · 2 Energy",
+          "name": "Standard Research: 1 Stone · 2 Energy, 4 Comfort",
           "value": "standard"
         },
         {
-          "name": "Field Analysis: 2 Stone + Herbs · 4 Energy (Sampler)",
+          "name": "Field Analysis: 2 Stone + 1 Herbs · 4 Energy, 8 Comfort · needs Siro Sampler",
           "value": "field_analysis"
         }
       ]
@@ -1250,7 +1249,7 @@
     {
       "type": 3,
       "name": "item",
-      "description": "Owned gear key when target is Personal Quality Gear",
+      "description": "Owned gear (Personal Quality Gear): condition and Iron Nails needed",
       "required": false,
       "autocomplete": true
     }
@@ -1268,7 +1267,7 @@
           "value": "view"
         },
         {
-          "name": "Send Delivery",
+          "name": "Send Delivery (uses 1 Cargo on success)",
           "value": "send"
         }
       ]
@@ -1278,15 +1277,15 @@
     {
       "type": 3,
       "name": "operation",
-      "description": "Choose work; listed yields are per success and Energy is spent per attempt",
+      "description": "Choose work: yield per success · Energy and Comfort spent per attempt",
       "required": false,
       "choices": [
         {
-          "name": "Standard: 1 Cargo + Lumber · 2 Energy",
+          "name": "Standard: 1 Cargo + 1 Lumber · 2 Energy, 4 Comfort",
           "value": "standard"
         },
         {
-          "name": "Expedite: 2 Cargo + 2 Lumber · 4 Energy (-1 Cell)",
+          "name": "Expedite: 2 Cargo + 2 Lumber · 4 Energy, 8 Comfort · uses 1 Power Cell",
           "value": "expedite"
         }
       ]
@@ -1296,15 +1295,15 @@
     {
       "type": 3,
       "name": "operation",
-      "description": "Choose work; listed yields are per success and Energy is spent per attempt",
+      "description": "Choose work: yield per success · Energy and Comfort spent per attempt",
       "required": false,
       "choices": [
         {
-          "name": "Scout: Stone + Berries · 3 Energy",
+          "name": "Scout: 1 Stone + 1 Berries · 3 Energy, 6 Comfort",
           "value": "scout"
         },
         {
-          "name": "Survey: 2 Stone + Clay + Coal · 5 Energy (Sensor)",
+          "name": "Survey: 2 Stone + 1 Clay + 1 Coal · 5 Energy, 10 Comfort · needs Resource Scanner",
           "value": "survey"
         }
       ]
@@ -1314,23 +1313,23 @@
     {
       "type": 3,
       "name": "action",
-      "description": "Choose work; listed yields are per success and Energy is spent per attempt",
+      "description": "Choose work: yield per success · Energy and Comfort spent per attempt",
       "required": false,
       "choices": [
         {
-          "name": "View Prices",
+          "name": "View Prices (spends nothing)",
           "value": "view"
         },
         {
-          "name": "Sell Resources",
+          "name": "Sell Resources (choose Resource + Amount)",
           "value": "sell"
         },
         {
-          "name": "Commerce: 1 Cargo · 2 Energy",
+          "name": "Commerce: 1 Cargo · 2 Energy, 4 Comfort",
           "value": "work"
         },
         {
-          "name": "Analyze: 2 Cargo + Lumber · 4 Energy (Analyzer)",
+          "name": "Analyze: 2 Cargo + 1 Lumber · 4 Energy, 8 Comfort · needs Market Analyzer",
           "value": "analyze"
         }
       ]
@@ -1342,7 +1341,7 @@
       "required": false,
       "choices": [
         {
-          "name": "Crops",
+          "name": "Pumpkin",
           "value": "crops"
         },
         {
@@ -1354,7 +1353,7 @@
           "value": "rare_ore"
         },
         {
-          "name": "Components",
+          "name": "Iron Nails",
           "value": "components"
         },
         {
@@ -1416,7 +1415,7 @@
     {
       "type": 3,
       "name": "task",
-      "description": "Choose Skill first; shows required and owned materials",
+      "description": "Choose Skill first; each task shows status, owned/needed items and output",
       "required": false,
       "autocomplete": true
     }
@@ -1430,72 +1429,64 @@
       "required": false,
       "choices": [
         {
-          "name": "Food (28)",
-          "value": "food"
+          "name": "🧱 Materials & Ores (57)",
+          "value": "materials"
         },
         {
-          "name": "Drinks & Water (7)",
-          "value": "drinks"
-        },
-        {
-          "name": "Seeds & Saplings (7)",
-          "value": "seeds"
-        },
-        {
-          "name": "Raw Materials & Ores (25)",
-          "value": "raw"
-        },
-        {
-          "name": "Processed Materials (32)",
-          "value": "processed"
-        },
-        {
-          "name": "Components (80)",
+          "name": "⚙️ Components (80)",
           "value": "parts"
         },
         {
-          "name": "Medicine & Clinic Supplies (43)",
+          "name": "🍲 Food & Drink (35)",
+          "value": "food"
+        },
+        {
+          "name": "💊 Medicine & Clinic (43)",
           "value": "medicine"
         },
         {
-          "name": "Clothing & Accessories (66)",
-          "value": "clothing"
+          "name": "🌱 Seeds & Farming (7)",
+          "value": "seeds"
         },
         {
-          "name": "Machines & Workstations (38)",
+          "name": "🧰 Tools & Equipment (4)",
+          "value": "equipment"
+        },
+        {
+          "name": "🏭 Machines & Workstations (38)",
           "value": "machines"
         },
         {
-          "name": "Storage & Shelves (58)",
-          "value": "storage"
-        },
-        {
-          "name": "Chairs, Sofas & Benches (50)",
-          "value": "seating"
-        },
-        {
-          "name": "Beds & Camping (20)",
-          "value": "beds"
-        },
-        {
-          "name": "Bathroom & Washing (26)",
-          "value": "bathroom"
-        },
-        {
-          "name": "Tables & Counters (40)",
-          "value": "tables"
-        },
-        {
-          "name": "Decor, Lighting & Recreation (97)",
-          "value": "decor"
-        },
-        {
-          "name": "Building Parts (30)",
+          "name": "🏗️ Building Parts (30)",
           "value": "building"
         },
         {
-          "name": "Tools & Logistics (4)",
-          "value": "tools"
+          "name": "🛏️ Beds & Camping (20)",
+          "value": "beds"
+        },
+        {
+          "name": "🪑 Chairs & Sofas (50)",
+          "value": "seating"
+        },
+        {
+          "name": "🛁 Bathroom & Washing (26)",
+          "value": "bathroom"
+        },
+        {
+          "name": "👕 Clothing (66)",
+          "value": "clothing"
+        },
+        {
+          "name": "📦 Storage & Shelves (58)",
+          "value": "storage"
+        },
+        {
+          "name": "🍽️ Tables & Counters (40)",
+          "value": "tables"
+        },
+        {
+          "name": "🖼️ Decor & Recreation (97)",
+          "value": "decor"
         }
       ]
     },
@@ -1558,7 +1549,7 @@
     {
       "type": 3,
       "name": "station",
-      "description": "Specific workstation; shows tier and one-time fee",
+      "description": "Workstation: ✅ ready · 🔑 one-time fee · 🔒 tier lock",
       "required": false,
       "autocomplete": true
     },
@@ -1595,7 +1586,7 @@
     {
       "type": 3,
       "name": "task",
-      "description": "One task type, resource or recipe for the entire queue",
+      "description": "One task, resource or recipe for the whole queue (type to search)",
       "required": false,
       "autocomplete": true
     },

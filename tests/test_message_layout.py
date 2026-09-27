@@ -49,14 +49,14 @@ Stone Dust ×1, Aurite Ore ×3
 
 TOTAL ITEMS USED
 None
-For 1 remaining attempt: up to 3 Energy, 1 Nutrition and 1 Comfort.
-To finish without recovery, start with at least 20 Energy, 20 Nutrition and 20 Social.
+For 1 remaining attempt: up to 3 Energy, 1 Nutrition and 6 Comfort (−3 Energy, −1 Nutrition, −6 Comfort each).
+To finish without recovery, start with at least 20 Energy, 20 Nutrition, 20 Social and 10 Comfort.
 Current needs: Energy 88/100; Nutrition 95/100; Social 100/100; Comfort 96/100.
 '''
     result = m._discord_json_message(text, message_type='queue')['data']
     card = result['embeds'][0]
     rendered = json.dumps(card, ensure_ascii=False)
-    for value in ('9/10', 'failed: 1', 'Stone Dust ×1', 'Aurite Ore ×3', 'Energy 88/20'):
+    for value in ('9/10', 'failed: 1', 'Stone Dust ×1', 'Aurite Ore ×3', 'Energy 88/20', 'Comfort 96/10'):
         assert value in rendered
     assert 'TOTAL ITEMS USED' not in rendered
     assert card['footer']['text']=="New Eridian v2 • May Rocky's wisdom guide you."

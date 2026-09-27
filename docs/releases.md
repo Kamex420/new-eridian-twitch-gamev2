@@ -1,5 +1,27 @@
 # Release notes
 
+## Workbench, Comfort and catalog-only items
+
+### Crafting through the Workbench
+
+`/make` (and `!make` on Twitch) opens a Workbench with fifteen categories shared with `/catalog` and `/use`. Each category lists recipes from easiest to most complex: the personal tier the whole ingredient chain needs, then skill level, then crafting steps from raw materials. A recipe preview shows owned/needed ingredients and where to get each one, the batch size, workstation, tier, skill, needs cost and cooldown before anything is spent.
+
+In Discord the Workbench is a set of dropdowns and buttons: pick a category, page through it, filter by workstation, open a recipe, then Unlock its workstation, Craft 1 batch or queue 1–10 batches. Queues show their totals first and start only when Start is pressed. `/mine`, `/gather` and `/queue` gained the same buttons. Spending buttons are single-use tickets: double clicks, retries and old messages cannot spend twice, and only the citizen who opened a panel can use it.
+
+Every dropdown label follows one pattern: status (✅ ready, ❌ missing, 🔑 workstation fee, 🔒 locked), name and amount, then the cost or blocker. Work options show yield per success plus Energy and Comfort per attempt; the queue list shows common ores before rare ones and marks locked rare ores.
+
+### Comfort and sleep
+
+Every task costs twice as much Comfort as Energy (a standard task: 2 Energy, 1 Nutrition, 4 Comfort). Below 20 Comfort, work has −10% success and costs 1 Morale per task; below 10 it stops. Sleep still restores Energy and Comfort to 100, but only once every 30 minutes (`SLEEP_COOLDOWN_MINUTES`). Between sleeps, Comfort comes from `/relax`, owned beds, seats, baths and clothing through `/use`, and the Habitat Comfort Pack.
+
+### Catalog items everywhere
+
+All legacy items now resolve to SEED catalog items, and duplicate stock is merged one-for-one into a single balance: Crops = Pumpkin, Components = Iron Nails, plus Biofiber, Alloy Plate, Sealant, Precision Lens, Ration, Water Filter, Sensor, Crate and the training products (see the [gameplay reference](gameplay.md#catalog-items-replace-legacy-items)). Old names still work as command input. Legacy recipes open the matching catalog recipe with its workstation, tier and skill gates. Specialist quality gear remains an upgrade system; its crafting and repair ingredients are catalog items. Farming, markets, orders, meals, repairs and Habitat upgrades use the same catalog stock. Because Iron Nails are crafted 15 per batch, Nails costs are five times the old Component amounts (Habitat upgrades, gear repair) and Nails sell at the catalog price.
+
+### Deployment
+
+Re-register Discord commands after deploying (`python -m scripts.register_discord_commands`): option descriptions and choices changed, and `/make` has new Action, Count and Workstation options. The additive `ui_tickets_v1` table is created automatically. The current option contract is regenerated in `tests/contracts/discord_options.json`.
+
 ## Discord mining acknowledgement
 
 `/mine` and `/queue` acknowledge the interaction before running database work. A background thread executes the command and edits the original private response. Delivery retries never rerun the command. Original-channel completion mentions are unchanged. Other synchronous command handlers run in a thread pool so they do not block the ASGI event loop.

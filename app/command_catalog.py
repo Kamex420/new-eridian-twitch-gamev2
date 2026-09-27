@@ -1,5 +1,13 @@
 
-"""Shared Discord command catalog: registration and runtime validation use this file."""
+"""Shared Discord command catalog: registration and runtime validation use this file.
+
+Dropdown labels follow one pattern everywhere: what you get, what it costs in
+needs, and what it requires. Work labels are generated from the same yield and
+need tables the game uses, so a label can never disagree with the result.
+"""
+from . import task_yields as _yields
+from .needs import SLEEP_COOLDOWN_SECONDS as _SLEEP, duration_text as _duration
+W=_yields.choice_name
 
 def cmd(name, description, options=None):
     d = {"name": name, "description": description}
@@ -114,17 +122,20 @@ commands = [
         "type":STRING,"name":"name","description":"Business name (only used when starting)","required":False
     }]),
 
-    cmd("make","Build through one clear production tree, from raw inputs to final products",[{
-        "type":STRING,"name":"category","description":"Production stage or complete item tree","required":False,
-        "choices":[
-            {"name":"Production Tree","value":"tree"},
-            {"name":"Raw Materials","value":"raw_materials"},
-            {"name":"Basic Components","value":"basic_components"},
-            {"name":"Advanced Components","value":"advanced_components"},
-            {"name":"Final Products","value":"final_products"}
-        ]
+    cmd("make","Workbench: pick a category, then a recipe (easiest first); preview, craft or queue it",[{
+        "type":STRING,"name":"category","description":"Recipe category; lists run from easiest to most complex","required":False,
+        "choices":[]
     },{
-        "type":STRING,"name":"recipe","description":"Select a recipe by display name","required":False,"autocomplete":True
+        "type":STRING,"name":"recipe","description":"Recipe (✅ ready ❌ missing 🔑 unlock 🔒 locked); shows a preview first","required":False,"autocomplete":True
+    },{
+        "type":STRING,"name":"action","description":"What to do with the selected recipe (default: Preview)","required":False,
+        "choices":[{"name":"Preview requirements (spends nothing)","value":"preview"},{"name":"Craft 1 batch now","value":"craft"},{"name":"Queue batches (set Count)","value":"queue"}]
+    },{
+        "type":4,"name":"count","description":"Batches to queue, 1–10 (Queue only)","required":False,"min_value":1,"max_value":10
+    },{
+        "type":STRING,"name":"station","description":"Optional: only show recipes for one workstation","required":False,"autocomplete":True
+    },{
+        "type":4,"name":"page","description":"Page of the category (10 recipes per page)","required":False,"min_value":1,"max_value":1000
     }]),
 
     cmd("seedindustries","Browse or trade fixed-price materials with Seed Industries",[
@@ -208,8 +219,8 @@ commands = [
             {"name":"Trading","value":"trading"},{"name":"Scanning","value":"scanning"}
         ]
     }]),
-    cmd("meal","Contribute 1 Crop to the community meal"),
-    cmd("eat","Eat a Crop or Ration to restore Nutrition"),
+    cmd("meal","Contribute 1 Pumpkin to the community meal"),
+    cmd("eat","Eat food to restore Nutrition"),
     cmd("sleep","Rest to restore Energy and reduce Siro exposure"),
     cmd("use","Use a crafted life item",[{
         "type":STRING,"name":"item","description":"Life item","required":True,
@@ -240,37 +251,37 @@ commands = [
     cmd("modlog","View moderator event-control records (moderators only)"),
 
     # Clear work actions. Redundant legacy Discord commands are intentionally omitted.
-    cmd("farm","Farming hub: tend, harvest, or use Water Filter hydroponics",[
+    cmd("farm","Farming hub: tend, harvest, irrigate, or run hydroponics with a Small Water Filter",[
         {"type":STRING,"name":"action","description":"Farming activity","required":False,
-         "choices":[{"name":"Tend Fields: 1 Crop + Pumpkin Seed · 2 Energy","value":"tend"},{"name":"Harvest Crops: 2 Crops + Pumpkin + Seed · 3 Energy","value":"harvest"},{"name":"Irrigate: 3 Crops + reclaimed Murky Water · 4 Energy","value":"irrigate"},{"name":"Hydroponics: 4 Crops + Raw Algae · 5 Energy (Filter)","value":"hydroponics"}]}
+         "choices":[{"name":W("Tend Fields","farm"),"value":"tend"},{"name":W("Harvest Pumpkins","harvest"),"value":"harvest"},{"name":W("Irrigate","water"),"value":"irrigate"},{"name":W("Hydroponics","water","hydroponics","needs Small Water Filter"),"value":"hydroponics"}]}
     ]),
     cmd("scan","Environmental survey that supports society Knowledge"),
     cmd("mine","Standard Extraction work that gives personal Hematite Ore"),
     cmd("rare","Prospect Argentite: Harvesting Lv3, three actions per ore, 20-second cooldown"),
     cmd("research","Research or use a Siro Sampler for advanced field analysis",[
         {"type":STRING,"name":"operation","description":"Research operation","required":False,
-         "choices":[{"name":"Standard: 1 Stone sample · 2 Energy","value":"standard"},{"name":"Field Analysis: 2 Stone + Herbs · 4 Energy (Sampler)","value":"field_analysis"}]}
+         "choices":[{"name":W("Standard Research","research"),"value":"standard"},{"name":W("Field Analysis","research","field_analysis","needs Siro Sampler"),"value":"field_analysis"}]}
     ]),
     cmd("repair","Repair society infrastructure or personal quality gear",[
         {"type":STRING,"name":"target","description":"What needs repair?","required":False,
          "choices":[{"name":"Society Infrastructure","value":"society"},{"name":"Personal Quality Gear","value":"gear"}]},
-        {"type":STRING,"name":"item","description":"Owned gear key when target is Personal Quality Gear","required":False,"autocomplete":True}
+        {"type":STRING,"name":"item","description":"Owned gear (Personal Quality Gear): condition and Iron Nails needed","required":False,"autocomplete":True}
     ]),
     cmd("cargo","Prepare 1 personal Cargo"),
     cmd("delivery","Consume 1 Cargo for Logistics work and fleet progress"),
     cmd("spaceport","Standard logistics or a Power Cell expedition",[
         {"type":STRING,"name":"operation","description":"Spaceport operation","required":False,
-         "choices":[{"name":"Standard: 1 Cargo + Lumber · 2 Energy","value":"standard"},{"name":"Expedite: 2 Cargo + 2 Lumber · 4 Energy (-1 Cell)","value":"expedite"}]}
+         "choices":[{"name":W("Standard","spaceport"),"value":"standard"},{"name":W("Expedite","spaceport","expedite","uses 1 Power Cell"),"value":"expedite"}]}
     ]),
-    cmd("explore","Scout or use a Sensor for an advanced survey",[
+    cmd("explore","Scout, or run an Advanced Survey with a Resource Scanner",[
         {"type":STRING,"name":"operation","description":"Frontier operation","required":False,
-         "choices":[{"name":"Scout: Stone + Berries · 3 Energy","value":"scout"},{"name":"Survey: 2 Stone + Clay + Coal · 5 Energy (Sensor)","value":"survey"}]}
+         "choices":[{"name":W("Scout","explore"),"value":"scout"},{"name":W("Survey","survey","","needs Resource Scanner"),"value":"survey"}]}
     ]),
     cmd("market","Market hub: prices, selling, work, or Market Analyzer activity",[
         {"type":STRING,"name":"action","description":"Market action","required":False,
-         "choices":[{"name":"View Prices","value":"view"},{"name":"Sell Resources","value":"sell"},{"name":"Commerce: 1 Cargo · 2 Energy","value":"work"},{"name":"Analyze: 2 Cargo + Lumber · 4 Energy (Analyzer)","value":"analyze"}]},
+         "choices":[{"name":"View Prices (spends nothing)","value":"view"},{"name":"Sell Resources (choose Resource + Amount)","value":"sell"},{"name":W("Commerce","market"),"value":"work"},{"name":W("Analyze","market","analyze","needs Market Analyzer"),"value":"analyze"}]},
         {"type":STRING,"name":"resource","description":"Resource to sell","required":False,
-         "choices":[{"name":"Crops","value":"crops"},{"name":"Hematite Ore","value":"ore"},{"name":"Argentite Ore","value":"rare_ore"},{"name":"Components","value":"components"},{"name":"Cargo","value":"cargo"}]},
+         "choices":[{"name":"Pumpkin","value":"crops"},{"name":"Hematite Ore","value":"ore"},{"name":"Argentite Ore","value":"rare_ore"},{"name":"Iron Nails","value":"components"},{"name":"Cargo","value":"cargo"}]},
         {"type":4,"name":"amount","description":"Amount to sell (1-25)","required":False}
     ]),
 ]
@@ -283,15 +294,10 @@ for command in commands:
             option.pop("choices",None)
             option.update(autocomplete=True,description="Choose action first: trade material or today's production order")
         if command["name"]=="social" and option["name"]=="action":option["required"]=False
-        if command["name"]=="make" and option["name"]=="category":
-            order=["basic_components","advanced_components","final_products","raw_materials","tree"]
-            option["choices"].sort(key=lambda choice:order.index(choice["value"]))
-        if command["name"]=="make" and option["name"]=="recipe":
-            option["description"]="Optional: select to craft; with Production Tree, preview only"
 
 for command in commands:
-    if command["name"]=="sleep":command["description"]="Fully restore Energy and Comfort to 100; reduce Siro exposure"
-    if command["name"]=="eat":command["description"]="Eat: Crop +35 Nutrition, Ration +70; emergency recovery if starving without food"
+    if command["name"]=="sleep":command["description"]=f"Fully restore Energy and Comfort to 100 (once every {_duration(_SLEEP)}); reduce Siro exposure"
+    if command["name"]=="relax":command["description"]="Recover +25 Energy, +10 Comfort, +4–7 Morale (30s cooldown)"
     if command["name"]=="games":command["description"]="Free solo recovery: +25 Social, +4–8 Morale; no partner needed"
     if command["name"]=="use":
         command["options"][0].pop("choices",None)
@@ -302,12 +308,12 @@ for command in commands:
 for command in commands:
     if command["name"]=="eat":
         command["description"]="View your food and quantities, then choose one item to eat"
-        command["options"]=[{"type":STRING,"name":"food","description":"Owned food and quantity; leave blank to view your food menu","required":False,"autocomplete":True}]
+        command["options"]=[{"type":STRING,"name":"food","description":"Owned food, strongest first, with its exact effect; blank = food menu","required":False,"autocomplete":True}]
     if command["name"]=="use":
         command["description"]="View usable items and quantities, or choose one to consume"
         command["options"][0]["required"]=False
     if command["name"] in {"delivery","meal"}:
-        label,value=("Send Delivery","send") if command["name"]=="delivery" else ("Share a Crop","share")
+        label,value=("Send Delivery (uses 1 Cargo on success)","send") if command["name"]=="delivery" else ("Share a Pumpkin (+25 Nutrition, +10 Social)","share")
         command["options"]=[{"type":STRING,"name":"action","description":"View supplies first, or choose an action to spend the listed item","required":False,"choices":[{"name":"View Supplies","value":"view"},{"name":label,"value":value}]}]
 
 # SEED-aligned skills share one training menu; no duplicate work commands.
@@ -323,14 +329,14 @@ for command in commands:
             command['options'][0]['choices'] += [{'name':LABELS[skill]+' — '+label,'value':skill+':'+key} for key,label in paths.items()]
     if command['name']=='eventstart':
         command['options'][0]['choices'] += [{'name':'Fire Emergency','value':'fire'},{'name':'Clinic Supply Shortage','value':'clinic'}]
-    if command['name']=='farm':command['description']='Farming: tend fields, harvest Crops, or operate hydroponics'
+    if command['name']=='farm':command['description']='Farming: tend fields, harvest Pumpkins, irrigate, or run hydroponics'
     if command['name']=='mine':command['description']='Harvesting: mine Hematite Ore and shared ore'
     if command['name']=='scan':command['description']='Processing survey that supports society Knowledge'
     if command['name']=='repair':command['description']='Engineering: repair society infrastructure or personal gear'
 commands.append(cmd('training','Browse skills, branch levels, supplies and jobs; select Task to work',[
     {'type':STRING,'name':'skill','description':'Choose a main skill to view its branches and requirements','required':False,
      'choices':[{'name':LABELS[key],'value':hub} for hub,key in HUBS.items()]},
-    {'type':STRING,'name':'task','description':'Choose Skill first; shows required and owned materials','required':False,'autocomplete':True}
+    {'type':STRING,'name':'task','description':'Choose Skill first; each task shows status, owned/needed items and output','required':False,'autocomplete':True}
 ]))
 
 for command in commands:
@@ -352,7 +358,7 @@ commands.append(cmd('gather','Collect natural materials for cooking, processing 
 ]))
 
 # Shared item families: all catalog items have one category; full lists use pages.
-from .seed_content import category_choices, CATEGORIES
+from .seed_content import category_choices
 for command in commands:
     if command['name'] in {'catalog','use'}:
         command['options'].insert(0,{'type':STRING,'name':'category','description':'Choose a category; Page shows every item across numbered pages','required':False,'choices':category_choices()})
@@ -363,14 +369,13 @@ for command in commands:
             if opt['name']=='item':opt['description']='Owned item; its description shows what is consumed and what is kept'
     if command['name']=='catalog':command['description']='Browse ALL items by category and page; inspect their uses and recipes'
     if command['name']=='make':
-        for opt in command['options']:
-            if opt['name']=='category':opt['choices'] += [{'name':label,'value':'seed_'+key} for key,label in CATEGORIES.items()]
-        command['options'].append({'type':4,'name':'page','description':'Page of recipes in a category','required':False,'min_value':1,'max_value':1000})
+        from .workbench import CATEGORIES as WORKBENCH_CATEGORIES
+        next(o for o in command['options'] if o['name']=='category')['choices']=[{'name':f'{emoji} {label}','value':key} for key,emoji,label,_ in WORKBENCH_CATEGORIES]
 
 
 commands.append(cmd('workshop','View recipe tiers and unlock access to a named crafting station',[
     {'type':STRING,'name':'action','description':'View progress or purchase permanent station access','required':False,'choices':[{'name':'View Workshops','value':'view'},{'name':'Unlock Station','value':'unlock'}]},
-    {'type':STRING,'name':'station','description':'Specific workstation; shows tier and one-time fee','required':False,'autocomplete':True},
+    {'type':STRING,'name':'station','description':'Workstation: ✅ ready · 🔑 one-time fee · 🔒 tier lock','required':False,'autocomplete':True},
     {'type':4,'name':'page','description':'Page of all stations','required':False,'min_value':1,'max_value':1000}
 ]))
 for command in commands:
@@ -388,21 +393,21 @@ for command in commands:
     if command['name']=='mine':
         command['description']='Choose ore or Coal, inspect requirements, and queue up to 10 mining attempts'
         command['options']=[
-            {'type':STRING,'name':'ore','description':'Ore or Coal to mine; select View Requirements before starting','required':False,'autocomplete':True},
+            {'type':STRING,'name':'ore','description':'Ore or Coal (shows owned, costs and locks); View Requirements spends nothing','required':False,'autocomplete':True},
             {'type':STRING,'name':'action','description':'Viewing requirements spends nothing','required':False,'choices':[{'name':'View Requirements','value':'view'},{'name':'Mine','value':'mine'}]},
             {'type':4,'name':'count','description':'Attempts (1–10); rare ores need three successful prospecting attempts per ore','required':False,'min_value':1,'max_value':10}]
 commands.append(cmd('queue','View, start or cancel one task queue; maximum 10 attempts of one task type',[
     {'type':STRING,'name':'action','description':'Queue automatically pauses and resumes as requirements change','required':False,'choices':[{'name':'View','value':'view'},{'name':'Start','value':'start'},{'name':'Cancel','value':'cancel'}]},
-    {'type':STRING,'name':'task','description':'One task type, resource or recipe for the entire queue','required':False,'autocomplete':True},
+    {'type':STRING,'name':'task','description':'One task, resource or recipe for the whole queue (type to search)','required':False,'autocomplete':True},
     {'type':4,'name':'count','description':'Number of attempts, including failures; blocked attempts do not count','required':False,'min_value':1,'max_value':10}]))
 
 # Choice labels expose base yields; bonuses remain additional rewards.
 for command in commands:
     if command['name'] in {'farm','research','spaceport','explore','market'}:
-        command['options'][0]['description']='Choose work; listed yields are per success and Energy is spent per attempt'
+        command['options'][0]['description']='Choose work: yield per success · Energy and Comfort spent per attempt'
     if command['name']=='business':
         for option in command.get('options',[]):
             if option['name']=='action':
                 for choice in option.get('choices',[]):
-                    if choice['value']=='work':choice['name']='Work: 1 Cargo on success · 2 Energy'
-                    if choice['value']=='contract':choice['name']='Contract: 2 Cargo + Lumber on success · 4 Energy'
+                    if choice['value']=='work':choice['name']=W('Work','business','','business required')
+                    if choice['value']=='contract':choice['name']=W('Contract','businesscontract','','business required')

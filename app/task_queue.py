@@ -6,7 +6,7 @@ from datetime import timedelta
 from sqlalchemy import Column,String,Integer,DateTime,Text,select,text
 from .db import Base, connection_context
 from discord.ext import tasks
-from . import seed_content as s, crafting_progression as cp, task_yields, queue_notifications
+from . import seed_content as s, crafting_progression as cp, task_yields, queue_notifications, needs
 
 class TaskQueue(Base):
     """One saved task per canonical citizen and world; remaining counts attempts.
@@ -54,9 +54,8 @@ def lock_world(conn, channel):
 
 def need_reason(m, db, p):
     life = m.life_state(db, p)
-    fixes = {'energy': ('Energy', '/sleep'), 'nutrition': ('Nutrition', '/eat'), 'social': ('Social', '/games')}
-    return '\n'.join(f'{label}: {getattr(life, key)}/100; need {m.TASK_NEED_MINIMUM}. Use {command}.'
-                      for key, (label, command) in fixes.items() if getattr(life, key) < m.TASK_NEED_MINIMUM)
+    return '\n'.join(f'{label}: {value}/100; need {minimum}. Use {m.need_fix(field, "discord", db, p)}.'
+                      for field, label, value, minimum in needs.blocked_needs(life))
 
 
 def inventory_snapshot(m, db, p):
@@ -67,7 +66,8 @@ def inventory_snapshot(m, db, p):
     """
     stock = m.item_identity.stock(m, db, p)
     stock = {k: v for k, v in stock.items() if not k.startswith('prospect:')}
-    for field in m.PLAYER_MATERIAL_FIELDS - {'ore', 'rare_ore'}:
+    # Player columns that back catalog items are already in the canonical stock.
+    for field in m.PLAYER_MATERIAL_FIELDS - set(m.item_identity.FIELD_ITEMS.values()):
         stock[field] = getattr(p, field)
     for gear in db.execute(select(m.QualityGear).where(
             m.QualityGear.channel_id == p.channel_id,
@@ -121,11 +121,20 @@ def choices(m):
     result.update({f'work:{k}':m.action_display_name(k) for k in m.ACTION_SKILLS if k not in {'businessinvest','hi','hangout','mentor','duo','mine','rare','scavenge'}})
     result.update({f'work:{a}@{mode}':m.action_display_name(a,mode) for a,mode in task_yields.YIELDS if mode})
     result.update({f'make:{k}':'Make '+r['name'] for k,r in s.RECIPES.items()})
-    result.update({f'make:{k}':'Make '+m.craft_item_name(k) for k in (*m.PART_RECIPES,*m.RECIPES,*m.QUALITY_RECIPES) if k not in m.item_identity.RETIRED_RECIPES})
+    retired=m.item_identity.RETIRED_RECIPES.keys()|m.item_identity.RETIRED_GATHERED.keys()
+    result.update({f'make:{k}':'Make '+m.craft_item_name(k) for k in (*m.PART_RECIPES,*m.RECIPES,*m.QUALITY_RECIPES) if k not in retired})
     return result
 
 def normalize(m,value):
     if value in choices(m):return value
+    if value.startswith('make:'):
+        # Biofiber is now gathered Flaxa rather than crafted.
+        gathered=m.item_identity.RETIRED_GATHERED.get(value[5:].strip().casefold().replace(' ','_'))
+        if gathered:return 'gather:'+gathered
+        # Old recipe keys and item names (make:component, make:Iron Plate) resolve
+        # to the Workbench recipe they now mean.
+        found=m.workbench.resolve(m,None,None,value[5:])
+        if found is not None:return 'make:'+found.id
     if value in m.ACTION_SKILLS:return {'mine':'mine:'+m.item_identity.ALIASES['ore'],'rare':'mine:'+m.item_identity.ALIASES['rare_ore']}.get(value,'work:'+value)
     return value
 
@@ -139,29 +148,27 @@ def specification(m,task):
             if any(k in cp.RARE for k in s.RECIPES[target]['outputs']):energy=3;cooldown=20
         else:cost=m.PART_RECIPES.get(target) or m.RECIPES.get(target) or m.QUALITY_RECIPES[target]['cost']
     else:
-        if target in {'repair','project','explore','survey','machine','work'}:energy=3
+        action,mode=task_yields.split(target)
+        energy=m.task_energy(action,mode)
         if target in m.SEED_TASKS:cost=m.SEED_TASKS[target]['cost']
         elif target=='craft':cost={'ore':1}
         elif target=='delivery':cost={'cargo':1}
-    if kind=='work':
-        action,mode=task_yields.split(target)
-        cfg=task_yields.config(action,mode)
-        if cfg:energy=cfg[0]
-        if mode=='expedite':cost={'power_cell':1}
+        if mode=='expedite':cost={m.item_identity.canonical('power_cell'):1}
     return cost,energy,max(ATTEMPT_SECONDS,cooldown)
 
 def requirements(m,db,p,task,count):
     costs,energy,_=specification(m,task);life=m.life_state(db,p)
     noun='attempt' if count==1 else 'attempts'
-    lines=[f'For {count} remaining {noun}: up to {energy*count} Energy, {count} Nutrition and {count} Comfort.',
-           f'To finish without recovery, start with at least {20+energy*(count-1)} Energy, {20+count-1} Nutrition and 20 Social.',
+    need=needs.finish_forecast(energy,count)
+    lines=[f'For {count} remaining {noun}: up to {energy*count} Energy, {count} Nutrition and {needs.comfort_cost(energy)*count} Comfort ({needs.cost_text(energy,", ")} each).',
+           f'To finish without recovery, start with at least {need["energy"]} Energy, {need["nutrition"]} Nutrition, {need["social"]} Social and {need["comfort"]} Comfort.',
            f'Current needs: Energy {life.energy}/100; Nutrition {life.nutrition}/100; Social {life.social}/100; Comfort {life.comfort}/100.',
-           'Every attempt requires Energy, Nutrition and Social of at least 20. Comfort affects performance but does not block work.']
+           f'Every attempt requires Energy, Nutrition and Social of at least {needs.TASK_NEED_MINIMUM} and Comfort of at least {needs.COMFORT_BLOCK}. Comfort drains twice as fast as Energy; below {needs.COMFORT_SLOW} it also lowers success.']
     for key,n in costs.items():
         have=m.material_amount(db,p,key)
         lines.append(f'{m.resource_name(key)}: have {have}; need {n} for the next attempt (missing {max(0,n-have)}); up to {n*count} for the queue (missing {max(0,n*count-have)}). Get it: {m.material_source(key)}')
     if not costs:lines.append('Consumable materials: none required.')
-    lines.append(f'Morale may also fall by up to {count} if Comfort drops below 20; recover Comfort with /sleep.')
+    lines.append(f'Morale may also fall by up to {count} if Comfort drops below {needs.COMFORT_SLOW}; recover Comfort with {needs.COMFORT_FIXES_DISCORD}, or /sleep when it is ready.')
     kind,target=task.split(':',1)
     if kind=='make' and target in s.RECIPES:
         r=s.RECIPES[target];req=r['requirement'].get('Skill','SK_CRAFTING')
@@ -169,9 +176,12 @@ def requirements(m,db,p,task,count):
     if kind=='make' and target not in s.RECIPES:
         tag=cp.legacy_station(m,target);station=cp.STATIONS[tag]
         lines.append(f"Requires {station['name']} and tier {station['tier']}. Use /workshop for access.")
-    if kind=='work' and target=='survey':
-        have=m.material_amount(db,p,'sensor')
-        lines.append(f'Sensor: need 1, have {have}, missing {max(0,1-have)}. This equipment is kept. Get it: '+m.material_source('sensor'))
+    if kind=='work':
+        action,mode=task_yields.split(target)
+        equipment=task_yields.EQUIPMENT.get((action,mode))
+        if equipment:
+            have=m.equipment_count(db,p,equipment)
+            lines.append(f'{m.resource_name(equipment)}: need 1, have {have}, missing {max(0,1-have)}. This equipment is kept. Get it: '+m.material_source(equipment))
     if kind=='work' and target in m.SEED_TASKS:
         cfg=m.SEED_TASKS[target]
         lines.append(f"Requires {m.SKILL_LABELS[cfg['skill']]} level {cfg['unlock']}. Use /training to see the task's skill and workstation requirements.")
@@ -195,7 +205,7 @@ def status(m,db,p,row):
         text+=f'\n\nRETRY STATUS\nTemporary system error ({health.failures}/3). Retrying in about {wait}s; the interrupted attempt was not spent.'
     if row.state in {'paused','error'}:text+='\n\nPAUSE REASON\n'+row.result
     if row.remaining and row.state in ACTIVE:
-        text+='\n\n'+requirements(m,db,p,row.task,row.remaining)+'\n\nThe queue resumes automatically when needs and requirements are met. Use /sleep, /eat or /games to recover faster; /queue action:Cancel stops the remaining attempts.'
+        text+='\n\n'+requirements(m,db,p,row.task,row.remaining)+'\n\nThe queue resumes automatically when needs and requirements are met. Recover faster with /relax, /eat, /games or comfort items (/sleep when ready); /queue action:Cancel stops the remaining attempts.'
     text+='\n'+queue_notifications.delivery_status(db,row,m)
     return text
 
@@ -260,6 +270,9 @@ def run_one(m,channel,uid):
                 p=db.execute(select(m.Player).where(m.Player.channel_id==channel,m.Player.twitch_uid==uid).with_for_update()).scalar_one_or_none()
                 row=db.execute(select(TaskQueue).where(TaskQueue.channel_id==channel,TaskQueue.canonical_uid==uid).with_for_update()).scalar_one_or_none()
                 if not p or not row or row.state not in ACTIVE or m.as_utc(row.next_at)>m.now():conn.rollback();return
+                if row.task not in choices(m) and normalize(m,row.task) in choices(m):
+                    # Queues saved with a retired legacy recipe continue with its catalog recipe.
+                    row.task=normalize(m,row.task)
                 if row.task not in choices(m):
                     row.state='cancelled';row.result='This task is no longer available. Choose a new task.'
                     queue_notifications.stopped(m,db,p,row,'cancelled',row.result)
@@ -410,6 +423,7 @@ def short_status(m,channel,uid,name,provider):
         text+=totals_text(m,db,row,short=True)+' '
         if n and row.state in ACTIVE:
             life=m.life_state(db,p)
-            text+=f'Finish without recovery: Energy {20+energy*(n-1)}, Nutrition {20+n-1}, Social 20. Now: {life.energy}/{life.nutrition}/{life.social}. '
+            need=needs.finish_forecast(energy,n)
+            text+=f'Finish without recovery: Energy {need["energy"]}, Nutrition {need["nutrition"]}, Social {need["social"]}, Comfort {need["comfort"]}. Now: {life.energy}/{life.nutrition}/{life.social}/{life.comfort}. '
             if row.state=='paused':text+='Paused: '+row.result.replace('\n',' ')[:95]+'. '
         return text+'One task type; max 10. !queuecancel. /queue shows full requirements.'

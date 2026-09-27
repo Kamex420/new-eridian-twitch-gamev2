@@ -3,7 +3,8 @@
 Inventory IDs are namespaced; old materials, XP and account links are untouched.
 """
 import json, math, copy
-from . import production_balance
+from . import production_balance, station_tiers
+from .needs import cost_text as need_cost
 from pathlib import Path
 
 DATA=json.loads((Path(__file__).parent/'data/seed_catalog.json').read_text())
@@ -24,6 +25,14 @@ ACTIVE=set(GATHER)|{k for r in RECIPES.values() for k in (*r['inputs'],*r['outpu
 EDIBLE={k:v for k,v in ITEMS.items() if k in ACTIVE and v['consumable'] is not None and not v['remedy'] and not v['ailment_risk'] and v['properties'].get('Food',0)>0}
 
 def nutrition(key):return max(1,min(100,round(EDIBLE[key]['properties']['Food']*50)))
+KEY_BY_NAME={}
+for _key in sorted(ACTIVE):KEY_BY_NAME.setdefault(ITEMS[_key]['name'].casefold(),[]).append(_key)
+
+def key(name):
+    """The catalog key for a uniquely named obtainable item (for readable tables)."""
+    rows=KEY_BY_NAME.get(name.casefold(),[])
+    if len(rows)!=1:raise KeyError(f'{name!r} is not a unique obtainable catalog item')
+    return rows[0]
 def skill_name(key):return DATA['skills'].get(key,{}).get('Name','Crafting')
 def required_level(r):return max(1,1+math.ceil(r['requirement'].get('Level',0)/10))
 def station(r):
@@ -48,21 +57,45 @@ def level_for(m,db,p,skill):
     row=db.execute(m.select(m.SkillBranch).where(m.SkillBranch.channel_id==p.channel_id,m.SkillBranch.canonical_uid==p.twitch_uid,m.SkillBranch.branch==branch)).scalar_one_or_none()
     return m.lvl(row.xp if row else 0)
 
-def acquisition_routes():
-    """Pick finite dependency paths; never send players around recipe cycles."""
-    routes={key:None for key in GATHER}
-    pending=sorted(RECIPES, key=lambda key:(required_level(RECIPES[key]),key))
-    while True:
-        additions={}
-        for key in pending:
-            recipe=RECIPES[key]
-            if set(recipe['inputs']) <= routes.keys():
-                for output in recipe['outputs']:
-                    if output not in routes:additions.setdefault(output,key)
-        if not additions:return routes
-        routes.update(additions)
+def base_tier(recipe):
+    """Personal tier a recipe itself needs: its station tier or skill band."""
+    return max(min(4,required_level(RECIPES[recipe])),station_tiers.station_tier(RECIPES,recipe))
 
-ACQUISITION=acquisition_routes()
+def acquisition_routes():
+    """Pick the easiest finite route to every item; never loop around cycles.
+
+    A route is ranked by the progression it demands: the highest personal tier
+    anywhere in its chain, then the number of crafting steps, then skill level.
+    An input always ranks strictly before its output (same or lower tier and
+    fewer steps), so the chosen routes cannot form a cycle.
+    """
+    best={key:(0,0,0,'') for key in GATHER}
+    routes={key:None for key in GATHER}
+    changed=True
+    while changed:
+        changed=False
+        for rid in sorted(RECIPES):
+            recipe=RECIPES[rid]
+            if not set(recipe['inputs'])<=best.keys():continue
+            tier=max([base_tier(rid)]+[best[k][0] for k in recipe['inputs']])
+            depth=1+max([best[k][1] for k in recipe['inputs']],default=0)
+            candidate=(tier,depth,required_level(recipe),rid)
+            for output in recipe['outputs']:
+                if output in GATHER:continue
+                if output not in best or candidate<best[output]:
+                    best[output]=candidate;routes[output]=rid;changed=True
+    return routes,best
+
+ACQUISITION,_ROUTE_COST=acquisition_routes()
+ITEM_TIER={k:max(1,v[0]) for k,v in _ROUTE_COST.items()}
+ITEM_STEPS={k:v[1] for k,v in _ROUTE_COST.items()}
+
+def recipe_progress(recipe):
+    """(effective tier, steps from raw materials, skill level) for sorting and labels."""
+    r=RECIPES[recipe]
+    tier=max([base_tier(recipe)]+[ITEM_TIER[k] for k in r['inputs']])
+    steps=1+max([ITEM_STEPS[k] for k in r['inputs']],default=0)
+    return tier,steps,required_level(r)
 
 def source_hint(key,provider='discord'):
     if key in GATHER:
@@ -76,7 +109,7 @@ def source_hint(key,provider='discord'):
     command=f'/make recipe:{rid}' if provider=='discord' else f'!make {rid}'
     inputs=', '.join(f'{item_label(k)} ×{n}' for k,n in r['inputs'].items()) or 'no ingredients'
     from . import crafting_progression as cp
-    return f"{command} → {r['outputs'][key]} per base batch (workstation upgrades can increase output); {inputs}; Tier {cp.recipe_tier(rid)}, {station(r)}, {skill_name(r['requirement'].get('Skill'))} Lv.{required_level(r)}. /workshop shows unlocks."
+    return f"{command} → {r['outputs'][key]}+ per batch from {inputs} · {station(r)} (Tier {cp.recipe_tier(rid)}) · {skill_name(r['requirement'].get('Skill'))} Lv.{required_level(r)}."
 
 def acquisition_plan(key,amount=1):
     """Gross base requirements and dependency order for a fresh batch (surplus kept)."""
@@ -108,9 +141,9 @@ def gather_menu(page=1,provider='discord'):
     for key in rows[(page-1)*size:page*size]:
         lines.append(f"• {item_label(key)} ×{GATHER[key]['amount']}"+(f' ({key})' if provider!='discord' else ''))
     lines += (['Select Resource and type its name. Change Page to see every resource.',
-               'Costs: 2 Energy, 1 Nutrition, 1 Comfort; work needs and cooldown apply.',
+               f'Costs per gather: {need_cost(2,", ")}; work needs and the 5-second cooldown apply.',
                'Old material names use the same stock as their catalog replacements. /catalog Item shows the exact ingredient.']
-              if provider=='discord' else [f'!gather <id> collects; !gatherpage {min(page+1,pages)} next. Costs 2 Energy/1 Nutrition/1 Comfort.'])
+              if provider=='discord' else [f'!gather <id> collects; !gatherpage {min(page+1,pages)} next. Costs {need_cost(2,"/","")}.'])
     return '\n'.join(lines)
 
 def preview(m,db,p,key):
@@ -140,7 +173,7 @@ def craft(m,db,p,key,provider):
     missing=m.craft_missing_materials(db,p,r['inputs'])
     if missing:
         hints=[f'• {item_label(k)}: {source_hint(k,provider)}' for k,n in r['inputs'].items() if m.material_amount(db,p,k)<n]
-        return '🛑 Materials needed\n'+ '\n'.join('• '+s for s in missing)+'\nHOW TO GET THEM\n'+'\n'.join(hints)
+        return '🛑 Materials needed — nothing spent\n'+ '\n'.join('• '+s for s in missing)+'\nHOW TO GET THEM\n'+'\n'.join(hints)
     wait=m.check_cooldown(db,p,'seed_work')
     if wait:return f'⏳ The workshop will be ready in {wait}s. Nothing spent.'
     mining_detail=''
@@ -167,7 +200,7 @@ def craft(m,db,p,key,provider):
     p.actions+=1;p.successes+=1;m.craft_record(db,p,key);db.commit()
     return ('✅ CRAFTING COMPLETE\n\nOUTPUT\n'+ '\n'.join(f"• {item_label(k)} ×{v}" for k,v in outputs.items())+
       '\n\nUSED\n'+(m.requirement_text(r['inputs']) or 'No ingredients')+'\n\nPRACTICE\n'+', '.join(xp)+
-      '\n\nWorkshop: '+(cp.STATIONS[chosen]['name'] if chosen else station(r))+(' · Owned workstation: +1 practice per trained skill included.' if workshop_bonus else '')+'\n−2 Energy · −1 Nutrition · −1 Comfort'+mining_detail)
+      '\n\nWorkshop: '+(cp.STATIONS[chosen]['name'] if chosen else station(r))+(' · Owned workstation: +1 practice per trained skill included.' if workshop_bonus else '')+'\n'+need_cost(2)+mining_detail)
 
 def gather(m,db,p,key,provider):
     if key not in GATHER:return '🛑 Choose a natural resource from /gather. Manufactured parts must be crafted.'
@@ -184,7 +217,7 @@ def gather(m,db,p,key,provider):
         m.determination_clear(db,p,'extraction')
     cfg=GATHER[key];m.material_change(db,p,key,cfg['amount']);xp=m.gain_skill(p,'extraction',1);m.gain_branch(db,p,cfg['branch'],xp)
     m.spend_life_for_action(life,'make');p.actions+=1;p.successes+=1;db.commit()
-    return f"✅ GATHERING COMPLETE\n\nOUTPUT\n• {ITEMS[key]['name']} ×{cfg['amount']}\n\nPRACTICE\n+{xp} Harvesting and {cfg['branch'].replace('_',' ').title()} XP\n−2 Energy · −1 Nutrition · −1 Comfort"+detail
+    return f"✅ GATHERING COMPLETE\n\nOUTPUT\n• {ITEMS[key]['name']} ×{cfg['amount']}\n\nPRACTICE\n+{xp} Harvesting and {cfg['branch'].replace('_',' ').title()} XP\n"+need_cost(2)+detail
 
 # New Eridian adaptations: one primary category per obtainable item.
 CATEGORIES={
@@ -224,6 +257,59 @@ def category_of(key):
 CATEGORY={k:category_of(k) for k in ACTIVE}
 BATCH_CATEGORIES={k:('processed' if ITEMS[k]['source'].startswith('GMT_MATERIAL_') else CATEGORY[k]) for k in ACTIVE}
 BATCH_DEMAND=production_balance.apply_batches(RECIPES,BATCH_CATEGORIES)
+
+# Player-facing groups shared by /make, /catalog and /use. Catalog kinds merge:
+# raw + processed -> Materials & Ores, food + drinks -> Food & Drink, tools -> equipment.
+DISPLAY_CATEGORIES = (
+    ('materials', '🧱', 'Materials & Ores', 'Raw resources, ores, ingots, blocks, glass and chemicals.'),
+    ('parts', '⚙️', 'Components', 'Planks, plates, nails, wire, boards and other parts.'),
+    ('food', '🍲', 'Food & Drink', 'Meals, preserves, drinks and clean water. Prepared food adds Rocky\'s Favor.'),
+    ('medicine', '💊', 'Medicine & Clinic', 'Medicines and clinic supplies for shared Medicines.'),
+    ('seeds', '🌱', 'Seeds & Farming', 'Seeds for garden batches.'),
+    ('equipment', '🧰', 'Tools & Equipment', 'Tools, bonus equipment and quality gear upgrades.'),
+    ('machines', '🏭', 'Machines & Workstations', 'Owning a machine grants its workstation access.'),
+    ('building', '🏗️', 'Building Parts', 'Structural pieces that add shared Infrastructure.'),
+    ('beds', '🛏️', 'Beds & Camping', 'Rest items: +Energy and +Comfort, kept after use.'),
+    ('seating', '🪑', 'Chairs & Sofas', 'Seating: +Comfort and +Social, kept after use.'),
+    ('bathroom', '🛁', 'Bathroom & Washing', 'Washing fixtures: +Comfort and +Morale.'),
+    ('clothing', '👕', 'Clothing', 'Outfits: +Comfort and +Morale, kept after use.'),
+    ('storage', '📦', 'Storage & Shelves', 'Crates, chests and shelves for delivery packing.'),
+    ('tables', '🍽️', 'Tables & Counters', 'Tables for hosting meals: +Social and +Morale.'),
+    ('decor', '🖼️', 'Decor & Recreation', 'Lighting, art and recreation: +Morale and +Social.'),
+)
+DISPLAY_INFO = {key: (emoji, label, text) for key, emoji, label, text in DISPLAY_CATEGORIES}
+SEED_TO_DISPLAY = {'raw': 'materials', 'processed': 'materials', 'parts': 'parts', 'food': 'food',
+                     'drinks': 'food', 'medicine': 'medicine', 'seeds': 'seeds', 'tools': 'equipment',
+                     'machines': 'machines', 'building': 'building', 'beds': 'beds', 'seating': 'seating',
+                     'bathroom': 'bathroom', 'clothing': 'clothing', 'storage': 'storage', 'tables': 'tables',
+                     'decor': 'decor'}
+# Old /make and !make category names keep working.
+DISPLAY_ALIASES = {
+    'raw': 'materials', 'raw_materials': 'materials', 'materials': 'materials', 'processed': 'materials',
+    'components': 'parts', 'basic_components': 'parts', 'advanced_components': 'parts', 'basic': 'parts', 'advanced': 'parts',
+    'final_products': 'equipment', 'products': 'equipment', 'equipment': 'equipment', 'core': 'equipment', 'tools': 'equipment',
+    'gear': 'equipment', 'agriculture': 'equipment', 'extraction': 'equipment', 'fabrication': 'equipment',
+    'infrastructure': 'equipment', 'research': 'equipment', 'logistics': 'equipment', 'commerce': 'equipment',
+    'frontier': 'equipment', 'life': 'equipment', 'drinks': 'food', 'furniture': 'seating',
+    **{'seed_' + k: v for k, v in SEED_TO_DISPLAY.items()},
+    **{k: v for k, v in SEED_TO_DISPLAY.items()},
+    **{k: k for k in DISPLAY_INFO},
+}
+DISPLAY_HOME_WORDS = {'', 'home', 'tree', 'all', 'overview', 'workbench'}
+
+
+def display_category(value):
+    """Shared category key, '' for "all/overview", or None when unknown."""
+    key = str(value or '').strip().casefold().replace('-', '_').replace(' ', '_').replace('&', 'and')
+    if key in DISPLAY_HOME_WORDS:
+        return ''
+    if key in DISPLAY_ALIASES:
+        return DISPLAY_ALIASES[key]
+    by_label = {label.casefold().replace(' ', '_').replace('&', 'and'): k for k, (_, label, _) in DISPLAY_INFO.items()}
+    return by_label.get(key)
+
+DISPLAY_CATEGORY={k:SEED_TO_DISPLAY[CATEGORY[k]] for k in ACTIVE}
+
 USED_BY={k:[r for r in RECIPES if k in RECIPES[r]['inputs']] for k in ACTIVE}
 SOURCE_KEYS={v['source']:k for k,v in ITEMS.items()}
 def source_key(s):return SOURCE_KEYS[s]
@@ -272,35 +358,25 @@ def stock(m,db,p):
     return item_identity.stock(m,db,p)
 
 def category_choices():
-    return [{'name':f'{label} ({sum(v==k for v in CATEGORY.values())})','value':k} for k,label in CATEGORIES.items()]
+    return [{'name':f'{emoji} {label} ({sum(v==k for v in DISPLAY_CATEGORY.values())})','value':k} for k,emoji,label,_ in DISPLAY_CATEGORIES]
 
 def filtered_keys(category='',owned=False,inventory=None,gather_only=False):
     keys=GATHER if gather_only else ACTIVE
-    return sorted((k for k in keys if (not category or CATEGORY[k]==category) and (not owned or (inventory or {}).get(k,0)>0)),key=lambda k:(ITEMS[k]['name'].casefold(),k))
+    category=display_category(category) or ''
+    return sorted((k for k in keys if (not category or DISPLAY_CATEGORY[k]==category) and (not owned or (inventory or {}).get(k,0)>0)),key=lambda k:(ITEMS[k]['name'].casefold(),k))
 
 def recipe_category(key):return CATEGORY[next(iter(RECIPES[key]['outputs']))]
-
-def recipe_menu(m,db,p,category,page=1):
-    from . import crafting_progression as cp
-    rows=sorted((k for k in RECIPES if recipe_category(k)==category),key=lambda k:(RECIPES[k]['name'].casefold(),k))
-    count=len(rows);pages=max(1,math.ceil(count/8));page=max(1,min(int(page),pages));inv=stock(m,db,p)
-    lines=[f'🟦 {CATEGORIES[category]} Recipes · {page}/{pages}',f'{count} recipes · every recipe is included across these pages.','']
-    for key in rows[(page-1)*8:page*8]:
-        r=RECIPES[key];req=r['requirement'].get('Skill','SK_CRAFTING')
-        ready=all(inv.get(k,0)>=n for k,n in r['inputs'].items()) and level_for(m,db,p,req)>=required_level(r) and not cp.recipe_gate(m,db,p,key)
-        lines += [f"{'✅' if ready else '🔒'} {item_label(next(iter(r['outputs'])))} ×{next(iter(production_balance.current_outputs(m,db,p,key).values()))}",f"  Tier {cp.recipe_tier(key)} · {station(r)} · {skill_name(req)} Lv.{required_level(r)} · /workshop shows unlocks."]
-    lines+=['',f'Choose Recipe to craft; Page {min(page+1,pages)} for more.','Choose Production Tree and Recipe for a free cost preview.']
-    return '\n'.join(lines)
 
 # Override the first release's flat browser. Every item stays reachable via pages.
 def catalog(m,db,p,item='',page=1,owned=False,category=''):
     from . import crafting_progression as cp
-    if category and category not in CATEGORIES:return '🛑 Choose a category from the list. Nothing spent.'
+    if category and display_category(category) is None:return '🛑 Choose a category from the list. Nothing spent.'
+    category=display_category(category) or ''
     inv=stock(m,db,p)
     if item:
         if item not in ACTIVE:return '🛑 Choose an obtainable item from the catalog.'
-        if category and CATEGORY[item]!=category:return 'ℹ️ This item is in '+CATEGORIES[CATEGORY[item]]+'. Change Category to inspect it.'
-        v=ITEMS[item];lines=[f"🟦 {item_label(item)}",CATEGORIES[CATEGORY[item]],f"Owned: {inv.get(item,0)}",'', 'USE',PURPOSE[item]['label']]
+        if category and DISPLAY_CATEGORY[item]!=category:return 'ℹ️ This item is in '+DISPLAY_INFO[DISPLAY_CATEGORY[item]][1]+'. Change Category to inspect it.'
+        v=ITEMS[item];lines=[f"🟦 {item_label(item)}",DISPLAY_INFO[DISPLAY_CATEGORY[item]][1],f"Owned: {inv.get(item,0)}",'', 'USE',PURPOSE[item]['label']]
         if PURPOSE[item]['mode'] not in {'eat','ingredient','workshop'}:lines+=['Select /use Item to perform this action. Recovery caps at 100. Item uses share a 20-second cooldown. XP values are base practice; needs and jobs may modify them.']
         lines+=['','HOW TO OBTAIN',source_hint(item)]
         if item not in GATHER:
@@ -326,20 +402,26 @@ def catalog(m,db,p,item='',page=1,owned=False,category=''):
         return '\n'.join(lines)
     if not category:
         lines=['🟦 Item Categories','Choose Category to see every item in that group.','']
-        for key,label in CATEGORIES.items():lines.append(f"• {label}: {len(filtered_keys(key,owned,inv))}")
-        lines+=['','Owned filters to your inventory. Page shows the rest of a category.','/make uses the same category filters. /use shows owned usable items.']
+        for key,emoji,label,_ in DISPLAY_CATEGORIES:lines.append(f"• {emoji} {label}: {len(filtered_keys(key,owned,inv))}")
+        lines+=['','Owned filters to your inventory. Page shows the rest of a category.','/make uses the same categories (recipes easiest first). /use shows owned usable items.']
         return '\n'.join(lines)
     rows=filtered_keys(category,owned,inv);pages=max(1,math.ceil(len(rows)/12));page=max(1,min(int(page),pages))
-    lines=[f'🟦 {CATEGORIES[category]} · {page}/{pages}',f'{len(rows)} '+('owned item types' if owned else 'items total')+' · 12 per page','']
+    lines=[f'{DISPLAY_INFO[category][0]} {DISPLAY_INFO[category][1]} · {page}/{pages}',f'{len(rows)} '+('owned item types' if owned else 'items total')+' · 12 per page','']
     lines += [f"• {item_label(k)} ×{inv.get(k,0)}" for k in rows[(page-1)*12:page*12]] or ['No owned items in this category.']
     lines+=['',f'Keep Category selected; change Page (1–{pages}) to see all items.','Select Item for its use, costs and crafting ingredients.']
     return '\n'.join(lines)
 
 def choices(m,db,p,query='',gather_only=False,category='',owned=False,usable=False):
+    """Item dropdowns: name, owned count, then how to get it or what it does."""
     inv=stock(m,db,p);keys=filtered_keys(category,owned,inv,gather_only)
     if gather_only:keys=[k for k in keys if GATHER[k]['branch']!='ore_mining']
     if usable:keys=[k for k in keys if PURPOSE[k]['mode'] not in {'ingredient','workshop'}]
-    return [(f"{item_label(k)} ×{inv.get(k,0)}"+((' — '+PURPOSE[k]['label']) if usable else ''),k) for k in keys]
+    def label(k):
+        if usable:return f"{item_label(k)} ×{inv.get(k,0)} — {PURPOSE[k]['label']}"
+        if gather_only:return f"🌿 {item_label(k)} ×{inv.get(k,0)} · +{GATHER[k]['amount']} per gather · {need_cost(2,', ')}"
+        how='gather' if k in GATHER else 'craft'
+        return f"{item_label(k)} ×{inv.get(k,0)} · {DISPLAY_INFO[DISPLAY_CATEGORY[k]][1]} · {how}"
+    return [(label(k),k) for k in keys]
 
 def use_menu(m,db,p,category='',page=1):
     inv=stock(m,db,p);keys=[k for k in filtered_keys(category,True,inv) if PURPOSE[k]['mode'] not in {'ingredient','workshop'}]
@@ -387,6 +469,6 @@ def use(m,db,p,key,provider):
         if housing:changes+=['+1 housing space']
     if mode=='research':
         m.society(db,p.channel_id).knowledge+=1;xp=m.gain_skill(p,'research',1);changes += ['+1 society Knowledge',f'+{xp} Research XP']
-    if work:m.spend_life_for_action(life,'make');changes+=['−2 Energy · −1 Nutrition · −1 Comfort']
+    if work:m.spend_life_for_action(life,'make');changes+=[need_cost(2)]
     p.actions+=1;p.successes+=1;db.commit()
     return '\n'.join([f'✅ {name} — Complete','','RESULT',*['• '+x for x in changes],'','USED',m.requirement_text(cost) if cost else 'No items were consumed.',*(['The selected durable item was kept.'] if not cfg['consume'] else [])])

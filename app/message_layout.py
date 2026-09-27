@@ -74,10 +74,11 @@ def queue_card(content):
         if 'WHY\n' in reason:reason=reason.split('WHY\n',1)[1].split('\n\n',1)[0]
         field('Result' if state=='Cancelled' else 'Action needed' if state=='Stopped' else 'Paused · action needed', reason)
         if state=='Paused':card['color'] = 0xFEE75C
-    forecast = re.search(r'To finish without recovery, start with at least (\d+) Energy, (\d+) Nutrition and (\d+) Social', content)
-    current = re.search(r'Current needs: Energy (\d+)/100; Nutrition (\d+)/100; Social (\d+)/100', content)
+    forecast = re.search(r'To finish without recovery, start with at least (\d+) Energy, (\d+) Nutrition(?:,| and) (\d+) Social(?: and (\d+) Comfort)?', content)
+    current = re.search(r'Current needs: Energy (\d+)/100; Nutrition (\d+)/100; Social (\d+)/100(?:; Comfort (\d+)/100)?', content)
     if forecast and current:
-        field('Needs · current / needed to finish', ' · '.join(f'{label} {have}/{need}' for label, have, need in zip(('Energy', 'Nutrition', 'Social'), current.groups(), forecast.groups())))
+        pairs = zip(('Energy', 'Nutrition', 'Social', 'Comfort'), current.groups(), forecast.groups())
+        field('Needs · current / needed to finish', ' · '.join(f'{label} {have}/{need}' for label, have, need in pairs if have is not None and need is not None))
     missing = [x for x in lines if re.search(r'missing [1-9]', x)]
     if missing:
         field('Materials needed', '\n'.join(missing))

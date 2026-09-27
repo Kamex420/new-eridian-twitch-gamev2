@@ -1,20 +1,54 @@
 """One identity per overlapping item; old command keys remain input aliases.
 
-Quantity conversion is 1:1, independent of SC price. Hematite uses the existing
-players.ore column so old mining, trade, account merging and overlays share stock.
+Every legacy New Eridian material, tool and training product now resolves to a
+SEED catalog item. Quantity conversion is 1:1, independent of SC price, and is
+repeat-safe. Four catalog items keep using their established player columns so
+old mining, farming, trade, account merging and overlays share one stock:
+Hematite Ore (ore), Argentite Ore (rare_ore), Pumpkin (crops) and Iron Nails
+(components). Cargo stays a logistics token; it has no catalog counterpart.
 """
 from . import seed_content as s
+
+K=s.key
 ALIASES = {
+    # Earlier consolidation.
     'rare_ore':'sd_1035602738', 'ore':'sd_559614005', 'wood':'sd_1000004', 'water':'sd_817726320',
     'stone':'sd_1566791299', 'herbs':'sd_2055185252', 'planks':'sd_1000007',
     'cut_stone':'sd_2080163520', 'cloth':'sd_433254052',
     'antiseptic':'sd_98228772', 'circuit_board':'sd_3000011',
     'power_cell':'sd_733736927',
+    # Legacy raw goods and manufactured parts.
+    'crops':K('Pumpkin'), 'components':K('Iron Nails'), 'biofiber':K('Flaxa'),
+    'alloy_plate':K('Iron Plate'), 'sealant':K('Mortar'), 'precision_lens':K('Glass'),
+    # Legacy supplies and tools with a direct catalog twin.
+    'ration':K('Dried Berries'), 'water_filter':K('Small Water Filter'),
+    'sensor':K('Resource Scanner'), 'crate':K('Storage Platform'),
+    # Legacy training products.
+    'preserved_food':K('Quito Pumpkin Paste'), 'storage_jar':K('Ceramic Basin'),
+    'furniture':K('Garden Chair'), 'workwear':K('Seed Industries Long Sleeve Top'),
+    'medicine':K('Painkillers'),
 }
-FIELD_ITEMS = {ALIASES['ore']:'ore', ALIASES['rare_ore']:'rare_ore'}
-RETIRED_RECIPES = {k:s.ACQUISITION[v] for k,v in ALIASES.items() if k in {'circuit_board','power_cell'}}
+FIELD_ITEMS = {ALIASES['ore']:'ore', ALIASES['rare_ore']:'rare_ore',
+               ALIASES['crops']:'crops', ALIASES['components']:'components'}
+# Legacy recipe keys whose product is now a catalog item craft that item's
+# easiest catalog recipe, with its station, tier and skill gates.
+LEGACY_OUTPUTS = {'component':'components','biofiber':'biofiber','alloy_plate':'alloy_plate',
+                  'circuit_board':'circuit_board','power_cell':'power_cell','sealant':'sealant',
+                  'precision_lens':'precision_lens','ration':'ration','crate':'crate',
+                  'water_filter':'water_filter','sensor':'sensor'}
+RETIRED_RECIPES = {old:s.ACQUISITION[ALIASES[item]] for old,item in LEGACY_OUTPUTS.items() if s.ACQUISITION.get(ALIASES[item])}
+# Retired recipes whose product is now simply gathered (Biofiber -> Flaxa).
+RETIRED_GATHERED = {old:ALIASES[item] for old,item in LEGACY_OUTPUTS.items() if ALIASES[item] in s.GATHER}
+# Training tasks that would otherwise share a recipe get their own catalog dish.
+TRAINING_RECIPES = {'train_advanced_cooking':s.ACQUISITION[K('Forager Stew')]}
 
 def canonical(key):return ALIASES.get(key,key)
+
+def canonical_costs(costs):
+    merged={}
+    for key,qty in costs.items():
+        key=canonical(key);merged[key]=merged.get(key,0)+qty
+    return merged
 
 def migrate_player(m,db,p):
     """Caller owns commit. Lock account before merging; zero source atomically.
@@ -67,20 +101,23 @@ def configure(m):
     # The established Ore sale channel remains, backed by the same Hematite.
     m.SEED_INDUSTRIES[ALIASES['ore']].update(buy=6,sell=2)
     m.SEED_INDUSTRIES[ALIASES['rare_ore']].update(buy=24,sell=8)
+    # Training tasks read and write catalog identities only.
+    for cfg in m.SEED_TASKS.values():
+        cfg['cost']=canonical_costs(cfg['cost']);cfg['output']=canonical_costs(cfg['output'])
     # Training remains available but uses the canonical recipe's ingredients,
-    # quantities, machine, tier and skill gates when it makes a merged product.
+    # quantities, machine, tier and skill gates when it makes a manufactured item.
     m.MERGED_TRAINING={}
     for action,cfg in m.SEED_TASKS.items():
-        outputs=[canonical(k) for k in cfg['output'] if k in ALIASES and canonical(k) not in s.GATHER]
-        if outputs:
-            rid=s.ACQUISITION[outputs[0]]
-            if rid:
-                m.MERGED_TRAINING[action]=rid
-                cfg['cost']=dict(s.RECIPES[rid]['inputs']);cfg['output']=dict(s.RECIPES[rid]['outputs'])
+        outputs=[k for k in cfg['output'] if k not in s.GATHER]
+        rid=TRAINING_RECIPES.get(action) or (s.ACQUISITION.get(outputs[0]) if outputs else None)
+        if rid:
+            m.MERGED_TRAINING[action]=rid
+            cfg['cost']=dict(s.RECIPES[rid]['inputs']);cfg['output']=dict(s.RECIPES[rid]['outputs'])
 
     for cfg in m.SEED_TASKS.values():
         for key in cfg['cost']:
             key=canonical(key)
             if key in s.ACTIVE and key not in m.SEED_INDUSTRIES:
                 m.SEED_INDUSTRIES[key]={'buy':m.crafting_progression.VALUES[key],'sell':0,'category':'training','purpose':s.PURPOSE[key]['label']}
-    for old,rid in RETIRED_RECIPES.items():m.PART_RECIPES[old]=dict(s.RECIPES[rid]['inputs'])
+    for old,rid in RETIRED_RECIPES.items():
+        if old in m.PART_RECIPES:m.PART_RECIPES[old]=dict(s.RECIPES[rid]['inputs'])

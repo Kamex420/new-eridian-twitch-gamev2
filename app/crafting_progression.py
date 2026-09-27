@@ -6,38 +6,24 @@ all machines. Owning the matching machine also grants access, after tier unlock.
 import math
 from contextvars import ContextVar
 from . import seed_content as s
+from .needs import cost_text as need_cost
 
 TIERS=((1,'Starter',0),(2,'Skilled',25),(3,'Industrial',100),(4,'Advanced',250))
 FEES={1:15,2:45,3:120,4:300}
-SURVIVAL='TAG_MACHINE_SURVIVAL_WORKBENCH'
-TAG_TIERS={
- SURVIVAL:1,'TAG_MACHINE_CRAFTING_TABLE_V1':1,'TAG_MACHINE_CRAFTING_TABLE_V2':2,'TAG_MACHINE_CRAFTING_TABLE_V3':3,
- 'TAG_MACH_SIMPLE_CARPENTRY_STATION':1,'TAG_MACHINE_ADVANCED_CARPENTRY_STATION':2,
- 'TAG_MACHINE_BASIC_FURNACE':1,'TAG_MACHINE_BASIC_ANVIL':1,'TAG_MACHINE_METALWORKING_BENCH':1,
- 'TAG_MACHINE_MASONRY':1,'TAG_MACHINE_KILN':1,'TAG_MACHINE_POTTERY_STATION':1,
- 'TAG_MACHINE_FOOD_PROCESSOR':1,'TAG_MACHINE_CAMPFIRE':1,'TAG_MACHINE_STOVE':2,'TAG_MACHINE_OVEN':2,
- 'TAG_MACHINE_SEED_SEPARATOR':1,'TAG_MACH_PROD_WATER_FILTRATION_SMALL':1,'TAG_MACH_EXT_WATER':1,
- 'TAG_MACHINE_MEDICAL_FABRICATOR':1,'TAG_MACHINE_TAILORING_BENCH':2,'TAG_MACHINE_WEAVING_LOOM':1,
- 'TAG_MACHINE_CHEMISTRY_STATION':2,'TAG_MACHINE_MILLING_MACHINE':2,'TAG_MACHINE_MINERAL_SEPARATOR':2,
- 'TAG_MACHINE_METAL_LATHE':3,'TAG_MACHINE_ROLLING_MILL':3,'TAG_MACHINE_WIRE_DRAWER':2,
- 'TAG_MACHINE_TABLE_SAW':3,'TAG_MACHINE_ELECTRONICS_TABLE':3,'TAG_MACHINE_FURNACE':3,
- 'TAG_MACHINE_STONE_GRINDER':3,'TAG_MACH_PROD_WATER_FILTRATION':2,'TAG_MACHINE_EXTRACTOR':3,
- 'TAG_MACHINE_GROWBOX':4,'TAG_MACHINE_3D_PRINTER':4,'TAG_MACHINE_PLAXIN_SYNTHESIZER':4,
-}
+from .station_tiers import SURVIVAL, TAG_TIERS, OVERRIDES
 STATIONS={tag:{'name':next((s.ITEMS[k]['name'] for k in sorted(s.MACHINE_RECIPES) if tag in s.machine_tags(k)),tag.replace('TAG_MACHINE_','').replace('TAG_MACH_','').replace('_',' ').title()),
               'tier':tier,'cost':0 if tag==SURVIVAL else FEES[tier]} for tag,tier in TAG_TIERS.items()}
 STATIONS['TAG_MACHINE_EXTRACTOR']['name']='Mineral Extractor'
-# Catalog entries without machine tags get explicit appropriate workstations.
-OVERRIDES={'sr_1501328773':['TAG_MACHINE_STOVE'],'sr_1187763008':['TAG_MACHINE_CRAFTING_TABLE_V3'],
-           'sr_26415128':['TAG_MACHINE_GROWBOX']}
 
 def tags(recipe):return OVERRIDES.get(recipe, s.RECIPES[recipe]['machines'])
-def recipe_tier(recipe):return max(min(4,s.required_level(s.RECIPES[recipe])),min(STATIONS[t]['tier'] for t in tags(recipe)))
+def recipe_tier(recipe):return s.base_tier(recipe)
 def station_names(recipe):return ' or '.join(STATIONS[t]['name'] for t in tags(recipe))
 def permit_key(tag):return 'workshop:'+tag
 
 def manufactured_batches(m,db,p):
-    valid={k for k,r in s.RECIPES.items() if r['inputs']}|set(m.PART_RECIPES)|set(m.RECIPES)|set(m.QUALITY_RECIPES)
+    # Retired legacy recipes (ration, crate, sensor, ...) keep counting for the
+    # batches players already made with them.
+    valid={k for k,r in s.RECIPES.items() if r['inputs']}|set(m.PART_RECIPES)|set(m.RECIPES)|set(m.QUALITY_RECIPES)|set(m.item_identity.LEGACY_OUTPUTS)
     return sum(row.qty for row in db.execute(m.select(m.CraftLedger).where(m.CraftLedger.channel_id==p.channel_id,m.CraftLedger.canonical_uid==p.twitch_uid)).scalars() if row.recipe in valid)
 
 def personal_tier(m,db,p):
@@ -111,7 +97,7 @@ RARE_LEVEL=3
 RARE_STEPS=3
 
 def rare_hint(key):
-    return 'Harvesting Lv.3; 3 successful prospecting actions per ore; failure gives 1 Stone Dust. Each: 3 Energy, 1 Nutrition, 1 Comfort; 20s cooldown.'
+    return 'Harvesting Lv.3; 3 successful prospecting actions per ore; failure gives 1 Stone Dust. Each: '+need_cost(3,', ')+'; 20s cooldown.'
 
 STONE_DUST='sd_1903724340'
 mining_outcome=ContextVar('mining_outcome',default=None)
@@ -142,7 +128,7 @@ def mining_failure(m,db,p,provider,detail,rare=False):
     grit=m.determination_fail(db,p,'extraction');db.commit()
     return ('❌ MINING FAILED\n\nOUTPUT\n• Stone Dust ×1\nNo ore was recovered.'+
             (' Saved prospecting progress was kept.' if rare else '')+
-            f"\n−{3 if rare else 2} Energy · −1 Nutrition · −1 Comfort"+
+            "\n"+need_cost(3 if rare else 2)+
             f"\nCooldown: {20 if rare else 5} seconds. Stone Dust is a crafting ingredient."+grit+detail)
 
 def rare_gather(m,db,p,key,provider='discord',workshop_bonus=0):
@@ -165,7 +151,7 @@ def rare_gather(m,db,p,key,provider='discord',workshop_bonus=0):
     m.spend_life_for_action(life,'rare');p.actions+=1;p.successes+=int(complete);db.commit()
     return (f"{'✅ ORE RECOVERED' if complete else '⛏️ PROSPECTING'} · {s.item_label(key)}\n"
             f"Progress: {progress}/3 · {'+1 ore; progress resets.' if complete else 'No ore yet; progress saved.'}\n"
-            f'+{xp} Harvesting/Ore Mining XP · −3 Energy · −1 Nutrition · −1 Comfort · 20s cooldown'+detail)
+            f'+{xp} Harvesting/Ore Mining XP · '+need_cost(3)+' · 20s cooldown'+detail)
 
 # Price all catalog materials from existing base-resource values plus processing
 # labor. No-input extraction never makes ores free. Market buyback is applied

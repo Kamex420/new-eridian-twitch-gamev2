@@ -46,8 +46,8 @@ def test_market_covers_raw_inputs_and_every_branch_starter_with_positive_prices(
     for k,v in cp.STARTER_MARKET.items():
         assert v['buy']>0 and v['sell']==0
     for k in cp.RARE:assert cp.STARTER_MARKET[k]['buy']>=4*6
-    # Legacy stock is preserved; catalog ore buyback reflects the new economy.
-    assert {k:(m.SEED_INDUSTRIES[m.item_identity.canonical(k)]['buy'],m.SEED_INDUSTRIES[m.item_identity.canonical(k)]['sell']) for k in ('crops','ore','rare_ore','components','cargo')}=={'crops':(4,1),'ore':(6,4),'rare_ore':(24,16),'components':(10,4),'cargo':(12,5)}
+    # Legacy stock is preserved; Crops and Components now trade as Pumpkin and Iron Nails.
+    assert {k:(m.SEED_INDUSTRIES[m.item_identity.canonical(k)]['buy'],m.SEED_INDUSTRIES[m.item_identity.canonical(k)]['sell']) for k in ('crops','ore','rare_ore','components','cargo')}=={'crops':(4,2),'ore':(6,4),'rare_ore':(24,16),'components':(2,1),'cargo':(12,5)}
 
 
 @pytest.mark.parametrize('tag',sorted(cp.STATIONS))
@@ -192,14 +192,16 @@ def test_starter_routes_show_each_branch_ingredients_and_exact_total():
 def test_legacy_and_training_manufacturing_cannot_bypass_station_locks():
     with m.SessionLocal() as db:
         p=citizen(db);p.ore=100;p.sc=1000
-        m.material_change(db,p,'wood',10);db.commit()
+        m.material_change(db,p,'wood',10);m.material_change(db,p,s.key('Iron Ingot'),5);db.commit()
     blocked=m.make('test','new',recipe='alloy_plate',provider='discord').body.decode()
+    assert 'Required workstation' in blocked
+    blocked=m.make('test','new',recipe='toolkit',provider='discord').body.decode()
     assert 'Required workstation' in blocked
     blocked=m.action('train_wood_processing','test','new',provider='discord').body.decode()
     assert 'Required workstation' in blocked
     with m.SessionLocal() as db:
         p=citizen(db)
-        assert p.ore==100 and m.material_amount(db,p,'wood')==10
+        assert p.ore==100 and m.material_amount(db,p,'wood')==10 and m.material_amount(db,p,s.key('Iron Ingot'))==5
         assert db.query(m.Cooldown).count()==0
 
 
@@ -218,10 +220,12 @@ def test_new_discord_dispatch_and_market_category_filter():
 
 
 def test_every_legacy_recipe_has_a_corresponding_station():
-    for recipe in set(m.PART_RECIPES)|set(m.RECIPES)|set(m.QUALITY_RECIPES):
+    for recipe in set(m.RECIPES)|set(m.QUALITY_RECIPES):
         assert cp.legacy_station(m,recipe) in cp.STATIONS
     assert cp.legacy_station(m,'meal_kit')=='TAG_MACHINE_STOVE'
-    assert cp.legacy_station(m,'sensor')=='TAG_MACHINE_ELECTRONICS_TABLE'
+    assert cp.legacy_station(m,'spaceport_manifest')=='TAG_MACHINE_ELECTRONICS_TABLE'
+    # Retired legacy parts and tools craft their catalog twin's recipe instead.
+    assert set(m.item_identity.RETIRED_RECIPES)|set(m.item_identity.RETIRED_GATHERED)>=set(m.PART_RECIPES)
 
 
 def test_all_owned_machine_recipe_bonuses_match_real_station_tags():

@@ -42,7 +42,7 @@ def test_all_recipes_unlock_from_beginner_gathering_and_practice():
 
 def test_legacy_and_training_ingredients_are_obtainable():
     available={'crops','ore','rare_ore','cargo'}  # harvest, mine, rare, cargo
-    recipes=[(cost,{m.craft_output_key(k):1}) for k,cost in {**m.PART_RECIPES,**m.RECIPES}.items()]
+    recipes=[(cost,{k:1}) for k,cost in m.RECIPES.items()]
     recipes += [(r['cost'],{k:1}) for k,r in m.QUALITY_RECIPES.items()]
     recipes += [(r['cost'],r['output']) for r in m.SEED_TASKS.values()]
     available={m.item_identity.canonical(k) for k in available}|set(s.GATHER)
@@ -129,15 +129,14 @@ def test_gather_blocked_needs_and_invalid_input_spend_nothing():
 
 
 def test_legacy_raw_browser_and_missing_training_sources():
-    with m.SessionLocal() as db:
-        _,p=m.player(db,'test','discord','new','Citizen')
-        result=m.craft_menu(db,p,'test','discord','raw_materials').body.decode()
-        for key in m.RAW_MATERIAL_KEYS:
-            assert m.resource_name(key) in result
-            assert m.material_source(key) in result
-        assert '/gather resource:Murky Water' in m.material_source('water')
-        assert m.material_source('water','twitch').startswith('!gather sd_817726320')
-        assert '/make recipe:' in m.material_source('cloth')
+    # Old category names open the matching Workbench category.
+    result=m.make('test','new',provider='discord',category='raw_materials').body.decode()
+    assert 'MATERIALS & ORES' in result and 'Raw Iron' in result
+    for key in ('crops','ore','rare_ore','cargo','wood','water','stone','herbs'):
+        assert m.material_source(key).startswith(('/farm','/mine','/gather','/cargo')),key
+    assert '/gather resource:Murky Water' in m.material_source('water')
+    assert m.material_source('water','twitch').startswith('!gather sd_817726320')
+    assert '/make recipe:' in m.material_source('cloth')
 
 
 def test_discord_gather_pages_and_twitch_template_contracts():

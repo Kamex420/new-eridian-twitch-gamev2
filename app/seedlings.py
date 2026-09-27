@@ -5,10 +5,11 @@ from .needs import urgency, mood
 def priority(life,job,project=False,goal="settlement",preferred="games"):
     if life.nutrition<20:return "eat","Critical hunger: seek food"
     if life.energy<20:return "sleep","Critical fatigue: recover"
-    if life.comfort<20:return "sleep","Habitat discomfort: recover"
+    if life.comfort<20:return "relax","Habitat discomfort: relax or use comfort furniture"
     if life.morale<25:return "relax","Low morale: recovery before work"
     if life.social<35:return "games","Restore cooperation and social wellbeing"
-    if goal=="recovery" and min(life.energy,life.comfort)<80:return "sleep","Personal recovery goal"
+    if goal=="recovery" and life.energy<80:return "sleep","Personal recovery goal"
+    if goal=="recovery" and life.comfort<80:return "relax","Personal recovery goal"
     if job not in {"settler",""}:return occupation_task(job),"Occupation routine"
     if project:return "project","Support the colony project"
     return preferred,"Personal leisure"

@@ -1,0 +1,459 @@
+"""Discord dropdowns and buttons for the Workbench, mining, gathering and queues.
+
+Navigation (menus, pages, Back) is read-only; its state travels in the
+component's custom_id. Every button that spends something (Craft, Start queue,
+Gather, Cancel queue) carries a one-time ticket stored in the database. The
+first press claims the ticket atomically, so a double click, a Discord retry
+or an old message can never spend twice. Only the citizen who opened a panel
+can use it; anyone else is told to open their own.
+
+custom_id grammar (max 100 characters):  ne|<owner id>|<verb>|<args...>
+  wh                      Workbench overview
+  wc|<cat>|<page>|<st>    category page (st = workstation code or '')
+  wr|<id>|<cat>|<page>|<st>  recipe preview (the rest is the Back target)
+  sc                      category menu (value = category)
+  sr|<cat>|<page>|<st>    recipe menu (value = recipe id)
+  ss|<cat>                workstation filter menu (value = code or 'all')
+  qp|<task>|<count>       queue plan before starting
+  sq|<task>               queue amount menu (value = 1–10)
+  qv                      queue status
+  t|<ticket>              one-time action
+"""
+import copy
+import json
+import secrets
+from datetime import timedelta
+from sqlalchemy import Column, String, Text, DateTime, delete, update
+from .db import Base
+from . import workbench as wb, seed_content as s
+
+FOOTER = "New Eridian v2 • May Rocky's wisdom guide you."
+TICKET_HOURS = 24
+PANEL_COMMANDS = {'make', 'mine', 'gather', 'queue'}
+
+
+class UiTicket(Base):
+    __tablename__ = 'ui_tickets_v1'
+    id = Column(String(32), primary_key=True)
+    owner = Column(String(32), nullable=False)
+    action = Column(Text, nullable=False)
+    used_at = Column(DateTime(timezone=True), nullable=True)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+
+
+# ---------------------------------------------------------------- components
+
+def cid(owner, *parts):
+    value = '|'.join(['ne', str(owner), *[str(p) for p in parts]])
+    if len(value) > 100:
+        raise ValueError('custom_id too long: ' + value)
+    return value
+
+
+def button(label, custom_id, style=2, disabled=False, emoji=None):
+    row = {'type': 2, 'style': style, 'label': wb.clip(label, 80), 'custom_id': custom_id}
+    if disabled:
+        row['disabled'] = True
+    if emoji:
+        row['emoji'] = {'name': emoji}
+    return row
+
+
+def select(custom_id, placeholder, options):
+    options = options[:25]
+    return {'type': 1, 'components': [{'type': 3, 'custom_id': custom_id, 'placeholder': wb.clip(placeholder, 150),
+                                       'min_values': 1, 'max_values': 1, 'options': options}]}
+
+
+def option(label, value, description='', emoji=None, default=False):
+    row = {'label': wb.clip(label, 100), 'value': str(value)[:100]}
+    if description:
+        row['description'] = wb.clip(description, 100)
+    if emoji:
+        row['emoji'] = {'name': emoji}
+    if default:
+        row['default'] = True
+    return row
+
+
+def row(*buttons):
+    return {'type': 1, 'components': [b for b in buttons if b][:5]}
+
+
+def issue(m, owner, action):
+    """Create a one-time ticket for a spending button."""
+    token = secrets.token_hex(16)
+    with m.SessionLocal() as db:
+        db.execute(delete(UiTicket).where(UiTicket.expires_at < m.now()))
+        db.add(UiTicket(id=token, owner=str(owner), action=json.dumps(action, sort_keys=True),
+                        expires_at=m.now() + timedelta(hours=TICKET_HOURS)))
+        db.commit()
+    return token
+
+
+def claim(m, owner, token):
+    """Atomically mark a ticket used. Returns its action, or a reason string."""
+    with m.SessionLocal() as db:
+        row_ = db.get(UiTicket, token)
+        if row_ is None or m.as_utc(row_.expires_at) < m.now():
+            return None, 'This button has expired. Open the menu again for a fresh one. Nothing was spent.'
+        if row_.owner != str(owner):
+            return None, 'This menu belongs to another citizen. Open your own with the same command. Nothing was spent.'
+        result = db.execute(update(UiTicket).where(UiTicket.id == token, UiTicket.used_at.is_(None))
+                            .values(used_at=m.now()))
+        db.commit()
+        if result.rowcount != 1:
+            return None, 'That button was already used, so nothing was repeated. Use the newest buttons on the panel.'
+        return json.loads(row_.action), ''
+
+
+# ---------------------------------------------------------------- embeds
+
+def embed_from_text(m, text, command='make'):
+    text = (text or '').strip() or 'No information available.'
+    lines = text.splitlines()
+    title = lines[0].strip()
+    body = '\n'.join(lines[1:]).strip()
+    status = m.discord_message_status(text)
+    color = {'success': 0x57F287, 'failure': 0xED4245, 'cooldown': 0xFEE75C}.get(status, 0x3498DB)
+    body = m.discord_command_copy(body)
+    if len(body) > 4000:
+        body = body[:3990].rstrip() + '\n…'
+    return {'title': wb.clip(title, 256), 'description': body or '​', 'color': color, 'footer': {'text': FOOTER}}
+
+
+def message(m, text, components, command='make'):
+    rows = [c for c in components if c and c.get('components')][:5]
+    seen = set()
+    for component_row in rows:
+        for component in component_row['components']:
+            # Discord rejects a message whose components repeat a custom_id.
+            while component['custom_id'] in seen:
+                component['custom_id'] = (component['custom_id'] + '|~')[:100]
+            seen.add(component['custom_id'])
+    return {'embeds': [embed_from_text(m, text, command)], 'components': rows, 'allowed_mentions': {'parse': []}}
+
+
+# ---------------------------------------------------------------- workbench views
+
+def _code(station):
+    code = wb.station_code(station) if station else -1
+    return '' if code < 0 else str(code)
+
+
+def category_menu(m, ctx, owner, current=''):
+    counts = wb.category_counts(ctx)
+    options = []
+    for key, emoji, label, text in wb.CATEGORIES:
+        total, ready, lowest = counts.get(key, (0, 0, 1))
+        options.append(option(label, key, f'{ready} ready of {total} · from Tier {lowest} · {text}', emoji, key == current))
+    return select(cid(owner, 'sc'), 'Choose a category (recipes listed easiest first)', options)
+
+
+def home_components(m, ctx, owner):
+    return [category_menu(m, ctx, owner)]
+
+
+def category_components(m, ctx, owner, category, page, station=''):
+    rows = wb.in_category(m, category, station)
+    page, pages, start, end = wb.page_bounds(len(rows), page)
+    st = _code(station)
+    components = []
+    shown = rows[start:end]
+    if shown:
+        components.append(select(cid(owner, 'sr', category, page, st), f'Choose a recipe to preview (page {page}/{pages})',
+                                 [option(f'{e.name} ×{ctx.batch_size(e)}', e.id, wb.option_description(ctx, e), ctx.status(e).emoji)
+                                  for e in shown]))
+    components.append(category_menu(m, ctx, owner, category))
+    stations = sorted({t for e in wb.in_category(m, category) for t in e.tags},
+                      key=lambda t: (wb.cp.STATIONS[t]['tier'], wb.cp.STATIONS[t]['name']))
+    if len(stations) > 1:
+        options = [option('All workstations', 'all', 'Show every recipe in this category', '🧭', not station)]
+        for t in stations[:24]:
+            info = wb.cp.STATIONS[t]
+            state = 'ready' if t in ctx.access and info['tier'] <= ctx.tier else ('Tier ' + str(info['tier']) + ' lock' if info['tier'] > ctx.tier else f"unlock {info['cost']} SC")
+            options.append(option(info['name'], wb.station_code(t), f"Tier {info['tier']} · {state}", None, t == station))
+        components.append(select(cid(owner, 'ss', category), 'Filter by workstation', options))
+    components.append(row(
+        button('Previous', cid(owner, 'wc', category, page - 1, st), disabled=page <= 1, emoji='◀️'),
+        button(f'Page {page}/{pages}', cid(owner, 'wc', category, page, st), disabled=True),
+        button('Next', cid(owner, 'wc', category, page + 1, st), disabled=page >= pages, emoji='▶️'),
+        button('Workbench', cid(owner, 'wh'), emoji='🛠️')))
+    return components
+
+
+def recipe_components(m, ctx, owner, e, category='', page=1, station=''):
+    category = category or e.category
+    st = _code(station)
+    status = ctx.status(e)
+    craft_ticket = issue(m, owner, {'do': 'craft', 'recipe': e.id, 'back': [category, page, st]})
+    task = 'make:' + e.id
+    craft_label = 'Craft 1 batch' if status.code == 'ready' else f'Craft 1 batch ({status.short})'
+    unlock = None
+    if status.code == 'station':
+        tag = ctx.unlock_option(e)
+        info = wb.cp.STATIONS[tag]
+        ticket = issue(m, owner, {'do': 'unlock', 'station': tag, 'recipe': e.id, 'back': [category, page, st]})
+        unlock = button(f"Unlock {info['name']} · {info['cost']} SC", cid(owner, 't', ticket), style=1,
+                        disabled=ctx.p is not None and ctx.p.sc < info['cost'], emoji='🔑')
+    buttons = row(
+        unlock,
+        button(craft_label, cid(owner, 't', craft_ticket), style=3, disabled=status.code not in {'ready', 'missing'}, emoji='🛠️'),
+        button('Queue 5', cid(owner, 'qp', task, 5), disabled=status.code in {'locked', 'owned'}, emoji='⏱️'),
+        button('Queue 10', cid(owner, 'qp', task, 10), disabled=status.code in {'locked', 'owned'}, emoji='⏱️'),
+        button('Back to list', cid(owner, 'wc', category, page, st), emoji='◀️'))
+    amounts = select(cid(owner, 'sq', task), 'Queue a different number of batches (1–10)',
+                     [option(f'Queue {n} batch' + ('es' if n > 1 else ''), n, f'Shows totals before starting · up to {n * ctx.batch_size(e)} {e.name}')
+                      for n in range(1, 11)])
+    return [buttons] + ([amounts] if status.code not in {'locked', 'owned'} else [])
+
+
+def after_craft_components(m, ctx, owner, e, back):
+    category, page, st = (back + ['', 1, ''])[:3]
+    ticket = issue(m, owner, {'do': 'craft', 'recipe': e.id, 'back': [category, page, st]})
+    return [row(button('Craft again', cid(owner, 't', ticket), style=3, emoji='🛠️'),
+                button('Queue 5', cid(owner, 'qp', 'make:' + e.id, 5), emoji='⏱️'),
+                button('Recipe', cid(owner, 'wr', e.id, category or e.category, page, st), emoji='📋'),
+                button('Workbench', cid(owner, 'wh'), emoji='🛠️'))]
+
+
+# ---------------------------------------------------------------- queue views
+
+def task_label(m, task):
+    return m.task_queue.choices(m).get(task, task)
+
+
+def queue_plan(m, db, p, owner, task, count):
+    count = max(1, min(10, int(count)))
+    kind, target = task.split(':', 1)
+    e = wb.entry(m, target) if kind == 'make' else None
+    if e is not None:
+        ctx = wb.Context(m, db, p)
+        text = wb.queue_plan_text(ctx, e, count)
+        back = button('Back to recipe', cid(owner, 'wr', e.id, e.category, 1, ''), emoji='◀️')
+    else:
+        text = (f'⏱️ QUEUE {count} × {task_label(m, task).upper()}\n' + m.task_queue.requirements(m, db, p, task, count) +
+                '\n\nPress Start to begin. The queue works one attempt every 10 seconds, pauses when a need or item runs short, and resumes by itself.')
+        back = None
+    ticket = issue(m, owner, {'do': 'queue', 'task': task, 'count': count})
+    return text, [row(button(f'Start queue ×{count}', cid(owner, 't', ticket), style=3, emoji='▶️'), back,
+                      button('Queue status', cid(owner, 'qv'), emoji='📋'))]
+
+
+def queue_components(m, db, p, owner):
+    row_ = db.get(m.task_queue.TaskQueue, (p.channel_id, p.twitch_uid)) if p is not None else None
+    buttons = [button('Refresh', cid(owner, 'qv'), emoji='🔄')]
+    if row_ is not None and row_.state in m.task_queue.ACTIVE | {'error'}:
+        ticket = issue(m, owner, {'do': 'cancel'})
+        buttons.insert(0, button('Cancel queue', cid(owner, 't', ticket), style=4, emoji='⏹️'))
+    return [row(*buttons)]
+
+
+def work_components(m, owner, task):
+    """Mine or gather a resource: one attempt now, or a queue with a plan first."""
+    kind, target = task.split(':', 1)
+    ticket = issue(m, owner, {'do': 'queue', 'task': task, 'count': 1} if kind == 'mine' else {'do': 'gather', 'item': target})
+    verb = 'Mine' if kind == 'mine' else 'Gather'
+    return [row(button(f'{verb} ×1', cid(owner, 't', ticket), style=3, emoji='⛏️' if kind == 'mine' else '🌿'),
+                button('Queue 5', cid(owner, 'qp', task, 5), emoji='⏱️'),
+                button('Queue 10', cid(owner, 'qp', task, 10), emoji='⏱️'),
+                button('Queue status', cid(owner, 'qv'), emoji='📋'))]
+
+
+# ---------------------------------------------------------------- slash commands
+
+def slash_panel(m, command, uid, name, options, result):
+    """Discord message data (embed + components) for panel commands, else None."""
+    if command not in PANEL_COMMANDS:
+        return None
+    with m.SessionLocal() as db:
+        p = _player(m, db, uid, name)
+        if command == 'make':
+            ctx = wb.Context(m, db, p)
+            category = wb.normalize_category(options.get('category')) or ''
+            station = wb.find_station(options.get('station')) or ''
+            page = int(options.get('page') or 1)
+            recipe = options.get('recipe')
+            action = options.get('action') or 'preview'
+            e = wb.resolve(m, db, p, recipe, category) if recipe else None
+            if e is None:
+                components = category_components(m, ctx, uid, category, page, station) if category else home_components(m, ctx, uid)
+            elif action == 'preview':
+                components = recipe_components(m, ctx, uid, e, category, page, station)
+            elif action == 'queue':
+                components = queue_components(m, db, p, uid)
+            else:
+                components = after_craft_components(m, ctx, uid, e, [category or e.category, page, _code(station)])
+            return message(m, result, components, command)
+        if command == 'mine':
+            ore = s.find_item(str(options.get('ore') or ''))
+            if options.get('action') == 'mine' or ore not in m.task_queue.ores():
+                return message(m, result, queue_components(m, db, p, uid) if options.get('action') == 'mine' else [], command)
+            return message(m, result, work_components(m, uid, 'mine:' + ore), command)
+        if command == 'gather':
+            item = s.find_item(str(options.get('resource') or ''))
+            if item not in s.GATHER or item in m.task_queue.ores():
+                return None
+            return message(m, result, work_components(m, uid, 'gather:' + item), command)
+        if command == 'queue':
+            return message(m, result, queue_components(m, db, p, uid), command)
+    return None
+
+
+def _player(m, db, uid, name):
+    return m.player(db, m.DISCORD_WORLD_ID, 'discord', uid, name)[1]
+
+
+# ---------------------------------------------------------------- component interactions
+
+def _user(payload):
+    member = payload.get('member') or {}
+    user = member.get('user') or payload.get('user') or {}
+    name = member.get('nick') or user.get('global_name') or user.get('username') or 'Citizen'
+    return str(user.get('id') or ''), name
+
+
+def _reply(data, payload, notice=False):
+    """Update the panel in place when it is private; otherwise answer privately."""
+    ephemeral = int((payload.get('message') or {}).get('flags', 0)) & 64
+    if ephemeral and not notice:
+        return {'type': 7, 'data': data}
+    data = dict(data)
+    data['flags'] = 64
+    return {'type': 4, 'data': data}
+
+
+def _notice(text):
+    return {'type': 4, 'data': {'content': text, 'flags': 64, 'allowed_mentions': {'parse': []}}}
+
+
+def handles(custom_id):
+    return str(custom_id or '').startswith('ne|')
+
+
+def handle_component(m, payload, schedule=None):
+    """Answer a Workbench/queue component. `schedule(fn, *args)` defers spending work."""
+    data = payload.get('data') or {}
+    parts = str(data.get('custom_id') or '').split('|')
+    uid, name = _user(payload)
+    if len(parts) < 3 or parts[0] != 'ne':
+        return _notice('This control is no longer available. Run the command again.')
+    owner, verb, args = parts[1], parts[2], parts[3:]
+    if uid != owner:
+        return _notice('This menu belongs to another citizen. Open your own with the same command. Nothing was spent.')
+    values = data.get('values') or []
+    if verb == 't':
+        with m.task_queue.atomic(m, m.DISCORD_WORLD_ID):
+            action, reason = claim(m, owner, args[0] if args else '')
+        if action is None:
+            return _notice(reason)
+        if schedule is None:
+            return _reply(run_ticket(m, uid, name, action, payload), payload)
+        schedule(finish_ticket, m, payload, uid, name, action)
+        return {'type': 6}
+    with m.task_queue.atomic(m, m.DISCORD_WORLD_ID):
+        try:
+            return _navigate(m, payload, uid, name, owner, verb, args, values)
+        except (IndexError, KeyError, ValueError):
+            # Malformed or outdated custom_id: navigation is read-only, so just say so.
+            return _notice('This control is no longer available. Run the command again.')
+
+
+def _navigate(m, payload, uid, name, owner, verb, args, values):
+    with m.SessionLocal() as db:
+        p = _player(m, db, uid, name)
+        ctx = wb.Context(m, db, p)
+        db.commit()
+        if verb == 'wh':
+            return _reply(message(m, wb.home_text(ctx), home_components(m, ctx, owner)), payload)
+        if verb in {'wc', 'sc', 'ss'}:
+            if verb == 'sc':
+                category, page, station = (values[0] if values else ''), 1, ''
+            elif verb == 'ss':
+                category = args[0] if args else ''
+                station = '' if not values or values[0] == 'all' else wb.station_from_code(values[0])
+                page = 1
+            else:
+                category, page, station = args[0], int(args[1] or 1), wb.station_from_code(args[2]) if len(args) > 2 and args[2] else ''
+            if category not in wb.CATEGORY_INFO:
+                return _notice('Choose a category from the menu.')
+            text = wb.category_text(ctx, category, page, station)
+            return _reply(message(m, text, category_components(m, ctx, owner, category, page, station)), payload)
+        if verb in {'wr', 'sr'}:
+            if verb == 'sr':
+                recipe = values[0] if values else ''
+                category, page, station = args[0], int(args[1] or 1), wb.station_from_code(args[2]) if len(args) > 2 and args[2] else ''
+            else:
+                recipe = args[0]
+                category, page, station = (args[1] if len(args) > 1 else ''), int(args[2] or 1) if len(args) > 2 else 1, wb.station_from_code(args[3]) if len(args) > 3 and args[3] else ''
+            e = wb.entry(m, recipe)
+            if e is None:
+                return _notice('That recipe is no longer available. Open /make again.')
+            text = wb.preview_text(ctx, e)
+            return _reply(message(m, text, recipe_components(m, ctx, owner, e, category, page, station)), payload)
+        if verb in {'qp', 'sq'}:
+            task = args[0]
+            count = int(values[0]) if verb == 'sq' and values else int(args[1] if len(args) > 1 else 1)
+            if task not in m.task_queue.choices(m):
+                return _notice('That task is no longer available. Open the menu again.')
+            text, components = queue_plan(m, db, p, owner, task, count)
+            return _reply(message(m, text, components), payload)
+        if verb == 'qv':
+            text = m.task_queue.status(m, db, p, db.get(m.task_queue.TaskQueue, (p.channel_id, p.twitch_uid)))
+            return _reply(message(m, text, queue_components(m, db, p, owner), 'queue'), payload)
+    return _notice('This control is no longer available. Run the command again.')
+
+
+def run_ticket(m, uid, name, action, payload=None):
+    """Perform one claimed action and return the updated panel."""
+    channel = m.DISCORD_WORLD_ID
+    kind = action.get('do')
+    with m.task_queue.atomic(m, channel):
+        return _run(m, uid, name, action, kind, channel)
+
+
+def _run(m, uid, name, action, kind, channel):
+    if kind == 'craft':
+        result = m.make(channel, uid, name, action['recipe'], 'discord', action='craft').body.decode()
+    elif kind == 'queue':
+        result = m.queued_tasks(channel, uid, name, 'start', action['task'], action['count'], 'discord').body.decode()
+    elif kind == 'cancel':
+        result = m.queued_tasks(channel, uid, name, 'cancel', '', 1, 'discord').body.decode()
+    elif kind == 'gather':
+        result = m.seed_supplies(channel, uid, name, 'gather', action['item'], 1, False, 'discord').body.decode()
+    elif kind == 'unlock':
+        result = m.workshop(channel, uid, name, 'unlock', action['station'], 1, 'discord').body.decode()
+    else:
+        result = 'This button is no longer supported. Nothing was spent.'
+    with m.SessionLocal() as db:
+        p = _player(m, db, uid, name)
+        ctx = wb.Context(m, db, p)
+        if kind == 'craft':
+            e = wb.entry(m, action['recipe'])
+            components = after_craft_components(m, ctx, uid, e, list(action.get('back') or []))
+        elif kind == 'unlock':
+            e = wb.entry(m, action['recipe'])
+            category, page, st = (list(action.get('back') or []) + ['', 1, ''])[:3]
+            result = result + '\n\n' + wb.preview_text(ctx, e)
+            components = recipe_components(m, ctx, uid, e, category, page, wb.station_from_code(st) if st != '' else '')
+        elif kind == 'gather':
+            components = work_components(m, uid, 'gather:' + action['item'])
+        else:
+            components = queue_components(m, db, p, uid)
+        db.commit()
+    return message(m, result, components, 'queue' if kind in {'queue', 'cancel'} else 'make')
+
+
+def finish_ticket(m, payload, uid, name, action):
+    origin = m.task_queue.queue_notifications.origin_channel
+    token = origin.set(str(payload.get('channel_id') or ''))
+    try:
+        data = run_ticket(m, uid, name, action, payload)
+    except Exception:
+        import logging
+        logging.getLogger(__name__).error('Workbench button action rolled back: %s', action.get('do'))
+        data = {'content': 'This action could not be completed and nothing was spent. Open the menu again for a fresh button.',
+                'embeds': [], 'components': [], 'allowed_mentions': {'parse': []}}
+    finally:
+        origin.reset(token)
+    m.discord_deferred.edit_original(str(payload['application_id']), str(payload['token']), data)
