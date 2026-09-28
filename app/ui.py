@@ -147,6 +147,31 @@ def embed_from_text(m, text, command='make'):
     return embed
 
 
+def tidy(data):
+    """Make components valid for Discord: no repeated custom_id, no empty rows, 5 rows of 5 at most.
+
+    Discord rejects a whole message with a repeated custom_id, which leaves a deferred
+    reply stuck on "thinking…", so every outgoing message passes through here.
+    """
+    if not isinstance(data, dict) or not data.get('components'):
+        return data
+    seen, rows = set(), []
+    for component_row in data['components']:
+        kept = []
+        for component in (component_row or {}).get('components') or []:
+            key = component.get('custom_id') or component.get('url')
+            # The same label and icon twice (e.g. two "📊 Status" buttons) only confuses.
+            face = ('face', component.get('label'), (component.get('emoji') or {}).get('name')) if component.get('type') == 2 else None
+            if key in seen or face in seen:
+                continue
+            seen.update({key, face})
+            kept.append(component)
+        if kept:
+            rows.append(dict(component_row, components=kept[:5]))
+    data['components'] = rows[:5]
+    return data
+
+
 def message(m, text, components, command='make'):
     rows = [c for c in components if c and c.get('components')][:5]
     seen = set()
@@ -469,9 +494,9 @@ def _user(payload):
 def _reply(data, payload, notice=False):
     """Update the panel in place when it is private; otherwise answer privately."""
     ephemeral = int((payload.get('message') or {}).get('flags', 0)) & 64
+    data = tidy(dict(data))
     if ephemeral and not notice:
         return {'type': 7, 'data': data}
-    data = dict(data)
     data['flags'] = 64
     return {'type': 4, 'data': data}
 
@@ -698,7 +723,7 @@ def finish_ticket(m, payload, uid, name, action):
                 'embeds': [], 'components': [], 'allowed_mentions': {'parse': []}}
     finally:
         origin.reset(token)
-    m.discord_deferred.edit_original(str(payload['application_id']), str(payload['token']), data)
+    m.discord_deferred.edit_original(str(payload['application_id']), str(payload['token']), tidy(data))
     kind = action.get('do')
     command = 'queue' if kind in {'queue', 'next', 'cancel'} else (m.menu.options_for(action['leaf'])[0] if kind == 'cmd' and 'leaf' in action else '')
     _popups(m, payload, uid, command, json.dumps(data, ensure_ascii=False))

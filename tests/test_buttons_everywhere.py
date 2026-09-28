@@ -138,3 +138,50 @@ def test_slash_replies_offer_the_areas_next_buttons():
     rows = menu.after_rows(m, 'relax', {}, '111')
     assert len(rows) == 2 and 'Again' in labels({'components': rows})
     assert 'Relax' not in [c['label'] for c in rows[0]['components']]
+
+
+def _deferred_reply(monkeypatch, command, options, sent):
+    payload = {'id': f'{command}-{len(sent)}-{sorted(options.items())}', 'application_id': 'a', 'token': 't', 'channel_id': '5',
+               'member': {'user': {'id': '111', 'username': 'Kam'}, 'permissions': str(0x20)}}
+    m.discord_deferred.finish(m, payload, command, '111', 'Kam', options)
+    return sent[-1]
+
+
+def test_every_slash_reply_has_valid_unique_buttons(monkeypatch):
+    """Discord rejects repeated custom_ids, which left /queue stuck on "thinking…"."""
+    citizen()
+    sent = []
+    monkeypatch.setattr(m.discord_deferred, 'edit_original', lambda app, token, data: sent.append(data) or True)
+    monkeypatch.setattr(m.inbox, 'deliver', lambda *a, **k: False)
+    m.queued_tasks(W, '111', 'Kam', 'start', 'gather:' + LUMBER, '5', 'discord')
+    cases = [(name, {}) for name in m.DISCORD_OPTION_SCHEMA if name not in {'link', 'eventstart', 'eventstop', 'find'}]
+    cases += [('find', {'query': 'lumber'}), ('queue', {'action': 'view'}), ('make', {'category': 'ready'}),
+              ('life', {'action': 'relax'}), ('seedindustries', {'action': 'orders'})]
+    for command, options in cases:
+        data = _deferred_reply(monkeypatch, command, options, sent)
+        rows = data.get('components') or []
+        ids = [c['custom_id'] for r in rows for c in r['components'] if 'custom_id' in c]
+        assert len(ids) == len(set(ids)), (command, ids)
+        assert len(rows) <= 5 and all(0 < len(r['components']) <= 5 for r in rows), command
+
+
+def test_rejected_reply_is_resent_without_buttons(monkeypatch):
+    calls = []
+
+    class Response:
+        def __init__(self, code):
+            self.status_code, self.text = code, 'Invalid Form Body'
+
+    def patch(url, json, timeout):
+        calls.append(json)
+        return Response(400 if 'components' in json else 200)
+    monkeypatch.setattr(m.discord_deferred.requests, 'patch', patch)
+    assert m.discord_deferred.edit_original('a', 't', {'content': 'hi', 'components': [{'type': 1, 'components': []}]})
+    assert len(calls) == 2 and 'components' not in calls[1] and calls[1]['content'] == 'hi'
+
+
+def test_tidy_removes_repeats_and_empty_rows():
+    data = {'components': [ui.row(ui.button('A', 'ne|1|qv'), ui.button('B', 'ne|1|qd')), ui.row(ui.button('A again', 'ne|1|qv')),
+                           ui.row(ui.button('C', 'ne|1|st'))]}
+    rows = ui.tidy(data)['components']
+    assert [[c['label'] for c in r['components']] for r in rows] == [['A', 'B'], ['C']]

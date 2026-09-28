@@ -21,7 +21,11 @@ def edit_original(application_id,token,data):
                 except (ValueError,TypeError):delay=1
             elif response.status_code>=500:delay=1
             else:
-                logging.getLogger(__name__).error('Discord deferred response rejected (HTTP %s)',response.status_code)
+                logging.getLogger(__name__).error('Discord deferred response rejected (HTTP %s): %s',response.status_code,response.text[:300])
+                if response.status_code==400 and data.get('components'):
+                    # Never leave the player on "thinking…": send the result without buttons.
+                    data={k:v for k,v in data.items() if k!='components'}
+                    continue
                 return False
         except requests.RequestException:delay=1
         if attempt<2:time.sleep(delay)
@@ -59,7 +63,7 @@ def finish(m,payload,command,uid,name,options):
             logging.getLogger(__name__).error('Saved command result could not be formatted: %s',command)
             data={'content':result[:1800], 'allowed_mentions':{'parse':[]}}
     finally:origin.reset(token)
-    edit_original(str(payload['application_id']),str(payload['token']),data)
+    edit_original(str(payload['application_id']),str(payload['token']),m.ui.tidy(data))
     # Private notifications: warnings and tips raised by this command, and anything
     # waiting in the player's inbox, shown only to them.
     try:

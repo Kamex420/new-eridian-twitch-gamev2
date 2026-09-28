@@ -88,6 +88,7 @@ def payload(m,notice):
     try:
         extra=m.ui.alert_components(m,notice)
         if extra and data.get('embeds'):data['components']=list(data.get('components') or [])+extra
+        m.ui.tidy(data)
     except Exception:log.warning('Queue alert buttons unavailable; sending the alert without them')
     kind='paused' if 'QUEUE — PAUSED' in notice.content else 'cancelled' if 'QUEUE — CANCELLED' in notice.content else 'stopped after an error' if 'QUEUE — STOPPED' in notice.content else 'finished'
     mention=f'<@{notice.recipient}> Your queue '+('has ' if kind in {'paused','finished'} else 'was ')+kind+'.'
