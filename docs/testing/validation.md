@@ -1,5 +1,7 @@
 # Validation record
 
+The news-and-growth update extends `tests/test_autonomy.py`: work gathers real materials and is reported as clean news, goal materials come first, needs are tended before the work limit, a paused queue is recovered, names and reasons are cleaned, and the map grows with the society tier and stats.
+
 The living-Seedlings update adds `tests/test_autonomy.py`: schedule presets and custom phases, moods from needs, weather and failures and their success modifier, stepping aside while the player is active, working the job while away without counting as activity, needs first, free/social/sleep blocks, queues, the worker pass and autonomy off, autonomous actions kept out of `!again`, the capped diary and welcome-back lines, Twitch and Discord commands, the shared `!routine` route, the overlay map and narrator, and account merges.
 
 The stream-overlay update adds `tests/test_stream_overlay.py`: joins, events, level ups, achievements and finished queues become highlights; society milestones are announced once; the feed is capped; the overlay JSON keeps its old fields and adds working queues, leaders and join tips; every new OBS page and the setup page are served, with the channel name escaped.

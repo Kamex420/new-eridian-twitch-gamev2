@@ -96,11 +96,12 @@ def test_seedling_works_its_job_when_away_and_keeps_last_seen():
     text = a.live_one(m, 'test', UID)
     assert text and 'Kamex' in text
     found = life_row()
-    assert found.place == 'agricultural_district' and found.activity.startswith('Working')
+    assert found.place == 'agricultural_district' and found.activity.startswith(('Gathering', 'Working'))
     with m.SessionLocal() as db:
-        assert m.as_utc(db.query(m.Player).one().last_seen) == m.as_utc(before)     # autonomy is not the player being active
-        assert db.query(m.ActionLog).filter(m.ActionLog.action.in_(['farm', 'forage'])).count() == 1
-    assert len(diary()) == 1
+        p = db.query(m.Player).one()
+        assert m.as_utc(p.last_seen) == m.as_utc(before)     # autonomy is not the player being active
+        assert sum(m.task_queue.inventory_snapshot(m, db, p).values()) > 0 or p.crops > 0   # real materials were gathered
+    assert len(diary()) == 1 and ('brings in' in text or 'gathered' in text or 'tended' in text)
 
 
 def test_needs_come_first():
@@ -242,3 +243,77 @@ def test_merge_moves_the_seedling_and_diary():
         db.commit()
         assert db.get(a.SeedlingLife, ('test', 'w')).schedule == 'workaholic'
         assert db.query(a.SeedlingDiary).filter_by(canonical_uid='w').count() == 1
+
+
+# ---------------------------------------------------------------- news reports, real materials, needs, growth
+
+def test_work_gathers_real_materials_and_reports_them_as_news():
+    seed()
+    client.get('/api/v1/job', params={'channel': 'test', 'uid': UID, 'name': 'Kamex', 'job': 'miner'})
+    away()
+    story = a.live_one(m, 'test', UID)
+    assert story.startswith('FRONTIER EDGE, Day ') and 'Kamex' in story
+    with m.SessionLocal() as db:
+        entry = db.query(a.SeedlingDiary).one()
+        assert entry.desk in {'MINING', 'SUPPLY'} and entry.headline
+        assert 'TASK FAILED' not in entry.text and 'WHY' not in entry.text and '**' not in entry.text
+
+
+def test_goal_materials_come_first():
+    seed()
+    from app import workbench as wb, extras
+    campfire = next(e for e in wb.index(m) if e.name == 'Campfire')
+    with m.SessionLocal() as db:
+        p = db.query(m.Player).one()
+        extras.set_goal(m, db, p, campfire.id)
+        db.commit()
+        step = a.work_plan(m, db, p, a.row(db, 'test', UID, create=True))
+        assert step['kind'] == 'gather' and step.get('goal') and m.resource_name(step['item']) == 'Lumber'
+
+
+def test_needs_are_tended_before_they_stop_work():
+    seed()
+    with m.SessionLocal() as db:
+        p = db.query(m.Player).one()
+        life = m.life_state(db, p)
+        life.energy = 30                     # above the work limit of 20, but low
+        assert a.needs_plan(m, db, p, life, 'work')['kind'] in {'sleep', 'relax'}
+        life.energy, life.nutrition = 90, 40
+        assert a.needs_plan(m, db, p, life, 'work')['kind'] == 'eat'
+        life.nutrition, life.social = 90, 20
+        assert a.needs_plan(m, db, p, life, 'work')['kind'] in {'games', 'hi', 'hangout'}
+        life.social = 90
+        assert a.needs_plan(m, db, p, life, 'work') is None
+
+
+def test_a_paused_queue_gets_its_needs_recovered():
+    enqueue(count=3)
+    with m.SessionLocal() as db:
+        row = db.get(m.task_queue.TaskQueue, ('test', 'discord:u'))
+        row.state = 'paused'
+        db.commit()
+    away('discord:u')
+    set_life('discord:u', energy=5)
+    story = a.live_one(m, 'test', 'discord:u')
+    assert 'paused queue can carry on' in story
+
+
+def test_names_and_reasons_are_cleaned_for_the_news():
+    assert a.clean_name('Kamex [New Eridian Official]') == 'Kamex'
+    assert a.clean_name('Siris_Sin (Autarch)') == 'Siris_Sin'
+    assert a.clean_reason('**TASK FAILED**\nWHY\n⛏️ Deschroyer comes back empty-handed.') == 'Deschroyer comes back empty-handed.'
+    assert a.clean_reason('❌ Research failed · Astra gets inconclusive results. +0 rewards') == 'Astra gets inconclusive results.'
+
+
+def test_the_map_grows_with_the_society():
+    seed()
+    with m.SessionLocal() as db:
+        early = a.districts(m, db, ['test', W])
+        assert early['tier_index'] == 0 and not early['districts']['spaceport_quarter']['unlocked']
+        assert early['districts']['agricultural_district']['unlocked']
+        s = m.society(db, W)
+        s.food = s.materials = s.development = s.knowledge = s.treasury = s.reputation = 2500
+        db.commit()
+        grown = a.districts(m, db, ['test', W])
+    assert grown['tier_index'] == 3 and grown['districts']['spaceport_quarter']['unlocked']
+    assert grown['districts']['agricultural_district']['level'] > early['districts']['agricultural_district']['level']

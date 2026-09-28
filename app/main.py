@@ -4428,6 +4428,13 @@ function renderStats(d){
     `<div class="next"><small>Society Tier</small><strong>${esc(d.tier||'—')}</strong><div class="tiny">${d.next_tier?`Next: ${esc(d.next_tier)}<br>${Number(d.tier_target).toLocaleString()} each`:'Regional Hub reached'}<br>Tier bonus: ${Number(d.tier_bonus||0)?('+'+Number(d.tier_bonus||0)+' SC on success'):'None'}</div></div>`;
 }
 
+function plainSentence(msg){
+  // The first real sentence of a reply: no emoji, markup, bare stats or ALL-CAPS headers.
+  for(let part of String(msg||'').split(/\s*(?:\n| \| | · )\s*/)){
+    part=part.replace(/[*_`]/g,'').replace(/^[^A-Za-z0-9(]+/,'').trim();
+    if(!part||/^[+\-−\d]/.test(part)||(part===part.toUpperCase()&&!/\d/.test(part)))continue;
+    part=part.split(/(?<=[.!?])\s/)[0];return part.length>90?part.slice(0,88)+'…':part}
+  return ''}
 function conciseActivityMessage(x){
   const msg=String(x&&x.message||'').replace(/\s+/g,' ').trim();
   if(!msg)return 'Action completed';
@@ -4451,13 +4458,10 @@ function conciseActivityMessage(x){
 
   if(signed.length)return signed.join(' · ');
 
-  const low=msg.toLowerCase();
-  if(low.includes('failed') || low.includes('failure'))return 'No reward · action failed';
-  if(low.includes('no rewards') || low.includes('+0 rewards'))return 'No rewards';
-  if(low.includes('completed') || low.includes('completes'))return 'Completed successfully';
-
-  // Last-resort short status. Never dump the whole response into the HUD.
-  return 'Action completed';
+  const low=msg.toLowerCase(),said=plainSentence(msg);
+  if(low.includes('failed') || low.includes('failure') || low.includes('+0 rewards'))return 'No reward'+(said?' · '+said:'');
+  // Otherwise the reply's own first sentence, kept short. Never dump the whole response into the HUD.
+  return said||'Completed successfully';
 }
 
 function renderActivity(d){
@@ -4903,11 +4907,18 @@ const bar=value=>`<div class="progress"><i style="width:${Math.max(0,Math.min(10
 const fmtTime=n=>{n=Math.max(0,Number(n)||0);return Math.floor(n/60)+':'+String(n%60).padStart(2,'0')};
 const ago=iso=>{const sec=Math.max(0,Math.floor((Date.now()-new Date(iso).getTime())/1000));if(sec<10)return 'just now';if(sec<60)return sec+'s ago';if(sec<3600)return Math.floor(sec/60)+'m ago';if(sec<86400)return Math.floor(sec/3600)+'h ago';return Math.floor(sec/86400)+'d ago'};
 
+function plainSentence(msg){
+  // The first real sentence of a reply: no emoji, markup, bare stats or ALL-CAPS headers.
+  for(let part of String(msg||'').split(/\s*(?:\n| \| | · )\s*/)){
+    part=part.replace(/[*_`]/g,'').replace(/^[^A-Za-z0-9(]+/,'').trim();
+    if(!part||/^[+\-−\d]/.test(part)||(part===part.toUpperCase()&&!/\d/.test(part)))continue;
+    part=part.split(/(?<=[.!?])\s/)[0];return part.length>90?part.slice(0,88)+'…':part}
+  return ''}
 function concise(msg){
   msg=String(msg||'').replace(/\s+/g,' ').trim();
   const found=[]; const re=/([+-]\d+\s+(?:[A-Za-z][A-Za-z /_-]*?))(?=(?:[,.;]|\/|\s+[+-]\d+|$))/g; let m;
   while((m=re.exec(msg))!==null&&found.length<4){const x=m[1].trim().replace(/\s+/g,' ');if(!found.includes(x))found.push(x)}
-  if(found.length)return found.join(' · '); if(/fail/i.test(msg))return 'No reward · action failed'; return 'Action completed';
+  if(found.length)return found.join(' · ');const said=plainSentence(msg);if(/fail|\+0 rewards/i.test(msg))return 'No reward'+(said?' · '+said:'');return said||'Completed successfully';
 }
 function renderSociety(d){root.innerHTML=`<section class="card"><div class="eyebrow">Society Telemetry</div><div class="row" style="margin-top:5px"><h1>NEW ERIDIAN</h1><span class="chip">${esc(d.tier)}</span></div><div class="worldline"><span>Avesta Day <b>${d.day}</b></span><span class="sep">•</span><span>${esc((d.phase_emoji||'')+' '+(d.phase||''))}</span><span class="sep">•</span><span><b>${d.active_players||0}</b> active</span></div><div class="condition"><strong>${esc(d.condition||'Unknown condition')}</strong><p>${esc(d.condition_text||'')}</p></div><div class="value" style="margin-top:9px;color:#8f86bb;font-family:Georgia,serif">May Rocky's wisdom guide you…</div></section>`}
 function renderToday(d){const q=d.directive||{},g=d.engagement||{},a=d.aftermath;const after=a?`<div class="rumor"><b style="color:${Number(a.modifier)>=0?'var(--green2)':'var(--danger)'}">Event aftermath ${Number(a.modifier)>=0?'+':''}${Number(a.modifier)}%</b> · ${esc((a.skills||[]).join(' / '))} · ${fmtTime(a.seconds_remaining)} remaining<br>${esc(a.description||'')}</div>`:'';root.innerHTML=`<section class="card"><div class="eyebrow">✦ Today in New Eridian</div><div class="module" style="margin-top:10px"><div class="row"><h3>${q.complete?'✓ ':''}${esc(q.name||'Daily Directive')}</h3><b class="small" style="color:var(--cyan)">${q.progress||0}/${q.goal||0}</b></div><div class="value">${esc(q.description||'')}</div>${bar(q.percent||0)}<div class="value" style="margin-top:5px">Useful: ${esc((q.skills||[]).join(' · '))} · Reward ${esc(q.reward||'society progress')}</div></div><div class="grid2" style="grid-template-columns:repeat(3,1fr)"><div class="module"><h3>${Number(g.variety_complete||0)}</h3><div class="value">Variety done</div></div><div class="module"><h3>${Number(g.lore_found||0)}/${Number(g.lore_total||0)}</h3><div class="value">Lore found</div></div><div class="module"><h3>${Number(g.fleet_assigned||0)}</h3><div class="value">Fleet assigned</div></div></div><div class="value" style="margin-top:7px">Gear familiarity: ${Number(g.familiar_gear||0)} familiar / ${Number(g.trusted_gear||0)} trusted · ${Number(g.relationship_memories||0)} shared memories</div>${after}</section>`}
