@@ -19,6 +19,8 @@ client=TestClient(m.app)
 @pytest.fixture(autouse=True)
 def reset(monkeypatch):
     monkeypatch.setattr(m.random,"random",lambda:0.5)
+    monkeypatch.setattr(m,"OVERLAY_CACHE_SECONDS",0)   # tests read the overlay right after each change
+    m._overlay_cache.clear()
     # Tests never use deployment messaging credentials.
     for key in ("DISCORD_BOT_TOKEN","TWITCH_BOT_ACCESS_TOKEN","TWITCH_CLIENT_ID","TWITCH_BOT_USER_ID"):
         monkeypatch.setenv(key, "")

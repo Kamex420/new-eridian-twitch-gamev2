@@ -8,7 +8,7 @@ see docs/architecture.md for boundaries and compatibility decisions.
 import sys
 
 
-import os, random, secrets, string, math, re, hashlib, json, urllib.request
+import os, random, secrets, string, math, re, hashlib, json, time, urllib.request
 from datetime import datetime, timezone, timedelta
 from fastapi import FastAPI, HTTPException, Request, BackgroundTasks
 from starlette.concurrency import run_in_threadpool
@@ -3204,10 +3204,30 @@ def leaderboard(channel:str,provider:str="twitch",uid:str="",name:str="Citizen")
             rank=next((i for i,p in enumerate(all_players,1) if p.twitch_uid==viewer.twitch_uid),len(all_players));personal=f"\n\n{viewer.display_name}, you are ranked #{rank} with {viewer.contribution} Contribution."
         return PlainTextResponse("🏆 New Eridian Contributors\n\n"+"\n".join(lines)+personal) if provider=="discord" else out("🏆 "+" | ".join(lines[:5]))
 
+OVERLAY_CACHE_SECONDS=float(os.getenv("OVERLAY_CACHE_SECONDS","2"))
+_overlay_cache={};_overlay_lock=__import__("threading").Lock()
+
 @app.get("/api/v1/overlay")
-@game_transaction
 def overlay_state(channel:str):
-    """Rich JSON contract for the New Eridian v2 OBS Browser Source."""
+    """Rich JSON contract for the New Eridian v2 OBS Browser Source.
+
+    Every overlay panel polls this every few seconds. One result is shared for
+    OVERLAY_CACHE_SECONDS so a dozen OBS sources cost one computation, and the
+    world lock the computation takes is not held on every poll (which slowed
+    Discord buttons down)."""
+    cached=_overlay_cache.get(channel)
+    if cached and time.monotonic()-cached[0]<OVERLAY_CACHE_SECONDS:return cached[1]
+    with _overlay_lock:
+        cached=_overlay_cache.get(channel)
+        if cached and time.monotonic()-cached[0]<OVERLAY_CACHE_SECONDS:return cached[1]
+        data=overlay_state_fresh(channel)
+        if len(_overlay_cache)>50:_overlay_cache.clear()
+        _overlay_cache[channel]=(time.monotonic(),data)
+        return data
+
+@game_transaction
+def overlay_state_fresh(channel:str):
+    """The overlay data, computed now."""
     with SessionLocal() as db:
         source_ids=list(dict.fromkeys([DISCORD_WORLD_ID,channel]))
 

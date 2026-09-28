@@ -108,9 +108,44 @@ def row(*buttons):
     return {'type': 1, 'components': [b for b in buttons if b][:5]}
 
 
+_PENDING = contextvars.ContextVar('ne_pending_tickets', default=None)
+
+
+class ticket_batch:
+    """Save every ticket a screen creates in one transaction instead of one each."""
+
+    def __init__(self, m):
+        self.m = m
+
+    def __enter__(self):
+        self.outer = _PENDING.get() is not None
+        if not self.outer:
+            self.token = _PENDING.set([])
+        return self
+
+    def __exit__(self, kind, value, traceback):
+        if self.outer:
+            return False
+        rows = _PENDING.get()
+        _PENDING.reset(self.token)
+        if rows:
+            m = self.m
+            with m.SessionLocal() as db:
+                if secrets.randbelow(20) == 0:      # tidy expired tickets now and then, not on every press
+                    db.execute(delete(UiTicket).where(UiTicket.expires_at < m.now()))
+                db.add_all(rows)
+                db.commit()
+        return False
+
+
 def issue(m, owner, action):
     """Create a one-time ticket for a spending button."""
     token = secrets.token_hex(16)
+    pending = _PENDING.get()
+    if pending is not None:
+        pending.append(UiTicket(id=token, owner=str(owner), action=json.dumps(action, sort_keys=True),
+                                expires_at=m.now() + timedelta(hours=TICKET_HOURS)))
+        return token
     with m.SessionLocal() as db:
         db.execute(delete(UiTicket).where(UiTicket.expires_at < m.now()))
         db.add(UiTicket(id=token, owner=str(owner), action=json.dumps(action, sort_keys=True),
@@ -541,8 +576,9 @@ def handle_component(m, payload, schedule=None):
             schedule(finish_ticket, m, payload, uid, name, action)
             return {'type': 6}
     if verb == 't':
-        with m.task_queue.atomic(m, m.DISCORD_WORLD_ID):
-            action, reason = claim(m, owner, args[0] if args else '')
+        # Claiming is one conditional UPDATE, safe without the world lock, so the
+        # press is acknowledged at once even while a queue attempt is running.
+        action, reason = claim(m, owner, args[0] if args else '')
         if action is None:
             return _notice(reason)
         if schedule is None:
@@ -551,7 +587,9 @@ def handle_component(m, payload, schedule=None):
         return {'type': 6}
     if schedule is not None:
         schedule(_popups, m, payload, uid)
-    with m.task_queue.atomic(m, m.DISCORD_WORLD_ID):
+    # Menus and views do not take the world lock: they only read, or change the
+    # presser's own preferences. Game commands they show take it themselves.
+    with ticket_batch(m):
         try:
             return _navigate(m, payload, uid, name, owner, verb, args, values)
         except (IndexError, KeyError, ValueError):
@@ -647,8 +685,9 @@ def run_ticket(m, uid, name, action, payload=None):
     """Perform one claimed action and return the updated panel."""
     channel = m.DISCORD_WORLD_ID
     kind = action.get('do')
-    with m.task_queue.atomic(m, channel):
-        return _run(m, uid, name, action, kind, channel)
+    with ticket_batch(m):
+        with m.task_queue.atomic(m, channel):
+            return _run(m, uid, name, action, kind, channel)
 
 
 def _run(m, uid, name, action, kind, channel):
@@ -775,7 +814,7 @@ def handle_modal(m, payload, schedule=None):
     if not value:
         return _notice('Nothing was entered. Nothing was spent.')
     from . import menu
-    with m.task_queue.atomic(m, m.DISCORD_WORLD_ID):
+    with ticket_batch(m):
         with m.SessionLocal() as db:
             p = _player(m, db, uid, name)
             result = menu.submit(m, db, p, uid, name, key, args, value)

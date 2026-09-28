@@ -164,6 +164,30 @@ class Context:
         self._statuses = {}
         self._unique = None
         self._favorites = None
+        self._gear = None
+        self._extra = None
+        self._branches = None
+
+    def _owned(self):
+        """Quality gear and stored items, read once per screen instead of once per recipe."""
+        if self._gear is None:
+            m, db, p = self.m, self.db, self.p
+            self._gear, self._extra = {}, {}
+            for row in db.execute(m.select(m.QualityGear).where(m.QualityGear.channel_id == p.channel_id, m.QualityGear.canonical_uid == p.twitch_uid,
+                                                                m.QualityGear.qty > 0)).scalars():
+                self._gear[row.item_key] = self._gear.get(row.item_key, 0) + row.qty
+            for row in db.execute(m.select(m.ExtraItem).where(m.ExtraItem.channel_id == p.channel_id,
+                                                              m.ExtraItem.canonical_uid == p.twitch_uid)).scalars():
+                self._extra[row.item] = row.qty
+        return self._gear, self._extra
+
+    def _material(self, key):
+        """The same count as m.material_amount, from the snapshot."""
+        ident = self.m.item_identity
+        key = ident.FIELD_ITEMS.get(ident.canonical(key), ident.canonical(key))
+        if key in self.m.PLAYER_MATERIAL_FIELDS:
+            return max(0, int(getattr(self.p, key)))
+        return max(0, self._owned()[1].get(key, 0))
 
     @property
     def favorites(self):
@@ -178,22 +202,32 @@ class Context:
     def have(self, key):
         key = self.m.item_identity.canonical(key)
         if key in self.m.QUALITY_RECIPES:
-            return self.m.equipment_count(self.db, self.p, key) if self.p is not None else 0
+            return self._owned()[0].get(key, 0) if self.p is not None else 0
         if key == 'cargo':
             return self.p.cargo if self.p is not None else 0
         return self.stock.get(key, 0)
 
     def level(self, skill_key):
         if skill_key not in self._levels:
-            self._levels[skill_key] = s.level_for(self.m, self.db, self.p, skill_key) if self.p is not None else 1
+            if self.p is None:
+                self._levels[skill_key] = 1
+            else:
+                main, branch = s.SKILLS.get(skill_key, ('fabrication', None))
+                if branch and self._branches is None:
+                    m = self.m
+                    self._branches = {r.branch: r.xp for r in self.db.execute(m.select(m.SkillBranch).where(
+                        m.SkillBranch.channel_id == self.p.channel_id, m.SkillBranch.canonical_uid == self.p.twitch_uid)).scalars()}
+                xp = self._branches.get(branch, 0) if branch else self.m.skill_xp(self.p, main)
+                self._levels[skill_key] = self.m.lvl(xp)
         return self._levels[skill_key]
 
     def owned_unique(self, key):
         if self.p is None:
             return False
         if self._unique is None:
-            self._unique = {k for k in (*self.m.UNIQUE_CORE_ITEMS, *self.m.UNIQUE_QUALITY_ITEMS)
-                            if self.m.unique_bonus_owned(self.db, self.p, k)}
+            gear = self._owned()[0]
+            self._unique = {k for k in self.m.UNIQUE_CORE_ITEMS if self._material(k) > 0}
+            self._unique |= {k for k in self.m.UNIQUE_QUALITY_ITEMS if gear.get(k, 0) > 0}
         return key in self._unique
 
     def unlock_option(self, e):

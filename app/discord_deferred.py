@@ -49,19 +49,21 @@ def finish(m,payload,command,uid,name,options):
     else:
         # Public receipts omit private modifier calculations. No extra unsolicited
         # follow-up: the action has one response, with only relevant changes.
-        try:
-            # Workbench, mining, gathering and queue replies carry dropdowns and buttons.
-            data=m.ui.slash_panel(m,command,uid,name,options,result) or m._discord_json_message(result,message_type=command)['data']
-            # Every reply offers the next step as buttons: Again, its menu area, and Menu.
-            if command!='menu':
-                try:
-                    rows=[r for r in data.get('components') or [] if r.get('components')]
-                    if len(rows)<5:data['components']=rows+m.menu.after_rows(m,command,options,uid,5-len(rows))
-                except Exception:
-                    logging.getLogger(__name__).error('Menu buttons could not be added: %s',command)
-        except Exception:
-            logging.getLogger(__name__).error('Saved command result could not be formatted: %s',command)
-            data={'content':result[:1800], 'allowed_mentions':{'parse':[]}}
+        # Every ticket the reply's buttons need is saved in one transaction.
+        with m.ui.ticket_batch(m):
+            try:
+                # Workbench, mining, gathering and queue replies carry dropdowns and buttons.
+                data=m.ui.slash_panel(m,command,uid,name,options,result) or m._discord_json_message(result,message_type=command)['data']
+                # Every reply offers the next step as buttons: Again, its menu area, and Menu.
+                if command!='menu':
+                    try:
+                        rows=[r for r in data.get('components') or [] if r.get('components')]
+                        if len(rows)<5:data['components']=rows+m.menu.after_rows(m,command,options,uid,5-len(rows))
+                    except Exception:
+                        logging.getLogger(__name__).error('Menu buttons could not be added: %s',command)
+            except Exception:
+                logging.getLogger(__name__).error('Saved command result could not be formatted: %s',command)
+                data={'content':result[:1800], 'allowed_mentions':{'parse':[]}}
     finally:origin.reset(token)
     edit_original(str(payload['application_id']),str(payload['token']),m.ui.tidy(data))
     # Private notifications: warnings and tips raised by this command, and anything
