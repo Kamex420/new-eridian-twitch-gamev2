@@ -1424,6 +1424,7 @@ def world_rule_bundle(db,p,s,action,skill,provider="discord"):
     if skill and tbonus.get(skill):
         total+=tbonus[skill];parts.append(f"{next((t for t in traits if True), 'Trait')} +{int(tbonus[skill]*100)}%")
     sb,snotes=status_modifier(db,p);total+=sb;parts.extend(snotes)
+    mb,mnotes=autonomy.mood_modifier(sys.modules[__name__],db,p,clock);total+=mb;parts.extend(mnotes)
     ab,anotes=aftermath_modifier(db,p.channel_id,skill);total+=ab;parts.extend(anotes)
     shared=colony_state(db,p.channel_id);colony_tick(shared,s,now())
     pressure=colony_pressures(shared,s,pw.siro_exposure)
@@ -5560,7 +5561,7 @@ DISCORD_PRIVATE_COMMANDS = {
     "seed", "guide", "start", "me", "progress", "inventory", "job",
     "home", "business", "make", "seedindustries", "link", "specialize", "modlog",
     "world", "linklookup", "ducks", "training", "catalog", "gather", "workshop",
-    "status", "settings", "mod", "menu", "guidepanels", "menupanel", "inbox", "queuedetails", "find", "undo"
+    "status", "settings", "mod", "menu", "guidepanels", "menupanel", "inbox", "queuedetails", "find", "undo", "seedling", "seedlingstep"
 }
 
 def discord_message_status(content):
@@ -6871,6 +6872,19 @@ def _discord_call_internal(command: str, uid: str, name: str, options: dict, int
             text=player_inbox.inbox_text(__import__("sys").modules[__name__],db,p)
             player_inbox.mark_all_seen(db,p.channel_id,p.twitch_uid);db.commit()
             return text
+    if command == "seedlingstep":
+        with SessionLocal() as db:
+            _,p=player(db,channel,"discord",uid,name);key=(p.channel_id,p.twitch_uid);db.commit()
+        text=autonomy.live_one(__import__("sys").modules[__name__],key[0],key[1],force=True)
+        with SessionLocal() as db:
+            _,p=player(db,channel,"discord",uid,name)
+            view=autonomy.view_text(__import__("sys").modules[__name__],db,p);db.commit()
+        return ("🎲 YOUR SEEDLING DECIDED\n"+text+"\n\n" if text else "🎲 Your Seedling is busy with your queue right now.\n\n")+view
+    if command == "seedling":
+        if options.get("schedule"):seedling_schedule(channel,uid,name,str(options["schedule"]),"discord")
+        if options.get("autonomy"):seedling_autonomy(channel,uid,name,str(options["autonomy"]),"discord")
+        if str(options.get("section") or "")=="diary":return seedling_diary(channel,uid,name,"discord").body.decode()
+        return seedling_view(channel,uid,name,"discord").body.decode()
     if command == "eatfull":
         return eat_full(channel,uid,name,"discord").body.decode()
     if command == "undo":
@@ -7126,7 +7140,8 @@ def settlement_status(channel:str):
 
 @app.get("/api/v1/routine")
 @game_transaction
-def routine(channel:str,uid:str,name:str="Citizen",provider:str="twitch",goal:str="",preferred:str=""):
+def routine(channel:str,uid:str,name:str="Citizen",provider:str="twitch",goal:str="",preferred:str="",n:str=""):
+    if n:return routine_start(channel,uid,name,n,provider)   # !routine <number> starts a saved queue routine
     with SessionLocal() as db:
         _,p=player(db,channel,provider,uid,name);st=colony_seedling(db,p)
         if goal:
@@ -7219,6 +7234,8 @@ inbox.install(sys.modules[__name__])
 extras.install(sys.modules[__name__])
 from . import stream_overlay
 stream_overlay.install(sys.modules[__name__])
+from . import autonomy
+autonomy.install(sys.modules[__name__])
 presentation.SKILL_NAMES=tuple(SKILL_LABELS.values())
 
 
@@ -7431,7 +7448,6 @@ def routines_view(channel:str,uid:str,name:str='Citizen',action:str='view',provi
         return platform_response(provider,text,text)
 
 
-@app.get('/api/v1/routine')
 def routine_start(channel:str,uid:str,name:str='Citizen',n:str='',provider:str='twitch'):
     """Start saved routine number n (1–5); 'delete n' removes it."""
     module=sys.modules[__name__]
@@ -7483,6 +7499,55 @@ def autosell(channel:str,uid:str,name:str='Citizen',item:str='',provider:str='tw
         text=extras.toggle_autosell(module,db,p,key);db.commit()
         return platform_response(provider,text,text)
 
+
+
+@app.get('/api/v1/seedling')
+@game_transaction
+def seedling_view(channel:str,uid:str,name:str='Citizen',provider:str='twitch'):
+    """Your Seedling: mood, thought, what it is doing where, its schedule and autonomy."""
+    with SessionLocal() as db:
+        _,p=player(db,channel,provider,uid,name)
+        text=autonomy.view_text(sys.modules[__name__],db,p,provider);db.commit()
+        return platform_response(provider,text,text)
+
+
+@app.get('/api/v1/diary')
+@game_transaction
+def seedling_diary(channel:str,uid:str,name:str='Citizen',provider:str='twitch'):
+    """What your Seedling has been doing, newest first."""
+    with SessionLocal() as db:
+        _,p=player(db,channel,provider,uid,name)
+        text=autonomy.diary_text(sys.modules[__name__],db,p,provider);db.commit()
+        return platform_response(provider,text,text)
+
+
+@app.get('/api/v1/schedule')
+@game_transaction
+def seedling_schedule(channel:str,uid:str,name:str='Citizen',preset:str='',provider:str='twitch'):
+    """Pick a daily schedule preset (balanced, workaholic, night_owl, socialite, homebody); blank lists them."""
+    key=str(preset or '').strip().casefold().replace(' ','_').replace('-','_')
+    with SessionLocal() as db:
+        _,p=player(db,channel,provider,uid,name)
+        if not key:
+            text='🗓️ Schedules: '+' | '.join(f'{k}: {v[1]}' for k,v in autonomy.PRESETS.items())
+            return platform_response(provider,text,'🗓️ !schedule '+' | '.join(autonomy.PRESETS))
+        text=autonomy.set_preset(db,p,key);db.commit()
+        return platform_response(provider,text,text.replace('**',''))
+
+
+@app.get('/api/v1/autonomy')
+@game_transaction
+def seedling_autonomy(channel:str,uid:str,name:str='Citizen',state:str='',provider:str='twitch'):
+    """Turn your Seedling's autonomy on or off; blank shows it."""
+    value=str(state or '').strip().casefold()
+    with SessionLocal() as db:
+        _,p=player(db,channel,provider,uid,name)
+        if value not in {'on','off'}:
+            found=autonomy.row(db,p.channel_id,p.twitch_uid,create=True);db.commit()
+            text=f"🌱 Autonomy is {'on' if found.enabled else 'off'}. !autonomy on or !autonomy off."
+            return platform_response(provider,text,text.replace('**',''))
+        text=autonomy.set_enabled(db,p,value=='on');db.commit()
+        return platform_response(provider,text,text.replace('**',''))
 
 # Extension registration happens after core routes and models are available.
 from .fun_systems import install as install_fun_systems

@@ -474,6 +474,8 @@ def merge_accounts(m,db,channel,source_uid,target_uid):
     qol.merge(db,channel,source_uid,target_uid)
     from . import extras
     extras.merge(db,channel,source_uid,target_uid)
+    from . import autonomy
+    autonomy.merge(db,channel,source_uid,target_uid)
     source=db.get(TaskQueue,(channel,source_uid));target=db.get(TaskQueue,(channel,target_uid))
     if source is None:return
     queue_notifications.merge(db,channel,source_uid,target_uid,target is None or (source.state in ACTIVE and target.state not in ACTIVE))

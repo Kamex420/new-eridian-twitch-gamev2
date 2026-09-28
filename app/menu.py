@@ -25,7 +25,7 @@ from . import ui, workbench as wb
 # area keys or leaf keys; the order is the button order.
 AREAS = {
     'home': ('🏠', 'New Eridian', 'Pick an area. Menus and views spend nothing; action buttons do their task once.',
-             ['status', 'inbox', 'recent', 'find', 'life', 'work', 'craft', 'queue', 'bag', 'trade', 'world', 'me', 'social', 'settings',
+             ['status', 'seedling', 'inbox', 'recent', 'find', 'life', 'work', 'craft', 'queue', 'bag', 'trade', 'world', 'me', 'social', 'settings',
               'account', 'help', 'mod']),
     'recent': ('🔁', 'Recent actions', 'Your last ten actions. Tap one to do it again.', []),
     'life': ('❤️', 'Life & Recovery', 'Keep Energy, Nutrition, Social and Comfort up so work never stops.',
@@ -62,6 +62,8 @@ AREAS = {
     'help': ('📖', 'Help', 'What to do next, and the full handbook by topic.',
              ['guide', 'guidegoal', 'find', 'me_tutorial', 'wd_holidays'] + ['h_' + t for t in ('start', 'character', 'property', 'life', 'production',
                                                                           'operations', 'society', 'other', 'terms')]),
+    'seedling': ('🌱', 'My Seedling', 'Your Seedling lives its own day: mood, thoughts, schedule, diary and autonomy.',
+                 ['sl_view', 'sl_decide', 'sl_diary', 'sl_schedule', 'sl_custom', 'sl_on', 'sl_off']),
     'account': ('🔗', 'Account', 'Create your citizen, or link your Twitch citizen: type !link in Twitch chat, then enter the code here.',
                 ['start', 'link', 'me_overview', 'me_tutorial', 'guide']),
     'mod': ('🛡️', 'Moderator', 'Events, the moderator log, account lookups and the channel panels. Moderators only.',
@@ -222,6 +224,15 @@ leaf('guidegoal', 'Guide for…', '🗺️', 'pick', 'guide', pick='field:guide:
      hint='step-by-step help for one goal (SC, crafting, home…)')
 leaf('find', 'Find', '🔎', 'modal', 'find', modal=('Find anything', 'Recipe, item, button or topic', 'e.g. campfire'), option='query',
      hint='search recipes, items, buttons and the handbook')
+# My Seedling
+leaf('sl_view', 'Overview', '🌱', 'view', 'seedling', hint='mood, thought, where it is and what it is doing')
+leaf('sl_decide', 'Let it decide', '🎲', 'do', 'seedlingstep', hint='your Seedling picks its next step itself, right now')
+leaf('sl_diary', 'Diary', '📓', 'view', 'seedling', {'section': 'diary'}, hint='what it did while you were away')
+leaf('sl_schedule', 'Schedule preset', '🗓️', 'pick', 'seedling', pick='field:seedling:schedule', then='do', option='schedule',
+     hint='balanced, workaholic, night owl, socialite or homebody')
+leaf('sl_custom', 'Custom schedule', '🧩', 'nav', nav=('lp',), hint='choose Work, Free time, Social or Sleep for each phase')
+leaf('sl_on', 'Autonomy on', '🌱', 'do', 'seedling', {'autonomy': 'on'}, hint='it lives its schedule while you are away')
+leaf('sl_off', 'Autonomy off', '✋', 'do', 'seedling', {'autonomy': 'off'}, hint='it waits for you')
 # Account
 leaf('start', 'Start / load citizen', '🌱', 'view', 'start', hint='create your citizen or see where you are')
 leaf('link', 'Link Twitch', '🔗', 'modal', 'link', modal=('Link your Twitch citizen', 'Code from !link in Twitch chat', 'e.g. AB12CD'),
@@ -250,7 +261,7 @@ COMMAND_AREA = {}
 for _key, _leaf in LEAVES.items():
     if _leaf['cmd']:
         COMMAND_AREA.setdefault(_leaf['cmd'], PARENT.get(_key, 'home'))
-COMMAND_AREA.update({'link': 'account', 'start': 'account', 'eventstart': 'mod', 'eventstop': 'mod', 'modlog': 'mod',
+COMMAND_AREA.update({'seedling': 'seedling', 'seedlingstep': 'seedling', 'link': 'account', 'start': 'account', 'eventstart': 'mod', 'eventstop': 'mod', 'modlog': 'mod',
                      'linklookup': 'mod', 'guidepanels': 'mod', 'menupanel': 'mod', 'eatfull': 'life', 'undo': 'bag', 'find': 'help', 'make': 'craft', 'workshop': 'craft', 'catalog': 'craft', 'queue': 'queue', 'mine': 'work', 'gather': 'work',
                      'farm': 'work', 'scan': 'work', 'rare': 'work', 'research': 'work', 'cargo': 'work', 'delivery': 'work',
                      'spaceport': 'work', 'explore': 'work', 'repair': 'work', 'training': 'work', 'society': 'world',

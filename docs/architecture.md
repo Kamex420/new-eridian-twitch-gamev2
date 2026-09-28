@@ -21,6 +21,7 @@ The application now has one canonical Python package. Earlier releases stored im
 | `inbox.py` | Private notifications: per-citizen inbox, popups after the next interaction, warnings and one-time tips |
 | `extras.py` | Planning and convenience: live countdowns, queue max, recent actions and `!again`, goals, plans and routines, item uses, welcome-back and reminders, auto-sell, undo, eat until full, `/find` and the remembered Workbench place |
 | `stream_overlay.py` | Stream highlights feed, overlay extras (leaders, working queues, festival, join tips) and the alerts, ticker, leaders, working, join and setup OBS pages |
+| `autonomy.py` | Autonomous Seedlings: schedules, the background worker that lets each Seedling act through ordinary commands, moods and their success modifier, thoughts, the diary, and the map/narrator overlay data |
 | `menu.py` | The /menu button tree: areas, their action and view buttons, choice lists and follow-up buttons on every reply |
 | `presentation.py` | How every Discord card and Twitch line looks: task receipts, notices and information cards |
 | `qol.py` | Status view, favourites, follow-up queues, alert and auto-recovery preferences, recovery estimates, fetch plans, bulk selling, inventory search and fuzzy names |

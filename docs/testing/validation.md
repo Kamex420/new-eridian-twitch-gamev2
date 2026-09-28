@@ -1,5 +1,7 @@
 # Validation record
 
+The living-Seedlings update adds `tests/test_autonomy.py`: schedule presets and custom phases, moods from needs, weather and failures and their success modifier, stepping aside while the player is active, working the job while away without counting as activity, needs first, free/social/sleep blocks, queues, the worker pass and autonomy off, autonomous actions kept out of `!again`, the capped diary and welcome-back lines, Twitch and Discord commands, the shared `!routine` route, the overlay map and narrator, and account merges.
+
 The stream-overlay update adds `tests/test_stream_overlay.py`: joins, events, level ups, achievements and finished queues become highlights; society milestones are announced once; the feed is capped; the overlay JSON keeps its old fields and adds working queues, leaders and join tips; every new OBS page and the setup page are served, with the channel name escaped.
 
 The buttons-everywhere update adds `tests/test_buttons_everywhere.py`: every player command option is reachable from `/menu`, buying through pages, amount buttons and a custom-amount form, selling only amounts you own, the search, find, link and business forms, dropdown views, the public panel opening a private menu per player, moderator tools hidden and refused for players, and the extra reply row.

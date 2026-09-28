@@ -1,5 +1,19 @@
 # Release notes
 
+## Living Seedlings: schedules, moods, a diary, and the Avesta map
+
+**Autonomy.** Every Seedling follows a daily schedule across the four Avesta phases (Morning, Day, Evening, Night), each set to Work, Free time, Social or Sleep. Presets: Balanced, Workaholic, Night owl, Socialite and Homebody, or a custom schedule with one dropdown per phase. While its player is away, a Seedling acts about once every `AUTONOMY_MINUTES` (default 10): it works its job's tasks, eats when hungry, sleeps when tired, practises its favourite hobby, walks, plays games, or says hi and hangs out with friends. Everything goes through the normal commands, so the same costs, cooldowns, gates and rewards apply. It never crafts, buys, sells or eats festival food; it steps aside while the player is active (10 minutes) or a queue runs; and it only runs for citizens seen in the last 3 days. Players switch it off with `/seedling autonomy:Off` or `!autonomy off`.
+
+**Moods and thoughts.** Moods come from needs, morale, the weather and how the day is going: Inspired (+3% success), Content (+1%), Tired, Hungry, Lonely, Uneasy (−1%), Stressed (−2%) and Miserable (−4%). Each Seedling voices a short thought ("I miss Astra.", "This dust winds makes my skin crawl."). Mood appears in `/status`, `/seedling` and the stream map.
+
+**Diary.** Everything a Seedling does is written as a line of story ("As dawn breaks over Avesta, Kamex tends the fields in the Agricultural District."). `/seedling section:Diary`, `/menu` → My Seedling → Diary, or `!diary`. The welcome-back popup now includes "While you were away".
+
+**Commands.** `/seedling` (34 slash commands), `/menu` → 🌱 My Seedling (Overview, Let it decide, Diary, Schedule preset, Custom schedule, Autonomy on/off). Twitch: `!seedling`, `!diary`, `!schedule <preset>`, `!autonomy on|off` (`integrations/twitch/seedling_commands_ready.txt`).
+
+**Stream.** `/obs/map` draws New Eridian on Avesta: the Commons and seven districts, each Seedling as a token coloured by mood that glides between places as it moves, day/night tint, Siro drift and dust particles, and thought bubbles. `/obs/narrator` types out the colony's story line by line. The ticker also carries narration. Guide panels 2 and 8 changed.
+
+**Fix.** `!routine <n>` shared its URL with an older endpoint and never started saved routines; it does now.
+
 ## Stream overlay: live alerts, ticker, leaders and more
 
 **Live alerts** (`/obs/alerts`). An animated pop-up for each notable moment: a new citizen, a level up, an achievement, a finished queue (3+ attempts), a society event starting, completing, failing or being called off, a new society tier, a completed project, a resolved weekly story and a finished daily directive. Big moments get a glow and sparks. Transparent when idle. Options: `&test=1` loops demo alerts for positioning, `&sound=1` plays a soft chime, `&seconds=7`, `&hide=queue,join`. The full `/overlay` dashboard shows the alerts top-centre automatically (`&alerts=0` turns them off).

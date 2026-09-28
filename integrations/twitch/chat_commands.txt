@@ -234,3 +234,15 @@
 
 !command add !find $(customapi https://YOUR-API-DOMAIN/api/v1/find?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&query=$(queryescape ${1:}))
 !command options !find -level 100 -cd 0 -usercd 5
+
+!command add !seedling $(customapi https://YOUR-API-DOMAIN/api/v1/seedling?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender)))
+!command options !seedling -level 100 -cd 0 -usercd 5
+
+!command add !diary $(customapi https://YOUR-API-DOMAIN/api/v1/diary?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender)))
+!command options !diary -level 100 -cd 0 -usercd 5
+
+!command add !schedule $(customapi https://YOUR-API-DOMAIN/api/v1/schedule?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&preset=$(queryescape ${1:}))
+!command options !schedule -level 100 -cd 0 -usercd 5
+
+!command add !autonomy $(customapi https://YOUR-API-DOMAIN/api/v1/autonomy?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&state=$(queryescape $(1)))
+!command options !autonomy -level 100 -cd 0 -usercd 5

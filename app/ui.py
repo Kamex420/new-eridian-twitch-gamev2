@@ -57,7 +57,7 @@ def is_owner(m):
     payload = INTERACTION.get()
     return bool(payload) and m._discord_is_owner(payload)
 TICKET_HOURS = 24
-PANEL_COMMANDS = {'make', 'mine', 'gather', 'queue', 'status', 'seedindustries', 'menu', 'find'}
+PANEL_COMMANDS = {'make', 'mine', 'gather', 'queue', 'status', 'seedindustries', 'menu', 'find', 'seedling', 'seedlingstep'}
 
 
 class UiTicket(Base):
@@ -197,9 +197,9 @@ def tidy(data):
             key = component.get('custom_id') or component.get('url')
             # The same label and icon twice (e.g. two "📊 Status" buttons) only confuses.
             face = ('face', component.get('label'), (component.get('emoji') or {}).get('name')) if component.get('type') == 2 else None
-            if key in seen or face in seen:
+            if key in seen or (face is not None and face in seen):
                 continue
-            seen.update({key, face})
+            seen.update({key, face} - {None})
             kept.append(component)
         if kept:
             rows.append(dict(component_row, components=kept[:5]))
@@ -505,6 +505,8 @@ def slash_panel(m, command, uid, name, options, result):
             return message(m, result, menu.area_components(m, uid, 'home'), command)
         if command == 'find':
             return message(m, result, find_components(m, uid, str(options.get('query') or '')), command)
+        if command in {'seedling', 'seedlingstep'}:
+            return message(m, result, seedling_components(m, db, p, uid), 'seedling')
         if command == 'seedindustries' and options.get('action') == 'clearout' and qol.clearout_plan(m, db, p):
             ticket = issue(m, uid, {'do': 'clearout'})
             total = sum(n * price for _, n, price in qol.clearout_plan(m, db, p))
@@ -656,6 +658,13 @@ def _navigate(m, payload, uid, name, owner, verb, args, values):
             data = menu.navigate(m, db, p, owner, verb, args, values, name)
             db.commit()
             return _reply(data, payload) if data is not None else _notice('This control is no longer available. Open /menu again.')
+        if verb == 'lp':
+            from . import autonomy
+            note = ''
+            if len(args) == 1 and values:
+                note = autonomy.set_phase(db, p, args[0], values[0]) + '\n'
+                db.commit()
+            return _reply(schedule_editor(m, db, p, owner, note), payload)
         if verb == 'cn':
             qol.clear_next(db, p.channel_id, p.twitch_uid)
             db.commit()
@@ -944,6 +953,33 @@ def find_components(m, owner, query):
     nav = [menu._button(m, owner, k) for k in found['menu'][:4]]
     nav += [button('Handbook: ' + t, cid(owner, 'mv', 'h_' + t), emoji='📖') for t in found['topics'][:1]]
     return [r for r in (row(*buttons[:5]), row(*nav[:5]), _menu_row(owner)) if r['components']]
+
+
+def seedling_components(m, db, p, owner):
+    from . import autonomy
+    found = autonomy.row(db, p.channel_id, p.twitch_uid, create=True)
+    toggle = ({'do': 'cmd', 'leaf': 'sl_off'}, 'Autonomy off', '✋', 4) if found.enabled else ({'do': 'cmd', 'leaf': 'sl_on'}, 'Autonomy on', '🌱', 3)
+    return [row(button('Let it decide', cid(owner, 't', issue(m, owner, {'do': 'cmd', 'leaf': 'sl_decide'})), style=3, emoji='🎲'),
+                button('Diary', cid(owner, 'mv', 'sl_diary'), emoji='📓'), button('Schedule', cid(owner, 'lp'), emoji='🗓️'),
+                button(toggle[1], cid(owner, 't', issue(m, owner, toggle[0])), style=toggle[3], emoji=toggle[2])),
+            row(button('Refresh', cid(owner, 'mv', 'sl_view'), emoji='🔄'), button('Menu', cid(owner, 'mn', 'home'), emoji='🏠'))]
+
+
+def schedule_editor(m, db, p, owner, note=''):
+    """One dropdown per Avesta phase: Work, Free time, Social or Sleep."""
+    from . import autonomy
+    found = autonomy.row(db, p.channel_id, p.twitch_uid, create=True)
+    blocks = autonomy.schedule_of(found)
+    clock = m.world_clock(db, p.channel_id)
+    hours = {'Morning': '0–6', 'Day': '6–15', 'Evening': '15–19', 'Night': '19–24'}
+    text = ('🗓️ SCHEDULE\n' + note + f"Current: **{autonomy.preset_name(found)}**. An Avesta day lasts {round(m.AVESTA_DAY_SECONDS / 3600, 1)} real hours; "
+            f"it is {clock['phase']} now.\nNeeds come first: a hungry or exhausted Seedling eats or sleeps whatever the schedule says.\n\n"
+            + '\n'.join(f"{ph} ({hours[ph]}h): {autonomy.BLOCKS[b][0]} **{autonomy.BLOCKS[b][1]}**" for ph, b in blocks.items()))
+    rows = [select(cid(owner, 'lp', ph), f'{ph}: {autonomy.BLOCKS[b][1]}',
+                   [option(label, key, emoji=emoji, default=key == b) for key, (emoji, label) in autonomy.BLOCKS.items()])
+            for ph, b in blocks.items()]
+    return message(m, text, rows + [row(button('Back: My Seedling', cid(owner, 'mn', 'seedling'), emoji='◀️'),
+                                        button('Menu', cid(owner, 'mn', 'home'), emoji='🏠'))], 'seedling')
 
 
 def item_text(m, db, p, key):

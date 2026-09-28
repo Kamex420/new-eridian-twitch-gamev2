@@ -41,7 +41,10 @@ PANELS = [
          ('/life → Action: Recover', 'Every recovery that is ready, in one press.')]),
       ('HANDS-FREE', [
           ('/use', 'Beds, seats, baths and clothing restore Comfort and are kept.'),
-          ('/settings → Autorecover: On', 'Paused queues recover by themselves, then carry on.')])],
+          ('/settings → Autorecover: On', 'Paused queues recover by themselves, then carry on.')]),
+      ('YOUR SEEDLING', [
+          ('/seedling', 'Mood, thoughts and a diary. While you are away it follows its schedule: works, eats, sleeps and meets friends.'),
+          ('/seedling → Schedule', 'Balanced, workaholic, night owl, socialite or homebody.')])],
      'EAT → REST → STAY COMFORTABLE → KEEP WORKING'),
     ('Gathering & work',
      'Raw materials come from gathering and mining. Every success gives items and practice in its skill.',
@@ -104,7 +107,7 @@ PANELS = [
      'GATHER → COOK → FEAST → STOCK UP'),
     ('Command list',
      'Every command, grouped. /menu shows all of them as buttons.',
-     [('YOU', [('/status  /me  /inventory  /settings', 'Needs, profile, skills, items and preferences.'),
+     [('YOU', [('/status  /me  /seedling  /inventory  /settings', 'Needs, profile, your Seedling, items and preferences.'),
               ('/find', 'Search recipes, items, buttons and the handbook for anything.')]),
       ('DO THINGS', [('/life  /work  /gather  /mine  /use', 'Recover, work, collect and use items.'),
                      ('/make  /workshop  /catalog  /queue', 'Craft, unlock stations, look things up, automate.')]),

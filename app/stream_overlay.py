@@ -22,7 +22,7 @@ from sqlalchemy import Column, Integer, String, DateTime, select, delete, func
 from .db import Base
 
 KEEP = 120                      # highlights kept per world
-PANELS = {'alerts', 'ticker', 'leaders', 'working', 'join'}
+PANELS = {'alerts', 'ticker', 'leaders', 'working', 'join', 'map', 'narrator'}
 EMOJI = {'join': '🌱', 'level': '⬆️', 'achievement': '🏆', 'queue': '✅', 'event_start': '🚨', 'event_win': '🎉',
          'event_fail': '⌛', 'event_cancel': '🛑', 'tier': '🏛️', 'project': '🏗️', 'story': '📖', 'directive': '📋'}
 
@@ -160,7 +160,9 @@ def extra(m, db, source_ids, world):
                      ['!craftmax lumber', 'Queue up to 10 gathers and watch them run'], ['!status', 'Needs, queue and your next step'],
                      ['!find <word>', 'Search recipes, items and help'], ['!target <recipe>', 'Pin a goal and track it'],
                      ['!again', 'Repeat your last action'], ['!seed', 'Every command, by topic']]}
-    return {'highlights': highlights, 'leaders': leaders, 'working': working, 'festival': festival, 'join': join}
+    from . import autonomy
+    return {'highlights': highlights, 'leaders': leaders, 'working': working, 'festival': festival, 'join': join,
+            **autonomy.overlay_data(m, db, source_ids)}
 
 
 # ---------------------------------------------------------------- OBS pages
@@ -251,6 +253,7 @@ function items(d){const out=[];const e=d.event;
   const f=d.festival;if(f)out.push(`${esc(f.emoji)} <b>${esc(f.name)} festival</b> · ${f.days_left} days left · ${esc((f.foods||[]).join(', '))}`);
   const p=d.project;if(p&&p.name)out.push(`🏗️ Project <b>${esc(p.name)}</b> · ${Math.round(p.percent||0)}%`);
   const w=d.working||[];if(w.length)out.push(`⏱️ <b>${w.length}</b> citizen${w.length>1?'s':''} working: ${w.slice(0,3).map(x=>esc(x.name)+' ('+esc(x.task)+')').join(', ')}`);
+  for(const n of (d.narration||[]).slice(0,3))out.push(`📜 <i>${esc(n.text)}</i>`);
   if(d.rumor)out.push(`🗣️ ${esc(d.rumor)}`);
   out.push(`🌱 Type <b>!start</b> in chat to join New Eridian${d.join&&d.join.discord?' · Discord: <b>'+esc(d.join.discord.replace(/^https?:\/\//,''))+'</b>':''}`);
   return out}
@@ -316,6 +319,107 @@ setInterval(draw,EVERY);
 </script>""")
 
 
+PAGES['map'] = (r"""
+body{padding:0}.wrap{position:fixed;inset:0}
+svg{width:100%;height:100%;display:block}
+.district circle.halo{transition:opacity 1s}.district text{font-family:Inter,system-ui,sans-serif}
+.token{transition:transform 3s cubic-bezier(.45,.05,.3,1)}.token circle{stroke:#0b0f24;stroke-width:2.5}
+.token text{font:800 11px Inter,system-ui,sans-serif;fill:#08101f;text-anchor:middle;dominant-baseline:central}
+.token .label{font:700 10.5px Inter,system-ui,sans-serif;fill:#fffaf0;paint-order:stroke;stroke:#060816;stroke-width:3px}
+.token.new{animation:arrive 1.2s ease}
+@keyframes arrive{0%{opacity:0}100%{opacity:1}}
+.hud{position:absolute;left:18px;top:14px;padding:12px 16px;border-radius:14px;background:linear-gradient(145deg,rgba(8,13,39,.92),rgba(24,15,54,.9));border:1px solid var(--edge);max-width:360px}
+.hud h1{margin:2px 0 0;font:700 22px Georgia,serif;color:var(--ivory)}.hud p{margin:4px 0 0;font-size:13px;color:var(--muted)}
+.bubble{position:absolute;max-width:260px;padding:9px 12px;border-radius:12px;background:rgba(255,250,240,.96);color:#1a1433;font-size:13px;line-height:1.35;
+  box-shadow:0 8px 20px rgba(0,0,0,.35);transform:translate(-50%,-100%);opacity:0;transition:opacity .5s,left 0s,top 0s;pointer-events:none}
+.bubble.on{opacity:1}.bubble b{display:block;font-size:11px;color:#6b3fd1;letter-spacing:.06em;text-transform:uppercase;margin-bottom:2px}
+.bubble:after{content:'';position:absolute;left:50%;bottom:-7px;margin-left:-7px;border:7px solid transparent;border-bottom:0;border-top-color:rgba(255,250,240,.96)}
+.particle{position:absolute;border-radius:50%;pointer-events:none;animation:drift linear infinite}
+@keyframes drift{from{transform:translate(0,0)}to{transform:translate(var(--dx),var(--dy))}}
+""", r"""
+<div class="wrap" id="wrap">
+<svg id="map" viewBox="0 0 1200 700" preserveAspectRatio="xMidYMid meet">
+ <defs>
+  <radialGradient id="ground" cx="50%" cy="52%" r="65%"><stop offset="0" stop-color="#1c1840"/><stop offset=".65" stop-color="#0f0f2b"/><stop offset="1" stop-color="#070818" stop-opacity="0"/></radialGradient>
+  <filter id="glow"><feGaussianBlur stdDeviation="6"/></filter>
+ </defs>
+ <rect id="bg" x="0" y="0" width="1200" height="700" rx="26" fill="url(#ground)"/>
+ <g id="roads"></g><g id="districts"></g><g id="tokens"></g>
+ <rect id="tint" x="0" y="0" width="1200" height="700" rx="26" fill="transparent" style="pointer-events:none;transition:fill 4s"/>
+</svg>
+<div class="hud"><div class="eyebrow">🗺️ Avesta · live</div><h1>New Eridian</h1><p id="clock">Connecting…</p><p id="count"></p></div>
+<div class="bubble" id="bubble"></div>
+</div>
+<script>
+const CX=600,CY=360,RX=410,RY=255;
+const ORDER=['spaceport_quarter','market_concourse','industrial_ward','frontier_edge','residential_ring','agricultural_district','research_block'];
+const LOOK={commons:['⛲','The Commons','#b8f4d0'],residential_ring:['🏠','Residential Ring','#ffd27a'],agricultural_district:['🌾','Agricultural District','#7ee3b0'],
+  industrial_ward:['🏭','Industrial Ward','#ff9a76'],research_block:['🔬','Research Block','#70ddff'],market_concourse:['🪙','Market Concourse','#ffd27a'],
+  spaceport_quarter:['🚀','Spaceport Quarter','#bd91ff'],frontier_edge:['🧭','Frontier Edge','#ff9ad5']};
+const POS={commons:[CX,CY]};ORDER.forEach((k,i)=>{const a=(-90+i*360/ORDER.length)*Math.PI/180;POS[k]=[CX+RX*Math.cos(a),CY+RY*Math.sin(a)]});
+const MOOD={Inspired:'#ffd27a',Content:'#7ee3b0',Tired:'#9aa3c7',Hungry:'#ffb36b',Lonely:'#8fb3ff',Uneasy:'#d6a4ff',Stressed:'#ff9a76',Miserable:'#ff7484'};
+const NS='http://www.w3.org/2000/svg',el=(t,a)=>{const e=document.createElementNS(NS,t);for(const k in a)e.setAttribute(k,a[k]);return e};
+if(Q.get('bg')==='0')document.getElementById('bg').setAttribute('fill','transparent');
+const roads=document.getElementById('roads'),dist=document.getElementById('districts');
+for(const k of ORDER){const [x,y]=POS[k];roads.appendChild(el('path',{d:`M${CX} ${CY} Q ${(CX+x)/2+(y-CY)*.18} ${(CY+y)/2-(x-CX)*.12} ${x} ${y}`,stroke:'rgba(147,154,255,.28)','stroke-width':3,fill:'none','stroke-dasharray':'2 9','stroke-linecap':'round'}))}
+for(const k in POS){const [x,y]=POS[k],[icon,name,color]=LOOK[k],r=k==='commons'?70:80,g=el('g',{class:'district'});
+  g.appendChild(el('circle',{class:'halo',cx:x,cy:y,r:r+12,fill:color,opacity:.10,filter:'url(#glow)'}));
+  g.appendChild(el('circle',{cx:x,cy:y,r:r,fill:'rgba(10,12,34,.82)',stroke:color,'stroke-opacity':.55,'stroke-width':2}));
+  const t1=el('text',{x:x,y:y-r+26,'text-anchor':'middle','font-size':22});t1.textContent=icon;g.appendChild(t1);
+  const t2=el('text',{x:x,y:y+r+18,'text-anchor':'middle','font-size':13,'font-weight':800,fill:color,'letter-spacing':'.06em'});t2.textContent=name.toUpperCase();g.appendChild(t2);
+  dist.appendChild(g)}
+const tokens=document.getElementById('tokens'),live={};let latest=[];
+// Seedlings in one place stand on a small grid (up to 4 across) so names never collide.
+function slot(place,i,n){const [x,y]=POS[place]||POS.commons,cols=Math.min(4,Math.ceil(Math.sqrt(n))),rows=Math.ceil(n/cols),
+  r=Math.floor(i/cols),c=i%cols,inRow=Math.min(cols,n-r*cols),sx=n>9?38:48,sy=n>9?34:42;
+  return [x+(c-(inRow-1)/2)*sx,y+6+(r-(rows-1)/2)*sy]}
+function draw(list){const groups={};for(const s of list)(groups[s.place]=groups[s.place]||[]).push(s);const seen=new Set();
+  for(const place in groups)groups[place].sort((a,b)=>a.id<b.id?-1:1).forEach((s,i,all)=>{seen.add(s.id);const [x,y]=slot(place,i,all.length);let g=live[s.id];
+    if(!g){g=el('g',{class:'token new'});g.appendChild(el('circle',{r:13}));const t=el('text',{});g.appendChild(t);const l=el('text',{class:'label',y:26});g.appendChild(l);
+      const e=el('text',{class:'act',x:14,y:-12,'font-size':13});g.appendChild(e);tokens.appendChild(g);live[s.id]=g;g.style.transform=`translate(${x}px,${y}px)`}
+    g.querySelector('circle').setAttribute('fill',MOOD[s.mood]||'#b8f4d0');g.querySelector('text').textContent=(s.name||'?').slice(0,1).toUpperCase();
+    g.querySelector('.label').textContent=s.name.length>12?s.name.slice(0,11)+'…':s.name;g.querySelector('.act').textContent=s.emoji||'';
+    requestAnimationFrame(()=>g.style.transform=`translate(${x}px,${y}px)`);g.dataset.x=x;g.dataset.y=y});
+  for(const id in live)if(!seen.has(id)){live[id].remove();delete live[id]}}
+const TINT={Morning:'rgba(255,170,110,.07)',Day:'rgba(0,0,0,0)',Evening:'rgba(255,110,70,.11)',Night:'rgba(8,14,60,.38)'};
+function weather(key){document.querySelectorAll('.particle').forEach(p=>p.remove());const look={spore_drift:['rgba(126,227,176,.55)',5,'80px','-40px'],dust_winds:['rgba(214,180,130,.45)',3,'260px','20px']}[key];if(!look)return;
+  for(let i=0;i<28;i++){const p=document.createElement('i');p.className='particle';p.style.cssText=`left:${Math.random()*100}%;top:${Math.random()*100}%;width:${look[1]}px;height:${look[1]}px;background:${look[0]};--dx:${look[2]};--dy:${look[3]};animation-duration:${6+Math.random()*8}s;animation-delay:-${Math.random()*8}s`;document.getElementById('wrap').appendChild(p)}}
+let lastWeather='';
+function bubble(){const pool=latest.filter(s=>s.thought&&live[s.id]);const b=document.getElementById('bubble');if(!pool.length){b.classList.remove('on');return}
+  const s=pool[Math.floor(Math.random()*pool.length)],g=live[s.id],svg=document.getElementById('map'),pt=svg.createSVGPoint();pt.x=+g.dataset.x;pt.y=+g.dataset.y-18;
+  const sp=pt.matrixTransform(svg.getScreenCTM());b.innerHTML=`<b>${esc(s.mood_emoji)} ${esc(s.name)} · ${esc(s.activity)}</b>💭 ${esc(s.thought)}`;b.style.left=sp.x+'px';b.style.top=sp.y+'px';
+  b.classList.add('on');setTimeout(()=>b.classList.remove('on'),5200)}
+setInterval(bubble,Number(Q.get('seconds')||7)*1000);
+poll(d=>{latest=d.seedlings||[];draw(latest);document.getElementById('clock').textContent=`${d.phase_emoji||''} Day ${d.day} · ${d.phase} · ${d.condition||''}`;
+  const busy=latest.filter(s=>/^Working|^Queue/.test(s.activity)).length;document.getElementById('count').textContent=`${latest.length} Seedling${latest.length===1?'':'s'} · ${busy} at work`;
+  document.getElementById('tint').setAttribute('fill',TINT[d.phase]||'transparent');const w=(d.condition||'').toLowerCase().includes('siro')?'spore_drift':(d.condition||'').toLowerCase().includes('dust')?'dust_winds':'';
+  if(w!==lastWeather){lastWeather=w;weather(w)}},4000);
+</script>""")
+
+PAGES['narrator'] = (r"""
+body{padding:4px}.card{padding:18px 22px}
+.book{font-family:Georgia,"Times New Roman",serif}.lead{margin-top:10px;font-size:22px;line-height:1.4;color:var(--ivory);min-height:62px}
+.lead .cursor{display:inline-block;width:2px;height:1em;background:var(--green2);margin-left:2px;vertical-align:-2px;animation:blink 1s infinite}
+.meta{margin-top:6px;font:12px Inter,system-ui,sans-serif;color:var(--muted)}
+.past{margin-top:12px;padding-top:10px;border-top:1px solid rgba(255,255,255,.09);display:flex;flex-direction:column;gap:6px}
+.past div{font-size:14px;line-height:1.35;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.past div:nth-child(2){opacity:.75}.past div:nth-child(3){opacity:.5}
+@keyframes blink{50%{opacity:0}}
+""", r"""
+<section class="card"><div class="eyebrow">📜 Chronicle of New Eridian</div><div class="book"><div class="lead" id="lead">The colony stirs…</div></div><div class="meta" id="meta"></div><div class="past book" id="past"></div></section>
+<script>
+const LINES=Number(Q.get('lines')||3);let shown=null,typing=null,queue=[];
+function type(n){clearInterval(typing);const lead=document.getElementById('lead'),text=`${n.emoji} ${n.text}`;let i=0;
+  document.getElementById('meta').textContent=(n.place?n.place+' · ':'')+ago(n.at);
+  typing=setInterval(()=>{i+=2;lead.innerHTML=esc(text.slice(0,i))+'<span class="cursor"></span>';if(i>=text.length){clearInterval(typing);lead.innerHTML=esc(text)}},28)}
+let rows=[];
+function show(){if(!queue.length)return;const n=queue.shift();type(n);shown=n.id;
+  const past=rows.filter(r=>r.id<n.id).slice(0,LINES);document.getElementById('past').innerHTML=past.map(r=>`<div>${esc(r.emoji)} ${esc(r.text)}</div>`).join('')}
+poll(d=>{rows=d.narration||[];if(!rows.length)return;if(shown===null){queue.push(rows[0]);show();return}
+  for(const r of rows.slice().reverse())if(r.id>shown&&!queue.some(q=>q.id===r.id))queue.push(r)},4000);
+setInterval(show,Number(Q.get('seconds')||9)*1000);
+</script>""")
+
+
 def page(panel, channel):
     css, body = PAGES[panel]
     return ('<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
@@ -330,6 +434,9 @@ SOURCES = [('alerts', 'Live alerts', 'Animated pop-up for joins, level ups, achi
            ('leaders', 'Leaders', 'Top contributors, the most active citizens today and live event leaders.', 620, 330, ''),
            ('working', 'Working now', 'Everyone with a queue running, with live progress bars.', 460, 330, ''),
            ('join', 'How to play', 'Rotating chat commands so new viewers can join. Set DISCORD_INVITE_URL to show your invite.', 520, 220, '&seconds=7'),
+           ('map', 'Avesta map', 'Every Seedling on a live map of New Eridian: where they are, what they do and how they feel. &bg=0 for a transparent background.',
+            1200, 700, '&bg=0 · &seconds=7 (thought bubbles)'),
+           ('narrator', 'Narrator', 'The colony\'s story as it happens, typed out line by line from every Seedling\'s diary.', 620, 260, '&lines=3 · &seconds=9'),
            ('society', 'Society', 'Name, tier, Avesta day and today\'s condition.', 420, 220, ''),
            ('today', 'Today', 'The daily directive and community stats.', 420, 280, ''),
            ('event', 'Event', 'The live society event with its countdown.', 520, 180, ''),

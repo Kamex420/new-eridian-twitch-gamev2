@@ -415,6 +415,15 @@ for command in commands:
 # Quality-of-life: one status view, personal settings, and options that connect
 # favourites, Ready now, fetching ingredients, follow-up queues and bulk selling.
 commands.append(cmd('status','Needs, queue, cooldowns, ready recipes and your next step in one view'))
+commands.append(cmd('seedling','Your Seedling: mood, thoughts, what it is doing, its daily schedule and diary',[
+    {'type':STRING,'name':'section','description':'What to show','required':False,
+     'choices':[{'name':'Overview: mood, thought and what it is doing','value':'overview'},{'name':'Diary: what it did while you were away','value':'diary'}]},
+    {'type':STRING,'name':'schedule','description':'Daily schedule across Morning, Day, Evening and Night','required':False,
+     'choices':[{'name':'Balanced: work the day, friends in the evening','value':'balanced'},{'name':'Workaholic: work dawn to dusk','value':'workaholic'},
+                {'name':'Night owl: sleep mornings, work nights','value':'night_owl'},{'name':'Socialite: a little work, a lot of company','value':'socialite'},
+                {'name':'Homebody: mornings and evenings for hobbies','value':'homebody'}]},
+    {'type':STRING,'name':'autonomy','description':'Let your Seedling live its schedule while you are away','required':False,
+     'choices':[{'name':'On','value':'on'},{'name':'Off','value':'off'}]}]))
 commands.append(cmd('find','Search recipes, items, buttons and the handbook for anything',[
     {'type':STRING,'name':'query','description':'A word or name, e.g. campfire, lumber or comfort','required':True,'max_length':60}]))
 commands.append(cmd('settings','Queue alerts and auto-recovery; leave options blank to view them',[

@@ -631,6 +631,7 @@ def touch(m, db, p):
         step, _ = next_step(m, db, p)
         if step:
             lines.append('🎯 Goal next step: ' + step)
+        lines += m.autonomy.away_lines(m, db, p, last)
         inbox.add(m, db, p.channel_id, p.twitch_uid, 'info', '\n'.join(lines))
     # Sleep is ready again while Energy or Comfort is low.
     life = m.life_state(db, p)

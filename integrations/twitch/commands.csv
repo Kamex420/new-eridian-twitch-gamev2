@@ -75,3 +75,7 @@
 !undo,$(customapi https://YOUR-API-DOMAIN/api/v1/undo?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))),100,0,2
 !eatfull,$(customapi https://YOUR-API-DOMAIN/api/v1/eatfull?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))),100,0,3
 !find,$(customapi https://YOUR-API-DOMAIN/api/v1/find?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&query=$(queryescape ${1:})),100,0,5
+!seedling,$(customapi https://YOUR-API-DOMAIN/api/v1/seedling?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))),100,0,5
+!diary,$(customapi https://YOUR-API-DOMAIN/api/v1/diary?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))),100,0,5
+!schedule,$(customapi https://YOUR-API-DOMAIN/api/v1/schedule?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&preset=$(queryescape ${1:})),100,0,5
+!autonomy,$(customapi https://YOUR-API-DOMAIN/api/v1/autonomy?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&state=$(queryescape $(1))),100,0,5

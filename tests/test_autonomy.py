@@ -1,0 +1,244 @@
+"""Autonomous Seedlings: schedules, moods, thoughts, the diary, and the map and narrator overlays."""
+import json
+from datetime import timedelta
+from types import SimpleNamespace
+from test_colony import m, reset, client, seed
+from test_workbench_ui import citizen, press, controls, W
+from test_task_queue import enqueue
+from app import autonomy as a, ui
+
+UID = 'u'
+
+
+def away(uid=UID, channel='test', minutes=40):
+    with m.SessionLocal() as db:
+        p = db.query(m.Player).filter_by(channel_id=channel, twitch_uid=uid).one()
+        p.last_seen = m.now() - timedelta(minutes=minutes)
+        db.query(m.Cooldown).delete()
+        db.commit()
+
+
+def set_life(uid=UID, channel='test', **values):
+    with m.SessionLocal() as db:
+        p = db.query(m.Player).filter_by(channel_id=channel, twitch_uid=uid).one()
+        life = m.life_state(db, p)
+        for k, v in values.items():
+            setattr(life, k, v)
+        db.commit()
+
+
+def life_row(uid=UID, channel='test'):
+    with m.SessionLocal() as db:
+        found = db.get(a.SeedlingLife, (channel, uid))
+        db.expunge_all()
+        return found
+
+
+def diary(uid=UID, channel='test'):
+    with m.SessionLocal() as db:
+        return [e.text for e in db.query(a.SeedlingDiary).filter_by(channel_id=channel, canonical_uid=uid).order_by(a.SeedlingDiary.id)]
+
+
+# ---------------------------------------------------------------- schedules and moods
+
+def test_schedule_presets_and_custom_phases():
+    seed()
+    with m.SessionLocal() as db:
+        p = db.query(m.Player).one()
+        assert 'Night owl' in a.set_preset(db, p, 'night_owl')
+        found = a.row(db, p.channel_id, p.twitch_uid)
+        assert a.schedule_of(found)['Morning'] == 'sleep' and a.preset_name(found) == 'Night owl'
+        a.set_phase(db, p, 'Morning', 'work')
+        assert a.preset_name(found) == 'Custom' and a.schedule_of(found)['Morning'] == 'work'
+        assert 'Nothing changed' in a.set_preset(db, p, 'nonsense')
+
+
+def test_moods_follow_needs_weather_and_failures():
+    life = SimpleNamespace(energy=90, nutrition=90, social=90, comfort=90, morale=90)
+    assert a.mood_of(life)[0] == 'inspired'
+    assert a.mood_of(SimpleNamespace(**{**vars(life), 'morale': 50}))[0] == 'content'
+    assert a.mood_of(SimpleNamespace(**{**vars(life), 'nutrition': 30}))[0] == 'hungry'
+    assert a.mood_of(SimpleNamespace(**{**vars(life), 'energy': 30, 'social': 20}))[0] == 'stressed'
+    assert a.mood_of(SimpleNamespace(**{**vars(life), 'energy': 10}))[0] == 'miserable'
+    assert a.mood_of(SimpleNamespace(**{**vars(life), 'morale': 50}), 'dust_winds')[0] == 'uneasy'
+    assert a.mood_of(SimpleNamespace(**{**vars(life), 'morale': 50}), '', failures=3)[0] == 'stressed'
+    assert a.thought_for('lonely', friend='Astra', seed='x') in {'I have not talked to anyone in ages.', 'I miss Astra.', 'The Commons would do me good.'}
+
+
+def test_mood_changes_success_chance():
+    seed()
+    with m.SessionLocal() as db:
+        p = db.query(m.Player).one()
+        bonus, notes = a.mood_modifier(m, db, p)
+        assert bonus == .03 and 'Inspired' in notes[0]
+        m.life_state(db, p).energy = 5
+        db.commit()
+        assert a.mood_modifier(m, db, p)[0] == -.04
+        s = m.society(db, p.channel_id)
+        *_, parts = m.world_rule_bundle(db, p, s, 'farm', 'cultivation')
+        assert any('Miserable mood' in x for x in parts)
+
+
+# ---------------------------------------------------------------- living on its own
+
+def test_seedling_steps_aside_while_the_player_is_active():
+    seed()
+    assert a.live_one(m, 'test', UID) == ''
+    assert diary() == []
+
+
+def test_seedling_works_its_job_when_away_and_keeps_last_seen():
+    seed()
+    client.get('/api/v1/job', params={'channel': 'test', 'uid': UID, 'name': 'Kamex', 'job': 'farmer'})
+    away()
+    with m.SessionLocal() as db:
+        before = db.query(m.Player).one().last_seen
+    text = a.live_one(m, 'test', UID)
+    assert text and 'Kamex' in text
+    found = life_row()
+    assert found.place == 'agricultural_district' and found.activity.startswith('Working')
+    with m.SessionLocal() as db:
+        assert m.as_utc(db.query(m.Player).one().last_seen) == m.as_utc(before)     # autonomy is not the player being active
+        assert db.query(m.ActionLog).filter(m.ActionLog.action.in_(['farm', 'forage'])).count() == 1
+    assert len(diary()) == 1
+
+
+def test_needs_come_first():
+    seed()
+    away()
+    set_life(nutrition=20)
+    a.live_one(m, 'test', UID)
+    assert life_row().activity == 'Eating'
+    away()
+    set_life(nutrition=90, energy=10)
+    a.live_one(m, 'test', UID)
+    assert life_row().activity == 'Sleeping'
+
+
+def test_free_time_social_and_sleep_blocks(monkeypatch):
+    seed()
+    seed(uid='v', name='Astra')
+    with m.SessionLocal() as db:
+        p = db.query(m.Player).filter_by(twitch_uid=UID).one()
+        found = a.row(db, 'test', UID, create=True)
+        clock = {'phase': 'Evening', 'condition_key': ''}
+        life = m.life_state(db, p)
+        found.schedule = json.dumps({'Morning': 'sleep', 'Day': 'free', 'Evening': 'social', 'Night': 'sleep'})
+        assert a.plan(m, db, p, found, life, clock)['kind'] in {'hi', 'hangout'}
+        clock['phase'] = 'Day'
+        monkeypatch.setattr(a.random, 'random', lambda: .1)
+        assert a.plan(m, db, p, found, life, clock)['kind'] == 'hobby'
+        clock['phase'] = 'Night'
+        life.energy = life.comfort = 100
+        assert a.plan(m, db, p, found, life, clock)['kind'] == 'rest'
+
+
+def test_a_running_queue_is_the_seedlings_work():
+    enqueue(count=3)                            # a Discord citizen: discord:u
+    away('discord:u')
+    assert a.live_one(m, 'test', 'discord:u') == ''
+    found = life_row('discord:u')
+    assert found.activity.startswith('Queue:') and found.emoji == '⏱️'
+    assert any('queue' in t for t in diary('discord:u'))
+
+
+def test_autonomy_off_and_the_worker_pass():
+    seed()
+    away()
+    a.tick(m)                                  # first pass creates the row with a staggered start
+    found = life_row()
+    assert found is not None and found.enabled
+    with m.SessionLocal() as db:
+        a.set_enabled(db, db.query(m.Player).one(), False)
+        db.commit()
+    assert a.live_one(m, 'test', UID) == ''
+    with m.SessionLocal() as db:
+        a.set_enabled(db, db.query(m.Player).one(), True)
+        db.get(a.SeedlingLife, ('test', UID)).next_at = m.now() - timedelta(minutes=1)
+        db.commit()
+    a.tick(m)
+    assert len(diary()) == 1
+
+
+def test_autonomous_actions_are_not_the_players_again_action():
+    seed()
+    client.get('/api/v1/relax', params={'channel': 'test', 'uid': UID, 'name': 'Kamex'})
+    away()
+    a.live_one(m, 'test', UID)
+    from app import extras
+    with m.SessionLocal() as db:
+        assert [r.command for r in extras.recent(db, 'test', UID, 'twitch')] == ['relax']
+
+
+def test_diary_is_capped_and_welcome_back_uses_it():
+    seed()
+    since = m.now() - timedelta(minutes=5)
+    with m.SessionLocal() as db:
+        p = db.query(m.Player).one()
+        for i in range(a.DIARY_KEEP + 5):
+            a.diary(m, db, p, 'commons', '🎲', f'entry {i}')
+        db.commit()
+        assert db.query(a.SeedlingDiary).count() == a.DIARY_KEEP
+        lines = a.away_lines(m, db, p, since)
+    assert lines[0].startswith('📓') and 'more in your diary' in lines[-1]
+
+
+# ---------------------------------------------------------------- commands and buttons
+
+def test_twitch_commands():
+    seed()
+    view = client.get('/api/v1/seedling', params={'channel': 'test', 'uid': UID, 'name': 'Kamex'}).text
+    assert 'Kamex' in view and 'Autonomy on' in view
+    assert 'Socialite' in client.get('/api/v1/schedule', params={'channel': 'test', 'uid': UID, 'name': 'Kamex', 'preset': 'socialite'}).text
+    assert 'off' in client.get('/api/v1/autonomy', params={'channel': 'test', 'uid': UID, 'name': 'Kamex', 'state': 'off'}).text
+    assert 'diary' in client.get('/api/v1/diary', params={'channel': 'test', 'uid': UID, 'name': 'Kamex'}).text
+
+
+def test_routine_command_starts_saved_routines_on_the_shared_route():
+    seed()
+    text = client.get('/api/v1/routine', params={'channel': 'test', 'uid': UID, 'name': 'Kamex', 'n': '1'}).text
+    assert 'saved routines' in text
+
+
+def test_discord_seedling_screens():
+    citizen()
+    view = press(ui.cid('111', 'mv', 'sl_view'))['data']
+    labels = [c.get('label') for c in controls(view)]
+    assert {'Let it decide', 'Diary', 'Schedule', 'Autonomy off'} <= set(labels)
+    editor = press(ui.cid('111', 'lp'))['data']
+    assert len([c for c in controls(editor) if c['type'] == 3]) == 4
+    press(ui.cid('111', 'lp', 'Evening'), values=['free'])
+    assert a.schedule_of(life_row('discord:111', W))['Evening'] == 'free'
+    decide = next(c for c in controls(view) if c.get('label') == 'Let it decide')
+    result = json.dumps(press(decide['custom_id']), ensure_ascii=False)
+    assert 'Seedling' in result and diary('discord:111', W)
+    assert 'seedling' in m.DISCORD_OPTION_SCHEMA
+    assert 'SEEDLING' in m.status_view(W, '111', 'Kam', 'discord').body.decode()
+
+
+# ---------------------------------------------------------------- the stream
+
+def test_overlay_map_and_narrator():
+    seed()
+    away()
+    a.live_one(m, 'test', UID)
+    data = client.get('/api/v1/overlay', params={'channel': 'test'}).json()
+    me = next(s for s in data['seedlings'] if s['name'] == 'Kamex')
+    assert me['place'] in a.PLACES and me['mood'] and me['activity']
+    assert data['narration'] and 'Kamex' in data['narration'][0]['text']
+    for panel in ('map', 'narrator'):
+        page = client.get(f'/obs/{panel}', params={'channel': 'test'})
+        assert page.status_code == 200 and '/api/v1/overlay' in page.text
+    assert '/obs/map' in client.get('/obs', params={'channel': 'test'}).text
+
+
+def test_merge_moves_the_seedling_and_diary():
+    seed()
+    with m.SessionLocal() as db:
+        p = db.query(m.Player).one()
+        a.row(db, 'test', UID, create=True).schedule = 'workaholic'
+        a.diary(m, db, p, 'commons', '🎲', 'hello')
+        a.merge(db, 'test', UID, 'w')
+        db.commit()
+        assert db.get(a.SeedlingLife, ('test', 'w')).schedule == 'workaholic'
+        assert db.query(a.SeedlingDiary).filter_by(canonical_uid='w').count() == 1

@@ -778,6 +778,7 @@ def status_text(m, db, p, provider='discord'):
     else:
         lines.append('✅ Ready for work.' + (' ' + m.comfort_status_line(life) if life.comfort < needs.COMFORT_SLOW else ''))
     lines.append(f'🛏️ Sleep: {sleep}')
+    lines += ['', 'SEEDLING', m.autonomy.status_line(m, db, p)]
     lines += ['', 'QUEUE', queue_line]
     cds = _cooldowns(m, db, p, provider)
     if cds:

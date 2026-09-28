@@ -28,7 +28,7 @@ def test_every_leaf_points_at_a_real_command():
         if item['kind'] == 'nav':
             continue
         command, options = m.discord_legacy_route(item['cmd'], item['opts'])
-        assert command in m.DISCORD_OPTION_SCHEMA or command in {'recover', 'menu', 'inbox', 'eatfull', 'undo', 'catalog', 'queuedetails', 'guidepanels', 'menupanel'}, key
+        assert command in m.DISCORD_OPTION_SCHEMA or command in {'recover', 'menu', 'inbox', 'eatfull', 'undo', 'catalog', 'queuedetails', 'guidepanels', 'menupanel', 'seedlingstep'}, key
         names = {o['name'] for o in m.DISCORD_OPTION_SCHEMA.get(command, [])}
         assert set(options) <= names, key
 

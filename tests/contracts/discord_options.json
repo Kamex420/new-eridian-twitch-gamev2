@@ -1428,6 +1428,68 @@
     }
   ],
   "status": [],
+  "seedling": [
+    {
+      "type": 3,
+      "name": "section",
+      "description": "What to show",
+      "required": false,
+      "choices": [
+        {
+          "name": "Overview: mood, thought and what it is doing",
+          "value": "overview"
+        },
+        {
+          "name": "Diary: what it did while you were away",
+          "value": "diary"
+        }
+      ]
+    },
+    {
+      "type": 3,
+      "name": "schedule",
+      "description": "Daily schedule across Morning, Day, Evening and Night",
+      "required": false,
+      "choices": [
+        {
+          "name": "Balanced: work the day, friends in the evening",
+          "value": "balanced"
+        },
+        {
+          "name": "Workaholic: work dawn to dusk",
+          "value": "workaholic"
+        },
+        {
+          "name": "Night owl: sleep mornings, work nights",
+          "value": "night_owl"
+        },
+        {
+          "name": "Socialite: a little work, a lot of company",
+          "value": "socialite"
+        },
+        {
+          "name": "Homebody: mornings and evenings for hobbies",
+          "value": "homebody"
+        }
+      ]
+    },
+    {
+      "type": 3,
+      "name": "autonomy",
+      "description": "Let your Seedling live its schedule while you are away",
+      "required": false,
+      "choices": [
+        {
+          "name": "On",
+          "value": "on"
+        },
+        {
+          "name": "Off",
+          "value": "off"
+        }
+      ]
+    }
+  ],
   "find": [
     {
       "type": 3,

@@ -60,6 +60,12 @@ with /mod action:Post guide panels here instead; the bot posts all eight with co
 [0mkept.
 [0;33m/settings → Autorecover: On
 [0mPaused queues recover by themselves, then carry on.
+[1;36mYOUR SEEDLING
+[0;33m/seedling
+[0mMood, thoughts and a diary. While you are away it follows
+[0mits schedule: works, eats, sleeps and meets friends.
+[0;33m/seedling → Schedule
+[0mBalanced, workaholic, night owl, socialite or homebody.
 [1;32mEAT → REST → STAY COMFORTABLE → KEEP WORKING
 ```
 
@@ -213,8 +219,8 @@ with /mod action:Post guide panels here instead; the bot posts all eight with co
 [1;37mEvery command, grouped. /menu shows all of them as
 [1;37mbuttons.
 [1;36mYOU
-[0;33m/status  /me  /inventory  /settings
-[0mNeeds, profile, skills, items and preferences.
+[0;33m/status  /me  /seedling  /inventory  /settings
+[0mNeeds, profile, your Seedling, items and preferences.
 [0;33m/find
 [0mSearch recipes, items, buttons and the handbook for
 [0manything.
