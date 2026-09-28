@@ -92,6 +92,9 @@ def stopped(m,db,p,queue,kind,reason='',following=''):
         if eta and len(qol.needs.blocked_needs(life))>1:content+=f' Passive recovery clears every blocking need in about {qol.eta_text(eta)}.'
     if following:content+='\n\nNEXT\n'+following
     if kind=='error':content+='\n\nNEXT\nAutomatic retries stopped. Check /queue before starting another queue.'
+    if kind=='completed' and queue.total>=3:
+        from . import stream_overlay
+        stream_overlay.queue_finished(m,db,p,queue)
     # Completion retains the historical run ID to deduplicate pre-update rows.
     notice_id=dest.run_id if kind=='completed' else uuid.uuid4().hex
     if db.get(Notice,notice_id) is None:

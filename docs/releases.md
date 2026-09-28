@@ -1,5 +1,17 @@
 # Release notes
 
+## Stream overlay: live alerts, ticker, leaders and more
+
+**Live alerts** (`/obs/alerts`). An animated pop-up for each notable moment: a new citizen, a level up, an achievement, a finished queue (3+ attempts), a society event starting, completing, failing or being called off, a new society tier, a completed project, a resolved weekly story and a finished daily directive. Big moments get a glow and sparks. Transparent when idle. Options: `&test=1` loops demo alerts for positioning, `&sound=1` plays a soft chime, `&seconds=7`, `&hide=queue,join`. The full `/overlay` dashboard shows the alerts top-centre automatically (`&alerts=0` turns them off).
+
+**News ticker** (`/obs/ticker`). A scrolling crawl of the live event, recent highlights, the daily directive, market demand, any festival, the project, who is working and how to join.
+
+**Leaders** (`/obs/leaders`), **Working now** (`/obs/working`, live queue progress bars) and **How to play** (`/obs/join`, rotating chat commands, plus your Discord invite when `DISCORD_INVITE_URL` is set).
+
+**Setup page** (`/obs?channel=…`). Every panel with its URL, a Copy button, the Browser Source size and a live preview.
+
+The activity panel gains action icons and slides new entries in. Highlights are kept in `stream_highlights_v1` (last 120) and society milestones are tracked in `stream_state_v1`; both are created automatically. `/api/v1/overlay` adds `highlights`, `leaders`, `working`, `festival` and `join` without changing existing fields (`overlay_version` 6.4.0).
+
 ## Every command is a button
 
 Everything a slash command can do can now be done with buttons from `/menu`; the commands still work as before.

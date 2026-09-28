@@ -12,5 +12,7 @@ def announce(db,p,message,current):
     journal_limit=JournalEntry.__table__.c.entry.type.length
     summary=message if len(message)<=journal_limit else message[:journal_limit-1]+'…'
     db.add(JournalEntry(channel_id=p.channel_id,canonical_uid=p.twitch_uid,entry=summary))
+    from . import stream_overlay
+    stream_overlay.from_announcement(db,p,message)
     pending=notices.get()
     if pending is not None:pending.append(message)

@@ -708,7 +708,10 @@ def player(db,c,provider,uid,name):
     canon=resolve(db,c,provider,uid)
     p=db.execute(select(Player).where(Player.channel_id==c,Player.twitch_uid==canon)).scalar_one_or_none()
     if not p:
-        p=Player(channel_id=c,twitch_uid=canon,display_name=clean(name));db.add(p);society(db,c).population+=1;db.commit();db.refresh(p)
+        p=Player(channel_id=c,twitch_uid=canon,display_name=clean(name));db.add(p);society(db,c).population+=1
+        from . import stream_overlay
+        stream_overlay.highlight(db,c,"join",f"{clean(name)} arrived in New Eridian","A new citizen joined. Type !start in chat to join them.",clean(name))
+        db.commit();db.refresh(p)
     item_identity.migrate_player(sys.modules[__name__],db,p)
     record_account_name(db,c,provider,uid,name)
     p.display_name=clean(name);p.last_seen=now();db.commit()
@@ -1728,6 +1731,8 @@ def finish_event(db,s,w,ended_by="system"):
     outcome=f"{stat_changes_text(rewards)}; leaders: {leader_text(rows)}"
     record_event_history(db,w,"success",outcome,ended_by);set_event_aftermath(db,w.channel_id,cfg,"success")
     msg=f"✅ {cfg['emoji']} {cfg['name']} COMPLETE! New Eridian {stat_changes_text(rewards)}. {len(rows)} participants rewarded. Leaders: {leader_text(rows)}. Aftermath: +3% related work for 60 minutes."
+    from . import stream_overlay
+    stream_overlay.highlight(db,w.channel_id,"event_win",f"{cfg['name']} complete!",f"{len(rows)} citizens rewarded · New Eridian {stat_changes_text(rewards)}",emoji="🎉")
     clear_event(w);db.commit();return msg
 def resolve_expired_event(db,s,w,ended_by="timer"):
     if not w.active_event or not w.event_ends or now()<as_utc(w.event_ends):return ""
@@ -1743,11 +1748,15 @@ def resolve_expired_event(db,s,w,ended_by="timer"):
     aftermath_result="partial" if factor==.5 else "failed"
     record_event_history(db,w,aftermath_result,stat_changes_text(applied,"−"),ended_by);set_event_aftermath(db,w.channel_id,cfg,aftermath_result)
     msg+=f" Aftermath: {'−1%' if factor==.5 else '−2%'} related work for 60 minutes."
+    from . import stream_overlay
+    stream_overlay.highlight(db,w.channel_id,"event_fail",f"{cfg['name']} ended at {w.event_progress}/{w.event_goal}",("Partly protected: " if factor==.5 else "")+stat_changes_text(applied,"−"))
     clear_event(w);db.commit();return msg
 def start_event(db,w,event_key,started_by="automatic"):
     cfg=EVENTS[event_key];active=active_player_count(db,w.channel_id);goal=scaled_event_goal(cfg["goal"],active)
     w.heartbeat=now();w.active_event=event_key;w.event_progress=0;w.event_goal=goal;w.event_support_successes=0;w.event_ends=now()+timedelta(minutes=cfg["minutes"]);w.event_instance=secrets.token_hex(8);w.event_started_at=now();w.event_started_by=started_by;w.event_active_players=active;w.activity_since_event=0;w.activity_window_started_at=None;db.commit()
     primary=SKILL_LABELS.get(cfg["primary"],cfg["primary"].title());support=SKILL_LABELS.get(cfg["support"],cfg["support"].title())
+    from . import stream_overlay
+    stream_overlay.highlight(db,w.channel_id,"event_start",f"{cfg['name']} has started!",f"{primary} work counts, {support} helps. Goal {goal} in {cfg['minutes']} minutes.",emoji=cfg['emoji']);db.commit()
     return f"🚨 {cfg['emoji']} {cfg['name']} STARTED! {cfg['objective']}. Primary: {primary}; support: {support} (2 successes = +1). Goal {goal}, scaled for {active} active citizens."
 def auto_event_status(db,w):
     if not AUTO_EVENTS_ENABLED:return "Automatic events are disabled."
@@ -1775,7 +1784,10 @@ def maybe_start_auto_event(db,w,add_activity=True,current_uid=None):
     db.commit();return ""
 def cancel_event(db,w,ended_by="moderator"):
     if not w.active_event:return "🚨 No active event to cancel."
-    cfg=EVENTS[w.active_event];record_event_history(db,w,"cancelled","No penalty applied",ended_by);clear_event(w);db.commit();return f"🛑 {cfg['emoji']} {cfg['name']} cancelled by {ended_by}. No penalty applied."
+    cfg=EVENTS[w.active_event];record_event_history(db,w,"cancelled","No penalty applied",ended_by)
+    from . import stream_overlay
+    stream_overlay.highlight(db,w.channel_id,"event_cancel",f"{cfg['name']} was called off","No penalty applied.")
+    clear_event(w);db.commit();return f"🛑 {cfg['emoji']} {cfg['name']} cancelled by {ended_by}. No penalty applied."
 def event_note(db,s,w,p,a):
     if not w.active_event:return ""
     expired=resolve_expired_event(db,s,w)
@@ -1994,7 +2006,11 @@ def achieve(db,p):
     for code,ok,label in tests:
         if not ok:continue
         r=db.execute(select(Achievement).where(Achievement.channel_id==p.channel_id,Achievement.canonical_uid==p.twitch_uid,Achievement.code==code)).scalar_one_or_none()
-        if not r:db.add(Achievement(channel_id=p.channel_id,canonical_uid=p.twitch_uid,code=code));db.commit();notes.append("🏆 "+label)
+        if not r:
+            db.add(Achievement(channel_id=p.channel_id,canonical_uid=p.twitch_uid,code=code))
+            from . import stream_overlay
+            stream_overlay.highlight(db,p.channel_id,"achievement",f"{p.display_name} earned an achievement",label,p.display_name)
+            db.commit();notes.append("🏆 "+label)
     return (" "+" | ".join(notes)) if notes else ""
 
 @app.get("/health")
@@ -3402,7 +3418,12 @@ def overlay_state(channel:str):
             "lore_total":len(LORE_FRAGMENTS),
         }
 
+        from . import stream_overlay
+        stream_overlay.watch(sys.modules[__name__],db,DISCORD_WORLD_ID,tier[0],project_data,story_data,directive_data)
+        stream_extra=stream_overlay.extra(sys.modules[__name__],db,source_ids,DISCORD_WORLD_ID)
+        db.commit()
         return {
+            **stream_extra,
             "ok":True,
             "game":s.name,
             "tier":tier[0],
@@ -3439,7 +3460,7 @@ def overlay_state(channel:str):
             "updated_at":now().isoformat(),
             "world_sources":source_ids,
             "primary_world":DISCORD_WORLD_ID,
-            "overlay_version":"6.3.1",
+            "overlay_version":"6.4.0",
         }
 
 
@@ -3450,7 +3471,7 @@ def overlay_page(panel:str="",channel:str="new-eridian"):
     # This prevents OBS transforms and Windows display scaling from activating
     # the dashboard's mobile stack inside an individual Browser Source.
     selected=(panel or "").lower().strip()
-    if selected in {"society","today","event","ops","activity","telemetry","signal"}:
+    if selected in {"society","today","event","ops","activity","telemetry","signal","alerts","ticker","leaders","working","join"}:
         return standalone_obs_panel(selected,channel)
     return r"""<!doctype html>
 <html lang="en">
@@ -4777,14 +4798,30 @@ if(channel){
   });
 }
 </script>
+<script>
+/* Live highlight alerts float over the top centre of the dashboard (&alerts=0 turns them off). */
+(()=>{const q=new URLSearchParams(location.search),c=q.get('channel');if(!c||q.get('alerts')==='0'||q.get('panel'))return;
+const f=document.createElement('iframe');f.src='/obs/alerts?channel='+encodeURIComponent(c)+(q.get('sound')?'&sound=1':'');f.title='Live alerts';f.setAttribute('allowtransparency','true');
+f.style.cssText='position:fixed;top:18px;left:50%;transform:translateX(-50%);width:680px;max-width:96vw;height:220px;border:0;background:transparent;pointer-events:none;z-index:60';
+document.body.appendChild(f)})();
+</script>
 </body>
 </html>"""
 
+
+@app.get("/obs",response_class=HTMLResponse)
+def obs_setup(channel:str="new-eridian"):
+    """Every OBS panel with its URL, size and a live preview."""
+    from . import stream_overlay
+    return HTMLResponse(stream_overlay.setup_page(channel))
 
 @app.get("/obs/{panel}",response_class=HTMLResponse)
 def standalone_obs_panel(panel:str,channel:str="new-eridian"):
     valid={"society","today","event","ops","activity","telemetry","signal"}
     panel=(panel or "").lower().strip()
+    from . import stream_overlay
+    if panel in stream_overlay.PANELS:
+        return HTMLResponse(stream_overlay.page(panel,channel))
     if panel not in valid:
         raise HTTPException(status_code=404,detail="Unknown OBS panel")
 
@@ -4809,7 +4846,7 @@ h1,h2,h3,p{margin:0}h1{font-family:Georgia,"Times New Roman",serif;font-size:31p
 .sep{opacity:.35}.worldline{display:flex;gap:8px;flex-wrap:wrap;margin-top:11px;font-size:13px}.condition{margin-top:13px;padding-top:12px;border-top:1px solid rgba(255,255,255,.09)}.condition strong{font-size:15px}.condition p{margin-top:5px;font-size:12px;color:var(--muted);line-height:1.4}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}.module{min-width:0;padding:12px;border:1px solid rgba(255,255,255,.09);background:rgba(7,9,13,.28);border-radius:10px}.module h3{font-size:14px;margin-bottom:5px}.value{font-size:12px;color:var(--muted);line-height:1.4;overflow-wrap:anywhere}.rumor{margin-top:11px;padding-top:10px;border-top:1px solid rgba(255,255,255,.09);font-size:11px;line-height:1.4;color:var(--muted)}
 .storypaths{display:flex;flex-direction:column;gap:8px;margin-top:9px}.pathhead{display:flex;justify-content:space-between;gap:8px;font-size:11px}.pathname{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pathmeta{white-space:nowrap;color:var(--muted)}.path.lead .pathname,.path.lead .pathmeta{color:var(--green2)}.pathbar{height:6px;border-radius:99px;background:rgba(255,255,255,.07);overflow:hidden;margin-top:4px}.pathbar i{display:block;height:100%;background:var(--cyan)}.path.lead .pathbar i{background:var(--green2)}
-.activity-list{display:flex;flex-direction:column;gap:9px;margin-top:11px}.activity{display:grid;grid-template-columns:8px minmax(0,1fr);gap:10px;min-width:0;padding:9px 10px;border-radius:9px;background:rgba(7,9,13,.30)}.pulse{width:8px;height:8px;border-radius:50%;background:var(--violet);margin-top:5px}.activity:first-child .pulse{background:var(--green)}.top{display:flex;gap:8px;flex-wrap:wrap;min-width:0}.who{font-size:12px;font-weight:850;overflow-wrap:anywhere}.action{font-size:11px;color:var(--cyan);letter-spacing:.07em;text-transform:uppercase;overflow-wrap:anywhere}.age{margin-left:auto;font-size:11px;color:var(--muted);white-space:nowrap}.msg{font-size:12px;color:var(--muted);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.activity-list{display:flex;flex-direction:column;gap:9px;margin-top:11px}.activity .icon{width:26px;height:26px;display:grid;place-items:center;border-radius:50%;background:rgba(189,145,255,.14);font-size:14px}.activity.fresh{animation:slidein .6s cubic-bezier(.2,1.2,.4,1) both;box-shadow:inset 3px 0 0 var(--green)}@keyframes slidein{from{opacity:0;transform:translateX(-18px)}to{opacity:1;transform:none}}.activity{display:grid;grid-template-columns:26px minmax(0,1fr);gap:10px;min-width:0;padding:9px 10px;border-radius:9px;background:rgba(7,9,13,.30)}.pulse{width:8px;height:8px;border-radius:50%;background:var(--violet);margin-top:5px}.activity:first-child .pulse{background:var(--green)}.top{display:flex;gap:8px;flex-wrap:wrap;min-width:0}.who{font-size:12px;font-weight:850;overflow-wrap:anywhere}.action{font-size:11px;color:var(--cyan);letter-spacing:.07em;text-transform:uppercase;overflow-wrap:anywhere}.age{margin-left:auto;font-size:11px;color:var(--muted);white-space:nowrap}.msg{font-size:12px;color:var(--muted);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .stats{display:grid;grid-template-columns:repeat(6,minmax(0,1fr)) 120px 170px;gap:1px;padding:0;overflow:hidden}.stat,.pop,.tier{min-width:0;padding:13px 12px;background:rgba(8,10,14,.28)}.stat small,.pop small,.tier small{display:block;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}.stat strong,.pop strong{display:block;font-size:23px;margin-top:5px}.tier strong{display:block;font-size:18px;color:var(--green2);margin-top:6px}.tiny{font-size:10px;color:var(--muted);margin-top:6px}
 .event .eyebrow{color:#ff9aa6}.timer{font-size:23px;font-weight:850}.eventmeta{display:flex;gap:14px;flex-wrap:wrap;margin-top:11px;font-size:12px;color:var(--muted)}.eventmeta b{color:#fff}
 .signal{display:inline-flex;align-items:center;gap:8px;padding:10px 12px;border:1px solid rgba(255,255,255,.11);border-radius:9px;background:rgba(12,14,18,.94);font-size:11px;letter-spacing:.10em;text-transform:uppercase;color:var(--muted)}.dot{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 6px rgba(152,215,155,.48)}.bad .dot{background:var(--danger)}
@@ -4855,7 +4892,10 @@ function renderSociety(d){root.innerHTML=`<section class="card"><div class="eyeb
 function renderToday(d){const q=d.directive||{},g=d.engagement||{},a=d.aftermath;const after=a?`<div class="rumor"><b style="color:${Number(a.modifier)>=0?'var(--green2)':'var(--danger)'}">Event aftermath ${Number(a.modifier)>=0?'+':''}${Number(a.modifier)}%</b> · ${esc((a.skills||[]).join(' / '))} · ${fmtTime(a.seconds_remaining)} remaining<br>${esc(a.description||'')}</div>`:'';root.innerHTML=`<section class="card"><div class="eyebrow">✦ Today in New Eridian</div><div class="module" style="margin-top:10px"><div class="row"><h3>${q.complete?'✓ ':''}${esc(q.name||'Daily Directive')}</h3><b class="small" style="color:var(--cyan)">${q.progress||0}/${q.goal||0}</b></div><div class="value">${esc(q.description||'')}</div>${bar(q.percent||0)}<div class="value" style="margin-top:5px">Useful: ${esc((q.skills||[]).join(' · '))} · Reward ${esc(q.reward||'society progress')}</div></div><div class="grid2" style="grid-template-columns:repeat(3,1fr)"><div class="module"><h3>${Number(g.variety_complete||0)}</h3><div class="value">Variety done</div></div><div class="module"><h3>${Number(g.lore_found||0)}/${Number(g.lore_total||0)}</h3><div class="value">Lore found</div></div><div class="module"><h3>${Number(g.fleet_assigned||0)}</h3><div class="value">Fleet assigned</div></div></div><div class="value" style="margin-top:7px">Gear familiarity: ${Number(g.familiar_gear||0)} familiar / ${Number(g.trusted_gear||0)} trusted · ${Number(g.relationship_memories||0)} shared memories</div>${after}</section>`}
 function renderEvent(d){const e=d.event;if(!e){root.innerHTML=`<section class="card event"><div class="eyebrow">Live Society Event</div><h2 style="margin-top:6px">No active event</h2><p class="value" style="margin-top:5px">New Eridian is currently stable.</p></section>`;return}root.innerHTML=`<section class="card event"><div class="eyebrow">⚠ Live Society Event</div><div class="row" style="margin-top:5px"><h2>${esc((e.emoji||'🚨')+' '+e.name)}</h2><span class="timer">${fmtTime(e.seconds_remaining)}</span></div>${bar(e.percent)}<div class="eventmeta"><span>Progress <b>${e.progress}/${e.goal}</b></span><span>Primary <b>${esc(e.primary)}</b></span><span>Support <b>${esc(e.support)}</b></span></div></section>`}
 function renderOps(d){const p=d.project||{},st=d.story||{},m=d.market||{},tracks=st.tracks||[],total=tracks.reduce((a,x)=>a+(Number(x.value)||0),0),max=Math.max(0,...tracks.map(x=>Number(x.value)||0));const paths=tracks.map(x=>{const value=Number(x.value)||0,share=total?Math.round(value/total*100):0,lead=value===max&&max>0;return `<div class="path${lead?' lead':''}"><div class="pathhead"><span class="pathname">${esc(x.name)}${lead?' · LEADING':''}</span><span class="pathmeta">${value} · ${share}%</span></div><div class="pathbar"><i style="width:${share}%"></i></div></div>`}).join('');root.innerHTML=`<section class="card"><div class="eyebrow">Avesta Operations</div><div class="grid2"><div class="module"><h3>🏗️ Society Project</h3><div class="value">${esc(p.name||'None')} · ${p.progress||0}/${p.goal||0}</div>${bar(p.percent||0)}<div class="value" style="margin-top:5px">${esc((p.skills||[]).join(' · '))}</div></div><div class="module"><h3>📖 Weekly Story · ${Math.round(st.percent||0)}%</h3><div class="value">${esc(st.name||'None')} · ${st.progress||0}/${st.goal||0}</div>${bar(st.percent||0)}<div class="storypaths">${paths}</div></div><div class="module"><h3>💰 Market Signal</h3><div class="value" style="color:var(--amber)">🔥 ${esc(m.primary&&m.primary.name||'None')}${m.primary?' · '+m.primary.price+' SC':''}</div><div class="value">${m.secondary?'↑ '+esc(m.secondary.name)+' · '+m.secondary.price+' SC':''}</div></div><div class="module"><h3>📡 Society Pressure</h3><div class="value">${esc((d.pressure||[]).join(' · ')||'No critical shortages')}</div></div></div><div class="rumor">${d.rumor?'🗣️ '+esc(d.rumor):''}</div></section>`}
-function renderActivity(d){const rows=(d.activity||[]).slice(0,5);root.innerHTML=`<section class="card"><div class="row"><div class="eyebrow">Recent Citizen Activity</div><span class="small muted">${rows.length} latest</span></div><div class="activity-list">${rows.length?rows.map(x=>`<div class="activity"><span class="pulse"></span><div style="min-width:0"><div class="top"><span class="who">${esc(x.name)}</span><span class="action">${esc(x.action)}</span><span class="age">${ago(x.at)}</span></div><div class="msg">${esc(concise(x.message))}</div></div></div>`).join(''):'<div class="value">Waiting for citizen activity…</div>'}</div></section>`}
+const ACT_ICON={relax:'🛋️',sleep:'🛏️',eat:'🍲',games:'🎲',walk:'🌿',hobby:'🎨',meal:'🎃',hi:'👋',hangout:'☕',mentor:'🎓',farm:'🌱',harvest:'🎃',forage:'🍓',water:'💧',scan:'📡',mine:'⛏️',rare:'💎',research:'🔬',cargo:'📦',delivery:'🦆',spaceport:'🚀',explore:'🧭',survey:'🗺️',market:'🪙',repair:'🔧',business:'🏢',make:'🛠️',craft:'🛠️',gather:'🌿',start:'🌱'};
+const seenActivity=new Set();
+function actIcon(a){a=String(a||'').toLowerCase();for(const k in ACT_ICON)if(a.includes(k))return ACT_ICON[k];return '✦'}
+function renderActivity(d){const rows=(d.activity||[]).slice(0,5);const first=!seenActivity.size;root.innerHTML=`<section class="card"><div class="row"><div class="eyebrow">Recent Citizen Activity</div><span class="small muted">${rows.length} latest</span></div><div class="activity-list">${rows.length?rows.map(x=>{const key=x.at+x.name+x.action,fresh=!first&&!seenActivity.has(key);seenActivity.add(key);return `<div class="activity${fresh?' fresh':''}"><span class="icon">${actIcon(x.action)}</span><div style="min-width:0"><div class="top"><span class="who">${esc(x.name)}</span><span class="action">${esc(x.action)}</span><span class="age">${ago(x.at)}</span></div><div class="msg">${esc(concise(x.message))}</div></div></div>`}).join(''):'<div class="value">Waiting for citizen activity…</div>'}</div></section>`}
 function renderTelemetry(d){const meta={food:['🌾','Food'],materials:['⛏️','Materials'],development:['⚙️','Development'],knowledge:['🔬','Knowledge'],treasury:['🪙','Treasury'],reputation:['⭐','Reputation']},target=d.tier_target||1;const stats=Object.entries(meta).map(([key,[icon,label]])=>{const value=d.stats&&d.stats[key]||0;return `<div class="stat"><small>${icon} ${label}</small><strong>${Number(value).toLocaleString()}</strong><div class="tiny">${d.next_tier?`${Math.min(value,target)}/${target} to ${esc(d.next_tier)}`:'Maximum tier'}</div>${bar(d.next_tier?pct(value,target):100)}</div>`}).join('');const bonus=Number(d.tier_bonus||0);root.innerHTML=`<section class="card stats">${stats}<div class="pop"><small>👥 Population</small><strong>${Number(d.stats&&d.stats.population||0).toLocaleString()}</strong><div class="tiny">${d.active_players||0} active / 30m</div></div><div class="tier"><small>Society Tier</small><strong>${esc(d.tier||'—')}</strong><div class="tiny">${d.next_tier?'Next: '+esc(d.next_tier)+' · '+d.tier_target+' each':'Regional Hub reached'}<br>Tier bonus: ${bonus?('+'+bonus+' SC on success'):'None'}</div></div></section>`}
 function renderSignal(ok=true){root.innerHTML=`<div class="signal${ok?'':' bad'}"><span class="dot"></span>${ok?'LIVE SIGNAL · NEW ERIDIAN':'SIGNAL INTERRUPTED · RETRYING'}</div>`}
 function render(d){if(PANEL==='society')renderSociety(d);else if(PANEL==='today')renderToday(d);else if(PANEL==='event')renderEvent(d);else if(PANEL==='ops')renderOps(d);else if(PANEL==='activity')renderActivity(d);else if(PANEL==='telemetry')renderTelemetry(d);else renderSignal(true)}
@@ -7157,6 +7197,8 @@ from . import qol, presentation, menu, inbox, extras
 game_menu=menu
 inbox.install(sys.modules[__name__])
 extras.install(sys.modules[__name__])
+from . import stream_overlay
+stream_overlay.install(sys.modules[__name__])
 presentation.SKILL_NAMES=tuple(SKILL_LABELS.values())
 
 
