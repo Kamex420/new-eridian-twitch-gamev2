@@ -1,5 +1,21 @@
 # Release notes
 
+## Every command is a button
+
+Everything a slash command can do can now be done with buttons from `/menu`; the commands still work as before.
+
+**New buttons.** Trade gains **Browse shop** (by category), **Buy** (item → Buy 1 / 5 / 10 / 25 / Other amount…), **Sell some** (Sell 1 / 5 / 10 / all, only amounts you have), **Sell raw goods** (crops, ore, rare ore, components, cargo) and **Start business** (a pop-up asks for the name). Work gains **Repair society**, **Repair gear** (pick a tool) and **Train a skill**. Craft → **Workshops** holds the station list, **Unlock station** (pick → confirm) and **Catalog by category**. Bag gains **Search bag** (pop-up), **By name**, **By category**, **Favourite ingredients** and **Sellable**. Help gains **Guide for…** (every /guide goal) and **Find** (pop-up). A new **Account** area has **Start / load citizen** and **Link Twitch** (a pop-up for the code from `!link`).
+
+**Pop-up forms.** Anything that needs typing (search, a link code, a business name, a custom amount) opens a Discord pop-up form instead of a slash option.
+
+**Long lists page.** Dropdowns with more than 25 choices (the 48 Seed Industries supplies, stations, big inventories) get Previous / Next page entries.
+
+**Moderator area.** Moderators see 🛡️ **Moderator** on the Home screen: Start event (pick → confirm), Stop event, Moderator log, Account lookup (owners), Post guide panels, **Post game panel** and moderator help. Players never see it, and the buttons refuse anyone without moderator rights.
+
+**Public game panel.** `/mod action:Post game button panel here` (or Moderator → Post game panel) posts a message anyone can press: Menu, Status, Life, Work, Craft, Queue, Bag, Trade, Find and Account. Each press opens that player's own private menu, so nobody needs to type a command. Pin it in the game channel.
+
+**Richer replies.** Every slash-command reply now carries a row of that area's next actions above the Again / area / Menu row.
+
 ## Planning, repeating and tidying up
 
 **Live countdowns.** Discord replies show times as live timestamps that count down on their own ("ready in 4 minutes"): sleep, cooldowns, passive recovery and when a queue finishes. Twitch gets plain "in 4m" text.

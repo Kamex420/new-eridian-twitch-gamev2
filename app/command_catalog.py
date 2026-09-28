@@ -470,7 +470,7 @@ WORK_TASKS=[(W('Tend Fields','farm'),'farm_tend'),(W('Harvest Pumpkins','harvest
             (W('Delivery','delivery','','uses 1 Cargo'),'delivery'),(W('Spaceport','spaceport'),'spaceport'),
             (W('Expedite Spaceport','spaceport','expedite','uses 1 Power Cell'),'expedite'),(W('Scout','explore'),'scout'),
             (W('Survey','survey','','needs Resource Scanner'),'survey')]
-MOD_ACTIONS=[('Start event','eventstart'),('Stop event','eventstop'),('Moderator log','modlog'),('Linked-account lookup (owner)','linklookup'),('Post guide panels here','guidepanels')]
+MOD_ACTIONS=[('Start event','eventstart'),('Stop event','eventstop'),('Moderator log','modlog'),('Linked-account lookup (owner)','linklookup'),('Post guide panels here','guidepanels'),('Post game button panel here','menupanel')]
 PROGRESS_SECTIONS=[('Skills & Level Unlocks','skills'),('Daily Contract','daily'),('Achievements','achievements'),('Collection','collection')]
 WORLD_SECTIONS=[('Society Overview','society'),('Society Next Tier','society_progress'),('Contribution Leaderboard','leaderboard'),
                 ('Active Event','event'),('Event History','event_history'),('Holidays & Festival Foods','holidays')]

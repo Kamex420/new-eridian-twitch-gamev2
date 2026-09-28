@@ -23,6 +23,7 @@ PANELS = [
      'New Eridian v2 is a Twitch + Discord community life game on Avesta. Build your citizen, learn skills, make useful supplies and help the settlement grow.',
      [('YOUR FIRST STEPS', [
          ('/menu', 'Every part of the game as buttons. Pick an area, then what to do.'),
+         ('🎛️ Pinned game panel', 'Press any button on it to open your own private menu. No typing needed.'),
          ('/start', 'Create or load your citizen.'),
          ('/job', 'Choose a profession. Matching work earns a job bonus.'),
          ('/status', 'Your needs, queue, cooldowns and next step.'),
@@ -110,8 +111,8 @@ PANELS = [
       ('TRADE & COMMUNITY', [('/seedindustries  /market  /home  /business', 'Money, prices, your Habitat and company.'),
                              ('/social  /world  /district  /shift  /ducks', 'Friends, the settlement, events and holidays.')]),
       ('HELP', [('/guide  /seed  /start  /link  /job  /specialize', 'Next steps, the handbook and your setup.'),
-                ('/mod', 'Moderators: events, logs, account lookups, these panels.')])],
-     'STUCK? /menu HAS A BUTTON FOR EVERYTHING'),
+                ('/mod', 'Moderators: events, logs, lookups, these panels and the game panel.')])],
+     'EVERY COMMAND IS ALSO A BUTTON IN /menu'),
 ]
 
 

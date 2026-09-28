@@ -1,5 +1,7 @@
 # Validation record
 
+The buttons-everywhere update adds `tests/test_buttons_everywhere.py`: every player command option is reachable from `/menu`, buying through pages, amount buttons and a custom-amount form, selling only amounts you own, the search, find, link and business forms, dropdown views, the public panel opening a private menu per player, moderator tools hidden and refused for players, and the extra reply row.
+
 The planning-and-convenience update passed **888 tests**, including `tests/test_extras.py`: live countdown timestamps (plain text on Twitch), queue max limited by ingredients and needs, recent actions and `!again`, goals with next steps and self-clearing, plans with sell steps run by the queue worker, routines, item uses, welcome-back and one-time reminders, auto-sell that keeps protected ingredients, 60-second sale undo, eat until full, `/find` on both platforms and the remembered Workbench place.
 
 The private-notification update passed **868 tests**, including `tests/test_inbox.py`: queue events reach the inbox, private alerts skip the channel ping, pinged events are already read, popups follow the Important/All/Off setting and are sent once as ephemeral follow-ups, starting a short queue warns immediately, tips show once, the short queue status hides requirements behind Details, and the inbox view marks items read.

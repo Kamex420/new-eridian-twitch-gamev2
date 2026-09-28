@@ -16,6 +16,9 @@ with /mod action:Post guide panels here instead; the bot posts all eight with co
 [0;33m/menu
 [0mEvery part of the game as buttons. Pick an area, then what
 [0mto do.
+[0;33m🎛️ Pinned game panel
+[0mPress any button on it to open your own private menu. No
+[0mtyping needed.
 [0;33m/start
 [0mCreate or load your citizen.
 [0;33m/job
@@ -229,6 +232,7 @@ with /mod action:Post guide panels here instead; the bot posts all eight with co
 [0;33m/guide  /seed  /start  /link  /job  /specialize
 [0mNext steps, the handbook and your setup.
 [0;33m/mod
-[0mModerators: events, logs, account lookups, these panels.
-[1;32mSTUCK? /menu HAS A BUTTON FOR EVERYTHING
+[0mModerators: events, logs, lookups, these panels and the
+[0mgame panel.
+[1;32mEVERY COMMAND IS ALSO A BUTTON IN /menu
 ```

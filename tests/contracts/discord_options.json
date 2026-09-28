@@ -1693,6 +1693,10 @@
         {
           "name": "Post guide panels here",
           "value": "guidepanels"
+        },
+        {
+          "name": "Post game button panel here",
+          "value": "menupanel"
         }
       ]
     },

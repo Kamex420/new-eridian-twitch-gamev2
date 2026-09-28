@@ -22,11 +22,18 @@ custom_id grammar (max 100 characters):  ne|<owner id>|<verb>|<args...>
   fm|<id>|<batches>       fetch-missing-ingredients plan
   cn                      clear the next (follow-up) queue
   mn|mv|mk|mp             game menu areas, views and choices (see menu.py)
+  mo|<leaf>               open a leaf's pop-up form (Discord modal)
+  md|<leaf>[|<arg>]       a submitted pop-up form (interaction type 5)
   t|<ticket>              one-time action
+
+Owner '*' marks the public game panel posted in the channel: anyone may press
+it, and each press opens that citizen's own private menu. Public buttons only
+navigate; they never carry tickets.
 
 Category keys include the personal views 'ready' and 'favorites'. Setting a
 favourite or clearing the next queue is idempotent, so neither needs a ticket.
 """
+import contextvars
 import copy
 import json
 import secrets
@@ -36,6 +43,19 @@ from .db import Base
 from . import workbench as wb, seed_content as s, qol
 
 FOOTER = "New Eridian v2 • May Rocky's wisdom guide you."
+PUBLIC = '*'
+# The Discord interaction being answered, so menu actions can check moderator rights.
+INTERACTION = contextvars.ContextVar('ne_interaction', default=None)
+
+
+def is_moderator(m):
+    payload = INTERACTION.get()
+    return bool(payload) and m._discord_is_moderator(payload)
+
+
+def is_owner(m):
+    payload = INTERACTION.get()
+    return bool(payload) and m._discord_is_owner(payload)
 TICKET_HOURS = 24
 PANEL_COMMANDS = {'make', 'mine', 'gather', 'queue', 'status', 'seedindustries', 'menu', 'find'}
 
@@ -472,9 +492,19 @@ def handle_component(m, payload, schedule=None):
     if len(parts) < 3 or parts[0] != 'ne':
         return _notice('This control is no longer available. Run the command again.')
     owner, verb, args = parts[1], parts[2], parts[3:]
+    INTERACTION.set(payload)
+    if owner == PUBLIC:
+        # The public game panel: each press opens the presser's own private menu.
+        if verb == 't':
+            return _notice('Open your own menu first. Nothing was spent.')
+        owner = uid
     if uid != owner:
         return _notice('This menu belongs to another citizen. Open your own with the same command. Nothing was spent.')
     values = data.get('values') or []
+    if verb == 'mo':
+        from . import menu
+        form = menu.modal(owner, args[0] if args else '', args[1:])
+        return form or _notice('This control is no longer available. Open /menu again.')
     if verb == 'mp':
         from . import menu
         item = menu.LEAVES.get(args[0] if args else '')
@@ -558,7 +588,7 @@ def _navigate(m, payload, uid, name, owner, verb, args, values):
             return _reply(message(m, text, queue_components(m, db, p, owner)[:1], 'queue'), payload)
         if verb == 'st':
             return _reply(message(m, qol.status_text(m, db, p), status_components(m, db, p, owner), 'status'), payload)
-        if verb in {'mn', 'mv', 'mk', 'mp'}:
+        if verb in {'mn', 'mv', 'mk', 'mp', 'ma'}:
             from . import menu
             data = menu.navigate(m, db, p, owner, verb, args, values, name)
             db.commit()
@@ -658,6 +688,7 @@ def _run(m, uid, name, action, kind, channel):
 def finish_ticket(m, payload, uid, name, action):
     origin = m.task_queue.queue_notifications.origin_channel
     token = origin.set(str(payload.get('channel_id') or ''))
+    INTERACTION.set(payload)
     try:
         data = run_ticket(m, uid, name, action, payload)
     except Exception:
@@ -682,6 +713,93 @@ def _popups(m, payload, uid, command='', text=''):
     except Exception:
         import logging
         logging.getLogger(__name__).error('Private notifications could not be delivered after a button')
+
+
+# ---------------------------------------------------------------- pop-up forms (modals)
+
+def modal(custom_id, title, label, placeholder='', min_length=1, max_length=60, value=''):
+    """A Discord pop-up form with one text box (response type 9)."""
+    field = {'type': 4, 'custom_id': 'value', 'label': wb.clip(label, 45), 'style': 1, 'min_length': min_length,
+             'max_length': max_length, 'required': True}
+    if placeholder:
+        field['placeholder'] = wb.clip(placeholder, 100)
+    if value:
+        field['value'] = str(value)[:max_length]
+    return {'type': 9, 'data': {'custom_id': custom_id, 'title': wb.clip(title, 45), 'components': [{'type': 1, 'components': [field]}]}}
+
+
+def modal_value(payload):
+    for component_row in (payload.get('data') or {}).get('components') or []:
+        for component in component_row.get('components') or []:
+            if component.get('custom_id') == 'value':
+                return str(component.get('value') or '').strip()
+    return ''
+
+
+def handle_modal(m, payload, schedule=None):
+    """Answer a submitted pop-up form: a search shows results; an action runs once."""
+    parts = str((payload.get('data') or {}).get('custom_id') or '').split('|')
+    uid, name = _user(payload)
+    if len(parts) < 4 or parts[0] != 'ne' or parts[2] != 'md':
+        return _notice('This form is no longer available. Open /menu again.')
+    owner, key, args = parts[1], parts[3], parts[4:]
+    INTERACTION.set(payload)
+    if owner not in {uid, PUBLIC}:
+        return _notice('This form belongs to another citizen. Nothing was spent.')
+    value = modal_value(payload)
+    if not value:
+        return _notice('Nothing was entered. Nothing was spent.')
+    from . import menu
+    with m.task_queue.atomic(m, m.DISCORD_WORLD_ID):
+        with m.SessionLocal() as db:
+            p = _player(m, db, uid, name)
+            result = menu.submit(m, db, p, uid, name, key, args, value)
+            db.commit()
+    if result is None:
+        return _notice('This form is no longer available. Open /menu again.')
+    if 'do' in result:
+        # Spending forms (link, start a business, buy an amount) run like a one-time button.
+        if schedule is None:
+            return _reply(run_ticket(m, uid, name, result, payload), payload)
+        schedule(finish_ticket, m, payload, uid, name, result)
+        return {'type': 6}
+    return _reply(result, payload)
+
+
+# ---------------------------------------------------------------- public game panel
+
+def public_panel(m):
+    """A message anyone can press: every button opens that citizen's own private menu."""
+    from . import menu
+    text = ('🌱 NEW ERIDIAN — PLAY WITH BUTTONS\n'
+            'Press any button to open your own private menu. Nobody else sees it, and nothing is spent until you press an action.\n\n'
+            '🏠 **Menu** — every part of the game\n📊 **Status** — needs, queue and what to do next\n'
+            '❤️ **Life** — relax, sleep, eat, recover\n⛏️ **Work** — mine, gather and jobs\n🛠️ **Craft** — the Workbench\n'
+            '⏱️ **Queue** — your automatic tasks\n🎒 **Bag** — use, eat, sell\n🪙 **Trade** — buy, sell, orders, business\n'
+            '🔎 **Find** — search anything\n🔗 **Account** — start or link Twitch')
+    rows = [row(button('Menu', cid(PUBLIC, 'mn', 'home'), style=1, emoji='🏠'), button('Status', cid(PUBLIC, 'st'), style=1, emoji='📊'),
+                button('Life', cid(PUBLIC, 'mn', 'life'), emoji='❤️'), button('Work', cid(PUBLIC, 'mn', 'work'), emoji='⛏️'),
+                button('Craft', cid(PUBLIC, 'mn', 'craft'), emoji='🛠️')),
+            row(button('Queue', cid(PUBLIC, 'qv'), emoji='⏱️'), button('Bag', cid(PUBLIC, 'mn', 'bag'), emoji='🎒'),
+                button('Trade', cid(PUBLIC, 'mn', 'trade'), emoji='🪙'), button('Find', cid(PUBLIC, 'mo', 'find'), emoji='🔎'),
+                button('Account', cid(PUBLIC, 'mn', 'account'), emoji='🔗'))]
+    return message(m, text, rows, 'menu')
+
+
+def post_public_panel(m, channel_id, token=None):
+    """Post the public game panel as the bot. Returns True when Discord accepted it."""
+    import os
+    import requests
+    token = (token or os.getenv('DISCORD_BOT_TOKEN', '')).strip()
+    if not token or not str(channel_id).isdigit():
+        return False
+    data = public_panel(m)
+    try:
+        response = requests.post(f'https://discord.com/api/v10/channels/{channel_id}/messages', headers={'Authorization': 'Bot ' + token},
+                                 json={'embeds': data['embeds'], 'components': data['components'], 'allowed_mentions': {'parse': []}}, timeout=10)
+    except requests.RequestException:
+        return False
+    return 200 <= response.status_code < 300
 
 
 # ---------------------------------------------------------------- goal, plans, auto-sell, uses, find, recent (see extras.py)

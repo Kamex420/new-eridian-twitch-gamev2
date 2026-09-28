@@ -5500,7 +5500,7 @@ DISCORD_PRIVATE_COMMANDS = {
     "seed", "guide", "start", "me", "progress", "inventory", "job",
     "home", "business", "make", "seedindustries", "link", "specialize", "modlog",
     "world", "linklookup", "ducks", "training", "catalog", "gather", "workshop",
-    "status", "settings", "mod", "menu", "guidepanels", "inbox", "queuedetails", "find", "undo"
+    "status", "settings", "mod", "menu", "guidepanels", "menupanel", "inbox", "queuedetails", "find", "undo"
 }
 
 def discord_message_status(content):
@@ -6744,6 +6744,11 @@ def _discord_call_internal(command: str, uid: str, name: str, options: dict, int
         return recover_needs(channel,uid,name,"discord").body.decode()
     if command=="menu":
         return game_menu.home_text(__import__("sys").modules[__name__],uid,name)
+    if command=="menupanel":
+        target=task_queue.queue_notifications.origin_channel.get() or DISCORD_GAME_CHANNEL_ID
+        if ui.post_public_panel(__import__("sys").modules[__name__],target):
+            return "🎛️ Posted the game panel in this channel. Anyone can press it to open their own private menu. Pin it so it stays on top."
+        return "⚠️ The game panel could not be posted. Check that the bot can send messages here and that DISCORD_BOT_TOKEN is set."
     if command=="guidepanels":
         from . import guide_panels
         target=task_queue.queue_notifications.origin_channel.get() or DISCORD_GAME_CHANNEL_ID
@@ -7002,6 +7007,12 @@ async def discord_interactions(request: Request, background_tasks: BackgroundTas
             return await run_in_threadpool(ui.handle_component,sys.modules[__name__],payload,background_tasks.add_task)
         return await run_in_threadpool(message_layout.open_page,sys.modules[__name__],payload)
 
+    # A submitted pop-up form (search, link code, business name, custom amount).
+    if payload.get("type") == 5:
+        if not _discord_allowed_channel(payload):
+            return {"type":4,"data":{"content":"Use the designated game channel.","flags":64}}
+        return await run_in_threadpool(ui.handle_modal,sys.modules[__name__],payload,background_tasks.add_task)
+
     # Application command.
     if payload.get("type") != 2:
         return _discord_json_message("Unsupported Discord interaction.", ephemeral=True)
@@ -7024,7 +7035,7 @@ async def discord_interactions(request: Request, background_tasks: BackgroundTas
     if command not in (DISCORD_PUBLIC_COMMANDS | DISCORD_PRIVATE_COMMANDS):
         return _discord_json_message("Unknown New Eridian command.", ephemeral=True)
 
-    if command in {"eventstart","eventstop","modlog","guidepanels"} and not _discord_is_moderator(payload):
+    if command in {"eventstart","eventstop","modlog","guidepanels","menupanel"} and not _discord_is_moderator(payload):
         return _discord_json_message("⛔ Moderator access is required for event controls.", ephemeral=True, message_type="moderator")
 
     if command == "linklookup" and not _discord_is_owner(payload):

@@ -32,6 +32,7 @@ def edit_original(application_id,token,data):
 def finish(m,payload,command,uid,name,options):
     origin=m.task_queue.queue_notifications.origin_channel
     token=origin.set(str(payload.get('channel_id') or ''))
+    m.ui.INTERACTION.set(payload)   # lets /menu show moderator tools to moderators
     try:
         options=m.extras.default_options(m,command,options,uid)   # e.g. /make reopens where you left off
         result=m.discord_execution.execute(m,payload,command,uid,name,options)
@@ -51,7 +52,7 @@ def finish(m,payload,command,uid,name,options):
             if command!='menu':
                 try:
                     rows=[r for r in data.get('components') or [] if r.get('components')]
-                    if len(rows)<5:data['components']=rows+[m.menu.after_command(m,command,options,uid)]
+                    if len(rows)<5:data['components']=rows+m.menu.after_rows(m,command,options,uid,5-len(rows))
                 except Exception:
                     logging.getLogger(__name__).error('Menu buttons could not be added: %s',command)
         except Exception:
