@@ -159,7 +159,17 @@ def test_old_rare_route_respects_new_progress_and_cooldown():
     assert 'ready in' in second
     with m.SessionLocal() as db:
         p=db.query(m.Player).one();assert p.rare_ore==100
-        assert m.material_amount(db,p,'prospect:'+ident.ALIASES['rare_ore'])==1
+        # Argentite is one rare ore among four: prospecting picks the one this citizen has least of.
+        progress={k:m.material_amount(db,p,'prospect:'+k) for k in m.crafting_progression.RARE}
+        assert sorted(progress.values())==[0,0,0,1] and progress[ident.ALIASES['rare_ore']]==0
+
+
+def test_prospecting_continues_the_rare_ore_already_started():
+    seed(provider='discord')
+    with m.SessionLocal() as db:
+        p=db.query(m.Player).one();p.mining_xp=12
+        m.material_change(db,p,'prospect:'+ident.ALIASES['rare_ore'],1);db.commit()
+        assert m.rare_ore_to_prospect(db,p)==ident.ALIASES['rare_ore']
 
 
 def test_new_recipe_consumes_converted_legacy_circuit_boards():
@@ -234,3 +244,21 @@ def test_prepared_food_is_stronger_and_grants_rockys_favor():
     raw=m.action('eat','test','u',msg='food:crops',provider='discord').body.decode()
     assert 'Pumpkin' in raw
     with m.SessionLocal() as db:assert db.query(m.Player).one().crops==99
+
+
+def test_inventory_has_no_key_resources_section():
+    seed(provider='discord')
+    text=m.inventory('test','u',provider='discord').body.decode()
+    assert 'KEY RESOURCES' not in text.upper() and 'Argentite Ore' in text and 'Pumpkin' in text
+    chat=m.inventory('test','u').body.decode()
+    assert 'Supplies:' not in chat
+
+
+def test_old_sell_command_uses_seed_industries_and_daily_demand():
+    seed()
+    text=m.sell('test','u','Kamex','rare_ore',2).body.decode()
+    assert 'sold 2 Argentite Ore to Seed Industries' in text
+    board=m.marketboard('test','discord').body.decode()
+    a,b=m.market_demand(m.DISCORD_WORLD_ID,1)
+    assert m.resource_name(a) in board and m.resource_name(b) in board
+    assert m.sale_price(a)>m.SEED_INDUSTRIES[a]['sell']

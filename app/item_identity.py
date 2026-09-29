@@ -5,7 +5,9 @@ SEED catalog item. Quantity conversion is 1:1, independent of SC price, and is
 repeat-safe. Four catalog items keep using their established player columns so
 old mining, farming, trade, account merging and overlays share one stock:
 Hematite Ore (ore), Argentite Ore (rare_ore), Pumpkin (crops) and Iron Nails
-(components). Cargo stays a logistics token; it has no catalog counterpart.
+(components). Players see them as ordinary items; the columns are storage only.
+Argentite is one of the four rare ores, priced and prospected like the others.
+Cargo stays a logistics token; it has no catalog counterpart.
 """
 from . import seed_content as s
 
@@ -100,7 +102,6 @@ def configure(m):
         m.SEED_INDUSTRIES[new]={'buy':m.crafting_progression.VALUES[new],'sell':0,'category':'seed','purpose':s.purpose(new)['label']}
     # The established Ore sale channel remains, backed by the same Hematite.
     m.SEED_INDUSTRIES[ALIASES['ore']].update(buy=6,sell=2)
-    m.SEED_INDUSTRIES[ALIASES['rare_ore']].update(buy=24,sell=8)
     # Training tasks read and write catalog identities only.
     for cfg in m.SEED_TASKS.values():
         cfg['cost']=canonical_costs(cfg['cost']);cfg['output']=canonical_costs(cfg['output'])

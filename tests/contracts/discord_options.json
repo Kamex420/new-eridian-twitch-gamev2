@@ -1134,12 +1134,8 @@
       "required": false,
       "choices": [
         {
-          "name": "View Prices (spends nothing)",
+          "name": "Today's demand (spends nothing)",
           "value": "view"
-        },
-        {
-          "name": "Sell Resources (choose Resource + Amount)",
-          "value": "sell"
         },
         {
           "name": "Commerce: 1 Cargo · 2 Energy, 2 Comfort",
@@ -1150,42 +1146,6 @@
           "value": "analyze"
         }
       ]
-    },
-    {
-      "type": 3,
-      "name": "resource",
-      "description": "Resource to sell",
-      "required": false,
-      "choices": [
-        {
-          "name": "Pumpkin",
-          "value": "crops"
-        },
-        {
-          "name": "Hematite Ore",
-          "value": "ore"
-        },
-        {
-          "name": "Argentite Ore",
-          "value": "rare_ore"
-        },
-        {
-          "name": "Iron Nails",
-          "value": "components"
-        },
-        {
-          "name": "Cargo",
-          "value": "cargo"
-        }
-      ]
-    },
-    {
-      "type": 4,
-      "name": "amount",
-      "description": "Amount to sell (1-25)",
-      "required": false,
-      "min_value": 1,
-      "max_value": 25
     }
   ],
   "training": [

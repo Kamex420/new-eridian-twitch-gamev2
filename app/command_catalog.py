@@ -257,7 +257,7 @@ commands = [
     ]),
     cmd("scan","Environmental survey that supports society Knowledge"),
     cmd("mine","Standard Extraction work that gives personal Hematite Ore"),
-    cmd("rare","Prospect Argentite: Harvesting Lv3, three actions per ore, 20-second cooldown"),
+    cmd("rare","Prospect a rare ore: Harvesting Lv3, three actions per ore, 20-second cooldown"),
     cmd("research","Research or use a Siro Sampler for advanced field analysis",[
         {"type":STRING,"name":"operation","description":"Research operation","required":False,
          "choices":[{"name":W("Standard Research","research"),"value":"standard"},{"name":W("Field Analysis","research","field_analysis","needs Siro Sampler"),"value":"field_analysis"}]}
@@ -277,12 +277,9 @@ commands = [
         {"type":STRING,"name":"operation","description":"Frontier operation","required":False,
          "choices":[{"name":W("Scout","explore"),"value":"scout"},{"name":W("Survey","survey","","needs Resource Scanner"),"value":"survey"}]}
     ]),
-    cmd("market","Market hub: prices, selling, work, or Market Analyzer activity",[
+    cmd("market","Market hub: today's demand, commerce work, or Market Analyzer activity",[
         {"type":STRING,"name":"action","description":"Market action","required":False,
-         "choices":[{"name":"View Prices (spends nothing)","value":"view"},{"name":"Sell Resources (choose Resource + Amount)","value":"sell"},{"name":W("Commerce","market"),"value":"work"},{"name":W("Analyze","market","analyze","needs Market Analyzer"),"value":"analyze"}]},
-        {"type":STRING,"name":"resource","description":"Resource to sell","required":False,
-         "choices":[{"name":"Pumpkin","value":"crops"},{"name":"Hematite Ore","value":"ore"},{"name":"Argentite Ore","value":"rare_ore"},{"name":"Iron Nails","value":"components"},{"name":"Cargo","value":"cargo"}]},
-        {"type":4,"name":"amount","description":"Amount to sell (1-25)","required":False}
+         "choices":[{"name":"Today's demand (spends nothing)","value":"view"},{"name":W("Commerce","market"),"value":"work"},{"name":W("Analyze","market","analyze","needs Market Analyzer"),"value":"analyze"}]}
     ]),
 ]
 # Flat slash options: selector first, then its relevant optional inputs.

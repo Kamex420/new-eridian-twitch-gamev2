@@ -42,7 +42,7 @@ def test_every_slash_command_option_has_a_button():
             reached[command].add(leaf['option'] + '=*')
     expected = {
         'seedindustries': {'action=buy', 'action=sell', 'action=sellall', 'action=browse', 'action=fulfill', 'action=clearout'},
-        'market': {'action=sell', 'action=work', 'action=analyze'},
+        'market': {'action=view', 'action=work', 'action=analyze'},
         'workshop': {'action=unlock', 'station=*'},
         'repair': {'target=society', 'target=gear'},
         'inventory': {'sort=name', 'sort=category', 'show=favorites', 'show=sellable', 'search=*'},

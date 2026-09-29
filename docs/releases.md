@@ -1,5 +1,13 @@
 # Release notes
 
+## No more "key resources"; Argentite is one rare ore among four
+
+**Inventory.** The KEY RESOURCES block is gone. Pumpkin, Hematite Ore, Argentite Ore, Iron Nails and Cargo are listed with everything else under ITEMS, sorted by quantity (they keep their stock; only the special treatment went). The Twitch `!inv` line shows your five largest stacks.
+
+**One way to sell.** The old five-resource market (`/market action:Sell`, the Sell raw goods button) is retired: everything sells to Seed Industries (`/seedindustries action:Sell`, `/menu` → Trade → Sell some / Sell all of…, `!sellall`). `!sell <item> [amount]` still works and now sells any item there. Daily market demand now applies to real natural materials: each Avesta day two of them sell for +60% and +30% (at least +1 SC) in every sale path. `/market action:Today's demand` and `!marketboard` show them; the overlay's Market Signal and the ticker follow.
+
+**Argentite.** Argentite Ore is priced, bought and prospected exactly like Aurite, Bauxite and Rutile. Prospecting (`/work task:Prospect`, `!rare`) continues a rare ore you have already started, otherwise the rare ore you have least of; `/mine` still picks any specific ore.
+
 ## New Eridian News, a growing map, and Seedlings that gather and look after themselves
 
 **News reports.** Every Seedling step is a news report built from what actually changed (items gained or used, Seed Coin, practice, needs before and after), never from the raw reply text: a desk (FARMING, SUPPLY, MINING, RESEARCH, TRADE, LOGISTICS, HEALTH, COMMUNITY, LEISURE), a headline ("Kamex brings in 1 Pumpkin") and a dated story ("AGRICULTURAL DISTRICT, Day 4 — Farmer Kamex gathered 1 Pumpkin this morning, earning +1 Harvesting practice."). Names drop bracketed tags. Failed shifts say what went wrong in the game's own words and what they cost. `/obs/narrator` is now a New Eridian News broadcast (LIVE bar, desk tag, headline, typed story, recent headlines). The ticker and the activity panel show the same plain facts; the activity panel shows the reply's own sentence instead of "Action completed".

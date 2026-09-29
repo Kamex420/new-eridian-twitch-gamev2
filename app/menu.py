@@ -44,7 +44,7 @@ AREAS = {
             ['inventory', 'search', 'by_value', 'by_name', 'by_category', 'favitems', 'sellable', 'ready_items', 'gear', 'uses', 'use', 'eat',
              'eatfull', 'sell', 'clearout', 'autosell', 'undo', 'catalog', 'catalogcat']),
     'trade': ('🪙', 'Trade', 'Seed Industries, production orders, market work, your Habitat and business.',
-              ['market', 'browse', 'buy', 'sellsome', 'sell', 'starters', 'orders', 'fulfill', 'prices', 'rawsell', 'commerce', 'analyze',
+              ['market', 'browse', 'buy', 'sellsome', 'sell', 'starters', 'orders', 'fulfill', 'prices', 'commerce', 'analyze',
                'habitat', 'homeup', 'business', 'bstart', 'bwork', 'bcontract', 'binvest']),
     'world': ('🌎', 'World', 'Avesta, New Eridian, events, holidays and news.',
               ['wd_overview', 'wd_conditions', 'wd_society', 'wd_society_progress', 'wd_leaderboard', 'wd_event',
@@ -163,15 +163,13 @@ leaf('buy', 'Buy', '🛍️', 'pick', 'seedindustries', {'action': 'buy'}, pick=
      hint='choose an item, then how many')
 leaf('sellsome', 'Sell some', '💵', 'pick', 'seedindustries', {'action': 'sell'}, pick='sell', then='amount', option='item',
      hint='sell part of a stack')
-leaf('rawsell', 'Sell raw goods', '📦', 'pick', 'market', {'action': 'sell'}, pick='field:market:resource', then='amount', option='resource',
-     hint='crops, ore, rare ore, components or cargo at market price')
 leaf('bstart', 'Start business', '🏗️', 'modal', 'business', {'action': 'start'}, modal=('Start a business', 'Business name', 'e.g. Rocky Repairs'),
      option='name', max_length=30, hint='found your company (costs SC)')
 leaf('starters', 'Starter routes', '🧭', 'view', 'seedindustries', {'action': 'starters'}, hint='what to buy for each skill')
 leaf('orders', 'Orders', '📋', 'view', 'seedindustries', {'action': 'orders'}, hint="today's production orders")
 leaf('fulfill', 'Deliver order', '📦', 'pick', 'seedindustries', {'action': 'fulfill'}, pick='order', then='confirm', option='item',
      hint='hand in a production order')
-leaf('prices', 'Prices', '📈', 'view', 'market', {'action': 'view'}, hint='day-by-day market prices')
+leaf('prices', "Today's demand", '📈', 'view', 'market', {'action': 'view'}, hint='two materials Seed Industries pays extra for today')
 leaf('commerce', 'Commerce work', '🏪', 'do', 'market', {'action': 'work'}, hint='earn SC trading')
 leaf('analyze', 'Market analysis', '📊', 'do', 'market', {'action': 'analyze'}, hint='needs a Market Analyzer')
 leaf('habitat', 'Habitat', '🏠', 'view', 'home', hint='your home and its next upgrade')

@@ -467,7 +467,8 @@ def buy_missing(m, db, p, e, batches, provider='discord'):
 # ---------------------------------------------------------------- bulk selling
 
 def sell_price(m, key):
-    return (m.SEED_INDUSTRIES.get(key) or {}).get('sell', 0)
+    """Seed Industries' price for one today, including daily demand."""
+    return m.sale_price(key) if hasattr(m, 'sale_price') else (m.SEED_INDUSTRIES.get(key) or {}).get('sell', 0)
 
 
 def protected_items(m, db, p):

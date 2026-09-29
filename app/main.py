@@ -628,10 +628,34 @@ def story_contribute(db,p,skill):
         note+=f" ✅ Story resolved: {track_name}! Society receives a major boost."
     db.commit();return note
 
+def demand_pool():
+    """Natural materials Seed Industries buys: the items that can be in daily demand."""
+    return sorted(k for k in seed_content.GATHER if (SEED_INDUSTRIES.get(k) or {}).get('sell',0)>0)
+
 def market_demand(channel,day):
-    keys=list(MARKET_BASE);primary=keys[_stable_index(f"{channel}:{day}:market",len(keys))];secondary=keys[_stable_index(f"{channel}:{day}:market2",len(keys))]
+    keys=demand_pool() or list(MARKET_BASE)
+    primary=keys[_stable_index(f"{channel}:{day}:market",len(keys))];secondary=keys[_stable_index(f"{channel}:{day}:market2",len(keys))]
     if secondary==primary:secondary=keys[(keys.index(primary)+1)%len(keys)]
     return primary,secondary
+
+_demand_day=[0.0,1]
+def demand_day():
+    """Today's Avesta day for sale prices, read at most once a minute."""
+    if time.monotonic()-_demand_day[0]>60:
+        with SessionLocal() as db:_demand_day[1]=world_clock(db,DISCORD_WORLD_ID)["day"];db.commit()
+        _demand_day[0]=time.monotonic()
+    return _demand_day[1]
+
+def demand_price(key,day):
+    """Listed sale price, +60% or +30% (always at least +1 SC) while the item is in demand that day."""
+    base=(SEED_INDUSTRIES.get(key) or {}).get('sell',0)
+    mult=market_multiplier(DISCORD_WORLD_ID,day,key)
+    return base if not base or mult==1 else max(base+1,math.ceil(base*mult))
+
+def sale_price(key):
+    """What Seed Industries pays for one today."""
+    try:return demand_price(key,demand_day())
+    except Exception:return (SEED_INDUSTRIES.get(key) or {}).get('sell',0)
 
 def market_multiplier(channel,day,resource):
     a,b=market_demand(channel,day)
@@ -1515,7 +1539,7 @@ DISCORD_ACTION_ROUTES={
 }
 ACTION_DISPLAY_NAMES={
     "farm":"Tend Fields","forage":"Tend Fields","harvest":"Harvest Pumpkins","water":"Irrigate",
-    "scan":"Environmental Scan","mine":"Mining","rare":"Argentite Prospecting","scavenge":"Mining",
+    "scan":"Environmental Scan","mine":"Mining","rare":"Rare-ore Prospecting","scavenge":"Mining",
     "craft":"Crafting","machine":"Crafting","work":"Crafting",
     "repair":"Society Infrastructure Repair","project":"Society Infrastructure Repair","build":"Society Infrastructure Repair",
     "cargo":"Cargo Preparation","delivery":"Delivery","spaceport":"Spaceport Operations",
@@ -2232,25 +2256,25 @@ def inventory(channel:str,uid:str,name:str="Citizen",provider:str="twitch",searc
         if search or sort or show or page>1:
             result=qol.inventory_text(sys.modules[__name__],db,p,provider,search,sort or "quantity",show or "all",page)
             return platform_response(provider,result,result)
-        key_rows=[("🎃",item_identity.ALIASES['crops']),("⛏️",item_identity.ALIASES['ore']),("💎",item_identity.ALIASES['rare_ore']),("🔩",item_identity.ALIASES['components']),("🦆","cargo")]
-        resources=[f"{emoji} {resource_name(key)}: {material_amount(db,p,key)}" for emoji,key in key_rows]
         equipment=[(key,equipment_count(db,p,key)) for key in ITEM_EFFECTS]
         owned_equipment=[f"{resource_name(key)} ×{qty}: {ITEM_EFFECTS[key]}" for key,qty in equipment if qty]
         stock=seed_content.stock(sys.modules[__name__],db,p)
-        key_set={k for _,k in key_rows}|{item_identity.canonical(k) for k,_ in equipment}
-        supplies=sorted(((k,n) for k,n in stock.items() if k in seed_content.ACTIVE and k not in key_set),key=lambda row:(-row[1],resource_name(row[0])))
+        if p.cargo>0:stock['cargo']=p.cargo
+        gear_keys={item_identity.canonical(k) for k,_ in equipment}
+        # One list: Pumpkin, Hematite Ore, Argentite Ore and Iron Nails are ordinary items like any other.
+        supplies=sorted(((k,n) for k,n in stock.items() if (k in seed_content.ACTIVE or k=='cargo') and k not in gear_keys),key=lambda row:(-row[1],resource_name(row[0])))
         gear=db.execute(select(QualityGear).where(QualityGear.channel_id==channel,QualityGear.canonical_uid==p.twitch_uid,QualityGear.qty>0)).scalars().all()
         next_step=workbench.next_step(sys.modules[__name__],db,p,provider)
-        discord=(f"🎒 {p.display_name} — Inventory\n\n🪙 {p.sc} SC\n\n📦 KEY RESOURCES\n"+"\n".join(resources)+
+        discord=(f"🎒 {p.display_name} — Inventory\n\n🪙 {p.sc} SC"+
                  "\n\n🧰 EQUIPMENT\n"+("\n".join("• "+x for x in owned_equipment) if owned_equipment else "• None yet. Equipment appears under /make category:equipment.")+
-                 "\n\n🗃️ SUPPLIES\n"+("\n".join(f"• {resource_name(k)} ×{n}" for k,n in supplies[:12]) if supplies else "• None yet. /gather collects natural materials.")+
-                 (f"\n{len(supplies)} supply types. /catalog owned:True lists everything by category." if len(supplies)>12 else "")+
+                 "\n\n🗃️ ITEMS\n"+("\n".join(f"• {resource_name(k)} ×{n}" for k,n in supplies[:15]) if supplies else "• None yet. /gather collects natural materials.")+
+                 (f"\n{len(supplies)} item types. /inventory search:<name> or /catalog owned:True lists the rest." if len(supplies)>15 else "")+
                  f"\n\n⚙️ QUALITY GEAR\n• {sum(g.qty for g in gear)} item(s). /inventory section:Quality Gear shows condition."+
                  "\n\n🔎 /inventory search:<name> sort:value show:ready finds and sorts everything you own."+
                  f"\n\nSuggested next step: {next_step}")
-        twitch=(f"🎒 {p.display_name} | {p.sc} SC | "+", ".join(f"{resource_name(k)} {material_amount(db,p,k)}" for _,k in key_rows)+
+        twitch=(f"🎒 {p.display_name} | {p.sc} SC | "+(", ".join(f"{resource_name(k)} {n}" for k,n in supplies[:5]) or "No items yet")+
                 (" | Gear: "+", ".join(f"{resource_name(k)} {q}" for k,q in equipment if q) if owned_equipment else "")+
-                f" | Supplies: {len(supplies)} types | !inv <search|value|ready> for more")
+                f" | {len(supplies)} item types | !inv <search|value|ready> for more")
         return platform_response(provider,discord,twitch)
 
 def equipment_count(db,p,key):
@@ -2759,24 +2783,20 @@ def titles(channel:str,uid:str,name:str="Citizen",title:str="",provider:str="twi
 @game_transaction
 def marketboard(channel:str,provider:str="twitch"):
     with SessionLocal() as db:
-        clock=world_clock(db,channel);a,b=market_demand(channel,clock["day"])
-        prices={k:max(1,int(v*market_multiplier(channel,clock["day"],k))) for k,v in MARKET_BASE.items()}
-        line=" | ".join(f"{resource_name(k)} {prices[k]} SC"+(" 🔥" if k==a else " ↑" if k==b else "") for k in prices)
-        return out(f"🏪 Day {clock['day']} Market | {line} | 🔥 highest demand, ↑ elevated demand")
+        clock=world_clock(db,DISCORD_WORLD_ID);a,b=market_demand(DISCORD_WORLD_ID,clock["day"])
+        def row(k,tag):
+            base=SEED_INDUSTRIES[k]['sell'];now_=demand_price(k,clock["day"])
+            return f"{tag} {resource_name(k)}: {now_} SC each (usually {base})"
+        text=(f"🏪 MARKET — AVESTA DAY {clock['day']}\nSeed Industries pays extra today for:\n{row(a,'🔥')}\n{row(b,'↑')}\n"
+              "Sell anything else at its usual price with /seedindustries action:Sell, or /menu → Trade.")
+        return platform_response(provider,text,f"🏪 Day {clock['day']} demand: 🔥 {row(a,'').strip()} | ↑ {row(b,'').strip()} | !sellall <item> sells at today's price")
 
 @app.get("/api/v1/sell")
 @colony_command
 def sell(channel:str,uid:str,name:str="Citizen",resource:str="",amount:int=1,provider:str="twitch"):
-    key=(resource or "").lower().strip().replace(" ","_");amount=max(1,min(25,int(amount or 1)))
-    key=item_identity.FIELD_ITEMS.get(seed_content.find_item(resource),key)
-    if key not in MARKET_BASE:return out("🏪 Sellable: "+", ".join(f"{resource_name(k)} ({k})" for k in MARKET_BASE)+".")
-    with SessionLocal() as db:
-        _,p=player(db,channel,provider,uid,name);clock=world_clock(db,channel)
-        if getattr(p,key)<amount:return out(f"🏪 You only have {getattr(p,key)} {resource_name(key)}.")
-        unit=max(1,int(MARKET_BASE[key]*market_multiplier(channel,clock["day"],key)));pay=unit*amount
-        setattr(p,key,getattr(p,key)-amount);p.sc+=pay;gain_skill(p,"commerce",max(1,amount//3));
-        db.add(MarketSale(channel_id=channel,canonical_uid=p.twitch_uid,avesta_day=clock["day"],resource=key,qty=amount,sc_earned=pay));db.commit()
-        return out(f"🏪 Sold {amount} {resource_name(key)} for {pay} SC ({unit} each). Day {clock['day']} demand applied.")
+    """!sell <item> [amount]: sells any item to Seed Industries at today's price (old resource names still work)."""
+    if not str(resource or '').strip():return out("🏪 Sell anything Seed Industries buys: !sell <item> [amount], or !sellall <item>. !marketboard shows today's demand.")
+    return seed_industries(channel,uid,name,'sell',str(resource),max(1,min(25,int(amount or 1))),provider)
 
 @app.get('/api/v1/workshop')
 @colony_command
@@ -2865,8 +2885,9 @@ def seed_industries(channel:str,uid:str,name:str="Citizen",action:str="browse",i
             return out(f"🏭 {p.display_name} bought {amount} {resource_name(key)} from Seed Industries for {total} SC. Balance: {p.sc} SC. Use: {listing['purpose'].rstrip('.')}.")
         owned=material_amount(db,p,key)
         if owned<amount:return out(f"🏭 {p.display_name} only has {owned} {resource_name(key)}.")
-        total=listing["sell"]*amount;material_change(db,p,key,-amount);p.sc+=total;gain_skill(p,"commerce",max(1,amount//3));db.commit()
-        return out(f"🏭 {p.display_name} sold {amount} {resource_name(key)} to Seed Industries for {total} SC. Balance: {p.sc} SC. +{max(1,amount//3)} Commerce XP.")
+        unit=sale_price(key);total=unit*amount;material_change(db,p,key,-amount);p.sc+=total;gain_skill(p,"commerce",max(1,amount//3));db.commit()
+        demand=" (today's demand price)" if unit>listing["sell"] else ""
+        return out(f"🏭 {p.display_name} sold {amount} {resource_name(key)} to Seed Industries for {total} SC{demand}. Balance: {p.sc} SC. +{max(1,amount//3)} Commerce XP.")
 
 @app.get("/api/v1/duo")
 @colony_command
@@ -3296,8 +3317,8 @@ def overlay_state_fresh(channel:str):
         # Current market demand.
         primary_market,secondary_market=market_demand(DISCORD_WORLD_ID,clock["day"])
         market_prices={
-            k:max(1,int(v*market_multiplier(DISCORD_WORLD_ID,clock["day"],k)))
-            for k,v in MARKET_BASE.items()
+            k:demand_price(k,clock["day"])
+            for k in market_demand(DISCORD_WORLD_ID,clock["day"])
         }
         market_data={
             "primary":{"key":primary_market,"name":resource_name(primary_market),"price":market_prices[primary_market]},
@@ -5025,6 +5046,14 @@ def next_day(channel:str,level:int=0,key:str=""):
         return out(f"🌅 Avesta Day {state['day']} begins in New Eridian.")
 
 
+def rare_ore_to_prospect(db,p):
+    """Prospecting (/work task:rare, !rare) treats every rare ore alike: it continues an ore already being
+    prospected, otherwise the rare ore you have least of. /mine picks a specific one."""
+    ores=sorted(crafting_progression.RARE,key=seed_content.item_label)
+    progress=[k for k in ores if item(db,p.channel_id,p.twitch_uid,'prospect:'+k)>0]
+    if progress:return progress[0]
+    return min(ores,key=lambda k:(material_amount(db,p,k),seed_content.item_label(k)))
+
 @app.get("/api/v1/action/{action}")
 @colony_command
 def action(action:str,channel:str,uid:str,name:str="Citizen",msg:str="",provider:str="twitch"):
@@ -5035,7 +5064,7 @@ def action(action:str,channel:str,uid:str,name:str="Citizen",msg:str="",provider
             blocked=task_need_gate(db,p,action,provider)
             if blocked:return PlainTextResponse(blocked) if provider=="discord" else out(blocked)
         if action=='rare':
-            result=crafting_progression.rare_gather(sys.modules[__name__],db,p,item_identity.ALIASES['rare_ore'],provider)
+            result=crafting_progression.rare_gather(sys.modules[__name__],db,p,rare_ore_to_prospect(db,p),provider)
             return platform_response(provider,result,result.replace('\n',' | '))
         if action in SEED_TASKS:
             cfg=SEED_TASKS[action]
@@ -5415,7 +5444,7 @@ Recovery and information commands remain available while work is blocked. This r
 /farm action:Hydroponics — Requires a Small Water Filter (a /make machine) and improves Food while producing 4 Pumpkins.
 /scan — Processing work that adds +1 society Knowledge.
 /mine — Choose an ore and view its requirements, then select Mine. Count starts a queue of 1–10 attempts. Rare ores require three successful prospecting steps per ore. /queue shows progress, total needs and missing materials; it pauses and resumes automatically.
-/rare — Prospect Argentite Ore. Harvesting Lv.3 required; three successful prospecting steps per ore, with a shared 20-second prospecting cooldown.
+/rare — Prospect a rare ore (Argentite, Aurite, Bauxite or Rutile; /mine picks one). Harvesting Lv.3 required; three successful prospecting steps per ore, with a shared 20-second prospecting cooldown.
 /training — Choose a skill, view branches and inventory requirements, then choose Task to work. Includes Cooking, Medicine and Emergency Response, their jobs, and level unlocks.\n/make — The Workbench: every recipe by category, easiest first, with previews, Craft and Queue buttons.
 /repair target:Society Infrastructure — Engineering work; adds +1 Development.
 /research — Research work that raises Knowledge. Primary response for Siro Bloom.
@@ -6556,7 +6585,7 @@ def _discord_validate_options(command,options):
         'me':('section',{'title':{'titles'},'style':{'display'}}),
         'business':('action',{'name':{'start'}}),
         'repair':('target',{'item':{'gear'}}),
-        'market':('action',{'resource':{'sell'},'amount':{'sell'}}),
+        'market':('action',{}),
         'seedindustries':('action',{'item':{'buy','sell','fulfill','sellall'},'amount':{'buy','sell'},'category':{'browse','buy','sell'},'page':{'browse','starters'}}),
         'inventory':('section',{'search':{None,'','all'},'sort':{None,'','all'},'show':{None,'','all'},'page':{None,'','all'}}),
         'social':('action',{'player':{'hi','hangout','mentor','duo_walk','duo_games','duo_research','duo_delivery','duo_explore'}}),
@@ -6567,7 +6596,7 @@ def _discord_validate_options(command,options):
             if options.get(field) is not None and options.get(field)!='' and options.get(selector) not in allowed:
                 return options,f"ℹ️ {field.title()} is used with /{command} {selector}:"+' or '.join(sorted(allowed))+f". Choose that {selector}, or remove {field}. Nothing spent."
     required={
-        ('market','sell'):('resource',),('seedindustries','buy'):('item',),
+        ('seedindustries','buy'):('item',),
         ('seedindustries','sell'):('item',),('seedindustries','fulfill'):('item',),('seedindustries','sellall'):('item',),
 
     }
@@ -6753,8 +6782,7 @@ def item_command_menu(command,uid,name):
                 if equipment and not equipment_count(db,p,equipment):
                     lines.append(f"Get {resource_name(equipment)}: {material_source(equipment,'discord')}")
             if command=="market":
-                lines += ["YOUR SELLABLE RESOURCES"]+[f"• {resource_name(key)} ×{getattr(p,key)}" for key in MARKET_BASE]
-                lines.append("Use /market action:view for prices, or /market action:sell and select Resource + Amount. Sales consume the quantity selected.")
+                lines.append("Selling: /seedindustries action:Sell (or /menu → Trade → Sell some / Sell all of…). /market action:view shows which two materials are in demand today.")
         elif command=="social":
             owned=owned_life_items(db,p)
             lines += [f"• Recreation Set ×{sum(r.qty for r in owned['recreation_set'])} — /social action:group_games consumes 1, highest quality first.",
@@ -6959,7 +6987,7 @@ def _discord_call_internal(command: str, uid: str, name: str, options: dict, int
     if command == "market":
         market_action=str(options.get("action") or "view").lower()
         if market_action=="view":return marketboard(channel=channel,provider="discord").body.decode("utf-8")
-        if market_action=="sell":return sell(channel=channel,uid=uid,name=name,resource=str(options.get("resource") or ""),amount=int(options.get("amount") or 1),provider="discord").body.decode("utf-8")
+        if market_action=="sell":return seed_industries(channel,uid,name,"sell",str(options.get("resource") or options.get("item") or ""),int(options.get("amount") or 1),"discord").body.decode("utf-8")
         marker="mode:analyze" if market_action=="analyze" else f"discord-{interaction_id}"
         return action(action="market",channel=channel,uid=uid,name=name,msg=marker,provider="discord").body.decode("utf-8")
     if command == "social":
