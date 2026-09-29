@@ -1,5 +1,9 @@
 # Release notes
 
+## One rotating Hub panel instead of many
+
+`/obs/hub` (640×360) rotates through everything the separate panels show: Society, Society stats, Today (directive, aftermath, festival), Live event, Project & story, Market, Leaders, Working now, Seedlings and News, and how to join, every 12 seconds. Slides with nothing to show are skipped, and a live event takes every other slide until it ends. `&seconds=` sets the pace; `&slides=society,event,news` picks and orders slides. The `/obs` setup page now leads with the recommended four sources (Hub, Map, Ticker, Alerts); the individual panels stay available. Leader and queue names drop bracketed tags.
+
 ## The Avesta map is readable on stream
 
 `/obs/map` is rebuilt for broadcast at 16:9 (960×540 Browser Source). The view is zoomed onto the settlement; district labels use short names (Farms, Industry, Market, Research, Spaceport, Frontier, Homes, Commons) in large type sized to fit; Seedling tokens are twice as big with shorter names, at most five per place plus a "+N" badge; a header bar shows tier, population, day and who is working; and one large caption bar at the bottom rotates through each Seedling (mood, place, activity and thought) instead of small bubbles. The bars scale with the source, so the map stays legible when OBS shrinks it; half the stream width or more is recommended. Options: `&names=0`, `&per=5`, `&seconds=7`, `&bg=0`.

@@ -79,3 +79,13 @@ def test_new_obs_panels_and_setup_page_are_served():
     assert setup.status_code == 200 and '<b>x</b>' not in setup.text and '/obs/alerts' in setup.text
     assert 'Live highlight alerts' in client.get('/overlay', params={'channel': 'test'}).text
     assert client.get('/obs/nope').status_code == 404
+
+
+def test_hub_rotates_every_panel_and_setup_recommends_four_sources():
+    page = client.get('/obs/hub', params={'channel': 'test'}).text
+    for slide in ('society', 'stats', 'today', 'event', 'projects', 'market', 'leaders', 'working', 'seedlings', 'news', 'join'):
+        assert f"['{slide}'," in page
+    setup = client.get('/obs', params={'channel': 'test'}).text
+    assert 'Recommended: four sources carry everything' in setup
+    first = [so.SOURCES[i][0] for i in range(4)]
+    assert first == ['hub', 'map', 'ticker', 'alerts']
