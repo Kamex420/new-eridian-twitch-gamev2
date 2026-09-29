@@ -1,5 +1,9 @@
 # Release notes
 
+## The Avesta map is readable on stream
+
+`/obs/map` is rebuilt for broadcast at 16:9 (960×540 Browser Source). The view is zoomed onto the settlement; district labels use short names (Farms, Industry, Market, Research, Spaceport, Frontier, Homes, Commons) in large type sized to fit; Seedling tokens are twice as big with shorter names, at most five per place plus a "+N" badge; a header bar shows tier, population, day and who is working; and one large caption bar at the bottom rotates through each Seedling (mood, place, activity and thought) instead of small bubbles. The bars scale with the source, so the map stays legible when OBS shrinks it; half the stream width or more is recommended. Options: `&names=0`, `&per=5`, `&seconds=7`, `&bg=0`.
+
 ## No more "key resources"; Argentite is one rare ore among four
 
 **Inventory.** The KEY RESOURCES block is gone. Pumpkin, Hematite Ore, Argentite Ore, Iron Nails and Cargo are listed with everything else under ITEMS, sorted by quantity (they keep their stock; only the special treatment went). The Twitch `!inv` line shows your five largest stacks.
