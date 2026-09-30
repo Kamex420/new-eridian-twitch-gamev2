@@ -427,6 +427,8 @@ svg{position:absolute;inset:0;width:100%;height:100%;display:block}
 .stats .m.low em{color:var(--amber)}.stats .m.low .meter i{background:linear-gradient(90deg,#ffb36b,#ffd27a)}
 .stats .next{margin-top:.45em;padding-top:.35em;border-top:1px solid var(--edge-soft);font-size:.8em;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.stats .next b{color:var(--text)}
 .stats.hide{opacity:0}
+.L-narrow .cap{left:1.4vw;right:1.4vw;width:auto;bottom:1.2vh;font-size:clamp(12px,min(4.2vw,4.4vh),34px)}
+.L-narrow .head{height:auto;flex-wrap:wrap;row-gap:.1em;padding:.35em .6em;font-size:clamp(11px,min(4.4vw,4.6vh),36px)}.L-narrow .head .info{margin-left:0;width:100%;font-size:.74em}
 /* 'card' layout for a side column (e.g. 340×440): header, town, caption and stats stacked, none on top of another.
    District names become large icon badges and Seedlings are drawn bigger, so they read at column size. */
 .L-card .wrap{display:flex;flex-direction:column;border-radius:.9em;border:2px solid var(--edge);background:#1d1a24}
@@ -490,7 +492,9 @@ const WEATHER_ICON={clear_skies:'☀️',good_growing:'🌧️',spore_drift:'�
 const wantCard=()=>Q.get('layout')==='card'||(Q.get('layout')!=='wide'&&(innerWidth<560||innerWidth/Math.max(1,innerHeight)<=1.3));
 const CARD=wantCard();if(CARD)document.body.classList.add('L-card');
 // OBS often opens a Browser Source at its default size and resizes it a moment later: switch layout when that happens.
-let relayout=null;addEventListener('resize',()=>{clearTimeout(relayout);relayout=setTimeout(()=>{if(wantCard()!==CARD)location.reload()},400)});
+let relayout=null;addEventListener('resize',()=>{clearTimeout(relayout);relayout=setTimeout(()=>{if(wantCard()!==CARD||(!wantCard()&&(innerWidth<800||innerWidth/Math.max(1,innerHeight)<1.5)!==NARROW))location.reload()},400)});
+// A wide layout in a source that is not wide (e.g. 400×400 with &layout=wide): full-width caption, two-line header.
+const NARROW=!CARD&&(innerWidth<800||innerWidth/Math.max(1,innerHeight)<1.5);if(NARROW)document.body.classList.add('L-narrow');
 let LS=1,TS=1;   // card layout: label and Seedling scale so they stay readable in a small source
 const QUALITY=['low','high'].includes(Q.get('quality'))?Q.get('quality'):'normal';document.body.classList.add('q-'+QUALITY);
 const SHOW_NAMES=Q.get('names')==='1',PER_PLACE=Number(Q.get('per')||(Q.get('layout')==='card'||innerWidth<560||innerWidth/Math.max(1,innerHeight)<=1.3?3:4)),CAMERA=Q.get('camera')!=='0',SECONDS=Number(Q.get('seconds')||7)*1000;
@@ -765,7 +769,7 @@ const BOUNDS={left:OX-N*TW/2-8,right:OX+N*TW/2+8,bottom:OY+N*TH+8,top:OY};
 let HOME={x:480,y:254,s:1.1,px:480,py:290},CAM=HOME,band=[50,534];
 // The wide shot is sized so every building fits below the header and inside the frame.
 function fitHome(){try{const c=document.getElementById('city').getBBox();BOUNDS.top=Math.min(c.height?c.y:OY,OY)-4}catch(e){}
-  band=[Math.max(4,vb(document.querySelector('.head')).b+6),534];const s=Math.min(944/(BOUNDS.right-BOUNDS.left),(band[1]-band[0])/(BOUNDS.bottom-BOUNDS.top));
+  band=[Math.max(4,vb(document.querySelector('.head')).b+6),NARROW?Math.min(534,vb(document.getElementById('cap')).t-6):534];const s=Math.min(944/(BOUNDS.right-BOUNDS.left),(band[1]-band[0])/(BOUNDS.bottom-BOUNDS.top));
   const next={x:(BOUNDS.left+BOUNDS.right)/2,y:(BOUNDS.top+BOUNDS.bottom)/2,s,px:480,py:(band[0]+band[1])/2};
   if(Math.abs(next.s-HOME.s)>.002||Math.abs(next.y-HOME.y)>.5||Math.abs(next.py-HOME.py)>.5){const wasHome=CAM===HOME;HOME=next;if(wasHome)apply(HOME)}
   if(CARD){const ppu=Math.min(svgEl.clientWidth/960,svgEl.clientHeight/540)*HOME.s,ls=Math.min(2.2,Math.max(1,13/(16*ppu))),ts=Math.min(1.8,Math.max(1,21/(38*ppu)));

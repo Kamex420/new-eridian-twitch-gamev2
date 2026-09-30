@@ -155,4 +155,4 @@ def test_map_scenery_fills_any_source_shape():
 def test_map_relayouts_on_resize_and_leaves_stats_to_the_hub():
     from test_colony import client
     page = client.get('/obs/map', params={'channel': 'test'}).text
-    assert "if(wantCard()!==CARD)location.reload()" in page and "if(Q.get('stats')!=='1')" in page
+    assert "if(wantCard()!==CARD||" in page and "L-narrow" in page and "if(Q.get('stats')!=='1')" in page

@@ -1,5 +1,14 @@
 # Release notes
 
+## Map: full-width caption when the Wide layout is used in a smaller source
+
+With `&layout=wide` (or "Wide (full map)" on the setup page) in a source narrower than 800 px or less wide than 3:2, for example 400×400:
+- The caption spans the whole width of the map, with larger text.
+- The header wraps onto two lines instead of cutting off.
+- The town is fitted above the caption, so no buildings sit behind it.
+
+The map switches between these layouts if OBS resizes the source.
+
 ## A bigger town in square sources; stats move to the Hub
 
 - **The map switches layout when OBS resizes it.** OBS often opens a Browser Source at its default size and resizes it a moment later. The map used to keep the layout it chose first, so a 400×400 source showed the full-screen layout with a tiny town. It now switches layout after a resize.
