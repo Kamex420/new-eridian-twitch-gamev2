@@ -341,3 +341,29 @@ def test_the_map_grows_with_the_society():
         grown = a.districts(m, db, ['test', W])
     assert grown['tier_index'] == 3 and grown['districts']['spaceport_quarter']['unlocked']
     assert grown['districts']['agricultural_district']['level'] > early['districts']['agricultural_district']['level']
+
+
+def test_welcome_back_adds_up_exactly_what_the_seedling_collected():
+    seed()
+    client.get('/api/v1/job', params={'channel': 'test', 'uid': UID, 'name': 'Kamex', 'job': 'miner'})
+    since = m.now() - timedelta(minutes=1)
+    with m.SessionLocal() as db:
+        p = db.query(m.Player).one()
+        start = dict(m.seed_content.stock(m, db, p)); start_sc = p.sc
+    for _ in range(6):
+        away()
+        with m.SessionLocal() as db:                  # keep needs up so every step is a work step
+            p = db.query(m.Player).one(); life = m.life_state(db, p)
+            life.energy = life.nutrition = life.comfort = life.social = 95; db.commit()
+        a.live_one(m, 'test', UID, force=True)
+    with m.SessionLocal() as db:
+        p = db.query(m.Player).one()
+        end = m.seed_content.stock(m, db, p)
+        real = {k: n - start.get(k, 0) for k, n in end.items() if n > start.get(k, 0)}
+        gained, used, sc, steps = a.haul_since(db, p, since)
+        lines = a.away_lines(m, db, p, since)
+    assert gained and {k: gained[k] for k in real} == real            # the totals match what landed in the bag
+    text = '\n'.join(lines)
+    assert f'Collected {sum(gained.values())} items' in text
+    for k, n in gained.items():
+        assert f'{n} × {m.resource_name(k)}' in text

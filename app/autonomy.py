@@ -210,6 +210,21 @@ class SeedlingDiary(Base):
     created_at = Column(DateTime(timezone=True), nullable=False, index=True)
 
 
+class SeedlingHaul(Base):
+    """Exactly what one autonomous step brought in, spent and ate, so summaries can add it all up."""
+    __tablename__ = 'seedling_haul_v1'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    channel_id = Column(String(64), nullable=False, index=True)
+    canonical_uid = Column(String(96), nullable=False, index=True)
+    gained = Column(String(2000), nullable=False, default='{}')
+    used = Column(String(2000), nullable=False, default='{}')
+    sc = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime(timezone=True), nullable=False, index=True)
+
+
+HAUL_KEEP = 400      # steps remembered per Seedling for totals (about four days of autonomy)
+
+
 # ---------------------------------------------------------------- state
 
 def install(m):
@@ -749,6 +764,8 @@ def live_one(m, channel, uid, force=False):
         refresh_mood(m, db, p, found, clock)
         if step['kind'] != 'rest' or found.activity != 'Resting at home':
             diary(m, db, p, place, emoji, story, desk=desk, headline=headline)
+        if change['gained'] or change['used'] or change['sc']:
+            record_haul(m, db, p, change)
         db.commit()
         return story
 
@@ -771,6 +788,32 @@ def task_place(task):
     return 'industrial_ward'
 
 
+def record_haul(m, db, p, change):
+    db.add(SeedlingHaul(channel_id=p.channel_id, canonical_uid=p.twitch_uid, gained=json.dumps(change['gained']), used=json.dumps(change['used']),
+                        sc=int(change['sc']), created_at=m.now()))
+    db.flush()
+    old = list(db.scalars(select(SeedlingHaul.id).where(SeedlingHaul.channel_id == p.channel_id, SeedlingHaul.canonical_uid == p.twitch_uid)
+                          .order_by(SeedlingHaul.id.desc()).offset(HAUL_KEEP)))
+    if old:
+        db.execute(delete(SeedlingHaul).where(SeedlingHaul.id.in_(old)))
+
+
+def haul_since(db, p, since):
+    """({item: total gained}, {item: total used}, SC earned, steps) for this Seedling's autonomous steps since `since`."""
+    gained, used, sc, steps = {}, {}, 0, 0
+    query = select(SeedlingHaul).where(SeedlingHaul.channel_id == p.channel_id, SeedlingHaul.canonical_uid == p.twitch_uid)
+    if since is not None:
+        query = query.where(SeedlingHaul.created_at >= since)
+    for row_ in db.scalars(query):
+        steps += 1
+        sc += row_.sc
+        for k, n in json.loads(row_.gained or '{}').items():
+            gained[k] = gained.get(k, 0) + int(n)
+        for k, n in json.loads(row_.used or '{}').items():
+            used[k] = used.get(k, 0) + int(n)
+    return gained, used, sc, steps
+
+
 def diary(m, db, p, place, emoji, text, autonomous=True, desk='COLONY', headline=''):
     db.add(SeedlingDiary(channel_id=p.channel_id, canonical_uid=p.twitch_uid, name=clean_name(p.display_name)[:64], place=place, emoji=emoji,
                          desk=desk[:24], headline=(headline or text)[:160], text=text[:400], autonomous=int(autonomous), created_at=m.now()))
@@ -790,6 +833,8 @@ def merge(db, channel, source, target):
                                 successes=0, failures=0, cycle=0))
         db.delete(src)
     for entry in db.scalars(select(SeedlingDiary).where(SeedlingDiary.channel_id == channel, SeedlingDiary.canonical_uid == source)):
+        entry.canonical_uid = target
+    for entry in db.scalars(select(SeedlingHaul).where(SeedlingHaul.channel_id == channel, SeedlingHaul.canonical_uid == source)):
         entry.canonical_uid = target
 
 
@@ -849,10 +894,21 @@ def away_lines(m, db, p, since, limit=3):
     if not rows:
         return []
     gathered = [e for e in rows if e.desk in {'SUPPLY', 'MINING'} or 'brings in' in e.headline]
+    gained, used, sc, _ = haul_since(db, p, since)
+    lines = ['📓 **While you were away:**']
+    # Exact totals first: every item it brought in, what it earned and what it ate.
+    if gained:
+        items = sorted(gained.items(), key=lambda kv: (-kv[1], m.resource_name(kv[0])))
+        lines.append(f"🧺 **Collected {sum(gained.values())} items** on {len(gathered)} trip{'s' if len(gathered) != 1 else ''}:")
+        lines += [f'• {n} × {m.resource_name(k)}' for k, n in items]
+    if sc > 0:
+        lines.append(f'🪙 **Earned {sc} SC**')
+    if used:
+        lines.append('🍲 Used: ' + ', '.join(f'{n} × {m.resource_name(k)}' for k, n in sorted(used.items(), key=lambda kv: -kv[1])))
     shown = [f'{e.emoji} {e.headline}' for e in rows[:limit]]
     extra = len(rows) - len(shown)
-    return (['📓 **While you were away:**'] + shown
-            + ([f'…and {extra} more in your diary ({len(gathered)} gathering trips).'] if extra > 0 else []))
+    lines += ['', '**Latest:**'] + shown if gained or sc > 0 or used else shown
+    return lines + ([f'…and {extra} more in your diary.'] if extra > 0 else [])
 
 
 def status_line(m, db, p):

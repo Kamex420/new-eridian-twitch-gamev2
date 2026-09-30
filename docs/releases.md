@@ -1,5 +1,16 @@
 # Release notes
 
+## Welcome back: exact totals of what your Seedling collected
+
+The "While you were away" message now adds up everything your Seedling did on its own since you were last active:
+- **Collected N items on M trips**, with every item and its exact count (for example "• 6 × Stone · • 4 × Murky Water (1000ml)").
+- **Earned N SC**.
+- **Used**: what it ate or spent, with counts.
+
+Below that come the three latest reports, and "…and N more in your diary".
+
+Each autonomous step's exact gains, use and SC are now stored in a new table, `seedling_haul_v1`, which keeps each Seedling's last 400 steps. That keeps the totals exact even though a report headline names at most three items. Accounts merged by `/link` or the admin merge carry these records across. Steps from before this update were not recorded, so the first summary after the update only counts steps from then on.
+
 ## Simpler menus: only the buttons you can use, each in one place
 
 `/menu` is reorganised so every screen is short and every button works. Nothing was removed; every action is still one or two taps away.
