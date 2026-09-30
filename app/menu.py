@@ -240,7 +240,7 @@ leaf('m_eventstop', 'Stop event', '🛑', 'do', 'eventstop', style=4, hint='canc
 leaf('m_modlog', 'Moderator log', '📜', 'view', 'modlog', hint='the last ten moderator actions')
 leaf('m_lookup', 'Account lookup', '🔍', 'pick', 'linklookup', pick='player_name', then='view', option='player',
      hint='linked accounts of a citizen (owners)')
-leaf('m_guidepanels', 'Post guide panels', '📖', 'do', 'guidepanels', hint='the eight how-to-play panels, in this channel')
+leaf('m_guidepanels', 'Post guide panels', '📖', 'do', 'guidepanels', hint='the how-to-play panels, in this channel')
 leaf('m_menupanel', 'Post game panel', '🎛️', 'do', 'menupanel', hint='a button panel anyone can press to open their menu')
 leaf('m_chalstart', 'Start stream challenge', '⚡', 'pick', 'challengestart', pick='field:mod:challenge', then='confirm', option='challenge',
      hint='a 5–10 minute shared goal for chat (normally automatic while live)')

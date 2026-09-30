@@ -1,5 +1,14 @@
 # Release notes
 
+## Discord guide panels, refreshed
+
+- **Twelve panels** now (up from eight), written for players: what to do and where to find it, without every number.
+  - New: **Your Seedling**, **Society & world**, **Votes & stream challenges** and **Seasons & trophies**.
+  - Rewritten: Start here (with the First Steps and welcome kit), Needs & recovery, Gathering & work, Crafting, Queues and Money & trade.
+- **The command list** includes `/vote`, `/challenge`, `/season` and `/trophies`, and ends with a **COLOR MEANING** key: what the colour strip on every game reply means.
+- **Holidays panel.** Its "Coming up" part is worked out when the panels are posted, so the festival and its date are always current.
+- **Posting.** A moderator posts them with `/mod` → Post guide panels here. `docs/discord-guide-panels.txt` (coloured) and `docs/discord-guide-panels.md` (plain) have the same text for pasting by hand.
+
 ## Colony votes, stream challenges, seasons, trophies and a weekly recap
 
 ### 🗳️ Colony votes

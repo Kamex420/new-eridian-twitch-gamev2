@@ -1,58 +1,56 @@
 New Eridian — Discord guide panels
 Paste each block below (from ```ansi to the closing ```) as its own message.
 The colours use invisible control characters. If they disappear when you paste, post the panels
-with /mod action:Post guide panels here instead; the bot posts all eight with colours intact.
+with /mod action:Post guide panels here instead; the bot posts all 12 with colours intact.
+The Holidays panel's COMING UP part is worked out when the bot posts it; the copy below is from when this file was written.
 
-
------ PANEL 1 -----
 ```ansi
 [1;32m╭────────────────────────╮
 [1;32m│      Start here!       │
 [1;32m╰────────────────────────╯
-[1;37mNew Eridian v2 is a Twitch + Discord community life game
-[1;37mon Avesta. Build your citizen, learn skills, make useful
-[1;37msupplies and help the settlement grow.
-[1;36mYOUR FIRST STEPS
+[1;37mNew Eridian is a Twitch + Discord life game on the planet
+[1;37mAvesta. Build your citizen, learn skills, craft useful
+[1;37mthings and help the settlement grow.
+[1;36mJUMP IN
+[0;33m/start
+[0mCreate your citizen. You get a welcome kit and your
+[0mSeedling moves into town.
 [0;33m/menu
 [0mEvery part of the game as buttons. Pick an area, then what
 [0mto do.
 [0;33m🎛️ Pinned game panel
-[0mPress any button on it to open your own private menu. No
-[0mtyping needed.
-[0;33m/start
-[0mCreate or load your citizen.
-[0;33m/job
-[0mChoose a profession. Matching work earns a job bonus.
+[0mPress any button on it to open your own private menu.
 [0;33m/status
-[0mYour needs, queue, cooldowns and next step.
+[0mYour needs, queue, cooldowns and next step in one view.
 [0;33m/guide
 [0mThe best thing to do next, and why.
+[1;36mFIRST STEPS · each one pays SC
+[0;33mGather · craft · eat · job · queue · Seedling
+[0mDo them in any order. Finish all six for bonus SC and the
+[0mSettled In title.
 [1;36mPLAYING ON TWITCH TOO?
-[0;33m/link → Code
-[0mGet a code with !link in Twitch, then enter it here to
-[0mmerge your citizens.
+[0;33m/link
+[0mType !link in Twitch chat, then enter the code here. Both
+[0maccounts become one citizen.
 [1;32mRECOVER → WORK → GATHER → MAKE → IMPROVE → CONTRIBUTE
 ```
 
------ PANEL 2 -----
 ```ansi
 [1;32m╭────────────────────────╮
 [1;32m│    Needs & recovery    │
 [1;32m╰────────────────────────╯
-[1;37mEvery task uses Energy, Nutrition and Comfort. Work stops
-[1;37mwhen Energy, Nutrition or Social drop below 20, or Comfort
-[1;37mbelow 10.
+[1;37mEvery task uses Energy, Nutrition and Comfort. Low needs
+[1;37mstop work, so keep them topped up.
 [1;36mRECOVER
-[0;33m/life → Action: Relax
-[0m+25 Energy and +20 Comfort, every 30 seconds.
-[0;33m/life → Action: Sleep
-[0mEnergy and Comfort to 100, every 30 minutes.
-[0;33m/life → Action: Eat
-[0mPick a food. With no food and low Nutrition, a free
-[0memergency meal.
-[0;33m/life → Action: Games
-[0m+25 Social, no partner needed.
-[0;33m/life → Action: Recover
+[0;33m/life → Relax
+[0m+Energy and +Comfort. Ready again after 30 seconds.
+[0;33m/life → Sleep
+[0mEnergy and Comfort back to full. Once every 30 minutes.
+[0;33m/life → Eat
+[0mPick a food. Cooked food fills you up more than raw.
+[0;33m/life → Games
+[0m+Social, no partner needed.
+[0;33m/life → Recover
 [0mEvery recovery that is ready, in one press.
 [1;36mHANDS-FREE
 [0;33m/use
@@ -60,16 +58,39 @@ with /mod action:Post guide panels here instead; the bot posts all eight with co
 [0mkept.
 [0;33m/settings → Autorecover: On
 [0mPaused queues recover by themselves, then carry on.
-[1;36mYOUR SEEDLING
-[0;33m/seedling
-[0mMood, thoughts and a diary. While you are away it follows
-[0mits schedule: works, eats, sleeps and meets friends.
-[0;33m/seedling → Schedule
-[0mBalanced, workaholic, night owl, socialite or homebody.
 [1;32mEAT → REST → STAY COMFORTABLE → KEEP WORKING
 ```
 
------ PANEL 3 -----
+```ansi
+[1;32m╭────────────────────────╮
+[1;32m│     Your Seedling      │
+[1;32m╰────────────────────────╯
+[1;37mYour Seedling is you on the stream map. It has moods and
+[1;37mthoughts, and it keeps living while you are away.
+[1;36mLOOK AFTER IT
+[0;33m/seedling
+[0mIts mood, what it is thinking, where it is and what it is
+[0mdoing.
+[0;33m/seedling → Diary
+[0mWhat it did while you were away, with everything it
+[0mgathered.
+[0;33m/seedling → Schedule
+[0mBalanced, workaholic, night owl, socialite or homebody.
+[0;33m🎲 Let it decide
+[0mYour Seedling picks its next step right now.
+[1;36mGOOD TO KNOW
+[0;33mAutonomy
+[0mAfter 10 minutes without a command it works, eats, sleeps
+[0mand meets friends on its own. It never crafts, buys or
+[0msells.
+[0;33mMood
+[0mA happy Seedling works a little better; a miserable one a
+[0mlittle worse.
+[0;33mAutonomy off
+[0m/seedling → Autonomy: Off makes it wait for you.
+[1;32mPLAY → WALK AWAY → READ THE DIARY
+```
+
 ```ansi
 [1;32m╭────────────────────────╮
 [1;32m│    Gathering & work    │
@@ -81,23 +102,26 @@ with /mod action:Post guide panels here instead; the bot posts all eight with co
 [0mLumber, Berries, Herbs, Stone and every other natural
 [0mmaterial.
 [0;33m/mine
-[0mPick an ore or Coal. Mine once or queue up to 10 attempts.
+[0mPick an ore or Coal. Mine once or queue it.
 [1;36mJOBS
+[0;33m/job
+[0mPick a profession. Work that matches it gets a bonus.
 [0;33m/work
 [0mFarming, scanning, research, cargo, deliveries, spaceport
 [0mand scouting.
 [0;33m/training
-[0mSee every skill and which tasks train it.
+[0mEvery skill and which tasks train it.
 [1;36mGOOD TO KNOW
 [0;33mMining can fail
 [0mA failed attempt gives Stone Dust instead of ore.
 [0;33mRare ores
-[0mNeed Harvesting level 3 and three good prospecting steps
-[0mper ore.
+[0mUnlock at Harvesting level 3.
+[0;33mTime of day
+[0mMorning, Day, Evening and Night each favour different
+[0mwork. /world shows the current phase.
 [1;32mGATHER → MINE → WORK → LEVEL UP
 ```
 
------ PANEL 4 -----
 ```ansi
 [1;32m╭────────────────────────╮
 [1;32m│        Crafting        │
@@ -106,88 +130,153 @@ with /mod action:Post guide panels here instead; the bot posts all eight with co
 [1;37mwith what you have and what you still need.
 [1;36mTHE WORKBENCH
 [0;33m/make
-[0mCategories, then recipes. Preview first; nothing is spent
-[0muntil you craft.
-[0;33m/make → Category: Ready now
+[0mCategories, then recipes. Nothing is spent until you press
+[0mCraft.
+[0;33m/make → Ready now
 [0mEverything you can craft this moment.
-[0;33m/make → Category: Favourites
-[0mStar up to 10 recipes to keep them on top.
+[0;33m/make → Favourites
+[0mStar recipes to keep them on top.
 [0;33m🧺 Fetch missing
-[0mOn a recipe you cannot make yet: gathers what is missing,
-[0mthen crafts it.
+[0mGathers what a recipe still needs, then crafts it.
 [0;33m🎯 Set goal
-[0mPin a recipe. /status shows the next step all the way down
-[0mthe ingredient tree.
-[1;36mWORKSTATIONS & TIERS
+[0mPin a recipe. /status shows the next step toward it.
+[1;36mWORKSTATIONS
 [0;33m/workshop
-[0mUnlock a station once for a fee, or own the matching
-[0mmachine.
+[0mUnlock a station once, or own the matching machine.
 [0;33mPersonal tiers
-[0mUnlock at 25, 100 and 250 crafted batches.
+[0mThe more batches you craft, the better your results get.
 [1;32mGATHER → PREVIEW → CRAFT → UNLOCK → TIER UP
 ```
 
------ PANEL 5 -----
 ```ansi
 [1;32m╭────────────────────────╮
 [1;32m│         Queues         │
 [1;32m╰────────────────────────╯
-[1;37mA queue repeats one task up to 10 times, one attempt every
-[1;37m10 seconds, even while you are away.
+[1;37mA queue repeats one task up to 10 times and keeps going
+[1;37mwhile you are away.
 [1;36mRUN A QUEUE
-[0;33mQueue 5 / Queue 10
+[0;33mQueue 5 / Queue 10 / Queue max
 [0mOn any mine, gather or recipe panel. See the totals, then
-[0mpress Start.
+[0mStart.
 [0;33m/queue
 [0mProgress, items gained and used, and why it paused.
-[0;33m/queue → Action: Queue next
-[0mLine up one more task to start when this one ends.
-[0;33mQueue max
-[0mAs many attempts as your items and needs allow, up to 10.
+[0;33m/queue → Queue next
+[0mLine up the next task to start when this one ends.
 [0;33m➕ Add to plan
-[0mChain up to 6 more steps, including "sell all". Save a
-[0mplan as a routine.
+[0mChain more steps, even "sell all". Save a plan as a
+[0mroutine.
 [1;36mALERTS
 [0;33m/settings → Alerts
-[0mChannel mention, direct message, private, quiet or off.
-[0;33m/settings → Popups
-[0mPrivate "only you can see this" notes at your next
-[0mcommand.
+[0mMention, DM, private, quiet or off.
 [0;33mPauses
-[0mLow needs or missing items pause it. It resumes by itself.
+[0mLow needs or missing items pause a queue. It resumes by
+[0mitself.
 [1;32mQUEUE → WALK AWAY → GET PINGED → REPEAT
 ```
 
------ PANEL 6 -----
 ```ansi
 [1;32m╭────────────────────────╮
 [1;32m│     Money & trade      │
 [1;32m╰────────────────────────╯
-[1;37mSeed Coin (SC) is your personal currency. Earn it by
-[1;37mselling what you make and by taking orders.
+[1;37mSeed Coin (SC) is your money. Earn it by selling what you
+[1;37mmake and by filling orders.
 [1;36mSEED INDUSTRIES
 [0;33m/seedindustries
-[0mBuy starter supplies and sell anything you have made.
-[0;33m→ Action: Sell all of one item
+[0mBuy starter supplies and sell what you have.
+[0;33m→ Sell all of one item
 [0mSell a whole stack at once.
-[0;33m→ Action: Clear out surplus
-[0mPreview first. Keeps 20 of each and anything your
-[0mfavourites use.
-[0;33m→ Action: View Production Orders
-[0mThree daily contracts that pay well for crafted goods.
+[0;33m→ Clear out surplus
+[0mPreview first. Keeps what your favourites and queues need.
+[0;33m→ Production Orders
+[0mDaily contracts that pay well for crafted goods.
 [0;33m↩️ Undo
-[0mTake back a sale within 60 seconds. Auto-sell junk when
-[0mqueues finish: /menu → Bag.
+[0mTake back a sale within 60 seconds.
 [1;36mYOUR THINGS
 [0;33m/inventory
-[0mSearch, sort by value, or show what your ready recipes
-[0muse.
-[0;33m/home and /business
+[0mSearch, sort by value, or see what your recipes use.
+[0;33m/home  /business
 [0mUpgrade your Habitat and run your own company.
 [1;32mMAKE → SELL → SAVE → UPGRADE
 ```
 
------ PANEL 7 -----
+```ansi
+[1;32m╭────────────────────────╮
+[1;32m│    Society & world     │
+[1;32m╰────────────────────────╯
+[1;37mEveryone builds New Eridian together. Your work fills the
+[1;37msettlement and helps it level up.
+[1;36mTHE SETTLEMENT
+[0;33m/world
+[0mThe day, phase, weather, society project, story and
+[0mrumors.
+[0;33mSociety tiers
+[0mOutpost → Settlement → Township → City → Regional Hub. The
+[0mweakest society stat decides the tier.
+[0;33mSociety project
+[0mWork in its skills to build it. New districts open on the
+[0mmap as the town grows.
+[1;36mEVENTS & DAILY
+[0;33m/world → Active event
+[0mA timed emergency. Work in the listed skills to fill it
+[0mbefore time runs out.
+[0;33m/me → Daily contract
+[0mOne task a day for SC and Contribution.
+[1;32mWORK → CONTRIBUTE → GROW THE TOWN
+```
+
+```ansi
+[1;32m╭─────────────────────────────────╮
+[1;32m│    Votes & stream challenges    │
+[1;32m╰─────────────────────────────────╯
+[1;37mChat and Discord decide what the colony does next, and
+[1;37mevery stream brings shared goals.
+[1;36mCOLONY VOTE · every Avesta day
+[0;33m/vote
+[0mTwo projects and a festival. Pick one; change it until the
+[0mday ends.
+[0;33mProjects
+[0mThe winner is built next and stays on the stream map as a
+[0mlandmark.
+[0;33mFestivals
+[0mThe winner runs the next day and boosts its kind of work.
+[1;36mSTREAM CHALLENGES · live only
+[0;33m/challenge
+[0mA 5–10 minute shared goal, like "Dust storm! Repair the
+[0mwalls".
+[0;33mHow to help
+[0mDo the work it names, on Twitch or Discord. Everyone who
+[0mhelps is paid; the top helper gets a bonus.
+[1;32mVOTE → WATCH IT HAPPEN → JOIN THE CHALLENGE
+```
+
+```ansi
+[1;32m╭──────────────────────────╮
+[1;32m│    Seasons & trophies    │
+[1;32m╰──────────────────────────╯
+[1;37mLong-term goals: climb this season, collect trophies, and
+[1;37mshow them off on stream.
+[1;36mSEASONS · five weeks each
+[0;33m/season
+[0mYour points, rank and next reward. Everything you do earns
+[0mpoints.
+[0;33mBronze · Silver · Gold
+[0mA season title, a hat for your Seedling on the map, then a
+[0mgolden title.
+[0;33mSeason end
+[0mThe top three win champion titles. Only season points
+[0mreset; you keep everything else.
+[1;36mTROPHIES
+[0;33m/trophies
+[0mCollections to finish: every ore, craft categories,
+[0mfestival foods, curios and more.
+[0;33m/trophies → Badge
+[0mPin a trophy badge next to your name on the stream map.
+[0;33mWeekly recap
+[0mEvery Sunday: top players, biggest hauls and funny
+[0mSeedling moments.
+[1;32mPLAY → EARN POINTS → UNLOCK → SHOW OFF
+```
+
 ```ansi
 [1;32m╭─────────────────────────────────╮
 [1;32m│    Holidays & festival foods    │
@@ -195,23 +284,20 @@ with /mod action:Post guide panels here instead; the bot posts all eight with co
 [1;37mEvery holiday has a festival that opens 30 days before it
 [1;37mand runs until 7 days after.
 [1;36mFESTIVAL FOODS
-[0;33m/world → Section: Holidays
+[0;33m/world → Holidays
 [0mWhat is on now, what is next, and each festival's foods.
 [0;33mCrafting
-[0mFree at the Survival Workbench from gathered ingredients,
-[0monly during the festival.
-[0;33mEating
-[0mNutrition plus extra Comfort and Morale.
+[0mAt the Survival Workbench from gathered ingredients, only
+[0mduring the festival.
 [0;33mKeeping
 [0mThey stack, sell and keep all year. Stock up before it
 [0mends.
 [1;36mCOMING UP
 [0;33m🎃 Halloween · opens October 1
-[0mPumpkin Bites, Moon Tart and Candy Herb Mix.
+[0mPumpkin Bites, Moon Tart, Candy Herb Mix.
 [1;32mGATHER → COOK → FEAST → STOCK UP
 ```
 
------ PANEL 8 -----
 ```ansi
 [1;32m╭────────────────────────╮
 [1;32m│      Command list      │
@@ -221,9 +307,6 @@ with /mod action:Post guide panels here instead; the bot posts all eight with co
 [1;36mYOU
 [0;33m/status  /me  /seedling  /inventory  /settings
 [0mNeeds, profile, your Seedling, items and preferences.
-[0;33m/find
-[0mSearch recipes, items, buttons and the handbook for
-[0manything.
 [1;36mDO THINGS
 [0;33m/life  /work  /gather  /mine  /use
 [0mRecover, work, collect and use items.
@@ -232,13 +315,24 @@ with /mod action:Post guide panels here instead; the bot posts all eight with co
 [1;36mTRADE & COMMUNITY
 [0;33m/seedindustries  /market  /home  /business
 [0mMoney, prices, your Habitat and company.
+[0;33m/vote  /challenge  /season  /trophies
+[0mColony votes, stream challenges, seasons and trophies.
 [0;33m/social  /world  /district  /shift  /ducks
 [0mFriends, the settlement, events and holidays.
 [1;36mHELP
-[0;33m/guide  /seed  /start  /link  /job  /specialize
-[0mNext steps, the handbook and your setup.
+[0;33m/guide  /find  /seed  /start  /link  /job
+[0mNext steps, search, the handbook and your setup.
 [0;33m/mod
-[0mModerators: events, logs, lookups, these panels and the
-[0mgame panel.
-[1;32mEVERY COMMAND IS ALSO A BUTTON IN /menu
+[0mModerators: events, stream challenges, the recap and these
+[0mpanels.
+[1;32mSTUCK? /menu HAS A BUTTON FOR EVERYTHING
+
+[1;36m── COLOR MEANING ──────────────
+
+[1;32mGREEN = success and growth
+[1;33mYELLOW = actions and rewards
+[1;34mBLUE = information and status
+[1;31mRED = blockers and danger
+[1;35mMAGENTA = social, story and lore
+[0;37mGRAY = supporting detail
 ```
