@@ -1,5 +1,22 @@
 # Release notes
 
+## No more clipping on the map
+
+An automated check measured every name tag, speech bubble, bar and panel on `/obs/map` at 960×540 and 1920×1080. It covered the wide shot, 16 camera turns with close-ups, a level-up banner and a holiday night. Everything it found is fixed. The check now passes with no overlaps.
+
+- **The whole town fits.** The wide shot now sizes itself from the buildings actually drawn, so the tallest tower no longer runs under the header and the front houses no longer hide behind the caption.
+- **Caption card and banners live in the empty corners.**
+  - The caption is now a card in the bottom-right corner, which is outside the town.
+  - Banners such as "🏗️ Market grew to LV 13" sit top-right, in the sky.
+  - The stat panel stays top-left. None of them cover a building.
+- **Hats clear the name tags.** Seedlings stand a little lower under each district name, so tall hats (chef, top hat) no longer poke into the name.
+- **Smarter speech bubbles.**
+  - A bubble tries about 50 spots around the speaker: above at several heights, to either side, and below. It takes the closest one that covers no district name, bar or panel and stays on screen. Its tail is also kept clear of names.
+  - Bubbles stay the same size on screen in close-ups, and now scale around the speaker, so they no longer drift away from them when zoomed.
+  - There is no bubble for a Seedling who is off-screen, behind a panel or hidden in a "+N" group. A Seedling who sets off walking stops talking.
+- **Close-ups.** District names that would be cut off by the frame or slide under a bar or panel fade out during a zoom, and come back on the wide shot. Names are no longer rebuilt every few seconds, which used to flash hidden ones back in.
+- **Card panels fit their source.** Leaders, Working, Join and News shrink to fit their Browser Source when a live event adds rows, instead of being cut off at the bottom.
+
 ## A professional look for every overlay
 
 - **One design system.** Every OBS page now uses one set of colours, corner radii, shadows and motion timing: the Hub, map, ticker, alerts, news, leaders, working, join and setup pages, plus the older Society, Today, Event, Ops, Activity, Telemetry and Signal panels and `/overlay`.

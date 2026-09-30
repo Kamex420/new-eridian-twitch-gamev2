@@ -106,5 +106,6 @@ def test_ticker_tags_every_item_and_the_map_has_stats_characters_and_quality():
     ticker = client.get('/obs/ticker', params={'channel': 'test'}).text
     assert "WEATHER" in ticker and "MARKET" in ticker and 'id="clock"' in ticker
     page = client.get('/obs/map', params={'channel': 'test'}).text
-    for feature in ('function statPanel(', 'const HAT=', 'function face(', 'function idle(', "Q.get('quality')", "Q.get('stats')", '.q-low', 'function flag('):
+    for feature in ('function statPanel(', 'const HAT=', 'function face(', 'function idle(', "Q.get('quality')", "Q.get('stats')", '.q-low', 'function flag(',
+                    'function fitHome(', 'function tidyLabels(', 'function hushBubble(', 'function dropBubbleIfHidden('):
         assert feature in page, feature
