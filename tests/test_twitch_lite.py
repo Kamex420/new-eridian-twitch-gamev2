@@ -60,3 +60,37 @@ def test_the_switch_gives_twitch_the_full_game_again(monkeypatch):
     monkeypatch.setattr(lite, 'ENABLED', False)
     assert not twitch('/api/v1/make').startswith('🔒')
     assert onboarding._cmd('craft', 'twitch') == '!make campfire'
+
+
+def test_with_a_key_set_only_requests_carrying_it_can_act_as_a_player(monkeypatch):
+    monkeypatch.setenv('TWITCH_API_KEY', 'secret-123')
+    missing = twitch('/api/v1/start')
+    assert 'missing the game key' in missing
+    with m.SessionLocal() as db:
+        assert db.query(m.Player).count() == 0
+    assert 'Welcome to New Eridian' in twitch('/api/v1/start', k='secret-123')
+    assert 'missing the game key' in twitch('/api/v1/start', k='wrong')
+    # Pretending to be Discord (to get around the lite version or act as someone) needs the key too.
+    assert 'missing the game key' in client.get('/api/v1/make', params={'channel': C, 'uid': '111', 'provider': 'discord'}).text
+    assert 'missing the game key' in client.get('/api/v1/link/claim', params={'channel': C, 'discord_uid': '111', 'code': 'ABC'}).text
+    # Reads without a player stay open: overlays, the society, the recap.
+    assert client.get('/api/v1/overlay', params={'channel': C}).status_code == 200
+    assert 'missing' not in client.get('/api/v1/society', params={'channel': C}).text
+    # Discord plays through the bot, which never uses these addresses.
+    assert not m._discord_call_internal('status', '111', 'Dee', {}, 'i1').startswith('⛔')
+
+
+def test_the_command_list_is_complete_and_every_player_command_carries_the_key():
+    import re
+    from pathlib import Path
+    text = (Path(__file__).resolve().parents[1] / 'integrations/twitch/ALL_COMMANDS.txt').read_text(encoding='utf-8')
+    adds = re.findall(r'^!command add (!\S+) (.*)$', text, re.M)
+    names = [n for n, _ in adds]
+    assert len(names) == len(set(names))
+    for must in ('!start', '!gather', '!mine', '!farm', '!eat', '!relax', '!status', '!seedling', '!vote', '!challenge', '!live', '!chstart'):
+        assert must in names
+    for name, response in adds:
+        if 'uid=' in response:
+            assert '&k=YOUR_API_KEY' in response, name
+        if '/admin/' in response:
+            assert 'key=YOUR_ADMIN_KEY' in response and names.index(name) > names.index('!customize'), name   # moderator commands last

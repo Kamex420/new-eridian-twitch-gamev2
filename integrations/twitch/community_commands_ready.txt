@@ -1,24 +1,26 @@
+# Superseded by ALL_COMMANDS.txt, which has every command the game needs in one place. Replace YOUR_API_KEY with the
+# TWITCH_API_KEY set on Railway (and YOUR_ADMIN_KEY with ADMIN_KEY in moderator lines).
 # Ready to paste into Twitch chat as the broadcaster or a moderator (StreamElements bot).
 # Community commands: colony votes, stream challenges, seasons, trophies and the weekly recap.
 # Paste one line at a time, a couple of seconds apart. Check afterwards with: !vote  !season  !trophies  !challenge
 # !hat and !badge are part of the full game on Discord: on Twitch they reply with your Discord invite (set DISCORD_INVITE_URL).
 
-!command add !vote $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/vote?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&choice=$(queryescape ${1:}))
+!command add !vote $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/vote?channel=$(channel.provider_id)&uid=$(sender.twitchid)&k=YOUR_API_KEY&name=$(queryescape $(sender))&choice=$(queryescape ${1:}))
 !command options !vote -level 100 -cd 0 -usercd 5
 
-!command add !season $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/seasons?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&section=$(queryescape ${1:}))
+!command add !season $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/seasons?channel=$(channel.provider_id)&uid=$(sender.twitchid)&k=YOUR_API_KEY&name=$(queryescape $(sender))&section=$(queryescape ${1:}))
 !command options !season -level 100 -cd 0 -usercd 5
 
-!command add !hat $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/hat?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&hat=$(queryescape ${1:}))
+!command add !hat $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/hat?channel=$(channel.provider_id)&uid=$(sender.twitchid)&k=YOUR_API_KEY&name=$(queryescape $(sender))&hat=$(queryescape ${1:}))
 !command options !hat -level 100 -cd 0 -usercd 5
 
-!command add !challenge $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/challenge?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender)))
+!command add !challenge $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/challenge?channel=$(channel.provider_id)&uid=$(sender.twitchid)&k=YOUR_API_KEY&name=$(queryescape $(sender)))
 !command options !challenge -level 100 -cd 3 -usercd 10
 
-!command add !trophies $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/trophies?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender)))
+!command add !trophies $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/trophies?channel=$(channel.provider_id)&uid=$(sender.twitchid)&k=YOUR_API_KEY&name=$(queryescape $(sender)))
 !command options !trophies -level 100 -cd 0 -usercd 10
 
-!command add !badge $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/badge?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&badge=$(queryescape ${1:}))
+!command add !badge $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/badge?channel=$(channel.provider_id)&uid=$(sender.twitchid)&k=YOUR_API_KEY&name=$(queryescape $(sender))&badge=$(queryescape ${1:}))
 !command options !badge -level 100 -cd 0 -usercd 5
 
 !command add !recap $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/recap?channel=$(channel.provider_id)&provider=twitch)

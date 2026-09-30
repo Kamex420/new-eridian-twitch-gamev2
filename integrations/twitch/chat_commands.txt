@@ -1,3 +1,5 @@
+# Superseded by ALL_COMMANDS.txt, which has every command the game needs in one place. Replace YOUR_API_KEY with the
+# TWITCH_API_KEY set on Railway (and YOUR_ADMIN_KEY with ADMIN_KEY in moderator lines).
 # StreamElements definitions for New Eridian. Paste one line at a time in Twitch chat as the broadcaster or a moderator.
 # The address is already filled in (new-eridian-twitch-game-production.up.railway.app).
 # Commands that need your ADMIN_KEY are grouped at the very end: replace YOUR_ADMIN_KEY in those lines only.
@@ -7,62 +9,62 @@
 !command add !seed 🌱 NEW ERIDIAN // SEED CHAT GAME | !start !me !job !skills !inventory !farm !harvest !mine !rare !research !craft !build !work !cargo !delivery !explore !market !status !progress !event !siro !rocky
 !command options !seed -level 100 -cd 15 -usercd 30
 
-!command add !start $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/start?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&msg=$(msgid))
+!command add !start $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/start?channel=$(channel.provider_id)&uid=$(sender.twitchid)&k=YOUR_API_KEY&name=$(queryescape $(sender))&msg=$(msgid))
 !command options !start -level 100 -cd 10 -usercd 86400
 
-!command add !me $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/profile?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender)))
+!command add !me $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/profile?channel=$(channel.provider_id)&uid=$(sender.twitchid)&k=YOUR_API_KEY&name=$(queryescape $(sender)))
 !command options !me -level 100 -cd 5 -usercd 15
 
-!command add !skills $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/skills?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender)))
+!command add !skills $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/skills?channel=$(channel.provider_id)&uid=$(sender.twitchid)&k=YOUR_API_KEY&name=$(queryescape $(sender)))
 !command options !skills -level 100 -cd 5 -usercd 15
 
-!command add !inventory $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/inventory?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender)))
+!command add !inventory $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/inventory?channel=$(channel.provider_id)&uid=$(sender.twitchid)&k=YOUR_API_KEY&name=$(queryescape $(sender)))
 !command options !inventory -level 100 -cd 5 -usercd 15
 
-!command add !wallet $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/wallet?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender)))
+!command add !wallet $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/wallet?channel=$(channel.provider_id)&uid=$(sender.twitchid)&k=YOUR_API_KEY&name=$(queryescape $(sender)))
 !command options !wallet -level 100 -cd 5 -usercd 15
 
-!command add !job $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/job?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&job=$(queryescape $(1)))
+!command add !job $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/job?channel=$(channel.provider_id)&uid=$(sender.twitchid)&k=YOUR_API_KEY&name=$(queryescape $(sender))&job=$(queryescape $(1)))
 !command options !job -level 100 -cd 5 -usercd 30
 
-!command add !farm $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/action/farm?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&msg=$(msgid))
+!command add !farm $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/action/farm?channel=$(channel.provider_id)&uid=$(sender.twitchid)&k=YOUR_API_KEY&name=$(queryescape $(sender))&msg=$(msgid))
 !command options !farm -level 100 -cd 3 -usercd 30
 
-!command add !harvest $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/action/harvest?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&msg=$(msgid))
+!command add !harvest $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/action/harvest?channel=$(channel.provider_id)&uid=$(sender.twitchid)&k=YOUR_API_KEY&name=$(queryescape $(sender))&msg=$(msgid))
 !command options !harvest -level 100 -cd 3 -usercd 35
 
 
-!command add !rare $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/action/rare?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&msg=$(msgid))
+!command add !rare $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/action/rare?channel=$(channel.provider_id)&uid=$(sender.twitchid)&k=YOUR_API_KEY&name=$(queryescape $(sender))&msg=$(msgid))
 !command options !rare -level 100 -cd 5 -usercd 90
 
-!command add !research $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/action/research?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&msg=$(msgid))
+!command add !research $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/action/research?channel=$(channel.provider_id)&uid=$(sender.twitchid)&k=YOUR_API_KEY&name=$(queryescape $(sender))&msg=$(msgid))
 !command options !research -level 100 -cd 3 -usercd 35
 
-!command add !craft $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/action/craft?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&msg=$(msgid))
+!command add !craft $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/action/craft?channel=$(channel.provider_id)&uid=$(sender.twitchid)&k=YOUR_API_KEY&name=$(queryescape $(sender))&msg=$(msgid))
 !command options !craft -level 100 -cd 3 -usercd 45
 
-!command add !build $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/action/build?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&msg=$(msgid))
+!command add !build $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/action/build?channel=$(channel.provider_id)&uid=$(sender.twitchid)&k=YOUR_API_KEY&name=$(queryescape $(sender))&msg=$(msgid))
 !command options !build -level 100 -cd 3 -usercd 45
 
-!command add !work $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/action/work?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&msg=$(msgid))
+!command add !work $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/action/work?channel=$(channel.provider_id)&uid=$(sender.twitchid)&k=YOUR_API_KEY&name=$(queryescape $(sender))&msg=$(msgid))
 !command options !work -level 100 -cd 3 -usercd 35
 
-!command add !cargo $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/action/cargo?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&msg=$(msgid))
+!command add !cargo $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/action/cargo?channel=$(channel.provider_id)&uid=$(sender.twitchid)&k=YOUR_API_KEY&name=$(queryescape $(sender))&msg=$(msgid))
 !command options !cargo -level 100 -cd 3 -usercd 45
 
-!command add !delivery $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/action/delivery?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&msg=$(msgid))
+!command add !delivery $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/action/delivery?channel=$(channel.provider_id)&uid=$(sender.twitchid)&k=YOUR_API_KEY&name=$(queryescape $(sender))&msg=$(msgid))
 !command options !delivery -level 100 -cd 3 -usercd 45
 
-!command add !explore $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/action/explore?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&msg=$(msgid))
+!command add !explore $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/action/explore?channel=$(channel.provider_id)&uid=$(sender.twitchid)&k=YOUR_API_KEY&name=$(queryescape $(sender))&msg=$(msgid))
 !command options !explore -level 100 -cd 3 -usercd 50
 
-!command add !market $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/action/market?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&msg=$(msgid))
+!command add !market $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/action/market?channel=$(channel.provider_id)&uid=$(sender.twitchid)&k=YOUR_API_KEY&name=$(queryescape $(sender))&msg=$(msgid))
 !command options !market -level 100 -cd 3 -usercd 45
 
-!command add !eat $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/action/eat?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&msg=$(msgid))
+!command add !eat $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/action/eat?channel=$(channel.provider_id)&uid=$(sender.twitchid)&k=YOUR_API_KEY&name=$(queryescape $(sender))&msg=$(msgid))
 !command options !eat -level 100 -cd 3 -usercd 15
 
-!command add !sleep $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/action/sleep?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&msg=$(msgid))
+!command add !sleep $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/action/sleep?channel=$(channel.provider_id)&uid=$(sender.twitchid)&k=YOUR_API_KEY&name=$(queryescape $(sender))&msg=$(msgid))
 !command options !sleep -level 100 -cd 3 -usercd 60
 
 
@@ -72,63 +74,63 @@
 !command add !event $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/event?channel=$(channel.provider_id))
 !command options !event -level 100 -cd 8 -usercd 20
 
-!command add !rocky $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/rocky?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender)))
+!command add !rocky $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/rocky?channel=$(channel.provider_id)&uid=$(sender.twitchid)&k=YOUR_API_KEY&name=$(queryescape $(sender)))
 !command options !rocky -level 100 -cd 8 -usercd 60
 
 !command add !siro $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/siro?channel=$(channel.provider_id))
 !command options !siro -level 100 -cd 8 -usercd 60
 
 # SEED material gathering and ingredient lookup
-!command add !gather $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/seed-supplies?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&mode=gather&item=$(queryescape ${1:}))
+!command add !gather $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/seed-supplies?channel=$(channel.provider_id)&uid=$(sender.twitchid)&k=YOUR_API_KEY&name=$(queryescape $(sender))&mode=gather&item=$(queryescape ${1:}))
 !command options !gather -level 100 -cd 0 -usercd 5
 
-!command add !gatherpage $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/seed-supplies?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&mode=gather&page=$(1))
+!command add !gatherpage $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/seed-supplies?channel=$(channel.provider_id)&uid=$(sender.twitchid)&k=YOUR_API_KEY&name=$(queryescape $(sender))&mode=gather&page=$(1))
 !command options !gatherpage -level 100 -cd 0 -usercd 5
 
-!command add !catalog $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/seed-supplies?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&mode=catalog&item=$(queryescape ${1:}))
+!command add !catalog $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/seed-supplies?channel=$(channel.provider_id)&uid=$(sender.twitchid)&k=YOUR_API_KEY&name=$(queryescape $(sender))&mode=catalog&item=$(queryescape ${1:}))
 !command options !catalog -level 100 -cd 0 -usercd 5
 
-!command add !training $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/training?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&text=$(queryescape ${1:}))
+!command add !training $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/training?channel=$(channel.provider_id)&uid=$(sender.twitchid)&k=YOUR_API_KEY&name=$(queryescape $(sender))&text=$(queryescape ${1:}))
 !command options !training -level 100 -cd 0 -usercd 5
 
-!command add !make $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/make?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&recipe=$(queryescape ${1:}))
+!command add !make $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/make?channel=$(channel.provider_id)&uid=$(sender.twitchid)&k=YOUR_API_KEY&name=$(queryescape $(sender))&recipe=$(queryescape ${1:}))
 !command options !make -level 100 -cd 0 -usercd 5
 
 # Crafting progression and starter market
-!command add !workshop $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/workshop?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&station=$(queryescape ${1:}))
+!command add !workshop $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/workshop?channel=$(channel.provider_id)&uid=$(sender.twitchid)&k=YOUR_API_KEY&name=$(queryescape $(sender))&station=$(queryescape ${1:}))
 !command options !workshop -level 100 -cd 0 -usercd 5
 
-!command add !workshopunlock $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/workshop?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&action=unlock&station=$(queryescape ${1:}))
+!command add !workshopunlock $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/workshop?channel=$(channel.provider_id)&uid=$(sender.twitchid)&k=YOUR_API_KEY&name=$(queryescape $(sender))&action=unlock&station=$(queryescape ${1:}))
 !command options !workshopunlock -level 100 -cd 0 -usercd 5
 
-!command add !workshoppage $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/workshop?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&page=$(1))
+!command add !workshoppage $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/workshop?channel=$(channel.provider_id)&uid=$(sender.twitchid)&k=YOUR_API_KEY&name=$(queryescape $(sender))&page=$(1))
 !command options !workshoppage -level 100 -cd 0 -usercd 5
 
-!command add !seedpage $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/seedindustries?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&page=$(1))
+!command add !seedpage $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/seedindustries?channel=$(channel.provider_id)&uid=$(sender.twitchid)&k=YOUR_API_KEY&name=$(queryescape $(sender))&page=$(1))
 !command options !seedpage -level 100 -cd 0 -usercd 5
 
-!command add !seedbuy $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/seedindustries?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&action=buy&item_name=$(queryescape $(1))&amount=$(2))
+!command add !seedbuy $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/seedindustries?channel=$(channel.provider_id)&uid=$(sender.twitchid)&k=YOUR_API_KEY&name=$(queryescape $(sender))&action=buy&item_name=$(queryescape $(1))&amount=$(2))
 !command options !seedbuy -level 100 -cd 0 -usercd 5
 
-!command add !seedindustries $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/seedindustries?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&action=$(queryescape $(1))&item_name=$(queryescape $(2)))
+!command add !seedindustries $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/seedindustries?channel=$(channel.provider_id)&uid=$(sender.twitchid)&k=YOUR_API_KEY&name=$(queryescape $(sender))&action=$(queryescape $(1))&item_name=$(queryescape $(2)))
 !command options !seedindustries -level 100 -cd 0 -usercd 5
 
-!command add !seedstarters $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/seedindustries?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&action=starters&page=$(1))
+!command add !seedstarters $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/seedindustries?channel=$(channel.provider_id)&uid=$(sender.twitchid)&k=YOUR_API_KEY&name=$(queryescape $(sender))&action=starters&page=$(1))
 !command options !seedstarters -level 100 -cd 0 -usercd 5
 
-!command add !mine $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/mining?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&action=mine&ore=$(queryescape $(1))&count=$(2))
+!command add !mine $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/mining?channel=$(channel.provider_id)&uid=$(sender.twitchid)&k=YOUR_API_KEY&name=$(queryescape $(sender))&action=mine&ore=$(queryescape $(1))&count=$(2))
 !command options !mine -level 100 -cd 0 -usercd 2
 
-!command add !mineinfo $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/mining?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&ore=$(queryescape $(1)))
+!command add !mineinfo $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/mining?channel=$(channel.provider_id)&uid=$(sender.twitchid)&k=YOUR_API_KEY&name=$(queryescape $(sender))&ore=$(queryescape $(1)))
 !command options !mineinfo -level 100 -cd 0 -usercd 2
 
-!command add !queue $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/queue?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender)))
+!command add !queue $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/queue?channel=$(channel.provider_id)&uid=$(sender.twitchid)&k=YOUR_API_KEY&name=$(queryescape $(sender)))
 !command options !queue -level 100 -cd 0 -usercd 2
 
-!command add !queueadd $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/queue?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&action=start&task=$(queryescape $(1))&count=$(2))
+!command add !queueadd $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/queue?channel=$(channel.provider_id)&uid=$(sender.twitchid)&k=YOUR_API_KEY&name=$(queryescape $(sender))&action=start&task=$(queryescape $(1))&count=$(2))
 !command options !queueadd -level 100 -cd 0 -usercd 2
 
-!command add !queuecancel $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/queue?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&action=cancel)
+!command add !queuecancel $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/queue?channel=$(channel.provider_id)&uid=$(sender.twitchid)&k=YOUR_API_KEY&name=$(queryescape $(sender))&action=cancel)
 !command options !queuecancel -level 100 -cd 0 -usercd 2
 
 !command add !queuetasks $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/queue-tasks?query=$(queryescape $(1:)))
@@ -138,82 +140,82 @@
 !command options !queuetaskpage -level 100 -cd 0 -usercd 2
 
 # Quality of life: status, recovery, settings, favourites, fetching, bulk selling, inventory search, follow-up queues
-!command add !status $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/status?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender)))
+!command add !status $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/status?channel=$(channel.provider_id)&uid=$(sender.twitchid)&k=YOUR_API_KEY&name=$(queryescape $(sender)))
 !command options !status -level 100 -cd 0 -usercd 5
 
 !command add !society $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/society?channel=$(channel.provider_id))
 !command options !society -level 100 -cd 8 -usercd 20
 
-!command add !recover $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/recover?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender)))
+!command add !recover $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/recover?channel=$(channel.provider_id)&uid=$(sender.twitchid)&k=YOUR_API_KEY&name=$(queryescape $(sender)))
 !command options !recover -level 100 -cd 0 -usercd 10
 
-!command add !settings $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/settings?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&text=$(queryescape ${1:}))
+!command add !settings $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/settings?channel=$(channel.provider_id)&uid=$(sender.twitchid)&k=YOUR_API_KEY&name=$(queryescape $(sender))&text=$(queryescape ${1:}))
 !command options !settings -level 100 -cd 0 -usercd 5
 
-!command add !fav $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/favorite?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&recipe=$(queryescape ${1:}))
+!command add !fav $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/favorite?channel=$(channel.provider_id)&uid=$(sender.twitchid)&k=YOUR_API_KEY&name=$(queryescape $(sender))&recipe=$(queryescape ${1:}))
 !command options !fav -level 100 -cd 0 -usercd 5
 
-!command add !fetch $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/fetch?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&recipe=$(queryescape ${1:}))
+!command add !fetch $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/fetch?channel=$(channel.provider_id)&uid=$(sender.twitchid)&k=YOUR_API_KEY&name=$(queryescape $(sender))&recipe=$(queryescape ${1:}))
 !command options !fetch -level 100 -cd 0 -usercd 5
 
-!command add !fetchgo $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/fetch?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&action=start&recipe=$(queryescape ${1:}))
+!command add !fetchgo $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/fetch?channel=$(channel.provider_id)&uid=$(sender.twitchid)&k=YOUR_API_KEY&name=$(queryescape $(sender))&action=start&recipe=$(queryescape ${1:}))
 !command options !fetchgo -level 100 -cd 0 -usercd 5
 
-!command add !sellall $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/sellall?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&item=$(queryescape ${1:}))
+!command add !sellall $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/sellall?channel=$(channel.provider_id)&uid=$(sender.twitchid)&k=YOUR_API_KEY&name=$(queryescape $(sender))&item=$(queryescape ${1:}))
 !command options !sellall -level 100 -cd 0 -usercd 5
 
-!command add !clearout $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/clearout?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&confirm=$(queryescape $(1)))
+!command add !clearout $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/clearout?channel=$(channel.provider_id)&uid=$(sender.twitchid)&k=YOUR_API_KEY&name=$(queryescape $(sender))&confirm=$(queryescape $(1)))
 !command options !clearout -level 100 -cd 0 -usercd 5
 
-!command add !inv $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/inventory?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&text=$(queryescape ${1:}))
+!command add !inv $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/inventory?channel=$(channel.provider_id)&uid=$(sender.twitchid)&k=YOUR_API_KEY&name=$(queryescape $(sender))&text=$(queryescape ${1:}))
 !command options !inv -level 100 -cd 0 -usercd 5
 
-!command add !queuenext $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/queue?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&action=next&task=$(queryescape $(1))&count=$(2))
+!command add !queuenext $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/queue?channel=$(channel.provider_id)&uid=$(sender.twitchid)&k=YOUR_API_KEY&name=$(queryescape $(sender))&action=next&task=$(queryescape $(1))&count=$(2))
 !command options !queuenext -level 100 -cd 0 -usercd 2
 
-!command add !queuerepeat $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/queue?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&action=repeat)
+!command add !queuerepeat $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/queue?channel=$(channel.provider_id)&uid=$(sender.twitchid)&k=YOUR_API_KEY&name=$(queryescape $(sender))&action=repeat)
 !command options !queuerepeat -level 100 -cd 0 -usercd 2
 
-!command add !again $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/again?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender)))
+!command add !again $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/again?channel=$(channel.provider_id)&uid=$(sender.twitchid)&k=YOUR_API_KEY&name=$(queryescape $(sender)))
 !command options !again -level 100 -cd 0 -usercd 3
 
-!command add !craftmax $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/craftmax?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&recipe=$(queryescape ${1:}))
+!command add !craftmax $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/craftmax?channel=$(channel.provider_id)&uid=$(sender.twitchid)&k=YOUR_API_KEY&name=$(queryescape $(sender))&recipe=$(queryescape ${1:}))
 !command options !craftmax -level 100 -cd 0 -usercd 2
 
-!command add !target $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/target?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&recipe=$(queryescape ${1:}))
+!command add !target $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/target?channel=$(channel.provider_id)&uid=$(sender.twitchid)&k=YOUR_API_KEY&name=$(queryescape $(sender))&recipe=$(queryescape ${1:}))
 !command options !target -level 100 -cd 0 -usercd 3
 
-!command add !routines $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/routines?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&action=$(queryescape $(1)))
+!command add !routines $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/routines?channel=$(channel.provider_id)&uid=$(sender.twitchid)&k=YOUR_API_KEY&name=$(queryescape $(sender))&action=$(queryescape $(1)))
 !command options !routines -level 100 -cd 0 -usercd 3
 
-!command add !routine $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/routine?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&n=$(queryescape ${1:}))
+!command add !routine $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/routine?channel=$(channel.provider_id)&uid=$(sender.twitchid)&k=YOUR_API_KEY&name=$(queryescape $(sender))&n=$(queryescape ${1:}))
 !command options !routine -level 100 -cd 0 -usercd 3
 
-!command add !uses $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/uses?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&item=$(queryescape ${1:}))
+!command add !uses $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/uses?channel=$(channel.provider_id)&uid=$(sender.twitchid)&k=YOUR_API_KEY&name=$(queryescape $(sender))&item=$(queryescape ${1:}))
 !command options !uses -level 100 -cd 0 -usercd 5
 
-!command add !autosell $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/autosell?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&item=$(queryescape ${1:}))
+!command add !autosell $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/autosell?channel=$(channel.provider_id)&uid=$(sender.twitchid)&k=YOUR_API_KEY&name=$(queryescape $(sender))&item=$(queryescape ${1:}))
 !command options !autosell -level 100 -cd 0 -usercd 3
 
-!command add !undo $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/undo?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender)))
+!command add !undo $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/undo?channel=$(channel.provider_id)&uid=$(sender.twitchid)&k=YOUR_API_KEY&name=$(queryescape $(sender)))
 !command options !undo -level 100 -cd 0 -usercd 2
 
-!command add !eatfull $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/eatfull?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender)))
+!command add !eatfull $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/eatfull?channel=$(channel.provider_id)&uid=$(sender.twitchid)&k=YOUR_API_KEY&name=$(queryescape $(sender)))
 !command options !eatfull -level 100 -cd 0 -usercd 3
 
-!command add !find $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/find?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&query=$(queryescape ${1:}))
+!command add !find $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/find?channel=$(channel.provider_id)&uid=$(sender.twitchid)&k=YOUR_API_KEY&name=$(queryescape $(sender))&query=$(queryescape ${1:}))
 !command options !find -level 100 -cd 0 -usercd 5
 
-!command add !seedling $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/seedling?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender)))
+!command add !seedling $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/seedling?channel=$(channel.provider_id)&uid=$(sender.twitchid)&k=YOUR_API_KEY&name=$(queryescape $(sender)))
 !command options !seedling -level 100 -cd 0 -usercd 5
 
-!command add !diary $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/diary?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender)))
+!command add !diary $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/diary?channel=$(channel.provider_id)&uid=$(sender.twitchid)&k=YOUR_API_KEY&name=$(queryescape $(sender)))
 !command options !diary -level 100 -cd 0 -usercd 5
 
-!command add !schedule $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/schedule?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&preset=$(queryescape ${1:}))
+!command add !schedule $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/schedule?channel=$(channel.provider_id)&uid=$(sender.twitchid)&k=YOUR_API_KEY&name=$(queryescape $(sender))&preset=$(queryescape ${1:}))
 !command options !schedule -level 100 -cd 0 -usercd 5
 
-!command add !autonomy $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/autonomy?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&state=$(queryescape $(1)))
+!command add !autonomy $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/autonomy?channel=$(channel.provider_id)&uid=$(sender.twitchid)&k=YOUR_API_KEY&name=$(queryescape $(sender))&state=$(queryescape $(1)))
 !command options !autonomy -level 100 -cd 0 -usercd 5
 
 

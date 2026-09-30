@@ -1,5 +1,24 @@
 # Release notes
 
+## A game key for Twitch commands, and one complete command list
+
+- **Game key.** With `TWITCH_API_KEY` set on Railway, every request that acts as a player must carry it (`k=` in the StreamElements command). Without the key, nobody can:
+  - act as another player by calling the game's web addresses directly;
+  - use `provider=discord` to get around the Twitch-lite version;
+  - claim someone's link code.
+
+  Discord is unaffected (it plays through the bot). Reads without a player stay open: the overlays, the society and the recap. A command missing the key replies "⛔ This command is missing the game key…" so a moderator knows to update it. Nothing changes until the key is set.
+- **`integrations/twitch/ALL_COMMANDS.txt`.** Every StreamElements command the game needs, in paste order:
+  1. getting started;
+  2. gathering, mining and work;
+  3. needs and life;
+  4. your Seedling;
+  5. society, events and community;
+  6. the optional "full game on Discord" pointers;
+  7. the moderator commands, last.
+
+  Every player command includes `k=YOUR_API_KEY`. `integrations/twitch/build_all_commands.py` regenerates it. The older command files also carry the key now, and say they are superseded.
+
 ## A livelier Discord channel, Twitch as the lite version, and Seedling looks
 
 ### 📣 A livelier channel

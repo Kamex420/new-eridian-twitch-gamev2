@@ -75,9 +75,28 @@ def blocked(path, params):
     return None
 
 
+def key_problem(path, params):
+    """With TWITCH_API_KEY set, every request that acts as a player must carry it as k=… (StreamElements commands do).
+
+    Discord never plays through these addresses (it uses the bot), so without the key nobody can act as another
+    player, use provider=discord to get around the lite version, or claim link codes. Reads without a player
+    (overlays, the society, the recap) stay open. Admin addresses keep their own ADMIN_KEY."""
+    import secrets
+    key = os.getenv('TWITCH_API_KEY', '').strip()
+    if not key or not path.startswith('/api/v1/') or path.startswith('/api/v1/admin/'):
+        return None
+    acts = bool(params.get('uid') or params.get('discord_uid')) or str(params.get('provider') or '').lower() == 'discord'
+    if not acts or secrets.compare_digest(str(params.get('k') or '').encode(), key.encode()):
+        return None
+    return '⛔ This command is missing the game key. A moderator needs to update it from integrations/twitch/ALL_COMMANDS.txt.'
+
+
 def install(m):
     @m.app.middleware('http')
     async def lite(request, call_next):
+        problem = key_problem(request.url.path, request.query_params)
+        if problem:
+            return PlainTextResponse(problem)     # plain 200 so StreamElements shows the message instead of an error code
         found = blocked(request.url.path, request.query_params)
         if found:
             return PlainTextResponse(gate_text(*found))
