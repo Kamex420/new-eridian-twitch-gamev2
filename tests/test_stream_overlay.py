@@ -89,3 +89,22 @@ def test_hub_rotates_every_panel_and_setup_recommends_four_sources():
     assert 'Recommended: four sources carry everything' in setup
     first = [so.SOURCES[i][0] for i in range(4)]
     assert first == ['hub', 'map', 'ticker', 'alerts']
+
+
+def test_every_overlay_page_shares_the_fonts_and_design_tokens():
+    from test_colony import client
+    for path in ('/obs/hub', '/obs/map', '/obs/ticker', '/obs/alerts', '/obs/narrator', '/obs/leaders', '/obs/society', '/obs/telemetry', '/obs', '/overlay'):
+        html = client.get(path, params={'channel': 'test'}).text
+        assert 'family=Fredoka' in html and '--font-display' in html and '--ease' in html, path
+        assert 'Georgia' not in html, path
+    legacy = client.get('/obs/society', params={'channel': 'test'}).text
+    assert 'h1{font-family:var(--font-display)' in legacy
+
+
+def test_ticker_tags_every_item_and_the_map_has_stats_characters_and_quality():
+    from test_colony import client
+    ticker = client.get('/obs/ticker', params={'channel': 'test'}).text
+    assert "WEATHER" in ticker and "MARKET" in ticker and 'id="clock"' in ticker
+    page = client.get('/obs/map', params={'channel': 'test'}).text
+    for feature in ('function statPanel(', 'const HAT=', 'function face(', 'function idle(', "Q.get('quality')", "Q.get('stats')", '.q-low', 'function flag('):
+        assert feature in page, feature

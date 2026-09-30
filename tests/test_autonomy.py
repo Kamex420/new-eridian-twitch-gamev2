@@ -233,6 +233,7 @@ def test_overlay_map_and_narrator():
         assert page.status_code == 200 and '/api/v1/overlay' in page.text
     assert '/obs/map' in client.get('/obs', params={'channel': 'test'}).text
     assert len(me['lines']) >= 3 and me['lines'][0] == me['thought'] and 'condition_key' in data
+    assert 'job' in me
     assert 0 <= data['hour'] < 24 and data['phase'] in {'Morning', 'Day', 'Evening', 'Night'}
 
 

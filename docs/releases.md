@@ -1,5 +1,27 @@
 # Release notes
 
+## A professional look for every overlay
+
+- **One design system.** Every OBS page now uses one set of colours, corner radii, shadows and motion timing: the Hub, map, ticker, alerts, news, leaders, working, join and setup pages, plus the older Society, Today, Event, Ops, Activity, Telemetry and Signal panels and `/overlay`.
+- **Real fonts.** Headings use Fredoka (rounded, friendly, readable on stream) and text uses Inter. Both load from Google Fonts, so they look the same on every PC. The old serif headings are gone.
+- **Smooth transitions.** Panels share one easing curve and timing. The Hub slides the old slide out to the left before the next slides in, and its title fades in. Alerts pop in and ease out. News stories, leader rows, queue rows and join tips all fade up the same way.
+- **The news ticker is a TV-style lower third.** A "LIVE · NEW ERIDIAN NEWS" station block sits on the left. Every item in the crawl starts with a coloured section tag: EVENT, WEATHER, NEWS, SOCIETY, TODAY, MARKET, HOLIDAY, PROJECT, AT WORK, REPORT, RUMOR or JOIN. The Avesta clock and day sit on the right. The ticker sizes itself from the source height, and 1920×56 is now recommended.
+- **Map stat panel.** A small card in the top-left corner shows:
+  - the tier and its progress toward the next one
+  - the six society stats as meters, with the weakest one highlighted
+  - what opens next, for example "Next: 🔬 Research opens at Township"
+
+  `&stats=0` hides it.
+- **Seedling characters.**
+  - Each job wears something recognisable: straw hats for farmers, helmets with lamps for miners, hard hats for engineers and technicians, a fire helmet for firefighters, goggles for researchers, a medic cap, a chef's hat, a top hat for merchants, a cap for couriers, a ranger hat for explorers, and a bandana for processors and artisans.
+  - Seedlings have arms that swing as they walk. Their eyes look where they are going, and they show their back when walking away.
+  - While standing, they now and then wave at a neighbour or look around.
+  - The overlay's `seedlings[].job` carries the job.
+- **Quality presets.**
+  - `&quality=high` adds soft light bloom at night, shimmering water on the lake, waving flags on the market hall and spaceport tower, and drop shadows under district labels.
+  - `&quality=low` drops weather particles, building and cloud shadows, window glows, crowds and idle animations, for slower streaming PCs.
+  - Measured on a 960×540 map at night: low about 3%, normal about 5%, high about 6% of one CPU core.
+
 ## Speech bubbles show the whole line
 
 Map speech bubbles no longer cut lines off with "…". The full line wraps onto as many rows as it needs (up to about 200 units wide) and the bubble grows upward to fit. Near the left and right edges of the town the bubble slides sideways to stay on screen, and its tail still points at the speaker.

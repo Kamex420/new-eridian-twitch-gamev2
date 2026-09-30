@@ -3515,7 +3515,8 @@ def overlay_page(panel:str="",channel:str="new-eridian"):
     selected=(panel or "").lower().strip()
     if selected in {"society","today","event","ops","activity","telemetry","signal","alerts","ticker","leaders","working","join"}:
         return standalone_obs_panel(selected,channel)
-    return r"""<!doctype html>
+    from . import stream_overlay
+    return stream_overlay.themed(r"""<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -4852,7 +4853,7 @@ f.style.cssText='position:fixed;top:18px;left:50%;transform:translateX(-50%);wid
 document.body.appendChild(f)})();
 </script>
 </body>
-</html>"""
+</html>""")
 
 
 @app.get("/obs",response_class=HTMLResponse)
@@ -4959,7 +4960,7 @@ refresh();setInterval(refresh,3500);
     html=(html.replace("__BODY_CLASS__",panel)
               .replace("__PANEL__",panel_json)
               .replace("__CHANNEL__",channel_json))
-    return HTMLResponse(html)
+    return HTMLResponse(stream_overlay.themed(html))
 
 @app.get("/api/v1/tick")
 @game_transaction

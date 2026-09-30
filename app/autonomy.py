@@ -953,7 +953,7 @@ def overlay_data(m, db, source_ids):
         place = found.place if found is not None and found.place in PLACES else 'residential_ring'
         mood = found.mood if found is not None and found.mood in MOODS else 'content'
         seedlings.append({'id': hashlib.sha1(f'{p.channel_id}:{p.twitch_uid}'.encode()).hexdigest()[:10], 'name': clean_name(p.display_name),
-                          'place': place, 'place_name': PLACES[place][0], 'activity': found.activity if found else 'Settling in',
+                          'place': place, 'place_name': PLACES[place][0], 'activity': found.activity if found else 'Settling in', 'job': p.job or '',
                           'emoji': found.emoji if found else '🏠', 'mood': MOODS[mood][1], 'mood_emoji': MOODS[mood][0],
                           'thought': found.thought if found else ''})
     context = say_context(m, db, source_ids)
