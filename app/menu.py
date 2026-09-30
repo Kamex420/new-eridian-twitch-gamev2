@@ -25,47 +25,42 @@ from . import ui, workbench as wb
 # area keys or leaf keys; the order is the button order.
 AREAS = {
     'home': ('🏠', 'New Eridian', 'Pick an area. Menus and views spend nothing; action buttons do their task once.',
-             ['status', 'seedling', 'inbox', 'recent', 'find', 'life', 'work', 'craft', 'queue', 'bag', 'trade', 'world', 'me', 'social', 'settings',
-              'account', 'help', 'mod']),
+             ['status', 'seedling', 'inbox', 'recent', 'find', 'life', 'work', 'craft', 'queue', 'bag', 'trade', 'world', 'me', 'settings', 'help',
+              'account', 'mod']),
     'recent': ('🔁', 'Recent actions', 'Your last ten actions. Tap one to do it again.', []),
     'life': ('❤️', 'Life & Recovery', 'Keep Energy, Nutrition, Social and Comfort up so work never stops.',
-             ['relax', 'sleep', 'eat', 'eatfull', 'games', 'walk', 'hobby', 'meal', 'recover', 'needs', 'cooldowns']),
-    'work': ('⛏️', 'Work', 'Mine, gather or pick a job. Each success gives items and practice.',
-             ['mine', 'gather', 'w_farm_tend', 'w_farm_harvest', 'w_farm_irrigate', 'w_farm_hydroponics', 'w_scan', 'w_rare',
-              'w_research', 'w_field_analysis', 'w_cargo', 'w_delivery', 'w_spaceport', 'w_expedite', 'w_scout', 'w_survey', 'repair',
-              'gearrepair', 'training', 'trainskill']),
-    'craft': ('🛠️', 'Craft', 'Open the Workbench, a category, what is ready now, or your favourites.',
-              ['workbench', 'ready', 'favs', 'goal', 'stations'] + ['c_' + key for key, *_ in wb.CATEGORIES]),
+             ['relax', 'sleep', 'eat', 'eatfull', 'recover', 'games', 'walk', 'hobby', 'meal', 'social', 'needs', 'cooldowns']),
+    'social': ('🤝', 'Social', 'Spend time with other citizens.', ['friend', 'recreation', 'me_relationships']),
+    'work': ('⛏️', 'Work', 'Gather and mine for materials, or do your trade. Each success gives items and practice.',
+             ['gather', 'mine', 'w_rare', 'farming', 'science', 'logistics', 'frontier', 'repair', 'gearrepair', 'training', 'trainskill']),
+    'farming': ('🌾', 'Farming', 'Tend, harvest and water the fields.', ['w_farm_tend', 'w_farm_harvest', 'w_farm_irrigate', 'w_farm_hydroponics']),
+    'science': ('🔬', 'Research', 'Scans and research.', ['w_scan', 'w_research', 'w_field_analysis']),
+    'logistics': ('📦', 'Logistics', 'Cargo, deliveries and the spaceport.', ['w_cargo', 'w_delivery', 'w_spaceport', 'w_expedite']),
+    'frontier': ('🧭', 'Frontier', 'Scouting and surveys past the wall.', ['w_scout', 'w_survey']),
+    'craft': ('🛠️', 'Craft', 'Open the Workbench (every category), what is ready now, your favourites or your goal.',
+              ['workbench', 'ready', 'favs', 'goal', 'stations']),
     'stations': ('🏭', 'Workshops', 'Workstations and personal tiers. Unlock a station once, or own its machine.',
                  ['workshop', 'unlock', 'catalogcat']),
     'queue': ('⏱️', 'Queue', 'Your automatic task queue. Check it, repeat it or stop it.',
-              ['qstatus', 'qdetails', 'plan', 'repeat', 'cancel', 'clearnext', 'status']),
-    'bag': ('🎒', 'Bag', 'Everything you own. Use it, eat it, sell it or sort it.',
-            ['inventory', 'search', 'by_value', 'by_name', 'by_category', 'favitems', 'sellable', 'ready_items', 'gear', 'uses', 'use', 'eat',
-             'eatfull', 'sell', 'clearout', 'autosell', 'undo', 'catalog', 'catalogcat']),
-    'trade': ('🪙', 'Trade', 'Seed Industries, production orders, market work, your Habitat and business.',
-              ['market', 'browse', 'buy', 'sellsome', 'sell', 'starters', 'orders', 'fulfill', 'prices', 'commerce', 'analyze',
-               'habitat', 'homeup', 'business', 'bstart', 'bwork', 'bcontract', 'binvest']),
+              ['qstatus', 'qdetails', 'plan', 'repeat', 'cancel', 'clearnext']),
+    'bag': ('🎒', 'Bag', 'Everything you own. Look through it, use it, or see what it makes. Selling is under Trade.',
+            ['inventory', 'inv_views', 'search', 'use', 'uses', 'autosell', 'catalog']),
+    'trade': ('🪙', 'Trade', 'Buy and sell with Seed Industries, production orders, market work, and your home and business.',
+              ['market', 'buy', 'sellsome', 'sell', 'clearout', 'undo', 'browse', 'starters', 'orders', 'fulfill', 'prices', 'commerce', 'analyze', 'property']),
+    'property': ('🏠', 'Home & Business', 'Your Habitat and your company.', ['habitat', 'homeup', 'business', 'bstart', 'bwork', 'bcontract', 'binvest']),
     'world': ('🌎', 'World', 'Avesta, New Eridian, events, holidays and news.',
-              ['wd_overview', 'wd_conditions', 'wd_society', 'wd_society_progress', 'wd_leaderboard', 'wd_event',
-               'wd_event_history', 'wd_holidays', 'wd_project', 'wd_story', 'wd_bulletin', 'wd_rumor', 'wd_market']),
+              ['wd_overview', 'wd_conditions', 'wd_society_progress', 'wd_event', 'wd_leaderboard', 'wd_more']),
     'me': ('👤', 'Me', 'Your citizen. Profile, skills, progress and personal choices.',
-           ['me_overview', 'me_skills', 'me_daily', 'me_achievements', 'me_collection', 'me_bonuses', 'me_traits',
-            'me_relationships', 'me_journal', 'me_tutorial', 'me_titles', 'choices']),
+           ['me_overview', 'me_skills', 'me_daily', 'me_achievements', 'choices', 'me_more']),
     'choices': ('🧭', 'Choices', 'Job, district, shift, delivery partner, title, specialization and display style.',
                 ['job', 'district', 'shift', 'duck', 'title', 'specialize', 'display_compact', 'display_detailed']),
-    'social': ('🤝', 'Social', 'Spend time with other citizens, or recover Social on your own.',
-               ['friend', 'games', 'recreation', 'meal', 'me_relationships']),
-    'settings': ('⚙️', 'Settings', 'How queue alerts reach you and whether queues recover by themselves.',
-                 ['alerts_mention', 'alerts_dm', 'alerts_private', 'alerts_quiet', 'alerts_off', 'auto_on', 'auto_off',
-                  'popups_important', 'popups_all', 'popups_off', 'inbox', 'favs', 'status']),
-    'help': ('📖', 'Help', 'What to do next, and the full handbook by topic.',
-             ['guide', 'guidegoal', 'find', 'me_tutorial', 'wd_holidays'] + ['h_' + t for t in ('start', 'character', 'property', 'life', 'production',
-                                                                          'operations', 'society', 'other', 'terms')]),
+    'settings': ('⚙️', 'Settings', 'How queue alerts and notifications reach you, and whether queues recover by themselves.',
+                 ['alerts', 'popups', 'auto_on', 'auto_off']),
+    'help': ('📖', 'Help', 'What to do next, a guide for any goal, search, and the handbook.', ['guide', 'guidegoal', 'find', 'h_topics']),
     'seedling': ('🌱', 'My Seedling', 'Your Seedling lives its own day: mood, thoughts, schedule, diary and autonomy.',
                  ['sl_view', 'sl_decide', 'sl_diary', 'sl_schedule', 'sl_custom', 'sl_on', 'sl_off']),
     'account': ('🔗', 'Account', 'Create your citizen, or link your Twitch citizen: type !link in Twitch chat, then enter the code here.',
-                ['start', 'link', 'me_overview', 'me_tutorial', 'guide']),
+                ['start', 'link']),
     'mod': ('🛡️', 'Moderator', 'Events, the moderator log, account lookups and the channel panels. Moderators only.',
             ['m_eventstart', 'm_eventstop', 'm_modlog', 'm_lookup', 'm_guidepanels', 'm_menupanel', 'h_moderator']),
 }
@@ -129,8 +124,7 @@ leaf('catalogcat', 'Catalog by category', '🗂️', 'pick', 'catalog', pick='fi
      hint='items of one category and where they come from')
 leaf('unlock', 'Unlock station', '🔓', 'pick', 'workshop', {'action': 'unlock'}, pick='station', then='confirm', option='station',
      hint='pay once to use a workstation')
-for _key, _emoji, _label, _ in wb.CATEGORIES:
-    leaf('c_' + _key, _label, _emoji, 'nav', nav=('wc', _key, 1, ''), hint='')
+# Craft categories are all in the Workbench's category dropdown (one place instead of fifteen buttons).
 # Queue
 leaf('qstatus', 'Queue status', '📋', 'nav', nav=('qv',), hint='progress, totals and why it paused')
 leaf('repeat', 'Repeat last', '🔁', 'do', 'queue', {'action': 'repeat'}, hint='run your last queue again')
@@ -249,11 +243,31 @@ for _topic, _label in [('start', 'Start here'), ('character', 'Character'), ('pr
                        ('production', 'Work'), ('operations', 'Logistics'), ('society', 'Society'), ('other', 'Other'), ('terms', 'Terms')]:
     leaf('h_' + _topic, _label, '📖', 'view', 'seed', {'topic': _topic}, hint='')
 
+# Grouped choices: one dropdown instead of a row of similar buttons. 'leaves:' lists views to pick from.
+leaf('inv_views', 'Sort & filter…', '🗂️', 'pick', 'inventory', pick='leaves:by_value,by_name,by_category,favitems,sellable,ready_items,gear', then='leaf',
+     hint='by value, name or category; favourites, sellable, ready-recipe items or gear')
+leaf('wd_more', 'More…', '📰', 'pick', 'world', pick='leaves:wd_society,wd_project,wd_story,wd_bulletin,wd_rumor,wd_market,wd_holidays,wd_event_history',
+     then='leaf', hint='society, project, story, bulletin, rumor, market, holidays and past events')
+leaf('me_more', 'More…', '📓', 'pick', 'me', pick='leaves:me_collection,me_bonuses,me_traits,me_relationships,me_journal,me_titles,me_tutorial',
+     then='leaf', hint='collection, bonuses, traits, relationships, journal, titles and tutorial')
+leaf('h_topics', 'Handbook', '📚', 'pick', 'seed', pick='leaves:h_start,h_character,h_property,h_life,h_production,h_operations,h_society,h_other,h_terms,me_tutorial,wd_holidays',
+     then='leaf', hint='every topic of the handbook')
+leaf('alerts', 'Queue alerts', '🔔', 'pick', 'settings', pick='alerts', then='do', option='alerts', hint='how you hear that a queue paused or finished')
+leaf('popups', 'Notifications', '📬', 'pick', 'settings', pick='popups', then='do', option='popups', hint='what pops up for you after commands')
+
 PARENT = {}
 for _area, (_, _, _, _children) in AREAS.items():
     for _child in _children:
         PARENT.setdefault(_child, _area)
 PARENT.update({'s_' + _action: 'social' for _action, _, _ in SOCIAL})   # shown after choosing a citizen
+# Views inside a grouped dropdown belong to that dropdown's area; the single-mode setting buttons live on in Settings' dropdowns.
+for _key, _item in list(LEAVES.items()):
+    if str(_item.get('pick', '')).startswith('leaves:'):
+        for _inner in _item['pick'].split(':', 1)[1].split(','):
+            PARENT.setdefault(_inner, PARENT.get(_key, 'home'))
+for _key in LEAVES:
+    if _key.startswith(('alerts_', 'popups_')):
+        PARENT.setdefault(_key, 'settings')
 # The area a slash command belongs to, for the "back to area" button on replies.
 COMMAND_AREA = {}
 for _key, _leaf in LEAVES.items():
@@ -269,6 +283,143 @@ COMMAND_AREA.update({'seedling': 'seedling', 'seedlingstep': 'seedling', 'link':
 # Slash commands whose replies offer "Again" (they perform a task and can simply be repeated).
 REPEATABLE = {'eatfull', 'relax', 'sleep', 'games', 'walk', 'meal', 'recover', 'farm', 'scan', 'rare', 'research', 'cargo', 'delivery',
               'spaceport', 'explore', 'repair', 'hobby', 'eat', 'use'}
+
+
+# ---------------------------------------------------------------- what this citizen can do right now
+
+class Ctx:
+    """What one citizen has and can do, read once per screen. Every rule mirrors the check the command itself
+    makes, so a hidden button is one the game would refuse, and it reappears as soon as the citizen can use it."""
+    def __init__(self, m, db, p, uid):
+        self.m, self.db, self.p, self.uid, self._cache = m, db, p, uid, {}
+
+    def get(self, name, make):
+        if name not in self._cache:
+            try:
+                self._cache[name] = make()
+            except Exception:
+                self._cache[name] = True    # if a check itself fails, show the button and let the command explain
+        return self._cache[name]
+
+    def equipment(self, action, mode=''):
+        from . import task_yields
+        key = task_yields.EQUIPMENT.get((action, mode))
+        return self.get('eq:' + str(key), lambda: self.m.equipment_count(self.db, self.p, key) > 0)
+
+    def has(self, source):
+        return self.get('has:' + source, lambda: bool(choices(self.m, self.db, self.p, source, self.uid)))
+
+    def queue(self):
+        return self.get('queue', lambda: self.db.get(self.m.task_queue.TaskQueue, (self.p.channel_id, self.p.twitch_uid)))
+
+    def prefs(self):
+        return self.get('prefs', lambda: self.m.qol.prefs(self.db, self.p.channel_id, self.p.twitch_uid))
+
+    def business(self):
+        return self.get('business', lambda: self.m.business_for(self.db, self.p) is not None)
+
+    def autonomy_on(self):
+        def read():
+            row = self.m.autonomy.row(self.db, self.p.channel_id, self.p.twitch_uid)
+            return row is None or bool(row.enabled)
+        return self.get('autonomy', read)
+
+    def sale_to_undo(self):
+        def read():
+            import json
+            from datetime import datetime
+            row = self.m.extras.row(self.db, self.p.channel_id, self.p.twitch_uid)
+            sale = json.loads(row.last_sale) if row is not None and row.last_sale else None
+            return bool(sale) and (self.m.now() - self.m.as_utc(datetime.fromisoformat(sale['at']))).total_seconds() <= self.m.extras.UNDO_SECONDS
+        return self.get('undo', read)
+
+    def event_active(self):
+        return self.get('event', lambda: bool(self.m.world(self.db, self.p.channel_id).active_event))
+
+    def linked(self):
+        def read():
+            m, p = self.m, self.p
+            return self.db.execute(m.select(m.AccountLink).where(m.AccountLink.channel_id == p.channel_id,
+                                                                 m.AccountLink.twitch_uid == p.twitch_uid)).scalars().first() is not None
+        return self.get('linked', read)
+
+
+def _food(c):
+    return c.get('food', lambda: any(r['qty'] > 0 for r in c.m.edible_inventory(c.db, c.p)))
+
+
+def _queue_active(c):
+    q = c.queue()
+    return q is not None and q.state in c.m.task_queue.ACTIVE
+
+
+def _planned(c):
+    pref = c.prefs()
+    return bool((pref is not None and pref.next_task) or c.get('steps', lambda: c.m.extras.playlist(c.db, c.p.channel_id, c.p.twitch_uid)))
+
+
+# key -> (can the citizen use it now?, why not). Keys not listed are always available.
+WHEN = {
+    'eat': (lambda c: _food(c) or c.get('emergency', lambda: c.m.emergency_food_available(c.db, c.p)), 'you have no food'),
+    'eatfull': (_food, 'you have no food'),
+    'meal': (lambda c: c.p.crops > 0, 'needs 1 Pumpkin'),
+    'recreation': (lambda c: c.get('rec', lambda: bool(c.m.owned_life_items(c.db, c.p).get('recreation_set'))), 'needs a Recreation Set'),
+    'w_farm_hydroponics': (lambda c: c.equipment('water', 'hydroponics'), 'needs a Small Water Filter'),
+    'w_field_analysis': (lambda c: c.equipment('research', 'field_analysis'), 'needs a Siro Sampler'),
+    'w_survey': (lambda c: c.equipment('survey'), 'needs a Resource Scanner'),
+    'analyze': (lambda c: c.equipment('market', 'analyze'), 'needs a Market Analyzer'),
+    'w_delivery': (lambda c: c.p.cargo > 0, 'needs Cargo: Prepare cargo first'),
+    'w_expedite': (lambda c: c.get('cell', lambda: c.m.material_amount(c.db, c.p, 'power_cell') > 0), 'needs a Power Cell'),
+    'w_rare': (lambda c: c.m.lvl(c.m.skill_xp(c.p, 'extraction')) >= c.m.crafting_progression.RARE_LEVEL, 'needs Harvesting Lv 3'),
+    'gearrepair': (lambda c: c.has('gear'), 'you have no quality gear'),
+    'use': (lambda c: c.has('use'), 'you own nothing usable yet'),
+    'sell': (lambda c: c.has('sell'), 'you have nothing Seed Industries buys'),
+    'sellsome': (lambda c: c.has('sell'), 'you have nothing Seed Industries buys'),
+    'clearout': (lambda c: c.has('sell'), 'you have nothing to sell'),
+    'undo': (lambda c: c.sale_to_undo(), 'only for 60 seconds after a sale'),
+    'fulfill': (lambda c: c.has('order'), 'no production orders today'),
+    'uses': (lambda c: c.has('owned'), 'you own no materials yet'),
+    'title': (lambda c: c.has('title'), 'no titles unlocked yet'),
+    'bstart': (lambda c: not c.business(), 'you already own a business'),
+    'bwork': (lambda c: c.business(), 'start a business first'),
+    'bcontract': (lambda c: c.business(), 'start a business first'),
+    'binvest': (lambda c: c.business(), 'start a business first'),
+    'cancel': (_queue_active, 'no queue is running'),
+    'repeat': (lambda c: c.queue() is not None and not _queue_active(c), 'no finished queue to repeat'),
+    'clearnext': (_planned, 'nothing is planned after this queue'),
+    'auto_on': (lambda c: not (c.prefs() is not None and c.prefs().autorecover), 'auto-recover is already on'),
+    'auto_off': (lambda c: bool(c.prefs() is not None and c.prefs().autorecover), 'auto-recover is already off'),
+    'sl_on': (lambda c: not c.autonomy_on(), 'autonomy is already on'),
+    'sl_off': (lambda c: c.autonomy_on(), 'autonomy is already off'),
+    'display_compact': (lambda c: c.m.player_preference(c.db, c.p).result_style != 'compact', 'already compact'),
+    'display_detailed': (lambda c: c.m.player_preference(c.db, c.p).result_style == 'compact', 'already detailed'),
+    'm_eventstart': (lambda c: not c.event_active(), 'an event is already running'),
+    'm_eventstop': (lambda c: c.event_active(), 'no event is running'),
+    'link': (lambda c: not c.linked(), 'already linked'),
+    'account': (lambda c: not c.linked(), 'already linked'),
+}
+# Toggles and one-way switches: the hidden side is just the current state, so it is not listed as unavailable.
+TOGGLES = {'auto_on', 'auto_off', 'sl_on', 'sl_off', 'display_compact', 'display_detailed', 'bstart', 'm_eventstart', 'm_eventstop', 'link', 'account'}
+
+
+def can(ctx, key):
+    rule = WHEN.get(key)
+    if rule is None or ctx is None or ctx.p is None:
+        return True
+    return ctx.get('can:' + key, lambda: bool(rule[0](ctx)))
+
+
+def context(m, uid, db=None, p=None):
+    return Ctx(m, db, p, uid) if db is not None and p is not None else None
+
+
+def with_context(m, uid, fn, name='Citizen'):
+    """For callers without a session: open one, read what the citizen can do, and close it."""
+    with m.SessionLocal() as db:
+        p = m.player(db, m.DISCORD_WORLD_ID, 'discord', uid, name)[1]
+        result = fn(Ctx(m, db, p, uid))
+        db.commit()
+        return result
 
 
 # ---------------------------------------------------------------- building blocks
@@ -306,17 +457,30 @@ def nav(owner, area):
     return ui.row(*buttons) if buttons else None
 
 
-def children_of(m, area):
-    """An area's buttons; moderator tools only appear for moderators."""
+def children_of(m, area, ctx=None):
+    """An area's buttons: moderator tools only for moderators, and (given a citizen) only what they can use now."""
     keys = AREAS[area][3]
     if area == 'home' and not ui.is_moderator(m):
         keys = [k for k in keys if k not in MOD_AREAS]
-    return keys
+    return [k for k in keys if can(ctx, k)]
 
 
-def area_text(m, db, p, area):
+def unavailable(m, area, ctx):
+    """(label, reason) for this area's buttons hidden right now, so nothing seems to vanish without a reason."""
+    if ctx is None:
+        return []
+    out = []
+    for k in AREAS[area][3]:
+        if k in TOGGLES or k in MOD_AREAS or can(ctx, k):
+            continue
+        out.append((AREAS[k][1] if k in AREAS else LEAVES[k]['label'], WHEN[k][1]))
+    return out
+
+
+def area_text(m, db, p, area, ctx=None):
     emoji, title, text, _ = AREAS[area]
-    children = children_of(m, area)
+    ctx = ctx or context(m, p.twitch_uid if p is not None else '', db, p)
+    children = children_of(m, area, ctx)
     lines = [f'{emoji} {title.upper()}', text, '']
     if area == 'home' and p is not None:
         life = m.life_state(db, p)
@@ -331,11 +495,14 @@ def area_text(m, db, p, area):
             item = LEAVES[key]
             if item['hint']:
                 lines.append(f"{item['emoji']} **{item['label']}** — {item['hint']}")
+    locked = unavailable(m, area, ctx)
+    if locked:
+        lines += ['', '🔒 Not available right now: ' + ' · '.join(f'{label} ({why})' for label, why in locked)]
     return '\n'.join(lines).rstrip()
 
 
-def area_components(m, owner, area):
-    rows = grid(m, owner, children_of(m, area))
+def area_components(m, owner, area, ctx=None):
+    rows = grid(m, owner, children_of(m, area, ctx))
     return rows + [nav(owner, area)]
 
 
@@ -406,6 +573,16 @@ def choices(m, db, p, source, uid):
     if source == 'player_name':
         found = m._discord_player_autocomplete({'member': {'user': {'id': uid}}, 'data': {'name': 'linklookup'}}, '')
         return [(c['name'], c['value']) for c in found['data']['choices']]
+    if source.startswith('leaves:'):
+        return [(f"{LEAVES[k]['emoji']} {LEAVES[k]['label']}" + (f" — {LEAVES[k]['hint']}" if LEAVES[k]['hint'] else ''), k)
+                for k in source.split(':', 1)[1].split(',') if k in LEAVES]
+    if source == 'alerts':
+        pref = m.qol.prefs(db, p.channel_id, p.twitch_uid)
+        now = pref.alerts if pref is not None else 'mention'
+        return [(f"{m.qol.ALERT_LABELS[k].capitalize()}{' (current)' if k == now else ''} — {d}", k) for k, d in m.qol.ALERT_MODES.items()]
+    if source == 'popups':
+        now = m.inbox.popup_mode(db, p.channel_id, p.twitch_uid)
+        return [(f"{k.capitalize()}{' (current)' if k == now else ''} — {d}", k) for k, d in m.inbox.POPUP_MODES.items()]
     if source.startswith('choices:'):
         command = source.split(':', 1)[1]
         return [(c['name'], c['value']) for c in m.DISCORD_OPTION_SCHEMA[command][0]['choices']]
@@ -459,10 +636,11 @@ def navigate(m, db, p, owner, verb, args, values, name):
             text = '🔁 RECENT ACTIONS\nTap one to do it again. Each button works once; the result brings fresh buttons.\n\n' + (
                 '\n'.join(f'• {a.label} · <t:{int(m.as_utc(a.created_at).timestamp())}:R>' for a in actions) or 'Nothing yet. Actions you take appear here.')
             return ui.message(m, text, ui.recent_components(m, db, p, owner), 'menu')
-        return ui.message(m, area_text(m, db, p, area), area_components(m, owner, area), 'menu')
+        ctx = context(m, owner, db, p)
+        return ui.message(m, area_text(m, db, p, area, ctx), area_components(m, owner, area, ctx), 'menu')
     key = args[0] if args else ''
     if key not in LEAVES:
-        return ui.message(m, 'That button is no longer available. Here is the menu.', area_components(m, owner, 'home'), 'menu')
+        return ui.message(m, 'That button is no longer available. Here is the menu.', area_components(m, owner, 'home', context(m, owner, db, p)), 'menu')
     item = LEAVES[key]
     area = PARENT.get(key, 'home')
     if verb == 'mv':
@@ -484,6 +662,9 @@ def navigate(m, db, p, owner, verb, args, values, name):
         if then == 'view':
             command, options = options_for(key, value)
             return show(m, db, p, owner, command, options, area, name, key)
+        if then == 'leaf' and value in LEAVES and LEAVES[value]['kind'] == 'view':
+            command, options = options_for(value)
+            return show(m, db, p, owner, command, options, area, name, value)
         if then == 'confirm':
             ticket = ui.issue(m, owner, {'do': 'cmd', 'leaf': key, 'value': value})
             label = dict((v, l) for l, v in choices(m, db, p, item['pick'], owner)).get(value, value)
@@ -592,7 +773,7 @@ def show(m, db, p, owner, command, options, area, name, key=''):
         rows = [r for r in panel.get('components', []) if r.get('components')]
         panel['components'] = rows[:4] + [nav(owner, area)]
         return panel
-    return reply(m, text, legacy, grid(m, owner, children_of(m, area), rows=3) + [nav(owner, area)])
+    return reply(m, text, legacy, grid(m, owner, children_of(m, area, context(m, owner, db, p)), rows=3) + [nav(owner, area)])
 
 
 # ---------------------------------------------------------------- actions (one-time tickets)
@@ -620,7 +801,8 @@ def run(m, uid, name, action, token=''):
         rows = [r for r in panel.get('components', []) if r.get('components')]
         panel['components'] = rows[:4] + [nav(uid, area) or ui.row(ui.button('Menu', ui.cid(uid, 'mn', 'home'), emoji='🏠'))]
         return panel
-    rows = grid(m, uid, children_of(m, area), rows=3) + [nav(uid, area) or ui.row(ui.button('Menu', ui.cid(uid, 'mn', 'home'), emoji='🏠'))]
+    visible = with_context(m, uid, lambda c: children_of(m, area, c), name)
+    rows = grid(m, uid, visible, rows=3) + [nav(uid, area) or ui.row(ui.button('Menu', ui.cid(uid, 'mn', 'home'), emoji='🏠'))]
     if legacy == 'seedindustries' and legacy_options.get('action') in {'sellall'} and 'sold' in text:
         rows = [ui.row(ui.button('Undo sale (60s)', ui.cid(uid, 't', ui.issue(m, uid, {'do': 'undo'})), style=4, emoji='↩️'),
                        ui.button('Sell another', ui.cid(uid, 'mk', 'sell'), emoji='🏷️'), ui.button('Auto-sell', ui.cid(uid, 'av'), emoji='🧹')), rows[-1]]
@@ -651,7 +833,8 @@ def after_rows(m, command, options, uid, room=2):
         return [last]
     legacy = m.discord_legacy_route(command, options)[0]
     area = COMMAND_AREA.get(legacy, 'home')
-    keys = [k for k in children_of(m, area) if k not in MOD_AREAS and not (k in LEAVES and LEAVES[k]['cmd'] == legacy and LEAVES[k]['kind'] != 'pick')]
+    visible = with_context(m, uid, lambda c: children_of(m, area, c))
+    keys = [k for k in visible if k not in MOD_AREAS and not (k in LEAVES and LEAVES[k]['cmd'] == legacy and LEAVES[k]['kind'] != 'pick')]
     quick = grid(m, uid, keys[:5], rows=1)
     return quick + [last]
 

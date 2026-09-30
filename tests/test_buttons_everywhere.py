@@ -103,7 +103,8 @@ def test_views_behind_dropdowns():
     assert 'Training' in text_of(press(ui.cid('111', 'mp', 'browse'), values=['training'])['data'])
     assert 'Crafting' in text_of(press(ui.cid('111', 'mp', 'trainskill'), values=['crafting'])['data'])
     assert press(ui.cid('111', 'mk', 'unlock'))['data']['components'][0]['components'][0]['options']
-    assert 'Repair gear' in labels(press(ui.cid('111', 'mn', 'work'))['data'])
+    work = press(ui.cid('111', 'mn', 'work'))['data']
+    assert 'Repair gear' not in labels(work) and 'Repair gear (you have no quality gear)' in text_of(work)   # hidden until they own gear, with the reason
 
 
 def test_public_panel_opens_each_citizens_own_private_menu():
@@ -185,3 +186,48 @@ def test_tidy_removes_repeats_and_empty_rows():
                            ui.row(ui.button('C', 'ne|1|st'))]}
     rows = ui.tidy(data)['components']
     assert [[c['label'] for c in r['components']] for r in rows] == [['A', 'B'], ['C']]
+
+
+# ---------------------------------------------------------------- only what the citizen can use, same functions
+
+def area_labels(area, uid='111'):
+    return labels(press(ui.cid(uid, 'mn', area))['data'])
+
+
+def test_grouped_dropdowns_keep_every_view_and_setting():
+    citizen()
+    views = press(ui.cid('111', 'mk', 'inv_views'))['data']
+    values = [o['value'] for o in views['components'][0]['components'][0]['options']]
+    assert {'by_value', 'by_name', 'by_category', 'favitems', 'sellable', 'ready_items', 'gear'} <= set(values)
+    assert 'INVENTORY' in text_of(press(views['components'][0]['components'][0]['custom_id'], values=['by_name'])['data']).upper()
+    alerts = press(ui.cid('111', 'mk', 'alerts'))['data']
+    assert len(alerts['components'][0]['components'][0]['options']) == 5
+    ticket = press(alerts['components'][0]['components'][0]['custom_id'], values=['quiet'])
+    with m.SessionLocal() as db:
+        p = m.player(db, W, 'discord', '111', 'Kam')[1]
+        assert m.qol.prefs(db, p.channel_id, p.twitch_uid).alerts == 'quiet'
+    for key in ('wd_more', 'me_more', 'h_topics', 'popups'):
+        assert press(ui.cid('111', 'mk', key))['data']['components'][0]['components'][0]['options'], key
+
+
+def test_buttons_appear_only_when_the_citizen_can_use_them():
+    citizen()
+    assert 'Autonomy off' in area_labels('seedling') and 'Autonomy on' not in area_labels('seedling')
+    press(button(press(ui.cid('111', 'mn', 'seedling'))['data'], 'Autonomy off')['custom_id'])
+    assert 'Autonomy on' in area_labels('seedling') and 'Autonomy off' not in area_labels('seedling')
+    assert 'Undo sale' not in area_labels('trade')
+    m.sell_all_items(W, '111', 'Kam', 'lumber', 'discord')
+    assert 'Undo sale' in area_labels('trade')
+    assert 'Business work' not in area_labels('property') and 'Start business' in area_labels('property')
+    submit(ui.cid('111', 'md', 'bstart'), 'Rocky Repairs')
+    assert 'Business work' in area_labels('property') and 'Start business' not in area_labels('property')
+    assert 'Cancel queue' not in area_labels('queue')
+    m.queued_tasks(W, '111', 'Kam', 'start', 'gather:' + LUMBER, '3', 'discord')
+    assert 'Cancel queue' in area_labels('queue')
+
+
+def test_no_button_is_listed_in_two_areas():
+    from collections import Counter
+    counts = Counter(k for area, (_, _, _, kids) in menu.AREAS.items() for k in kids if area != 'home')
+    assert [k for k, n in counts.items() if n > 1] == []
+    assert all(len(kids) <= 15 for area, (_, _, _, kids) in menu.AREAS.items() if area != 'home')

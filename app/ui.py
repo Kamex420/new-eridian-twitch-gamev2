@@ -502,7 +502,7 @@ def slash_panel(m, command, uid, name, options, result):
             return message(m, result, status_components(m, db, p, uid), command)
         if command == 'menu':
             from . import menu
-            return message(m, result, menu.area_components(m, uid, 'home'), command)
+            return message(m, result, menu.area_components(m, uid, 'home', menu.context(m, uid, db, p)), command)
         if command == 'find':
             return message(m, result, find_components(m, uid, str(options.get('query') or '')), command)
         if command in {'seedling', 'seedlingstep'}:

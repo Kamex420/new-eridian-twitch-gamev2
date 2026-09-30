@@ -1,5 +1,35 @@
 # Release notes
 
+## Simpler menus: only the buttons you can use, each in one place
+
+`/menu` is reorganised so every screen is short and every button works. Nothing was removed; every action is still one or two taps away.
+
+- **Only what you can do right now.** A button appears only when you can use it, and it appears as soon as that changes. Each screen lists the hidden ones with the reason, for example "🔒 Not available right now: Eat (you have no food) · Delivery (needs Cargo: Prepare cargo first)". The rules are the same checks the commands make:
+  - food to eat, and a Pumpkin to share a meal;
+  - the equipment for Hydroponics, Field Analysis, Survey and Market analysis;
+  - Cargo for Delivery, and a Power Cell for Expedite;
+  - Harvesting Lv 3 to prospect;
+  - quality gear to repair;
+  - something usable, sellable or ownable;
+  - today's production orders;
+  - a title to equip;
+  - a business, for its actions;
+  - a running queue to cancel, and a finished one to repeat;
+  - a sale in the last 60 seconds to undo;
+  - an active event to stop.
+- **Switches instead of pairs.** Autonomy, auto-recover and compact/detailed results show one button, the one that changes the current setting. Start business disappears once you own one, and Account (Link Twitch) disappears once linked.
+- **Dropdowns instead of button walls.**
+  - Queue alerts (5 modes) and Notifications (3 modes) are one dropdown each, with the current setting marked.
+  - Bag's six sort and filter views plus Quality gear are under **Sort & filter…**.
+  - World and Me keep their main views as buttons, with the rest under **More…**.
+  - Help's topics are under **Handbook**.
+- **Shorter areas.**
+  - Work groups its trade tasks into Farming, Research, Logistics and Frontier.
+  - Trade moves Habitat and business into **Home & Business**.
+  - Social sits inside Life.
+  - Craft keeps Workbench, Ready now, Favourites, Goal and Workshops; every category is in the Workbench's category dropdown.
+- **One home per button.** Buttons no longer repeat across areas: selling is only in Trade, eating only in Life, and Status and Notifications only on Home. No area has more than 15 buttons, down from 20, so the result screen after an action shows all of its area's buttons. Previously the last few (such as Repair, Training and Train a skill after a Work action) were cut off.
+
 ## Admin tools to find and merge duplicate characters
 
 When someone plays on both Twitch and Discord without linking the accounts, they end up as two characters with the same name. Two admin endpoints fix this without losing anything. Both need the game's `ADMIN_KEY`.
