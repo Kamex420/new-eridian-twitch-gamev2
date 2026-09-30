@@ -1,5 +1,9 @@
 # Release notes
 
+## The Avesta map is a living town
+
+`/obs/map` now draws New Eridian as an isometric town on a street grid instead of flat zones. Each district has its own buildings: houses with pitched roofs (apartment towers and domes as Homes levels up), striped fields, barns and greenhouses, factories with smoking chimneys and tanks, labs with dishes and a glass dome, a market hall with awning stalls, a spaceport with a control tower, landing pads and a rocket, frontier mine headframes and tents, a Commons with a fountain and statue, and a park with a lake. The town grows with the society: every level adds buildings (they rise into place, never disappear), roads get paved and lit as tiers go up, and districts that are not open yet show wild ground with survey stakes and the tier that opens them. At night windows and street lamps light up. District names sit in the middle of each district, and the Seedlings in a district line up under its name as coloured initials (mood colour, with what they are doing), so nothing overlaps; the caption bar still names each Seedling in turn. Options: `&names=1` adds names under the initials, `&per=6` shows more per district, `&seconds=7`, `&bg=0`. Same 960×540 Browser Source, no new setup needed.
+
 ## One rotating Hub panel instead of many
 
 `/obs/hub` (640×360) rotates through everything the separate panels show: Society, Society stats, Today (directive, aftermath, festival), Live event, Project & story, Market, Leaders, Working now, Seedlings and News, and how to join, every 12 seconds. Slides with nothing to show are skipped, and a live event takes every other slide until it ends. `&seconds=` sets the pace; `&slides=society,event,news` picks and orders slides. The `/obs` setup page now leads with the recommended four sources (Hub, Map, Ticker, Alerts); the individual panels stay available. Leader and queue names drop bracketed tags.
