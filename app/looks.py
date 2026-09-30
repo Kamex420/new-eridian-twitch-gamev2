@@ -206,7 +206,9 @@ def flavour(lines, found, bucket):
     if found is None or (not found.attitude and not found.catchphrase):
         return lines
     r = random.Random(f'{found.canonical_uid}:{bucket}')
-    out = [voice(x, found.attitude, found.catchphrase, r) if i and r.random() < 0.7 else x for i, x in enumerate(lines)]
+    lines = list(lines)[:5 if found.catchphrase in CATCHPHRASES else 6]      # room for the catchphrase in the six lines
+    voiced = [i for i in range(1, len(lines)) if r.random() < 0.7] or ([1] if len(lines) > 1 else [0])   # always at least one line in its voice
+    out = [voice(x, found.attitude, found.catchphrase, r) if i in voiced else x for i, x in enumerate(lines)]
     if found.catchphrase in CATCHPHRASES:
-        out.insert(min(len(out), 1 + r.randrange(max(1, len(out)))), CATCHPHRASES[found.catchphrase])
+        out.insert(1 + r.randrange(max(1, len(out))), CATCHPHRASES[found.catchphrase])
     return list(dict.fromkeys(out))[:6]
