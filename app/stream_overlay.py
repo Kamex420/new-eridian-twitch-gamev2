@@ -990,6 +990,9 @@ h2{margin:0;font:700 1.45em/1.1 var(--font-display);color:var(--ivory)}.sub{colo
 .tile small{color:var(--muted);font-size:.62em;font-weight:800;text-transform:uppercase;letter-spacing:.08em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tile b{font-size:1em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.tile .sub{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ell{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+/* Every word stays visible: long lines wrap instead of ending in "…", and fit() shrinks the slide until it fits. */
+.hub .grow,.hub .ell,.hub .tile b,.hub .tile .sub,.hub .tile small,.hub .sub{white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere}
+.hub .row{align-items:center}.hub .num{flex:none}
 code{padding:.08em .4em;border-radius:.35em;background:rgba(126,227,176,.14);border:1px solid rgba(126,227,176,.45);color:var(--green2);font:800 .95em ui-monospace,monospace}
 .tag{display:inline-block;padding:.05em .45em;border-radius:.35em;background:rgba(112,221,255,.14);color:var(--cyan);font-size:.62em;font-weight:900;letter-spacing:.12em}
 """, r"""
@@ -1061,11 +1064,15 @@ let LAYOUT=layoutOf();document.body.classList.add('L-'+LAYOUT);
 addEventListener('resize',()=>{const l=layoutOf();if(l!==LAYOUT){document.body.classList.replace('L-'+LAYOUT,'L-'+l);LAYOUT=l;index--;next()}else fit()});
 // Whatever the layout, a slide that is still too big for the source shrinks until it fits.
 function fit(){const body=document.getElementById('body'),sl=body.querySelector('.slide');if(!sl)return;
-  const over=()=>sl.scrollHeight>body.clientHeight+1||sl.scrollWidth>body.clientWidth+1,room=()=>sl.scrollHeight<body.clientHeight*.8;
+  const cs=getComputedStyle(body),H=body.clientHeight-parseFloat(cs.paddingTop)-parseFloat(cs.paddingBottom),W=body.clientWidth-parseFloat(cs.paddingLeft)-parseFloat(cs.paddingRight);
+  const over=()=>sl.scrollHeight>Math.ceil(H)+.5||sl.scrollWidth>Math.ceil(W)+1,room=()=>sl.scrollHeight<H*.8;
   let f=1;sl.style.fontSize='';
   // A roomy box (a tall column) grows the slide to use the space; a tight one shrinks it until nothing overflows.
   if(LAYOUT!=='strip')while(f<1.45&&room()){f+=.05;sl.style.fontSize=f.toFixed(2)+'em';if(over()){f-=.05;sl.style.fontSize=f.toFixed(2)+'em';break}}
-  while(f>.55&&over()){f-=.05;sl.style.fontSize=f.toFixed(2)+'em'}}
+  while(f>.5&&over()){f-=.05;sl.style.fontSize=f.toFixed(2)+'em'}
+  // Still too much? Drop whole list entries from the end (never cut words) until it fits.
+  while(over()){const lists=[...sl.querySelectorAll('.list,.srow')].filter(l=>l.children.length>1);if(!lists.length)break;
+    const l=lists.sort((a,b)=>b.children.length-a.children.length)[0];l.lastElementChild.remove()}}
 // Shown when none of the chosen slides has anything right now (e.g. &slides=event with no live event).
 const QUIET=['quiet','🌱 New Eridian',d=>true,d=>`<h2>All quiet on Avesta</h2><div class="sub">${esc(d.phase_emoji||'')} Day ${d.day} · ${esc(d.phase||'')} · ${esc(d.condition||'')}</div><div class="sub">Nothing to show on this slide right now. Type <code>!start</code> in chat to join New Eridian.</div>`];
 const ACTIVE=SLIDES.filter(s=>!PICK.length||PICK.includes(s[0]));

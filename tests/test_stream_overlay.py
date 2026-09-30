@@ -129,3 +129,11 @@ def test_no_overlay_code_is_hidden_behind_a_line_comment():
         for line in body.split('\n'):
             for m in re.finditer(r'(?<![:\\])//(.*)$', line):   # not a URL and not the end of a /regex\//
                 assert not re.search(r'\b(const|let|function|return)\b|[;{}]\s*[A-Za-z_$][\w$.]*\s*[=(]', m.group(1)), (name, line[:160])
+
+
+def test_hub_never_cuts_text_off():
+    """Long lines wrap and the slide shrinks (or drops trailing list entries) instead of ending in an ellipsis."""
+    from test_colony import client
+    hub = client.get('/obs/hub', params={'channel': 'test'}).text
+    assert '.hub .grow,.hub .ell' in hub and 'text-overflow:clip' in hub
+    assert 'lastElementChild.remove()' in hub and 'Math.ceil(W)+1' in hub

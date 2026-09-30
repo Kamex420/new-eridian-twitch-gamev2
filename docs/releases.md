@@ -1,5 +1,9 @@
 # Release notes
 
+## The Hub shows every word
+
+Hub slides no longer cut text off with "…". Long lines wrap onto the next line, and each slide shrinks its text until everything fits the source. If a slide still would not fit (for example three long news stories in a small box), it drops whole list entries from the end rather than cutting words. Every slide was checked at 340×176, 520×260, 640×360, 340×440 and 1440×120, with no text cut off or hidden and none smaller than 11 px.
+
 ## Polish pass across every overlay
 
 Every overlay page was checked in a browser: every Hub slide in all four layouts (640×360, 340×176, 340×440, 1440×120), every panel at its recommended size, and the map at 340×250 up to 1920×1080. The checks looked for text leaving its box, overlaps and script errors, and everything found was fixed:
