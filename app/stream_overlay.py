@@ -387,7 +387,7 @@ svg{position:absolute;inset:0;width:100%;height:100%;display:block}
  <rect width="960" height="540" fill="url(#sky)"/><g id="stars"></g><g id="aurora"></g><g id="sun"></g><g id="skyclouds"></g>
  <path id="hills" fill="#39344a" opacity=".85"/><path id="hills2" fill="#2f2b3d" opacity=".95"/>
  <g id="world" style="transform:translate(480px,282px) scale(1.15) translate(-480px,-254px)">
-  <g id="ground"></g><g id="city"></g><g id="festive"></g><g id="crowd"></g><g id="shades"></g>
+  <g id="ground"></g><path id="shadows" fill="#141428" opacity="0" style="transition:opacity 4s"/><g id="city"></g><g id="festive"></g><g id="crowd"></g><g id="shades"></g>
   <rect id="tint" x="-600" y="-400" width="2160" height="1400" fill="transparent" style="pointer-events:none;transition:fill 4s"/>
   <rect id="haze" x="-600" y="-400" width="2160" height="1400" fill="transparent" style="pointer-events:none;transition:fill 4s"/>
   <g id="lights" style="pointer-events:none"></g><g id="labels"></g><g id="tokens"></g>
@@ -428,7 +428,8 @@ const up=(p,h)=>p.map(([x,y])=>[x,y-h]);
 const vr=rng('lamps');
 
 // ---- building parts (all drawn on a tile at i,j; w×d tiles; height h)
-function box(g,i,j,w,d,h,color,opt={}){const [t,r,b,l]=diamond(i,j,w,d,opt.inset??.12),top=up([t,r,b,l],h);
+const CASTERS=[];
+function box(g,i,j,w,d,h,color,opt={}){const [t,r,b,l]=diamond(i,j,w,d,opt.inset??.12),top=up([t,r,b,l],h);CASTERS.push([[t,r,b,l],h+(opt.roof==='pitched'?h*.4:0)]);
   el('polygon',{points:pts([l,b,top[2],top[3]]),fill:shade(color,.72)},g);el('polygon',{points:pts([b,r,top[1],top[2]]),fill:shade(color,.9)},g);
   if(opt.roof==='pitched'){const apex=[(top[0][0]+top[2][0])/2,(top[0][1]+top[2][1])/2-h*.55-6];const rc=opt.roofColor||'#a8543e';
     el('polygon',{points:pts([top[3],top[0],apex]),fill:shade(rc,1.05)},g);el('polygon',{points:pts([top[0],top[1],apex]),fill:shade(rc,1.15)},g);
@@ -492,7 +493,8 @@ function scaffold(g,i,j,crane){const [t,r,b,l]=diamond(i,j,1,1,.15),h=22,c='#d4a
     for(const [dx,dy,rx] of [[0,0,34],[26,-8,26],[-24,-4,22],[48,2,20]])el('ellipse',{cx:dx,cy:y+dy,rx,ry:rx*.45,fill:'#fff',opacity:.8},cg)}
   const sh=document.getElementById('shades');for(let k=0;k<3;k++){el('ellipse',{class:'shade',cx:300+k*120,cy:180+k*60,rx:120,ry:55,fill:'url(#shadeg)',style:`animation-duration:${80+k*25}s;animation-delay:-${k*30}s`},sh)}})();
 
-const drawn={},levels={};let night=false,lastTier=-1,first=true;
+const drawn={},levels={};let night=false,lastTier=-1,first=true,lastPhase='';
+const PHASE_NEWS={Morning:'🌅 Dawn breaks over New Eridian',Day:'☀️ Full daylight on Avesta',Evening:'🌇 The sun is setting',Night:'🌙 Night falls, the lights come on'};
 const LAMPS=[];for(let s=0;s<N;s+=3)for(const k of [6,13]){LAMPS.push([k+.1,s+.1],[s+.1,k+.1])}
 function streets(d,tier){const g=document.getElementById('ground');g.querySelectorAll('.street').forEach(e=>e.remove());
   const unlocked=k=>k==='commons'||k==='park'||((d.districts||{})[k]||{}).unlocked;
@@ -540,10 +542,10 @@ function liveTown(d){const st=d.stats||{},pop=d.population||0,ds=d.districts||{}
     if(f.getAttribute('fill')!==c[0]){f.setAttribute('fill',c[0]);f.parentNode.querySelectorAll('.stripe').forEach(s=>s.setAttribute('stroke',c[1]))}});
   const smokeF=Math.min(1,.15+((ds.industrial_ward||{}).level||1)/16+here('industrial_ward')*.2);
   document.querySelectorAll('.smoke').forEach(s=>{s.style.display=+s.dataset.v<smokeF?'':'none'});
-  const litF=night?Math.min(1,.3+pop/50):0,sig=litF+':'+document.querySelectorAll('.win').length;
+  const litF=Math.min(1,.3+pop/50)*Math.max(0,Math.min(1,(darkness-.2)/.4)),sig=litF.toFixed(2)+':'+document.querySelectorAll('.win').length;
   if(sig!==litSig){litSig=sig;const lights=document.getElementById('lights');lights.innerHTML='';
     document.querySelectorAll('.win').forEach((w,n)=>{const on=+w.dataset.v<litF;w.setAttribute('opacity',on?.95:0);
-      if(on&&n%3===0){const x=+w.getAttribute('x')||+w.getAttribute('cx'),y=+w.getAttribute('y')||+w.getAttribute('cy');el('circle',{cx:x+1.5,cy:y+1.5,r:6,fill:'url(#glowdot)'},lights)}})}
+      const lamp=w.classList.contains('lamp');if(on&&(lamp||n%3===0)){const x=+w.getAttribute('x')||+w.getAttribute('cx'),y=+w.getAttribute('y')||+w.getAttribute('cy');if(lamp)el('ellipse',{cx:x,cy:y+11,rx:15,ry:7,fill:'url(#glowdot)',opacity:.8},lights);el('circle',{cx:x+1.5,cy:y+1.5,r:6,fill:'url(#glowdot)'},lights)}})}
   const market=(ds.market_concourse||{}).unlocked?Math.min(14,2+here('market_concourse')*2+(d.market&&d.market.primary?2:0)+Math.floor(((ds.market_concourse||{}).level||1)/2)):0;
   const party=festival?8:0,csig=market+':'+party;
   if(csig!==crowdSig){crowdSig=csig;const g=document.getElementById('crowd');g.innerHTML='';
@@ -610,21 +612,47 @@ function nextToast(){const t=document.getElementById('toast'),item=toasts.shift(
 
 // ---- sky, weather and holidays
 let weatherKey='',festival=null,fxSig='',fireworks=null;
-const SKY={Morning:['#f0a77e','#f6d6a8','#c9a27a','#8a6e5a','#6e5848'],Day:['#5f9ed8','#bfe0f4','#d6e6ee','#6d7f5a','#58694a'],Evening:['#3b2b5e','#e0785a','#f2a86a','#4a3550','#3a2a40'],Night:['#060a1f','#18204a','#1d2450','#15182c','#101224']};
-function sky(phase,wkey){let [a,b,c,h1,h2]=SKY[phase]||SKY.Day;if(phase!=='Night'&&(wkey==='good_growing'||wkey==='water_watch')){a='#6f7885';b='#aab2bc';c='#bcc3cb'}
-  if(phase!=='Night'&&wkey==='dust_winds'){a='#a8835a';b='#dcbb8c';c='#e6c89a'}
-  document.getElementById('sky0').setAttribute('stop-color',a);document.getElementById('sky1').setAttribute('stop-color',b);document.getElementById('sky2').setAttribute('stop-color',c);
-  document.getElementById('hills').setAttribute('fill',h1);document.getElementById('hills2').setAttribute('fill',h2);
-  document.getElementById('stars').style.opacity=phase==='Night'?1:phase==='Evening'?.35:0;
-  const sun=document.getElementById('sun');sun.innerHTML='';
-  if(phase==='Night'){el('circle',{cx:870,cy:96,r:30,fill:'url(#glowdot)',opacity:.5},sun);el('circle',{cx:870,cy:96,r:16,fill:'#f4f1e0'},sun);el('circle',{cx:876,cy:91,r:13,fill:SKY.Night[0]},sun)}
-  else if(wkey!=='good_growing'&&wkey!=='water_watch'){const [x,y,r]=phase==='Morning'?[110,150,26]:phase==='Evening'?[860,168,30]:[860,88,24];el('circle',{cx:x,cy:y,r:r*3,fill:'url(#sung)',opacity:.8},sun);el('circle',{cx:x,cy:y,r,fill:phase==='Evening'?'#ffb070':'#fff3c4'},sun)}
-  document.getElementById('skyclouds').style.opacity=phase==='Night'?.15:(wkey==='good_growing'||wkey==='water_watch')?1:.7;
-  document.getElementById('shades').style.display=phase==='Night'?'none':'';
-  const au=document.getElementById('aurora');au.innerHTML='';if(phase==='Night'&&wkey==='sensor_noise')for(let k=0;k<3;k++)el('path',{d:`M0 ${120+k*18} Q240 ${60+k*25} 480 ${110+k*14} T960 ${90+k*20}`,stroke:'url(#aurorag)','stroke-width':14-k*3,fill:'none',opacity:.8},au);
-  document.getElementById('haze').setAttribute('fill',wkey==='dust_winds'?'rgba(214,170,110,.16)':wkey==='water_watch'?'rgba(120,130,150,.10)':'transparent')}
+// ---- time of day: the light follows the Avesta hour (0–24) continuously, not just the four phase names.
+// Keys: hour, sky top, sky middle, sky horizon, far hills, near hills, light over the town, darkness 0–1, stars 0–1.
+const LIGHT=[[0,'#1b2150','#3d3a6e','#5a4a72','#26223e','#1e1a32','rgba(24,28,88,.40)',.72,.55],
+  [2,'#3a4488','#d98a92','#f4bc98','#5a4a60','#46394e','rgba(255,140,150,.16)',.32,.12],[4.5,'#6fa2da','#f5d6a8','#f2caa0','#7f7a5e','#68604c','rgba(255,196,130,.10)',.06,0],
+  [7,'#5f9ed8','#bfe0f4','#d6e6ee','#6d7f5a','#58694a','rgba(0,0,0,0)',0,0],[13,'#5a9ad6','#bfe0f4','#d6e6ee','#6d7f5a','#58694a','rgba(0,0,0,0)',0,0],
+  [15.5,'#6a98d0','#f2d9a8','#f0c690','#7a7552','#62603f','rgba(255,176,90,.12)',0,0],[17.5,'#4a3f7a','#f08a5a','#f7ae6a','#5a4050','#463040','rgba(255,106,58,.22)',.22,.08],
+  [19,'#241c4a','#8a4a7a','#c26a6a','#2e2440','#241c34','rgba(64,40,120,.40)',.6,.45],[21,'#060a1f','#18204a','#1d2450','#15182c','#101224','rgba(6,12,52,.54)',1,1],
+  [24,'#1b2150','#3d3a6e','#5a4a72','#26223e','#1e1a32','rgba(24,28,88,.40)',.72,.55]];
+const PREVIEW_HOUR={Morning:3,Day:10.5,Evening:17,Night:22};
+const rgba=c=>c[0]==='#'?[parseInt(c.slice(1,3),16),parseInt(c.slice(3,5),16),parseInt(c.slice(5,7),16),1]:c.match(/[\d.]+/g).map(Number);
+const mix=(a,b,t)=>{const x=rgba(a),y=rgba(b),v=x.map((n,k)=>n+(y[k]-n)*t);return `rgba(${v[0]|0},${v[1]|0},${v[2]|0},${v[3].toFixed(3)})`};
+function lightAt(hour){hour=((hour%24)+24)%24;let k=0;while(k<LIGHT.length-2&&LIGHT[k+1][0]<=hour)k++;const A=LIGHT[k],B=LIGHT[k+1],t=(hour-A[0])/(B[0]-A[0]);
+  return {sky:[1,2,3].map(n=>mix(A[n],B[n],t)),hills:[mix(A[4],B[4],t),mix(A[5],B[5],t)],tint:mix(A[6],B[6],t),dark:A[7]+(B[7]-A[7])*t,stars:A[8]+(B[8]-A[8])*t}}
+let darkness=0,shadowSig='';
+function sky(hour,wkey){const L=lightAt(hour),grey=wkey==='good_growing'||wkey==='water_watch',dust=wkey==='dust_winds',day=1-L.dark;darkness=L.dark;
+  const veil=(c,to)=>grey?mix(c,to[0],.55*day):dust?mix(c,to[1],.5*day):c;
+  ['sky0','sky1','sky2'].forEach((id,n)=>document.getElementById(id).setAttribute('stop-color',veil(L.sky[n],[['#6f7885','#aab2bc','#bcc3cb'][n],['#a8835a','#dcbb8c','#e6c89a'][n]])));
+  document.getElementById('hills').setAttribute('fill',L.hills[0]);document.getElementById('hills2').setAttribute('fill',L.hills[1]);
+  document.getElementById('stars').style.opacity=L.stars.toFixed(2);document.getElementById('tint').setAttribute('fill',L.tint);
+  // The sun rises on the left, crosses the sky and sets on the right; the moon follows at night.
+  const sun=document.getElementById('sun');sun.innerHTML='';const h=((hour%24)+24)%24;
+  const up_=(h>=1.5&&h<=19.2)?(h-1.5)/17.7:null,moon=(h>=18.6||h<=2.2)?((h-18.6+24)%24)/7.6:null;
+  if(up_!=null&&!grey){const x=70+up_*820,y=190-Math.sin(Math.PI*up_)*125,low=Math.sin(Math.PI*up_)<.35,col=low?'#ffab66':'#fff3c4';
+    el('circle',{cx:x,cy:y,r:low?90:70,fill:'url(#sung)',opacity:low?.95:.75},sun);el('circle',{cx:x,cy:y,r:low?28:23,fill:col},sun)}
+  if(moon!=null){const x=890-moon*820,y=175-Math.sin(Math.PI*moon)*115,o=Math.min(1,L.dark*1.4);el('circle',{cx:x,cy:y,r:34,fill:'url(#glowdot)',opacity:.45*o},sun);
+    el('circle',{cx:x,cy:y,r:16,fill:'#f4f1e0',opacity:o},sun);el('circle',{cx:x+6,cy:y-5,r:13,fill:L.sky[0],opacity:o},sun)}
+  document.getElementById('skyclouds').style.opacity=(grey?1:.15+.55*day).toFixed(2);
+  document.getElementById('shades').style.display=L.dark>.3||grey?'none':'';
+  const au=document.getElementById('aurora');au.innerHTML='';if(L.dark>.6&&wkey==='sensor_noise')for(let k=0;k<3;k++)el('path',{d:`M0 ${120+k*18} Q240 ${60+k*25} 480 ${110+k*14} T960 ${90+k*20}`,stroke:'url(#aurorag)','stroke-width':14-k*3,fill:'none',opacity:.8},au);
+  document.getElementById('haze').setAttribute('fill',dust?'rgba(214,170,110,.16)':wkey==='water_watch'?'rgba(120,130,150,.10)':'transparent');
+  shadows(up_,grey?0:Math.max(0,1-L.dark*2.2))}
+// Buildings cast shadows away from the sun: long and to the right at sunrise, short at noon, long and to the left at sunset.
+function hull(p){p=p.slice().sort((a,b)=>a[0]-b[0]||a[1]-b[1]);const cross=(o,a,b)=>(a[0]-o[0])*(b[1]-o[1])-(a[1]-o[1])*(b[0]-o[0]),lo=[],hi=[];
+  for(const q of p){while(lo.length>1&&cross(lo[lo.length-2],lo[lo.length-1],q)<=0)lo.pop();lo.push(q)}for(const q of p.reverse()){while(hi.length>1&&cross(hi[hi.length-2],hi[hi.length-1],q)<=0)hi.pop();hi.push(q)}
+  return lo.slice(0,-1).concat(hi.slice(0,-1))}
+function shadows(sunT,strength){const path=document.getElementById('shadows');if(sunT==null||strength<=0){path.setAttribute('opacity',0);return}
+  const sig=sunT.toFixed(2)+':'+CASTERS.length;path.setAttribute('opacity',(.42*strength).toFixed(2));if(sig===shadowSig)return;shadowSig=sig;
+  const elev=Math.max(.12,Math.sin(Math.PI*sunT)),len=Math.min(2.6,.6/elev),dx=-(sunT*2-1)*len*1.1,dy=.3*len+.15;
+  path.setAttribute('d',CASTERS.map(([base,h])=>'M'+hull(base.concat(base.map(([x,y])=>[x+dx*h,y+dy*h]))).map(q=>q[0].toFixed(1)+' '+q[1].toFixed(1)).join('L')+'Z').join(''))}
 function particles(kind,n,make){for(let k=0;k<n;k++){const p=document.createElement('i');p.className='particle';make(p,k);document.getElementById('wrap').appendChild(p)}}
-function effects(phase){const pal=festival&&HOLIDAYS[festival.name]?HOLIDAYS[festival.name][1]:null,dark=phase==='Night'||phase==='Evening';
+function effects(phase){const pal=festival&&HOLIDAYS[festival.name]?HOLIDAYS[festival.name][1]:null,dark=darkness>.3;
   const days=festival?festival.days_to_holiday:99,sig=[weatherKey,festival&&festival.name,dark,Math.abs(days)<=1].join('|');if(sig===fxSig)return;fxSig=sig;
   document.querySelectorAll('.particle').forEach(p=>p.remove());const R=Math.random;
   const fall=(p,color,w,h,sp,dx,extra='')=>{p.style.cssText=`left:${R()*110-5}%;top:-8%;width:${w}px;height:${h}px;background:${color};--dx:${dx}px;--dy:620px;animation-duration:${sp*(0.7+R()*.6)}s;animation-delay:-${R()*sp}s;${extra}`};
@@ -694,17 +722,19 @@ function caption(){const cap=document.getElementById('cap'),pool=latest.filter(s
 setInterval(caption,SECONDS);
 poll(d=>{try{
   if(Q.get('phase'))d.phase=Q.get('phase');if(Q.get('weather')){d.condition_key=Q.get('weather');d.condition=Q.get('weather').replace(/_/g,' ')}
-  festival=previewHoliday()||d.festival||null;night=d.phase==='Night'||d.phase==='Evening';weatherKey=d.condition_key||'';
+  festival=previewHoliday()||d.festival||null;weatherKey=d.condition_key||'';
+  const hour=Q.get('hour')?Number(Q.get('hour')):Q.get('phase')?PREVIEW_HOUR[d.phase]??12:(d.hour??PREVIEW_HOUR[d.phase]??12);
+  if(Q.get('hour')){const h=((hour%24)+24)%24;d.phase=h<6?'Morning':h<15?'Day':h<19?'Evening':'Night';d.phase_emoji={Morning:'🌅',Day:'☀️',Evening:'🌇',Night:'🌙'}[d.phase]}
+  if(!first&&lastPhase&&d.phase!==lastPhase&&PHASE_NEWS[d.phase])toast(PHASE_NEWS[d.phase]);lastPhase=d.phase;
   const tier=d.tier_index||0;if(!first&&lastTier>=0&&tier>lastTier)toast(`🏙️ New Eridian is now a ${d.tier_name||d.tier}!`);
   if(tier!==lastTier){streets(d,tier);lastTier=tier}for(const k in CELLS)district(k,(d.districts||{})[k]||{},tier);labelsFor(d);
-  document.getElementById('tint').setAttribute('fill',{Morning:'rgba(255,170,110,.08)',Day:'rgba(0,0,0,0)',Evening:'rgba(255,110,70,.14)',Night:'rgba(6,12,52,.5)'}[d.phase]||'transparent');
-  sky(d.phase,weatherKey);effects(d.phase);glitches(weatherKey==='sensor_noise');shuttles(weatherKey==='busy_spaceport'&&d.phase!=='Night');
+  sky(hour,weatherKey);night=darkness>.3;effects(d.phase);glitches(weatherKey==='sensor_noise');shuttles(weatherKey==='busy_spaceport'&&darkness<.6);
   latest=d.seedlings||[];liveTown(d);seedlings(latest);if(first){first=false;caption()}
   document.getElementById('tier').textContent=`${d.tier_name||d.tier||'Outpost'} · ${d.population||0} citizens`;
   const hol=document.getElementById('hol');if(festival&&HOLIDAYS[festival.name]){const n=festival.days_to_holiday;hol.style.setProperty('--hol',HOLIDAYS[festival.name][1][0]);
     const GREET={'Christmas':'Merry Christmas!','Memorial Day':'Memorial Day','Thanksgiving':'Happy Thanksgiving!'};hol.textContent=`${festival.emoji} `+(n===0?(GREET[festival.name]||`Happy ${festival.name}!`):n>0?`${festival.name} in ${n} day${n===1?'':'s'}`:`${festival.name} festival`)}else hol.textContent='';
   const busy=latest.filter(s=>/^Working|^Queue|^Gathering/.test(s.activity)).length;
-  document.getElementById('info').textContent=`${d.phase_emoji||''} Day ${d.day} · ${d.phase} · ${WEATHER_ICON[weatherKey]||''} ${d.condition||''}`+(festival?'':` · ${busy} working`);
+  const hh=Math.floor(((hour%24)+24)%24),mm=Math.floor((hour%1)*60);document.getElementById('info').textContent=`${d.phase_emoji||''} Day ${d.day} · ${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')} ${d.phase} · ${WEATHER_ICON[weatherKey]||''} ${d.condition||''}`+(festival?'':` · ${busy} working`);
 }catch(e){console.error(e)}},4000);
 </script>""")
 

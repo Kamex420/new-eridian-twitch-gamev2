@@ -3481,7 +3481,7 @@ def overlay_state_fresh(channel:str):
                 "percent":min(100,round((core_stats[bottleneck_key]/max(1,target))*100,1)),
             },
             "day":clock["day"],
-            "phase":clock["phase"],
+            "phase":clock["phase"],"hour":round(clock["hour"],3),
             "phase_emoji":clock["phase_emoji"],
             "condition":clock["condition"],"condition_key":clock["condition_key"],
             "condition_text":clock["condition_text"],

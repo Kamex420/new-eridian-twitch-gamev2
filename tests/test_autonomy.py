@@ -233,6 +233,7 @@ def test_overlay_map_and_narrator():
         assert page.status_code == 200 and '/api/v1/overlay' in page.text
     assert '/obs/map' in client.get('/obs', params={'channel': 'test'}).text
     assert len(me['lines']) >= 3 and me['lines'][0] == me['thought'] and 'condition_key' in data
+    assert 0 <= data['hour'] < 24 and data['phase'] in {'Morning', 'Day', 'Evening', 'Night'}
 
 
 def test_seedlings_talk_about_their_work_friends_and_holidays():
@@ -250,7 +251,8 @@ def test_seedlings_talk_about_their_work_friends_and_holidays():
 def test_map_page_has_the_camera_walking_holidays_and_weather():
     page = client.get('/obs/map', params={'channel': 'test'}).text
     for feature in ('function look(', 'function route(', 'function scaffold(', 'function decorate(', 'function sky(', 'function liveTown(',
-                    "'Christmas'", "'Halloween'", 'good_growing', 'dust_winds', "Q.get('holiday')", "Q.get('camera')"):
+                    "'Christmas'", "'Halloween'", 'good_growing', 'dust_winds', "Q.get('holiday')", "Q.get('camera')",
+                    'function lightAt(', 'function shadows(', "Q.get('hour')", 'd.hour'):
         assert feature in page, feature
 
 

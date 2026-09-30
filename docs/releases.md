@@ -1,5 +1,21 @@
 # Release notes
 
+## The map follows the time of day
+
+Morning, Day and Evening used to look almost the same on `/obs/map`: only a faint tint and the corners of the sky changed. The light now follows the actual Avesta hour (the overlay reports `hour`, 0–24), changing smoothly through the day:
+
+- **Pre-dawn** is blue, **dawn** is pink, the **morning** is golden, and **midday** is bright and clear.
+- The **afternoon** is warm, **sunset** is orange, **dusk** is purple, and **night** is deep blue with stars.
+
+Other changes:
+
+- **Sun and moon.** The sun rises on the left, crosses the sky and sets on the right, glowing orange when it is low. The moon follows it across the sky at night.
+- **Building shadows** fall away from the sun: long and to the right at sunrise, short at noon, long and to the left before sunset.
+- **Lights.** Windows and street lamps switch on gradually as it gets dark. Street lamps cast pools of light on the road.
+- **Header.** The header shows the Avesta clock, for example "Day 2 · 17:00 Evening".
+- **Phase banners.** A banner marks each phase change: "🌅 Dawn breaks over New Eridian", "☀️ Full daylight on Avesta", "🌇 The sun is setting" and "🌙 Night falls, the lights come on".
+- **Preview.** Add `&hour=18` to the map URL to see any time of day (`&phase=Evening` still works).
+
 ## Map fixes: one speech bubble per line, and a caption bar that always fits
 
 - **Speech bubbles pop up once.** A bubble used to replay its pop-in every few seconds, whenever the map re-sorted which Seedling stands in front. Now each line pops up once over the speaker, stays about five seconds and fades away. A Seedling never has the same line twice in its set.
