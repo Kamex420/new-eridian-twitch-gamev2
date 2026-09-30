@@ -334,7 +334,7 @@ svg{position:absolute;inset:0;width:100%;height:100%;display:block}
 .token.walking .leg{animation:step .32s ease-in-out infinite alternate}.token.walking .leg.r{animation-delay:-.32s}
 .token.walking .bod{animation:bob .32s ease-in-out infinite alternate}
 @keyframes step{to{transform:translateY(-3px)}}@keyframes bob{to{transform:translateY(-1.5px)}}
-.bubble{animation:pop .35s cubic-bezier(.2,1.4,.4,1) both;transform-box:fill-box;transform-origin:50% 100%}
+.bubble{transform-box:fill-box;transform-origin:50% 100%}
 @keyframes pop{from{opacity:0;transform:scale(.4)}to{opacity:1;transform:none}}
 .bubble text{font:800 12px Inter,system-ui,sans-serif;fill:#171230;dominant-baseline:central}
 .more text{font:900 13px Inter,system-ui,sans-serif;fill:#fff;text-anchor:middle;dominant-baseline:central}
@@ -354,16 +354,19 @@ svg{position:absolute;inset:0;width:100%;height:100%;display:block}
 .burst circle{animation:burst 1.5s ease-out forwards}@keyframes burst{from{transform:translate(0,0);opacity:1}to{transform:translate(var(--dx),var(--dy));opacity:0}}
 .twinkle{animation:twinkle 2.4s ease-in-out infinite alternate}@keyframes twinkle{to{opacity:.25}}
 .head{position:absolute;left:0;right:0;top:0;height:8.5vh;display:flex;align-items:center;gap:1.2vw;padding:0 1.6vw;
-  background:linear-gradient(180deg,rgba(6,9,28,.92),rgba(6,9,28,.72));border-bottom:2px solid rgba(147,154,255,.45);font-size:clamp(12px,2.2vw,44px);z-index:3}
+  background:linear-gradient(180deg,rgba(6,9,28,.92),rgba(6,9,28,.72));border-bottom:2px solid rgba(147,154,255,.45);font-size:clamp(12px,min(2.2vw,3.9vh),44px);z-index:3}
 .head .name{font:700 1.15em Georgia,serif;color:var(--ivory);white-space:nowrap}.head .tier{padding:.12em .55em;border-radius:.5em;background:rgba(126,227,176,.18);border:1px solid rgba(126,227,176,.55);color:var(--green2);font-weight:900;font-size:.8em;white-space:nowrap}
 .head .hol{padding:.12em .55em;border-radius:.5em;font-weight:900;font-size:.8em;white-space:nowrap;color:#1a1026;background:var(--hol,#ffd27a)}.head .hol:empty{display:none}
 .head .info{margin-left:auto;color:#e6e3fb;font-weight:700;font-size:.8em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.cap{position:absolute;left:1.6vw;right:1.6vw;bottom:1.4vh;min-height:8.5vh;display:flex;align-items:center;gap:.8em;padding:.3em .9em;border-radius:.6em;
-  background:rgba(250,248,240,.95);color:#171230;font-size:clamp(12px,2.2vw,44px);box-shadow:0 .3em 1em rgba(0,0,0,.4);z-index:3;transition:opacity .5s}
-.cap .who{font-weight:900;white-space:nowrap}.cap .what{color:#5b3fd1;font-weight:800;white-space:nowrap}.cap .said{font-style:italic;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+/* Caption: who and what on the first line, what they say below (wraps to two lines, never spills). */
+.cap{position:absolute;left:1.6vw;right:1.6vw;bottom:1.4vh;display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;column-gap:.6em;padding:.3em .8em;border-radius:.6em;
+  background:rgba(250,248,240,.95);color:#171230;font-size:clamp(11px,min(2vw,3.6vh),40px);line-height:1.2;box-shadow:0 .3em 1em rgba(0,0,0,.4);z-index:3;transition:opacity .5s;overflow:hidden}
+.cap .mood{font-size:1.5em;line-height:1}.cap .text{min-width:0;overflow:hidden}
+.cap .top{font-size:.8em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.cap .who{font-weight:900}.cap .what{color:#5b3fd1;font-weight:800}
+.cap .said{font-style:italic;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow-wrap:anywhere}
 .cap.hide{opacity:0}
-.toast{position:absolute;left:50%;top:11vh;transform:translate(-50%,-30%) scale(.9);opacity:0;padding:.35em 1em;border-radius:.6em;z-index:4;white-space:nowrap;
-  font:900 clamp(12px,2.6vw,52px) Inter,system-ui,sans-serif;color:#1a1026;background:linear-gradient(90deg,#ffe08a,#ffb86b);box-shadow:0 .3em 1.2em rgba(0,0,0,.45);transition:opacity .5s,transform .5s cubic-bezier(.2,1.3,.4,1)}
+.toast{position:absolute;left:50%;top:11vh;transform:translate(-50%,-30%) scale(.9);opacity:0;padding:.35em 1em;border-radius:.6em;z-index:4;white-space:nowrap;max-width:90vw;overflow:hidden;text-overflow:ellipsis;
+  font:900 clamp(12px,min(2.6vw,4.6vh),52px) Inter,system-ui,sans-serif;color:#1a1026;background:linear-gradient(90deg,#ffe08a,#ffb86b);box-shadow:0 .3em 1.2em rgba(0,0,0,.45);transition:opacity .5s,transform .5s cubic-bezier(.2,1.3,.4,1)}
 .toast.show{opacity:1;transform:translate(-50%,0) scale(1)}
 .particle{position:absolute;pointer-events:none;animation:drift linear infinite;z-index:2}
 @keyframes drift{from{transform:translate(0,0) rotate(0)}to{transform:translate(var(--dx),var(--dy)) rotate(var(--rot,0deg))}}
@@ -565,7 +568,7 @@ function figure(s){const g=el('g',{class:'token'},tokens),r=rng(s.id);el('ellips
 function seedlings(list){const groups={};for(const s of list)(groups[s.place]=groups[s.place]||[]).push(s);const seen=new Set();document.querySelectorAll('.more').forEach(e=>e.remove());
   for(const k in groups){const all=groups[k].sort((a,b)=>a.id<b.id?-1:1),n=Math.min(all.length,PER_PLACE),extra=all.length-n;
     all.forEach((s,i)=>{seen.add(s.id);const [tx,ty]=home(k,Math.min(i,n-1),n);let t=live[s.id];
-      if(!t){t=live[s.id]=figure(s);t.x=tx;t.y=ty;t.place=k;t.g.setAttribute('transform',`translate(${tx},${ty})`)}
+      if(!t){t=live[s.id]=figure(s);t.id=s.id;t.x=tx;t.y=ty;t.place=k;t.g.setAttribute('transform',`translate(${tx},${ty})`)}
       t.hidden=i>=n;t.s=s;t.g.querySelector('.shirt').setAttribute('fill',MOOD[s.mood]||'#b8f4d0');t.g.querySelector('.ini').textContent=(s.name||'?').slice(0,1).toUpperCase();
       t.g.querySelector('.label').textContent=SHOW_NAMES?(s.name.length>8?s.name.slice(0,7)+'…':s.name):'';t.g.querySelector('.act').textContent=s.emoji||'';
       if(t.place!==k){t.path=[...route(t.place,k),[tx,ty]];t.place=k;t.g.style.display=''}else if(!t.path.length&&(Math.abs(t.x-tx)>1||Math.abs(t.y-ty)>1))t.path=[[tx,ty]];
@@ -581,11 +584,18 @@ function stepAll(now){const dt=Math.min(.1,(now-lastT)/1000);lastT=now;let any=f
     let left=46*dt;while(left>0&&t.path.length){const [px,py]=t.path[0],dx=px-t.x,dy=py-t.y,dist=Math.hypot(dx,dy);if(dist<=left){t.x=px;t.y=py;left-=dist;t.path.shift()}else{t.x+=dx/dist*left;t.y+=dy/dist*left;left=0}}
     t.g.setAttribute('transform',`translate(${t.x.toFixed(1)},${t.y.toFixed(1)})`);if(!t.path.length&&t.hidden&&!t.g.querySelector('.bubble'))t.g.style.display='none'}
   sortTokens();if(any)requestAnimationFrame(stepAll);else walking=false}
-let sortAt=0,speaking=null;function sortTokens(){const now=performance.now();if(now-sortAt<400)return;sortAt=now;Object.values(live).sort((a,b)=>a.y-b.y).forEach(t=>tokens.appendChild(t.g));if(live[speaking])tokens.appendChild(live[speaking].g)}
-function speak(t,line){document.querySelectorAll('.bubble').forEach(b=>b.remove());if(!t||!line)return;const text=line.length>44?line.slice(0,42)+'…':line;
+// Nearer Seedlings draw in front. Nodes are only moved when the order really changes: moving one restarts its animations.
+let sortAt=0,speaking=null;function sortTokens(force){const now=performance.now();if(!force&&now-sortAt<400)return;sortAt=now;
+  const want=Object.values(live).sort((a,b)=>(a.id===speaking)-(b.id===speaking)||a.y-b.y).map(t=>t.g),have=[...tokens.children].filter(n=>n.classList.contains('token'));
+  if(want.length===have.length&&want.every((g,i)=>g===have[i]))return;want.forEach(g=>tokens.appendChild(g))}
+// A speech bubble pops up once over the speaker, stays a few seconds and fades away.
+let bubbleTimer=null;
+function speak(t,line){document.querySelectorAll('.bubble').forEach(b=>b.remove());clearTimeout(bubbleTimer);if(!t||!line)return;const text=line.length>44?line.slice(0,42)+'…':line;
   const b=el('g',{class:'bubble'},t.g),tx=el('text',{x:0,y:-58},b);tx.textContent=text;const w=tx.getComputedTextLength()+18;tx.setAttribute('x',-w/2+9);
   b.insertBefore(el('rect',{x:-w/2,y:-70,width:w,height:24,rx:9,fill:'#fffdf5',stroke:'#171230','stroke-width':1.6}),tx);b.insertBefore(el('polygon',{points:'-5,-47 5,-47 0,-40',fill:'#fffdf5',stroke:'#171230','stroke-width':1.6}),tx);
-  b.insertBefore(el('rect',{x:-6,y:-48,width:12,height:3,fill:'#fffdf5'}),tx);t.g.style.display='';tokens.appendChild(t.g)}
+  b.insertBefore(el('rect',{x:-6,y:-48,width:12,height:3,fill:'#fffdf5'}),tx);t.g.style.display='';sortTokens(true);
+  b.animate([{opacity:0,transform:'scale(.4)'},{opacity:1,transform:'none'}],{duration:350,easing:'cubic-bezier(.2,1.4,.4,1)'});
+  bubbleTimer=setTimeout(()=>{b.animate([{opacity:1},{opacity:0}],{duration:500,fill:'forwards'}).onfinish=()=>{b.remove();if(t.hidden&&!t.path.length)t.g.style.display='none'}},Math.min(5500,SECONDS-800))}
 
 // ---- the camera: a wide shot, drifting in on whoever is talking and on new buildings
 const world=document.getElementById('world');let lockUntil=0;
@@ -677,7 +687,7 @@ function shuttles(on){if(on&&!shuttle){const [x,y]=iso(3,3);shuttle=el('g',{clas
 let capIndex=0,capTick=0;const said={};
 function caption(){const cap=document.getElementById('cap'),pool=latest.filter(s=>(s.lines&&s.lines.length)||s.thought);if(!pool.length){cap.classList.add('hide');return}
   const s=pool[capIndex++%pool.length],lines=(s.lines&&s.lines.length)?s.lines:[s.thought],idx=said[s.id]||0,line=lines[idx%lines.length],place=(LOOK[s.place]||LOOK.commons);
-  cap.classList.add('hide');setTimeout(()=>{cap.innerHTML=`<span>${esc(s.mood_emoji||'🙂')}</span><span class="who">${esc(s.name)}</span><span class="what">${esc(place[0])} ${esc(s.activity)}</span>${line?`<span class="said">“${esc(line)}”</span>`:''}`;cap.classList.remove('hide')},450);
+  cap.classList.add('hide');setTimeout(()=>{cap.innerHTML=`<span class="mood">${esc(s.mood_emoji||'🙂')}</span><div class="text"><div class="top"><span class="who">${esc(s.name)}</span> · <span class="what">${esc(place[0])} ${esc(s.activity)}</span></div>${line?`<div class="said">“${esc(line)}”</div>`:''}</div>`;cap.classList.remove('hide')},450);
   said[s.id]=idx+1;const t=live[s.id];speaking=s.id;speak(t,line);
   if(Date.now()<lockUntil)return;capTick++;
   if(t&&!t.path.length&&capTick%2===1)look(t.x,t.y-24,1.9);else look()}

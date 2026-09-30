@@ -915,7 +915,7 @@ def chatter(s, everyone, context):
     pool = SAY_PHASE.get(context['phase'], []) + SAY_WEATHER.get(context['condition'], []) + context['extra']
     if pool:
         lines.append(r.choice(pool))
-    lines = [line for line in lines if line]
+    lines = list(dict.fromkeys(line for line in lines if line))   # never the same line twice
     head, rest = lines[:1], lines[1:]
     r.shuffle(rest)
     return (head + rest)[:6]

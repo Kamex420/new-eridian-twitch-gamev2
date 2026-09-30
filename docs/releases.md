@@ -1,5 +1,10 @@
 # Release notes
 
+## Map fixes: one speech bubble per line, and a caption bar that always fits
+
+- **Speech bubbles pop up once.** A bubble used to replay its pop-in every few seconds, whenever the map re-sorted which Seedling stands in front. Now each line pops up once over the speaker, stays about five seconds and fades away. A Seedling never has the same line twice in its set.
+- **Caption bar.** The name and activity sit on the first line, and anything too long ends in "…". What the Seedling says goes on the line below and wraps to a second line instead of running out of the bar. Text is sized from both the width and the height of the source, so it fits at any Browser Source size (checked at 640×360, 800×600, 960×540, 1280×720, 1920×540 and 1920×1080). The header and banners use the same sizing.
+
 ## The Avesta map comes alive
 
 `/obs/map` is now a town you can watch. No OBS changes are needed.
