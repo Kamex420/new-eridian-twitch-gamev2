@@ -174,3 +174,19 @@ def test_map_greets_newcomers_and_keeps_them_visible():
     from test_colony import client
     page = client.get('/obs/map', params={'channel': 'test'}).text
     assert 'function welcomeNew(' in page and 'isNew(b)-isNew(a)' in page and 'I just moved in' in page
+
+
+def test_every_overlay_script_parses():
+    """A stray bracket stops a whole OBS page from loading; check every page's JavaScript with Node when it is installed."""
+    import re, shutil, subprocess, tempfile, pytest
+    node = shutil.which('node')
+    if not node:
+        pytest.skip('node is not installed')
+    from test_colony import client
+    for panel in so.PANELS:
+        html = client.get(f'/obs/{panel}', params={'channel': 'test'}).text
+        for i, script in enumerate(re.findall(r'<script>(.*?)</script>', html, re.S)):
+            with tempfile.NamedTemporaryFile('w', suffix='.js', delete=False) as f:
+                f.write(script)
+            result = subprocess.run([node, '--check', f.name], capture_output=True, text=True)
+            assert result.returncode == 0, (panel, i, result.stderr[:400])

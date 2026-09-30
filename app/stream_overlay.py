@@ -456,24 +456,7 @@ svg{position:absolute;inset:0;width:100%;height:100%;display:block}
 .toast{position:absolute;right:1.6vw;top:10.5vh;transform:translateY(-30%) scale(.9);transform-origin:100% 0;opacity:0;padding:.35em .9em;border-radius:.6em;z-index:4;white-space:nowrap;max-width:44vw;overflow:hidden;text-overflow:ellipsis;
   font:900 clamp(11px,min(1.9vw,3.4vh),40px) var(--font-body);color:#1a1026;background:linear-gradient(90deg,#ffe08a,#ffb86b);box-shadow:0 .3em 1.2em rgba(0,0,0,.45);transition:opacity .5s,transform .5s cubic-bezier(.2,1.3,.4,1)}
 .toast.show{opacity:1;transform:none}
-/* Stream challenge: a goal bar in the top-left corner (under the header in narrow and card layouts). */
-.chal{position:absolute;left:1.2vw;top:10.5vh;width:31vw;padding:.45em .7em .5em;border-radius:.7em;z-index:3;font-size:clamp(10px,min(1.55vw,2.8vh),30px);color:var(--text);
-  background:linear-gradient(145deg,rgba(46,10,28,.94),rgba(26,17,56,.92));border:1px solid rgba(255,116,132,.75);box-shadow:var(--shadow),0 0 1.1em rgba(255,116,132,.3);transition:opacity .5s,transform .5s var(--ease-pop)}
-.chal.hide{opacity:0;transform:translateY(-.6em);pointer-events:none}
-.chal .t{display:flex;align-items:center;gap:.4em;font:700 1.1em/1.15 var(--font-display);color:#fff}.chal .t span{min-width:0;overflow-wrap:anywhere}
-.chal .t em{margin-left:auto;flex:none;padding:.08em .45em;border-radius:.3em;background:#ff4d6a;color:#fff;font:900 .56em var(--font-body);font-style:normal;letter-spacing:.14em;animation:chblink 1.6s infinite}
-.chal .s{font-size:.78em;color:var(--muted);line-height:1.25;margin:.12em 0 .35em}
-.chal .meter{height:.72em;border-radius:99px;background:rgba(255,255,255,.12);overflow:hidden}.chal .meter i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,#ff7484,#ffd27a);transition:width .8s var(--ease)}
-.chal .n{display:flex;justify-content:space-between;gap:.5em;margin-top:.28em;font-size:.82em;font-weight:800;font-variant-numeric:tabular-nums}.chal .n b{color:#ffd27a}
-.chal .how{margin-top:.22em;font-size:.76em;color:var(--muted)}.chal .how b{color:var(--green2);font-family:ui-monospace,monospace}
-.chal.won{border-color:#7ee3b0;box-shadow:var(--shadow),0 0 1.4em rgba(126,227,176,.45)}.chal.won .meter i{background:linear-gradient(90deg,#7ee3b0,#70ddff)}.chal.won .t em{background:#2fa36b}
-.chal.lost{filter:saturate(.45)}.chal.lost .t em{background:#6b6b80;animation:none}
-@keyframes chblink{50%{opacity:.4}}
 .head .fest{--hol:#ffd27a}
-.L-narrow .chal{left:1.4vw;right:1.4vw;width:auto;font-size:clamp(11px,min(3.9vw,4.1vh),30px)}
-.L-card .chal{position:relative;left:auto;top:auto;width:auto;margin:.3em .45em 0;padding:.3em .55em .35em;order:0;font-size:clamp(10px,3.6vw,26px);flex:none}
-.L-card .chal .s,.L-card .chal .how{display:none}.L-card .chal .t{font-size:1em}.L-card .chal .meter{height:.6em;margin-top:.2em}.L-card .chal .n{margin-top:.15em}
-.L-card .chal.hide{display:none}
 .particle{position:absolute;pointer-events:none;animation:drift linear infinite;z-index:2}
 @keyframes drift{from{transform:translate(0,0) rotate(0)}to{transform:translate(var(--dx),var(--dy)) rotate(var(--rot,0deg))}}
 .glitch{position:absolute;left:0;right:0;height:2.2vh;background:linear-gradient(90deg,transparent,rgba(112,221,255,.35),transparent);z-index:2;pointer-events:none;animation:glitch .5s steps(3) forwards}
@@ -501,7 +484,6 @@ svg{position:absolute;inset:0;width:100%;height:100%;display:block}
  <g id="fx"></g>
 </svg><div class="vig"></div></div>
 <div class="head"><span class="name">🏙️ New Eridian</span><span class="tier" id="tier">—</span><span class="hol" id="hol"></span><span class="hol fest" id="fest"></span><span class="info" id="info">Connecting to Avesta…</span></div>
-<div class="chal hide" id="chal"></div>
 <div class="toast" id="toast"></div><div class="stats hide" id="stats"></div>
 <div class="cap hide" id="cap"></div>
 </div>
@@ -824,7 +806,7 @@ let lastData=null;
 function apply(c){CAM=c;world.style.transform=`translate(${c.px}px,${c.py}px) scale(${c.s}) translate(${-c.x}px,${-c.y}px)`;tidyLabels()}
 // In a close-up, district names that would be cut by the frame or slide under a bar or panel fade out instead.
 function panels(){const out=[vb(document.querySelector('.head')),vb(document.getElementById('cap'))],st=document.getElementById('stats'),tt=document.getElementById('toast');
-  if(st&&!st.classList.contains('hide'))out.push(vb(st));if(tt.classList.contains('show'))out.push(vb(tt));const ch=document.getElementById('chal');if(ch&&!ch.classList.contains('hide'))out.push(vb(ch));return out}
+  if(st&&!st.classList.contains('hide'))out.push(vb(st));if(tt.classList.contains('show'))out.push(vb(tt));return out}
 function tidyLabels(){const walls=panels();document.querySelectorAll('.dlabel').forEach(g=>{const r=g.querySelector('rect');if(!r)return;const x=+r.getAttribute('x'),y=+r.getAttribute('y');
   const [l,t]=toScreen(x,y),[rr,b]=toScreen(x+(+r.getAttribute('width')),y+(+r.getAttribute('height')));
   const cut=l<2||rr>958||t<0||b>540||walls.some(q=>Math.min(rr,q.r)-Math.max(l,q.l)>0&&Math.min(b,q.b)-Math.max(t,q.t)>0);
@@ -958,20 +940,7 @@ function statPanel(d){const box=document.getElementById('stats');if(!box)return;
 // ---- the colony's own choices: the stream challenge bar, landmarks it voted to build, voted festivals and season decorations
 const LM={greenhouse_expansion:['#dff3e6','#3f9a5a'],spaceport_pad:['#c3cad3','#6f5ad1'],research_annex:['#e9eef2','#3f8fc4'],irrigation_grid:['#cfe6f2','#2d7fb0'],
   recreation_hall:['#f2e2c4','#c2544a'],deepway_terminal:['#a9aeb5','#5a5f66'],community_kitchen:['#f4e6cf','#d9771f'],clinic_expansion:['#f6f6f2','#e0303a'],fire_station:['#e8d8c8','#b8302a']};
-let chalTick=null,chalData=null,chalAt=0,lastChal=null,voteFest='',decorSig='';const marks={};
-function chalBanner(d){const box=document.getElementById('chal'),c=Q.get('challenge')==='0'?null:d.challenge;
-  if(!c){chalData=null;if(!box.classList.contains('hide')){box.classList.add('hide');tidyLabels()}return}
-  if(lastChal!==c.id){if(lastChal!==null&&c.state==='active')toast(`${c.emoji} ${c.title}! Type ${c.how.split(' or ')[0]}`);lastChal=c.id;box.dataset.id=''}
-  chalData=c;chalAt=Date.now();box.className='chal'+(c.state==='won'?' won':c.state==='lost'?' lost':'');
-  if(box.dataset.id!==c.id+':'+c.state){box.dataset.id=c.id+':'+c.state;
-    box.innerHTML=`<div class="t"><span>${esc(c.emoji)} ${esc(c.title)}</span><em>${c.state==='active'?'LIVE':c.state==='won'?'DONE':'OVER'}</em></div><div class="s">${esc(c.state==='won'?'Challenge complete! Rewards paid to everyone who helped.':c.state==='lost'?'Time ran out. Thanks to everyone who helped.':c.text)}</div>
-      <div class="meter"><i id="ch-bar"></i></div><div class="n"><span id="ch-n"></span><span id="ch-t"></span></div><div class="how" id="ch-how"></div>`}
-  document.getElementById('ch-bar').style.width=Math.min(100,c.percent||0)+'%';document.getElementById('ch-n').innerHTML=`<b>${c.progress}</b> / ${c.goal}`;
-  const top=(c.top||[])[0];document.getElementById('ch-how').innerHTML=c.state==='active'?`Type <b>${esc(c.how)}</b>`+(top?` · 🥇 ${esc(top.name)} ${top.amount}`:''):top?`🥇 MVP ${esc(top.name)} · ${c.participants} helped`:'';
-  if(!CARD)box.style.top=(document.querySelector('.head').offsetHeight+Math.round(innerHeight*.015))+'px';
-  if(!chalTick)chalTick=setInterval(chalClock,1000);chalClock();tidyLabels()}
-function chalClock(){if(!chalData)return;const c=chalData,left=Math.max(0,(c.seconds_left||0)-Math.floor((Date.now()-chalAt)/1000)),t=document.getElementById('ch-t');
-  if(t)t.textContent=c.state==='active'?`${Math.floor(left/60)}:${String(left%60).padStart(2,'0')} left`:c.state==='won'?`${c.participants} helped`:'time up'}
+let voteFest='',decorSig='';const marks={};
 function placeFor(p){const info=((lastData&&lastData.districts)||{})[p];return !CELLS[p]||p==='park'?'commons':p==='commons'||!info||info.unlocked?p:'commons'}
 function landmark(g,i,j,x){const [wall,roof]=LM[x.key]||['#e9e2cf','#8a5aa8'];box(g,i,j,1,1,20,wall,{roof:'pitched',roofColor:roof,windows:true});
   const [cx,cy]=centre(i,j),m=el('g',{},g);el('circle',{cx,cy:cy-54,r:8.5,fill:'#fff8e6',stroke:roof,'stroke-width':2},m);
@@ -1005,7 +974,7 @@ function decorate2(se){const decor=(se&&se.decor)||[],colour=(se&&se.colour)||'#
   if(decor.includes('lanterns'))for(const k in LOOK){const [x,y]=labelXY(k);for(const dx of [-46,46]){el('line',{x1:x+dx,y1:y+14,x2:x+dx,y2:y-12,stroke:'#4a3a2e','stroke-width':1.3},g);
     el('rect',{x:x+dx-2.8,y:y-18,width:5.6,height:7,rx:2,fill:'#c2302a',stroke:'#7a1a1a','stroke-width':.6},g);el('rect',{class:'win lamp',x:x+dx-1.4,y:y-16.5,width:2.8,height:4,fill:'#ffd98a',opacity:0,'data-v':'0.05'},g)}}
   litSig=''}
-function civic(d){chalBanner(d);const f=d.vote&&d.vote.festival,chip=document.getElementById('fest');chip.textContent=f?`${f.emoji} ${f.name}`:'';
+function civic(d){const f=d.vote&&d.vote.festival,chip=document.getElementById('fest');chip.textContent=f?`${f.emoji} ${f.name}`:'';
   const key=f?f.key:'';if(key!==voteFest){if(!first&&f)toast(`${f.emoji} ${f.name} today! The colony voted for it.`,'commons');voteFest=key;crowdSig=''}
   landmarks(d.vote,d.season);decorate2(d.season)}
 
@@ -1276,7 +1245,7 @@ def page(panel, channel):
 # Every OBS source, with a sensible Browser Source size.
 SOURCES = [
     ('hub', 'Hub (rotating)', 'Everything in one panel: society, stats, today, the live event, the stream challenge, the colony vote, the season, project and story, market, leaders, working now, Seedlings, news and how to join. Rotates every 12 seconds; a live event or stream challenge shows every other slide. Adapts to any source shape: a side column (340×176 compact, 340×440 tall) or a band under the game (1440×120 strip).', 640, 360, '&seconds=12 · &slides=society,event,news · &layout=compact|tall|strip|wide to force a layout'),
-    ('map', 'Avesta map', 'New Eridian as a living town: buildings go up (with scaffolding and a crane) as the society grows, Seedlings walk the streets and talk in speech bubbles, the camera drifts in on whoever is speaking, the sky and weather follow Avesta, the town decorates itself for holidays, voted festivals and season milestones, projects the colony votes for are built as landmarks, and a stream challenge shows as a goal bar. Keep it at least a quarter of the screen, or use it as a card in a side column (340×250 or taller), where the caption sits below the town.', 960, 540, '&layout=card forces the column card · &quality=high (glows, water, flags) or low (lighter for slower PCs) · &stats=1 adds the society stat panel · &camera=0 fixed wide shot · &names=1 · &per=6 · &seconds=7 · preview: &hour=18 &holiday=christmas &weather=dust_winds'),
+    ('map', 'Avesta map', 'New Eridian as a living town: buildings go up (with scaffolding and a crane) as the society grows, Seedlings walk the streets and talk in speech bubbles, the camera drifts in on whoever is speaking, the sky and weather follow Avesta, the town decorates itself for holidays, voted festivals and season milestones, and projects the colony votes for are built as landmarks. Keep it at least a quarter of the screen, or use it as a card in a side column (340×250 or taller), where the caption sits below the town.', 960, 540, '&layout=card forces the column card · &quality=high (glows, water, flags) or low (lighter for slower PCs) · &stats=1 adds the society stat panel · &camera=0 fixed wide shot · &names=1 · &per=6 · &seconds=7 · preview: &hour=18 &holiday=christmas &weather=dust_winds'),
     ('ticker', 'News ticker', 'A TV-style lower third: every item has a coloured section tag (Event, Weather, News, Society, Today, Market, Holiday, Project, Report, Join) and the Avesta clock sits on the right.', 1920, 56, '&speed=80 · works at any height'),
     ('alerts', 'Live alerts', 'Animated pop-up for joins, level ups, achievements, events and milestones. Transparent when idle.', 700, 220, '&test=1 shows demo alerts · &sound=1 plays a chime · &seconds=7 · &hide=queue,join'),
     ('challenge', 'Stream challenge bar', 'The live stream challenge as a goal bar: it slides in when a challenge starts ("Dust storm! Everyone repair the walls"), counts down with a shared progress bar and the top helper, celebrates the result, then slides away. Transparent when nothing is running. Challenges only happen while the stream is live.', 900, 110, '&test=1 shows a demo challenge'),
@@ -1318,7 +1287,6 @@ OPTIONS = {
             dict(p='camera', label='Camera close-ups', kind='check', default=True, off='0'),
             dict(p='names', label='Names under Seedlings', kind='check', default=False, on='1'),
             dict(p='stats', label='Society stats panel', kind='check', default=False, on='1'),
-            dict(p='challenge', label='Stream challenge goal bar', kind='check', default=True, off='0'),
             dict(p='per', label='Seedlings per district', kind='number', default=0, min=1, max=10, step=1, blank='Auto'),
             dict(p='seconds', label='Seconds per caption', kind='number', default=7, min=3, max=60, step=1),
             dict(p='hour', label='Preview: time of day (0–24)', kind='number', default='', min=0, max=23.9, step=.5, blank='Live', preview=True),

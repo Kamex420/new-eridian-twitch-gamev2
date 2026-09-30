@@ -35,8 +35,7 @@
 
   `!live off` stops challenges. While live, a challenge starts about every 25 minutes (`LIVE_EVENT_GAP_MINUTES`). Moderators can also start or stop one with `!chstart [name]`, `!chstop`, or the `/mod` actions.
 - **On stream:**
-  - a goal bar on the map (top-left; a compact one-line bar in a side column);
-  - a Hub slide that takes every other turn while a challenge runs;
+  - a Hub slide that takes every other turn while a challenge runs (the map stays uncluttered);
   - a ticker item and alerts;
   - a new **Stream challenge bar** Browser Source (`/obs/challenge`, 900×110) that slides in, counts down and celebrates.
 
