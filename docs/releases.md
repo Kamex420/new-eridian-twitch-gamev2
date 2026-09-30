@@ -1,5 +1,14 @@
 # Release notes
 
+## Choose your own panel sizes; the map background fills any shape
+
+- **Your own sizes on `/obs`.** Every panel on the setup page now has its own **Width** and **Height** boxes, and the map and Hub also have a **Layout** menu:
+  - Map: Automatic, Card or Wide.
+  - Hub: Automatic, Compact, Tall, Wide or Strip.
+
+  The live preview redraws at exactly that size, the URL gains `&layout=` when you pick one, and **Reset** returns to the recommended size. Your choices are remembered in that browser. Type the same numbers into the Browser Source's Width and Height in OBS (Properties), rather than dragging its corners.
+- **The map background fills the whole source.** Square, tall and very wide sources used to show flat bands above and below the 16:9 scene, with a hard-edged vignette. The sky, stars, hills and vignette now reach every edge, whatever the shape.
+
 ## The Hub shows every word
 
 Hub slides no longer cut text off with "…". Long lines wrap onto the next line, and each slide shrinks its text until everything fits the source. If a slide still would not fit (for example three long news stories in a small box), it drops whole list entries from the end rather than cutting words. Every slide was checked at 340×176, 520×260, 640×360, 340×440 and 1440×120, with no text cut off or hidden and none smaller than 11 px.

@@ -137,3 +137,16 @@ def test_hub_never_cuts_text_off():
     hub = client.get('/obs/hub', params={'channel': 'test'}).text
     assert '.hub .grow,.hub .ell' in hub and 'text-overflow:clip' in hub
     assert 'lastElementChild.remove()' in hub and 'Math.ceil(W)+1' in hub
+
+
+def test_setup_page_lets_the_streamer_set_any_size_and_layout():
+    from test_colony import client
+    page = client.get('/obs', params={'channel': 'test'}).text
+    assert 'data-k="w"' in page and 'data-k="h"' in page and 'data-k="layout"' in page
+    assert "'&layout='" in page and 'localStorage' in page and 'Any size you like' in page
+
+
+def test_map_scenery_fills_any_source_shape():
+    from test_colony import client
+    page = client.get('/obs/map', params={'channel': 'test'}).text
+    assert '#map{overflow:visible}' in page and 'gradientUnits="userSpaceOnUse"' in page and 'class="vig"' in page

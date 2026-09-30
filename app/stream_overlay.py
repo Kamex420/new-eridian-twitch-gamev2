@@ -373,6 +373,9 @@ PAGES['map'] = (r"""
    and talk; a camera drifts in on whoever is speaking; sky, weather and holidays show. */
 body{padding:0}.wrap{position:fixed;inset:0;overflow:hidden;background:#1d1a24}
 svg{position:absolute;inset:0;width:100%;height:100%;display:block}
+/* The scenery reaches past the 16:9 frame (overflow visible), so any source shape is filled edge to edge. */
+#stage{position:absolute;inset:0;overflow:hidden}#map{overflow:visible}
+.vig{position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse at 50% 50%,transparent 62%,rgba(0,0,0,.45))}
 #world{transition:transform 2.8s cubic-bezier(.45,.05,.3,1)}
 .token .shirt{stroke:#0b0f24;stroke-width:2}
 .token .ini{font:900 11px var(--font-body);fill:#08101f;text-anchor:middle;dominant-baseline:central}
@@ -427,7 +430,7 @@ svg{position:absolute;inset:0;width:100%;height:100%;display:block}
 /* 'card' layout for a side column (e.g. 340×440): header, town, caption and stats stacked, none on top of another.
    District names become large icon badges and Seedlings are drawn bigger, so they read at column size. */
 .L-card .wrap{display:flex;flex-direction:column;border-radius:.9em;border:2px solid var(--edge);background:#1d1a24}
-.L-card #map{position:relative;inset:auto;flex:1 1 0;min-height:0;height:auto;order:1}
+.L-card #stage{position:relative;inset:auto;flex:1 1 0;min-height:0;order:1}
 .L-card .head{position:relative;order:0;height:auto;flex:none;flex-wrap:wrap;row-gap:.15em;padding:.35em .6em;gap:.45em;font-size:clamp(11px,4.8vw,34px)}
 .L-card .head .info{margin-left:0;width:100%;font-size:.72em}
 .L-card .cap{position:relative;order:2;right:auto;bottom:auto;width:auto;margin:.35em .45em 0;font-size:clamp(11px,4.3vw,30px);flex:none}
@@ -446,9 +449,9 @@ svg{position:absolute;inset:0;width:100%;height:100%;display:block}
 @keyframes glitch{0%{opacity:1;transform:translateX(-4%)}100%{opacity:0;transform:translateX(4%)}}
 """, r"""
 <div class="wrap" id="wrap">
-<svg id="map" viewBox="0 0 960 540" preserveAspectRatio="xMidYMid meet">
+<div id="stage"><svg id="map" viewBox="0 0 960 540" preserveAspectRatio="xMidYMid meet">
  <defs>
-  <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop id="sky0" offset="0" stop-color="#2b3350"/><stop id="sky1" offset=".6" stop-color="#4a4636"/><stop id="sky2" offset="1" stop-color="#3a3527"/></linearGradient>
+  <linearGradient id="sky" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="540"><stop id="sky0" offset="0" stop-color="#2b3350"/><stop id="sky1" offset=".6" stop-color="#4a4636"/><stop id="sky2" offset="1" stop-color="#3a3527"/></linearGradient>
   <radialGradient id="domeg" cx="35%" cy="30%" r="75%"><stop offset="0" stop-color="#ffffff" stop-opacity=".95"/><stop offset=".5" stop-color="#bfe8ff" stop-opacity=".7"/><stop offset="1" stop-color="#5aa6c8" stop-opacity=".55"/></radialGradient>
   <radialGradient id="vignette" cx="50%" cy="50%" r="72%"><stop offset=".62" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".45"/></radialGradient>
   <radialGradient id="glowdot"><stop offset="0" stop-color="#ffd98a" stop-opacity=".75"/><stop offset="1" stop-color="#ffd98a" stop-opacity="0"/></radialGradient>
@@ -456,7 +459,7 @@ svg{position:absolute;inset:0;width:100%;height:100%;display:block}
   <radialGradient id="shadeg"><stop offset="0" stop-color="#000" stop-opacity=".22"/><stop offset="1" stop-color="#000" stop-opacity="0"/></radialGradient>
   <linearGradient id="aurorag" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#7ee3b0" stop-opacity="0"/><stop offset=".5" stop-color="#7ee3b0" stop-opacity=".45"/><stop offset="1" stop-color="#70ddff" stop-opacity="0"/></linearGradient>
  </defs>
- <rect width="960" height="540" fill="url(#sky)"/><g id="stars"></g><g id="aurora"></g><g id="sun"></g><g id="skyclouds"></g>
+ <rect x="-2000" y="-2000" width="4960" height="4540" fill="url(#sky)"/><g id="stars"></g><g id="aurora"></g><g id="sun"></g><g id="skyclouds"></g>
  <path id="hills" fill="#39344a" opacity=".85"/><path id="hills2" fill="#2f2b3d" opacity=".95"/>
  <g id="world" style="transform:translate(480px,282px) scale(1.15) translate(-480px,-254px)">
   <g id="ground"></g><path id="shadows" fill="#141428" opacity="0" style="transition:opacity 4s"/><g id="city"></g><g id="festive"></g><g id="crowd"></g><g id="shades"></g>
@@ -464,9 +467,8 @@ svg{position:absolute;inset:0;width:100%;height:100%;display:block}
   <rect id="haze" x="-600" y="-400" width="2160" height="1400" fill="transparent" style="pointer-events:none;transition:fill 4s"/>
   <g id="lights" style="pointer-events:none"></g><g id="labels"></g><g id="tokens"></g>
  </g>
- <rect width="960" height="540" fill="url(#vignette)" style="pointer-events:none"/>
  <g id="fx"></g>
-</svg>
+</svg><div class="vig"></div></div>
 <div class="head"><span class="name">🏙️ New Eridian</span><span class="tier" id="tier">—</span><span class="hol" id="hol"></span><span class="info" id="info">Connecting to Avesta…</span></div>
 <div class="toast" id="toast"></div><div class="stats hide" id="stats"></div>
 <div class="cap hide" id="cap"></div>
@@ -560,10 +562,10 @@ function scaffold(g,i,j,crane){const [t,r,b,l]=diamond(i,j,1,1,.15),h=22,c='#d4a
 
 // ---- terrain and streets, drawn once
 (function terrain(){const g=document.getElementById('ground');
-  const hill=(id,base,amp,seed)=>{const r=rng(seed);let d=`M0 ${base}`;for(let x=0;x<=960;x+=40)d+=` L${x} ${base-amp*r()}`;document.getElementById(id).setAttribute('d',d+' L960 540 L0 540 Z')};hill('hills',160,60,'h1');hill('hills2',205,45,'h2');
+  const hill=(id,base,amp,seed)=>{const r=rng(seed);let d=`M-2000 ${base}`;for(let x=-2000;x<=2960;x+=40)d+=` L${x} ${base-amp*r()}`;document.getElementById(id).setAttribute('d',d+' L2960 2600 L-2000 2600 Z')};hill('hills',160,60,'h1');hill('hills2',205,45,'h2');
   el('polygon',{points:pts(diamond(-1.4,-1.4,N+2.8,N+2.8)),fill:'#5e5638',stroke:'#4a4330','stroke-width':3},g);
   const r=rng('wild');for(let k=0;k<50;k++){const i=-1.2+r()*(N+2.4),j=-1.2+r()*(N+2.4);if(i>-.2&&i<N+.2&&j>-.2&&j<N+.2)continue;const [x,y]=iso(i,j);el('circle',{cx:x,cy:y-3,r:2.5+r()*3.5,fill:r()<.6?'#4f7a3a':'#6e6552'},g)}
-  const s=document.getElementById('stars');const sr=rng('stars');for(let k=0;k<70;k++){const x=sr()*960,y=40+sr()*200;el('circle',{class:sr()<.3?'twinkle':'',cx:x,cy:y,r:.6+sr()*1.3,fill:'#fff'},s)}
+  const s=document.getElementById('stars');const sr=rng('stars');for(let k=0;k<140;k++){const x=-500+sr()*1960,y=-360+sr()*600;el('circle',{class:sr()<.3?'twinkle':'',cx:x,cy:y,r:.6+sr()*1.3,fill:'#fff'},s)}
   const c=document.getElementById('skyclouds');for(let k=0;k<4;k++){const cg=el('g',{class:'cloud',style:`animation-duration:${150+k*40}s;animation-delay:-${k*55}s`},c),y=70+k*28;
     for(const [dx,dy,rx] of [[0,0,34],[26,-8,26],[-24,-4,22],[48,2,20]])el('ellipse',{cx:dx,cy:y+dy,rx,ry:rx*.45,fill:'#fff',opacity:.8},cg)}
   const sh=document.getElementById('shades');for(let k=0;k<3;k++){el('ellipse',{class:'shade',cx:300+k*120,cy:180+k*60,rx:120,ry:55,fill:'url(#shadeg)',style:`animation-duration:${80+k*25}s;animation-delay:-${k*30}s`},sh)}})();
@@ -1120,6 +1122,11 @@ SOURCES = [
 ]
 
 
+# Layout choices offered on the setup page (empty value = pick automatically from the size).
+LAYOUT_CHOICES = {'map': [('', 'Automatic'), ('card', 'Card (side column)'), ('wide', 'Wide (full map)')],
+                  'hub': [('', 'Automatic'), ('compact', 'Compact (small box)'), ('tall', 'Tall (column)'), ('wide', 'Wide (16:9)'), ('strip', 'Strip (one row)')]}
+
+
 def setup_page(channel):
     from html import escape
     from urllib.parse import quote
@@ -1129,9 +1136,12 @@ def setup_page(channel):
         url = f'/obs/{key}?channel={channel}'
         preview = url + ('&test=1' if key == 'alerts' else '')
         scale = min(1, 560 / w)
-        cards.append(f'''<article><div class="head"><h2>{title}</h2><span>{w} × {h}</span></div><p>{text}</p>
-<div class="url"><input readonly value="" data-path="{url}"><button>Copy</button></div>{f'<p class="params">Options: {params}</p>' if params else ''}
-<div class="preview" style="height:{int(h * scale) + 2}px"><iframe src="{preview}" style="width:{w}px;height:{h}px;transform:scale({scale})"></iframe></div></article>''')
+        layouts = LAYOUT_CHOICES.get(key)
+        pick = (f'<label>Layout <select data-k="layout">' + ''.join(f'<option value="{v}">{t}</option>' for v, t in layouts) + '</select></label>') if layouts else ''
+        cards.append(f'''<article data-key="{key}" data-w="{w}" data-h="{h}" data-url="{url}" data-preview="{preview}"><div class="head"><h2>{title}</h2><span>Recommended {w} × {h}</span></div><p>{text}</p>
+<div class="size"><label>Width <input type="number" min="100" max="3840" step="1" data-k="w" value="{w}"></label><span>×</span><label>Height <input type="number" min="40" max="2160" step="1" data-k="h" value="{h}"></label>{pick}<button class="reset" type="button">Reset</button></div>
+<div class="url"><input readonly value=""><button>Copy</button></div>{f'<p class="params">Options: {params}</p>' if params else ''}
+<div class="preview"><iframe loading="lazy"></iframe></div></article>''')
     return f'''<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>New Eridian · OBS setup</title>
 {FONTS_LINK}<style>{THEME_CSS}{BASE_CSS}
 html,body{{overflow:auto;height:auto;background:#0b0d1c}}body{{padding:28px 16px;max-width:1240px;margin:0 auto}}
@@ -1142,15 +1152,35 @@ article{{padding:16px;border-radius:14px;background:rgba(255,255,255,.035);borde
 .rec{{margin-top:12px;padding:12px 16px;border-radius:12px;background:rgba(126,227,176,.1);border:1px solid rgba(126,227,176,.4);color:#dff7ea;line-height:1.5;max-width:900px}}
 h2.sec{{margin:28px 0 0;font:700 20px var(--font-display);color:var(--ivory)}}h2{{margin:0;font-size:19px}}.head span{{color:var(--cyan);font-size:13px;font-weight:700}}
 article p{{color:var(--muted);font-size:14px;line-height:1.45;margin:6px 0}}.params{{font-size:12px!important;color:#8f8bb3!important}}
+.size{{display:flex;flex-wrap:wrap;align-items:flex-end;gap:8px;margin-top:10px}}.size label{{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--muted);font-weight:700}}
+.size input,.size select{{width:96px;padding:7px 8px;border-radius:8px;border:1px solid rgba(255,255,255,.18);background:#060816;color:var(--text);font:600 14px var(--font-body)}}.size select{{width:auto}}
+.size>span{{padding-bottom:8px;color:var(--muted)}}.size .reset{{padding:8px 12px;border-radius:8px;border:1px solid rgba(255,255,255,.18);background:transparent;color:var(--text);font-weight:700;cursor:pointer}}
 .url{{display:flex;gap:8px;margin-top:10px}}.url input{{flex:1;min-width:0;padding:8px 10px;border-radius:8px;border:1px solid rgba(255,255,255,.14);background:#060816;color:var(--green2);font:13px ui-monospace,monospace}}
 .url button{{padding:8px 14px;border-radius:8px;border:0;background:var(--green);color:#07101d;font-weight:800;cursor:pointer}}
 .preview{{margin-top:12px;border-radius:10px;overflow:hidden;background:repeating-conic-gradient(#1a1d33 0 25%,#141629 0 50%) 0 0/22px 22px;position:relative}}
 .preview iframe{{border:0;transform-origin:0 0;position:absolute;left:0;top:0;pointer-events:none;background:transparent}}
 </style></head><body><header><div class="eyebrow">OBS setup</div><h1>New Eridian stream overlay</h1>
-<p>Add each panel you want as an OBS <b>Browser Source</b>: paste its URL, set the width and height shown, and leave "Custom CSS" empty. Panels have transparent backgrounds. Changes in the game appear within a few seconds.</p>
+<p>Add each panel you want as an OBS <b>Browser Source</b>: paste its URL, set its width and height, and leave "Custom CSS" empty. Panels have transparent backgrounds. Changes in the game appear within a few seconds.</p>
+<div class="rec"><b>Any size you like.</b> Type the width and height of the space you have into a panel's boxes: the preview redraws at exactly that size and the layout adapts (the map and Hub also let you pick a layout). Then type the <b>same numbers</b> into the Browser Source's <b>Width</b> and <b>Height</b> in OBS (right-click the source → Properties), rather than dragging its corners, which only stretches the picture. Your sizes are remembered in this browser.</div>
 <div class="rec"><b>Recommended: four sources carry everything.</b> Hub (rotating information), Avesta map, News ticker along the bottom, and Live alerts. The other panels below show one slide of the Hub each, if you prefer fixed panels. The full dashboard is still at <code>/overlay?channel={shown}</code>.</div></header>
 <h2 class="sec">Recommended</h2><main>{''.join(cards[:4])}</main>
 <h2 class="sec">Individual panels (optional)</h2><main>{''.join(cards[4:])}</main>
-<script>for(const i of document.querySelectorAll('input[data-path]'))i.value=location.origin+i.dataset.path;
+<script>
+// Every source: type your own width and height (and layout); the preview redraws at that exact size and the URL follows. Saved in this browser.
+const load=k=>{{try{{return JSON.parse(localStorage.getItem('ne-obs:'+k)||'{{}}')}}catch(e){{return {{}}}}}},save=(k,v)=>{{try{{localStorage.setItem('ne-obs:'+k,JSON.stringify(v))}}catch(e){{}}}};
+for(const a of document.querySelectorAll('article[data-key]')){{
+  const key=a.dataset.key,W=a.querySelector('[data-k=w]'),H=a.querySelector('[data-k=h]'),L=a.querySelector('[data-k=layout]'),url=a.querySelector('.url input'),frame=a.querySelector('iframe'),box=a.querySelector('.preview'),tag=a.querySelector('.head span');
+  const saved=load(key);if(saved.w)W.value=saved.w;if(saved.h)H.value=saved.h;if(L&&saved.layout!=null)L.value=saved.layout;
+  let timer=null;
+  const draw=()=>{{const w=Math.max(100,Math.min(3840,+W.value||+a.dataset.w)),h=Math.max(40,Math.min(2160,+H.value||+a.dataset.h)),lay=L?L.value:'';
+    const q=lay?'&layout='+lay:'';url.value=location.origin+a.dataset.url+q;
+    const scale=Math.min(1,(box.clientWidth||560)/w);box.style.height=Math.round(h*scale)+2+'px';frame.style.width=w+'px';frame.style.height=h+'px';frame.style.transform=`scale(${{scale}})`;
+    const src=a.dataset.preview+q;if(frame.dataset.src!==src+w+'x'+h){{frame.dataset.src=src+w+'x'+h;frame.src=src}}
+    tag.textContent=(w==+a.dataset.w&&h==+a.dataset.h?'Recommended ':'Your size ')+w+' × '+h;
+    save(key,{{w,h,layout:lay}})}};
+  for(const i of [W,H,L].filter(Boolean))i.addEventListener('input',()=>{{clearTimeout(timer);timer=setTimeout(draw,350)}});
+  a.querySelector('.reset').onclick=()=>{{W.value=a.dataset.w;H.value=a.dataset.h;if(L)L.value='';draw()}};
+  draw()}}
+addEventListener('resize',()=>document.querySelectorAll('article[data-key] [data-k=w]').forEach(i=>i.dispatchEvent(new Event('input'))));
 for(const b of document.querySelectorAll('.url button'))b.onclick=()=>{{const i=b.previousElementSibling;i.select();navigator.clipboard&&navigator.clipboard.writeText(i.value);b.textContent='Copied';setTimeout(()=>b.textContent='Copy',1500)}};</script>
 </body></html>'''
