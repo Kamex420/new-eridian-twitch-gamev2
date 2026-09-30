@@ -1523,6 +1523,22 @@
           "value": "off"
         }
       ]
+    },
+    {
+      "type": 3,
+      "name": "feed",
+      "description": "Show your gathering, crafting, level ups and trophies in the channel activity feed",
+      "required": false,
+      "choices": [
+        {
+          "name": "On: show my activity",
+          "value": "on"
+        },
+        {
+          "name": "Off: keep my activity private",
+          "value": "off"
+        }
+      ]
     }
   ],
   "menu": [],
@@ -1747,6 +1763,14 @@
         {
           "name": "Weekly recap: post now",
           "value": "recappost"
+        },
+        {
+          "name": "Activity feed: post here",
+          "value": "feedhere"
+        },
+        {
+          "name": "Activity feed: off",
+          "value": "feedoff"
         }
       ]
     },
@@ -1910,6 +1934,448 @@
     }
   ],
   "challenge": [],
+  "customize": [
+    {
+      "type": 3,
+      "name": "skin",
+      "description": "Skin tone",
+      "required": false,
+      "choices": [
+        {
+          "name": "Porcelain",
+          "value": "porcelain"
+        },
+        {
+          "name": "Fair",
+          "value": "fair"
+        },
+        {
+          "name": "Warm beige",
+          "value": "beige"
+        },
+        {
+          "name": "Golden",
+          "value": "golden"
+        },
+        {
+          "name": "Tan",
+          "value": "tan"
+        },
+        {
+          "name": "Olive",
+          "value": "olive"
+        },
+        {
+          "name": "Bronze",
+          "value": "bronze"
+        },
+        {
+          "name": "Brown",
+          "value": "brown"
+        },
+        {
+          "name": "Deep",
+          "value": "deep"
+        },
+        {
+          "name": "Ebony",
+          "value": "ebony"
+        },
+        {
+          "name": "Avesta moss",
+          "value": "moss"
+        },
+        {
+          "name": "Avesta sky",
+          "value": "sky"
+        },
+        {
+          "name": "Avesta lavender",
+          "value": "lavender"
+        },
+        {
+          "name": "Avesta coral",
+          "value": "coral"
+        },
+        {
+          "name": "↺ Back to its original look",
+          "value": "random"
+        }
+      ]
+    },
+    {
+      "type": 3,
+      "name": "hair",
+      "description": "Hair style",
+      "required": false,
+      "choices": [
+        {
+          "name": "Short",
+          "value": "short"
+        },
+        {
+          "name": "Long",
+          "value": "long"
+        },
+        {
+          "name": "Curly",
+          "value": "curly"
+        },
+        {
+          "name": "Bun",
+          "value": "bun"
+        },
+        {
+          "name": "Spiky",
+          "value": "spiky"
+        },
+        {
+          "name": "Mohawk",
+          "value": "mohawk"
+        },
+        {
+          "name": "Pigtails",
+          "value": "pigtails"
+        },
+        {
+          "name": "Braid",
+          "value": "braid"
+        },
+        {
+          "name": "Bald",
+          "value": "bald"
+        },
+        {
+          "name": "↺ Back to its original look",
+          "value": "random"
+        }
+      ]
+    },
+    {
+      "type": 3,
+      "name": "hair_colour",
+      "description": "Hair colour",
+      "required": false,
+      "choices": [
+        {
+          "name": "Black",
+          "value": "black"
+        },
+        {
+          "name": "Dark brown",
+          "value": "dark_brown"
+        },
+        {
+          "name": "Auburn",
+          "value": "auburn"
+        },
+        {
+          "name": "Ginger",
+          "value": "ginger"
+        },
+        {
+          "name": "Blonde",
+          "value": "blonde"
+        },
+        {
+          "name": "Silver",
+          "value": "silver"
+        },
+        {
+          "name": "White",
+          "value": "white"
+        },
+        {
+          "name": "Pink",
+          "value": "pink"
+        },
+        {
+          "name": "Teal",
+          "value": "teal"
+        },
+        {
+          "name": "Purple",
+          "value": "purple"
+        },
+        {
+          "name": "Blue",
+          "value": "blue"
+        },
+        {
+          "name": "Green",
+          "value": "green"
+        },
+        {
+          "name": "↺ Back to its original look",
+          "value": "random"
+        }
+      ]
+    },
+    {
+      "type": 3,
+      "name": "outfit",
+      "description": "Outfit colour (or follow its mood)",
+      "required": false,
+      "choices": [
+        {
+          "name": "Follows its mood",
+          "value": "mood"
+        },
+        {
+          "name": "Red",
+          "value": "red"
+        },
+        {
+          "name": "Orange",
+          "value": "orange"
+        },
+        {
+          "name": "Yellow",
+          "value": "yellow"
+        },
+        {
+          "name": "Green",
+          "value": "green"
+        },
+        {
+          "name": "Teal",
+          "value": "teal"
+        },
+        {
+          "name": "Blue",
+          "value": "blue"
+        },
+        {
+          "name": "Navy",
+          "value": "navy"
+        },
+        {
+          "name": "Purple",
+          "value": "purple"
+        },
+        {
+          "name": "Pink",
+          "value": "pink"
+        },
+        {
+          "name": "White",
+          "value": "white"
+        },
+        {
+          "name": "Black",
+          "value": "black"
+        },
+        {
+          "name": "Brown",
+          "value": "brown"
+        },
+        {
+          "name": "↺ Back to its original look",
+          "value": "random"
+        }
+      ]
+    },
+    {
+      "type": 3,
+      "name": "accessory",
+      "description": "Accessory",
+      "required": false,
+      "choices": [
+        {
+          "name": "None",
+          "value": "none"
+        },
+        {
+          "name": "Glasses",
+          "value": "glasses"
+        },
+        {
+          "name": "Sunglasses",
+          "value": "sunglasses"
+        },
+        {
+          "name": "Scarf",
+          "value": "scarf"
+        },
+        {
+          "name": "Bow tie",
+          "value": "bowtie"
+        },
+        {
+          "name": "Backpack",
+          "value": "backpack"
+        },
+        {
+          "name": "Flower",
+          "value": "flower"
+        },
+        {
+          "name": "Headphones",
+          "value": "headphones"
+        },
+        {
+          "name": "↺ Back to its original look",
+          "value": "random"
+        }
+      ]
+    },
+    {
+      "type": 3,
+      "name": "headwear",
+      "description": "Job hat, or no hat to show your hair",
+      "required": false,
+      "choices": [
+        {
+          "name": "Job hat (farmers wear straw hats, miners helmets…)",
+          "value": "job"
+        },
+        {
+          "name": "No hat: show my hair",
+          "value": "none"
+        },
+        {
+          "name": "↺ Back to its original look",
+          "value": "random"
+        }
+      ]
+    },
+    {
+      "type": 3,
+      "name": "attitude",
+      "description": "Attitude: how it talks on stream",
+      "required": false,
+      "choices": [
+        {
+          "name": "Cheerful: always looks on the bright side",
+          "value": "cheerful"
+        },
+        {
+          "name": "Grumpy: complains, but always shows up",
+          "value": "grumpy"
+        },
+        {
+          "name": "Shy: quiet, kind and a little nervous",
+          "value": "shy"
+        },
+        {
+          "name": "Bold: loud, brave and first in line",
+          "value": "bold"
+        },
+        {
+          "name": "Dreamy: always a little lost in thought",
+          "value": "dreamy"
+        },
+        {
+          "name": "Sarcastic: dry humour for every occasion",
+          "value": "sarcastic"
+        },
+        {
+          "name": "Curious: asks about everything",
+          "value": "curious"
+        },
+        {
+          "name": "Chill: takes it easy, all the time",
+          "value": "chill"
+        },
+        {
+          "name": "Dramatic: everything is a big deal",
+          "value": "dramatic"
+        },
+        {
+          "name": "Wise: calm, thoughtful and full of sayings",
+          "value": "wise"
+        },
+        {
+          "name": "↺ Back to its original look",
+          "value": "random"
+        }
+      ]
+    },
+    {
+      "type": 3,
+      "name": "catchphrase",
+      "description": "A catchphrase it says now and then",
+      "required": false,
+      "choices": [
+        {
+          "name": "Let’s go!",
+          "value": "lets_go"
+        },
+        {
+          "name": "For New Eridian!",
+          "value": "for_eridian"
+        },
+        {
+          "name": "Rocky would approve.",
+          "value": "rocky"
+        },
+        {
+          "name": "Another day, another ore.",
+          "value": "ore"
+        },
+        {
+          "name": "Ducks deliver, and so do I.",
+          "value": "ducks"
+        },
+        {
+          "name": "Stay comfy, friends.",
+          "value": "comfy"
+        },
+        {
+          "name": "Science!",
+          "value": "science"
+        },
+        {
+          "name": "Big plans today.",
+          "value": "plans"
+        },
+        {
+          "name": "Just vibing.",
+          "value": "vibing"
+        },
+        {
+          "name": "One more craft…",
+          "value": "one_more"
+        },
+        {
+          "name": "Avesta is beautiful today.",
+          "value": "beautiful"
+        },
+        {
+          "name": "Who moved my Lumber?",
+          "value": "lumber"
+        },
+        {
+          "name": "Siro? Never heard of it.",
+          "value": "siro"
+        },
+        {
+          "name": "Hard work, soft bed.",
+          "value": "soft_bed"
+        },
+        {
+          "name": "Snacks first.",
+          "value": "snacks"
+        },
+        {
+          "name": "Teamwork makes the dream work.",
+          "value": "teamwork"
+        },
+        {
+          "name": "Stay sparkly!",
+          "value": "sparkle"
+        },
+        {
+          "name": "Hello, chat!",
+          "value": "hello"
+        },
+        {
+          "name": "↺ Back to its original look",
+          "value": "random"
+        }
+      ]
+    }
+  ],
   "trophies": [
     {
       "type": 3,

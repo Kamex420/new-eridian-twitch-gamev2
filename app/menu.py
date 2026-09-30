@@ -57,21 +57,23 @@ AREAS = {
     'choices': ('🧭', 'Choices', 'Job, district, shift, delivery partner, title, specialization and display style.',
                 ['job', 'district', 'shift', 'duck', 'title', 'specialize', 'display_compact', 'display_detailed']),
     'settings': ('⚙️', 'Settings', 'How queue alerts and notifications reach you, and whether queues recover by themselves.',
-                 ['alerts', 'popups', 'auto_on', 'auto_off']),
+                 ['alerts', 'popups', 'auto_on', 'auto_off', 'feed_on', 'feed_off']),
     'help': ('📖', 'Help', 'What to do next, a guide for any goal, search, and the handbook.', ['guide', 'guidegoal', 'find', 'h_topics']),
     'seedling': ('🌱', 'My Seedling', 'Your Seedling lives its own day: mood, thoughts, schedule, diary and autonomy.',
-                 ['sl_view', 'sl_decide', 'sl_diary', 'sl_schedule', 'sl_custom', 'sl_on', 'sl_off']),
+                 ['sl_view', 'sl_decide', 'sl_diary', 'looks', 'sl_schedule', 'sl_custom', 'sl_on', 'sl_off']),
+    'looks': ('🎨', 'Looks & personality', 'Make your Seedling yours: how it looks on the stream map and how it talks. Purely cosmetic.',
+              ['lk_view', 'lk_skin', 'lk_hair', 'lk_hair_colour', 'lk_outfit', 'lk_accessory', 'lk_headwear', 'lk_attitude', 'lk_catchphrase']),
     'account': ('🔗', 'Account', 'Create your citizen, or link your Twitch citizen: type !link in Twitch chat, then enter the code here.',
                 ['start', 'link']),
     'mod': ('🛡️', 'Moderator', 'Events, the moderator log, account lookups and the channel panels. Moderators only.',
-            ['m_eventstart', 'm_eventstop', 'm_chalstart', 'm_chalstop', 'm_live', 'm_recap', 'm_recappost', 'm_modlog', 'm_lookup', 'm_guidepanels',
-             'm_menupanel', 'h_moderator']),
+            ['m_eventstart', 'm_eventstop', 'm_chalstart', 'm_chalstop', 'm_live', 'm_recap', 'm_recappost', 'm_feed', 'm_modlog', 'm_lookup',
+             'm_guidepanels', 'm_menupanel', 'h_moderator']),
 }
 # Areas only moderators see on the Home screen.
 MOD_AREAS = {'mod'}
 # Commands a menu button may only run for moderators (linklookup: owners).
 MOD_COMMANDS = {'eventstart', 'eventstop', 'modlog', 'guidepanels', 'menupanel', 'linklookup',
-                'challengestart', 'challengestop', 'liveon', 'liveoff', 'liveauto', 'recappreview', 'recappost'}
+                'challengestart', 'challengestop', 'liveon', 'liveoff', 'liveauto', 'recappreview', 'recappost', 'feedhere', 'feedoff'}
 
 # Leaves: key -> dict(label, emoji, kind, cmd, opts, hint[, pick, then]).
 #   kind 'do'   spends or changes something: a one-time ticket button
@@ -227,6 +229,16 @@ leaf('sl_diary', 'Diary', '📓', 'view', 'seedling', {'section': 'diary'}, hint
 leaf('sl_schedule', 'Schedule preset', '🗓️', 'pick', 'seedling', pick='field:seedling:schedule', then='do', option='schedule',
      hint='balanced, workaholic, night owl, socialite or homebody')
 leaf('sl_custom', 'Custom schedule', '🧩', 'nav', nav=('lp',), hint='choose Work, Free time, Social or Sleep for each phase')
+leaf('lk_view', 'My look', '🪞', 'view', 'customize', hint='everything you have chosen')
+for _field, _label, _emoji, _hint in [('skin', 'Skin tone', '🎨', 'fourteen tones, including Avesta colours'),
+                                      ('hair', 'Hair style', '💇', 'short, long, curly, bun, spiky and more'),
+                                      ('hair_colour', 'Hair colour', '🌈', 'natural and bright colours'),
+                                      ('outfit', 'Outfit colour', '👕', 'a colour, or follow its mood'),
+                                      ('accessory', 'Accessory', '👓', 'glasses, scarf, bow tie, backpack…'),
+                                      ('headwear', 'Headwear', '🧢', 'its job hat, or no hat so its hair shows'),
+                                      ('attitude', 'Attitude', '💬', 'how it talks in its speech bubbles'),
+                                      ('catchphrase', 'Catchphrase', '🗯️', 'something it says now and then on stream')]:
+    leaf('lk_' + _field, _label, _emoji, 'pick', 'customize', pick=f'field:customize:{_field}', then='do', option=_field, hint=_hint)
 leaf('sl_on', 'Autonomy on', '🌱', 'do', 'seedling', {'autonomy': 'on'}, hint='it lives its schedule while you are away')
 leaf('sl_off', 'Autonomy off', '✋', 'do', 'seedling', {'autonomy': 'off'}, hint='it waits for you')
 # Account
@@ -251,6 +263,11 @@ leaf('m_liveoff', 'Stream is offline', '⚫', 'do', 'liveoff', hint='no stream c
 leaf('m_liveauto', 'Automatic', '🔁', 'do', 'liveauto', hint='live when people use Twitch commands')
 leaf('m_recap', 'Weekly recap preview', '📰', 'view', 'recappreview', hint='what Sunday\'s post will say')
 leaf('m_recappost', 'Post weekly recap now', '📣', 'do', 'recappost', hint='posts to the recap channel')
+leaf('m_feed', 'Activity feed…', '📣', 'pick', 'feedhere', pick='leaves:m_feedhere,m_feedoff', then='leaf', hint='a live feed of what everyone does, in a channel')
+leaf('m_feedhere', 'Post the feed here', '📣', 'do', 'feedhere', hint='this channel shows what everyone gathers, crafts and unlocks')
+leaf('m_feedoff', 'Feed off', '🔕', 'do', 'feedoff', hint='stop the activity feed')
+leaf('feed_on', 'Show me in the feed', '📣', 'do', 'settings', {'feed': 'on'}, hint='your gathering, crafting and trophies appear in the channel feed')
+leaf('feed_off', 'Hide me from the feed', '🙈', 'do', 'settings', {'feed': 'off'}, hint='keep your activity out of the channel feed')
 leaf('h_moderator', 'Moderator help', '📖', 'view', 'seed', {'topic': 'moderator'}, hint='')
 # Community
 leaf('c_vote', 'Colony vote', '🗳️', 'view', 'vote', hint="today's ballot and how it is going")
@@ -361,6 +378,9 @@ class Ctx:
             return bool(sale) and (self.m.now() - self.m.as_utc(datetime.fromisoformat(sale['at']))).total_seconds() <= self.m.extras.UNDO_SECONDS
         return self.get('undo', read)
 
+    def feed_hidden(self):
+        return self.get('feed', lambda: self.m.activity_feed.hidden(self.db, self.p))
+
     def challenge_active(self):
         return self.get('challenge', lambda: self.m.live_events.active(self.m, self.db) is not None)
 
@@ -427,6 +447,8 @@ WHEN = {
     'm_eventstart': (lambda c: not c.event_active(), 'an event is already running'),
     'm_eventstop': (lambda c: c.event_active(), 'no event is running'),
     'm_chalstart': (lambda c: not c.challenge_active(), 'a stream challenge is running'),
+    'feed_on': (lambda c: c.feed_hidden(), 'your activity already shows in the feed'),
+    'feed_off': (lambda c: not c.feed_hidden(), 'your activity is already hidden'),
     'm_chalstop': (lambda c: c.challenge_active(), 'no stream challenge is running'),
     'c_hat': (lambda c: c.has('hats'), 'no cosmetic hats yet: reach Silver this season'),
     'c_badge': (lambda c: c.has('badges'), 'no trophies yet'),
@@ -435,7 +457,7 @@ WHEN = {
 }
 # Toggles and one-way switches: the hidden side is just the current state, so it is not listed as unavailable.
 TOGGLES = {'auto_on', 'auto_off', 'sl_on', 'sl_off', 'display_compact', 'display_detailed', 'bstart', 'm_eventstart', 'm_eventstop', 'link', 'account',
-           'm_chalstart', 'm_chalstop'}
+           'm_chalstart', 'm_chalstop', 'feed_on', 'feed_off'}
 
 
 def can(ctx, key):
@@ -822,11 +844,15 @@ def show(m, db, p, owner, command, options, area, name, key=''):
     text = m._discord_call_internal(command, owner, name, options, '')
     legacy, legacy_options = m.discord_legacy_route(command, options)
     panel = ui.slash_panel(m, legacy, owner, name, legacy_options, text)
+    bottom = nav(owner, area)
+    shared = ui.share_button(owner, legacy, legacy_options)
+    if shared:
+        bottom = ui.row(shared, *((bottom or {}).get('components') or []))
     if panel is not None:
         rows = [r for r in panel.get('components', []) if r.get('components')]
-        panel['components'] = rows[:4] + [nav(owner, area)]
+        panel['components'] = rows[:4] + [bottom]
         return panel
-    return reply(m, text, legacy, grid(m, owner, children_of(m, area, context(m, owner, db, p)), rows=3) + [nav(owner, area)])
+    return reply(m, text, legacy, grid(m, owner, children_of(m, area, context(m, owner, db, p)), rows=3) + [bottom])
 
 
 # ---------------------------------------------------------------- actions (one-time tickets)
@@ -871,12 +897,13 @@ def after_command(m, command, options, uid):
         buttons.append(ui.button('Again', ui.cid(uid, 't', ticket), style=3, emoji='🔁'))
     if legacy == 'seedindustries' and legacy_options.get('action') == 'sellall':
         buttons.append(ui.button('Undo sale (60s)', ui.cid(uid, 't', ui.issue(m, uid, {'do': 'undo'})), style=4, emoji='↩️'))
+    buttons.append(ui.share_button(uid, legacy, legacy_options))
     area = COMMAND_AREA.get(legacy, 'home')
     if area != 'home':
         emoji, title, _, _ = AREAS[area]
         buttons.append(ui.button(title, ui.cid(uid, 'mn', area), emoji=emoji))
     buttons.append(ui.button('Menu', ui.cid(uid, 'mn', 'home'), emoji='🏠'))
-    return ui.row(*buttons)
+    return ui.row(*[b for b in buttons if b])
 
 
 def after_rows(m, command, options, uid, room=2):

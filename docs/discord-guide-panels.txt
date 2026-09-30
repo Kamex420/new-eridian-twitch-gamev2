@@ -32,6 +32,9 @@ The Holidays panel's COMING UP part is worked out when the bot posts it; the cop
 [0;33m/link
 [0mType !link in Twitch chat, then enter the code here. Both
 [0maccounts become one citizen.
+[0;33mTwitch is the lite version
+[0mCrafting, queues, trading, homes and customizing your
+[0mSeedling are here on Discord.
 [1;32mRECOVER → WORK → GATHER → MAKE → IMPROVE → CONTRIBUTE
 ```
 
@@ -76,8 +79,9 @@ The Holidays panel's COMING UP part is worked out when the bot posts it; the cop
 [0mgathered.
 [0;33m/seedling → Schedule
 [0mBalanced, workaholic, night owl, socialite or homebody.
-[0;33m🎲 Let it decide
-[0mYour Seedling picks its next step right now.
+[0;33m/customize
+[0mSkin tone, hair, outfit, accessory, attitude and a
+[0mcatchphrase. Your look shows on the stream map.
 [1;36mGOOD TO KNOW
 [0;33mAutonomy
 [0mAfter 10 minutes without a command it works, eats, sleeps
@@ -305,8 +309,9 @@ The Holidays panel's COMING UP part is worked out when the bot posts it; the cop
 [1;37mEvery command, grouped. /menu shows all of them as
 [1;37mbuttons.
 [1;36mYOU
-[0;33m/status  /me  /seedling  /inventory  /settings
-[0mNeeds, profile, your Seedling, items and preferences.
+[0;33m/status  /me  /seedling  /customize  /inventory  /settings
+[0mNeeds, profile, your Seedling and its look, items and
+[0mpreferences.
 [1;36mDO THINGS
 [0;33m/life  /work  /gather  /mine  /use
 [0mRecover, work, collect and use items.

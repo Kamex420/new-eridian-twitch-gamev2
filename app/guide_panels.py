@@ -55,7 +55,8 @@ PANELS = [
       ('FIRST STEPS · each one pays SC', [
           ('Gather · craft · eat · job · queue · Seedling', 'Do them in any order. Finish all six for bonus SC and the Settled In title.')]),
       ('PLAYING ON TWITCH TOO?', [
-          ('/link', 'Type !link in Twitch chat, then enter the code here. Both accounts become one citizen.')])],
+          ('/link', 'Type !link in Twitch chat, then enter the code here. Both accounts become one citizen.'),
+          ('Twitch is the lite version', 'Crafting, queues, trading, homes and customizing your Seedling are here on Discord.')])],
      'RECOVER → WORK → GATHER → MAKE → IMPROVE → CONTRIBUTE'),
     ('Needs & recovery',
      'Every task uses Energy, Nutrition and Comfort. Low needs stop work, so keep them topped up.',
@@ -75,7 +76,7 @@ PANELS = [
          ('/seedling', 'Its mood, what it is thinking, where it is and what it is doing.'),
          ('/seedling → Diary', 'What it did while you were away, with everything it gathered.'),
          ('/seedling → Schedule', 'Balanced, workaholic, night owl, socialite or homebody.'),
-         ('🎲 Let it decide', 'Your Seedling picks its next step right now.')]),
+         ('/customize', 'Skin tone, hair, outfit, accessory, attitude and a catchphrase. Your look shows on the stream map.')]),
       ('GOOD TO KNOW', [
           ('Autonomy', 'After 10 minutes without a command it works, eats, sleeps and meets friends on its own. It never crafts, buys or sells.'),
           ('Mood', 'A happy Seedling works a little better; a miserable one a little worse.'),
@@ -171,7 +172,7 @@ PANELS = [
      'GATHER → COOK → FEAST → STOCK UP'),
     ('Command list',
      'Every command, grouped. /menu shows all of them as buttons.',
-     [('YOU', [('/status  /me  /seedling  /inventory  /settings', 'Needs, profile, your Seedling, items and preferences.')]),
+     [('YOU', [('/status  /me  /seedling  /customize  /inventory  /settings', 'Needs, profile, your Seedling and its look, items and preferences.')]),
       ('DO THINGS', [('/life  /work  /gather  /mine  /use', 'Recover, work, collect and use items.'),
                      ('/make  /workshop  /catalog  /queue', 'Craft, unlock stations, look things up, automate.')]),
       ('TRADE & COMMUNITY', [('/seedindustries  /market  /home  /business', 'Money, prices, your Habitat and company.'),

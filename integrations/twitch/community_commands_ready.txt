@@ -1,6 +1,7 @@
 # Ready to paste into Twitch chat as the broadcaster or a moderator (StreamElements bot).
 # Community commands: colony votes, stream challenges, seasons, trophies and the weekly recap.
 # Paste one line at a time, a couple of seconds apart. Check afterwards with: !vote  !season  !trophies  !challenge
+# !hat and !badge are part of the full game on Discord: on Twitch they reply with your Discord invite (set DISCORD_INVITE_URL).
 
 !command add !vote $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/vote?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&choice=$(queryescape ${1:}))
 !command options !vote -level 100 -cd 0 -usercd 5

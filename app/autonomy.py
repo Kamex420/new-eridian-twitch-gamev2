@@ -870,6 +870,9 @@ def view_text(m, db, p, provider='discord'):
                           f'(about one action every {AUTONOMY_MINUTES} minutes). Work gathers real materials for your job (or your goal); '
                           'it eats, rests and sleeps before its needs get low, and it steps aside while you play.')
              if found.enabled else 'Off: your Seedling waits for you.']
+    from . import looks
+    styled = looks.describe(looks.row(db, p))
+    lines += ['', 'LOOKS & PERSONALITY', ' · '.join(styled) if styled else 'Its original look. Make it yours with /customize: skin, hair, outfit, accessory, attitude and catchphrase.']
     recent = entries(db, p, 3)
     if recent:
         lines += ['', 'LATEST REPORTS'] + [f'{e.emoji} **{e.headline}** — {e.text.split(" — ", 1)[-1]}' for e in recent]
@@ -1013,8 +1016,14 @@ def overlay_data(m, db, source_ids):
                           'emoji': found.emoji if found else '🏠', 'mood': MOODS[mood][1], 'mood_emoji': MOODS[mood][0],
                           'thought': found.thought if found else ''})
     context = say_context(m, db, source_ids)
-    for s_ in seedlings:
-        s_['lines'] = chatter(s_, seedlings, context)
+    from . import looks
+    styled = looks.for_players(db, {(p.channel_id, p.twitch_uid) for p in players})
+    for p, s_ in zip(players, seedlings):
+        found = styled.get((p.channel_id, p.twitch_uid))
+        s_['lines'] = looks.flavour(chatter(s_, seedlings, context), found, context['bucket'])
+        look = looks.overlay(found)
+        if look:
+            s_['look'] = look
     rows = list(db.scalars(select(SeedlingDiary).where(SeedlingDiary.channel_id.in_(source_ids)).order_by(SeedlingDiary.id.desc()).limit(14)))
     narration = [{'id': e.id, 'name': e.name, 'emoji': e.emoji, 'desk': e.desk, 'headline': e.headline, 'text': e.text,
                   'place': PLACES.get(e.place, ('', ''))[0], 'at': m.as_utc(e.created_at).isoformat()} for e in rows]

@@ -432,7 +432,9 @@ commands.append(cmd('settings','Queue alerts and auto-recovery; leave options bl
      'choices':[{'name':'On','value':'on'},{'name':'Off','value':'off'}]},
     {'type':STRING,'name':'popups','description':'Private "only you can see this" notifications at your next command','required':False,
      'choices':[{'name':'Important: queue results, pauses and warnings','value':'important'},{'name':'All: also tips and milestones','value':'all'},
-                {'name':'Off: keep them in /menu → Notifications','value':'off'}]}]))
+                {'name':'Off: keep them in /menu → Notifications','value':'off'}]},
+    {'type':STRING,'name':'feed','description':'Show your gathering, crafting, level ups and trophies in the channel activity feed','required':False,
+     'choices':[{'name':'On: show my activity','value':'on'},{'name':'Off: keep my activity private','value':'off'}]}]))
 for command in commands:
     if command['name']=='make':
         from .workbench import VIEWS
@@ -478,8 +480,10 @@ WORK_TASKS=[(W('Tend Fields','farm'),'farm_tend'),(W('Harvest Pumpkins','harvest
             (W('Survey','survey','','needs Resource Scanner'),'survey')]
 MOD_ACTIONS=[('Start event','eventstart'),('Stop event','eventstop'),('Moderator log','modlog'),('Linked-account lookup (owner)','linklookup'),('Post guide panels here','guidepanels'),('Post game button panel here','menupanel')]
 MOD_ACTIONS+=[('Stream challenge: start','challengestart'),('Stream challenge: stop','challengestop'),('Stream is live: on','liveon'),
-              ('Stream is live: off','liveoff'),('Stream live: automatic','liveauto'),('Weekly recap: preview','recappreview'),('Weekly recap: post now','recappost')]
+              ('Stream is live: off','liveoff'),('Stream live: automatic','liveauto'),('Weekly recap: preview','recappreview'),('Weekly recap: post now','recappost'),
+              ('Activity feed: post here','feedhere'),('Activity feed: off','feedoff')]
 from .live_events import CHALLENGES as _CHALLENGES
+from . import looks as _looks
 PROGRESS_SECTIONS=[('Skills & Level Unlocks','skills'),('Daily Contract','daily'),('Achievements','achievements'),('Collection','collection')]
 WORLD_SECTIONS=[('Society Overview','society'),('Society Next Tier','society_progress'),('Contribution Leaderboard','leaderboard'),
                 ('Active Event','event'),('Event History','event_history'),('Holidays & Festival Foods','holidays')]
@@ -506,6 +510,11 @@ new_commands=[
                     {'name':'Rewards: titles, hats and milestones','value':'rewards'},{'name':'Story so far','value':'story'},{'name':'My hats','value':'hats'}]},
         {'type':STRING,'name':'hat','description':'Wear a cosmetic hat on the stream map (job = your job hat)','required':False,'max_length':30}]),
     cmd('challenge','The live stream challenge: goal, time left, top helpers and how to help'),
+    cmd('customize','Your Seedling: skin tone, hair, outfit, accessory, attitude and catchphrase (blank shows its look)',
+        [{'type':STRING,'name':field,'description':description,'required':False,
+          'choices':[{'name':n,'value':v} for n,v in _looks.choices(field)]}
+         for field,description in [('skin','Skin tone'),('hair','Hair style'),('hair_colour','Hair colour'),('outfit','Outfit colour (or follow its mood)'),
+                                   ('accessory','Accessory'),('headwear','Job hat, or no hat to show your hair'),('attitude','Attitude: how it talks on stream'),('catchphrase','A catchphrase it says now and then')]]),
     cmd('trophies','Collections and trophies: what you have, what is close, and your pinned badge',[
         {'type':STRING,'name':'group','description':'Show one group in full','required':False,
          'choices':[{'name':'Collections','value':'collections'},{'name':'Crafting','value':'crafting'},{'name':'Festivals','value':'festivals'},

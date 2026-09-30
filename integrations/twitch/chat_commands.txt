@@ -1,6 +1,8 @@
 # StreamElements definitions for New Eridian. Paste one line at a time in Twitch chat as the broadcaster or a moderator.
 # The address is already filled in (new-eridian-twitch-game-production.up.railway.app).
 # Commands that need your ADMIN_KEY are grouped at the very end: replace YOUR_ADMIN_KEY in those lines only.
+# Twitch is the lite version of the game. Crafting, queues, trading, homes, settings and similar commands reply with your
+# Discord invite (set DISCORD_INVITE_URL on Railway) instead of running; keep them so viewers are pointed to the server.
 
 !command add !seed 🌱 NEW ERIDIAN // SEED CHAT GAME | !start !me !job !skills !inventory !farm !harvest !mine !rare !research !craft !build !work !cargo !delivery !explore !market !status !progress !event !siro !rocky
 !command options !seed -level 100 -cd 15 -usercd 30

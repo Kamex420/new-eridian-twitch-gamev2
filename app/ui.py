@@ -538,6 +538,38 @@ def _reply(data, payload, notice=False):
     return {'type': 4, 'data': data}
 
 
+# Private cards a player can post to the channel for everyone: command -> (what it is, sections that may be shared).
+SHARE = {'me': ('profile', {'', 'overview'}), 'seedling': ('Seedling', {'', 'overview', 'diary'}),
+         'trophies': ('trophies', {'', 'collections', 'crafting', 'festivals', 'colony', 'stream', 'seasons'}),
+         'season': ('season', {'', 'overview', 'top', 'rewards', 'story'}), 'customize': ('Seedling’s look', {''})}
+
+
+def share_button(owner, command, options):
+    """A 📣 Share button for a card that can be shown to everyone, else None."""
+    section = str((options or {}).get('section') or '')
+    if command not in SHARE or section not in SHARE[command][1] or (options or {}).get('schedule') or (options or {}).get('autonomy') \
+            or (options or {}).get('hat') or (options or {}).get('badge'):
+        return None
+    return button('Share', cid(owner, 'sh', command, section), emoji='📣')
+
+
+def share(m, uid, name, args):
+    """Post the card publicly in the channel, with who shared it."""
+    command, section = (args[0] if args else ''), (args[1] if len(args) > 1 else '')
+    if command not in SHARE or section not in SHARE[command][1]:
+        return _notice('This card cannot be shared.')
+    text = m._discord_call_internal(command, uid, name, {'section': section} if section else {}, '')
+    data = dict(m._discord_json_message(text, message_type=command)['data'])
+    for key in ('flags', 'components'):
+        data.pop(key, None)
+    if data.get('embeds'):
+        data['embeds'][0]['author'] = {'name': f'📣 {name} shared their {SHARE[command][0]}'}
+    else:
+        data['content'] = f'📣 **{name}** shared their {SHARE[command][0]}\n' + str(data.get('content') or '')
+    data['allowed_mentions'] = {'parse': []}
+    return {'type': 4, 'data': data}   # no ephemeral flag: everyone in the channel sees it
+
+
 def _notice(text):
     return {'type': 4, 'data': {'content': text, 'flags': 64, 'allowed_mentions': {'parse': []}}}
 
@@ -563,6 +595,8 @@ def handle_component(m, payload, schedule=None):
     if uid != owner:
         return _notice('This menu belongs to another citizen. Open your own with the same command. Nothing was spent.')
     values = data.get('values') or []
+    if verb == 'sh':
+        return share(m, uid, name, args)
     if verb == 'mo':
         from . import menu
         form = menu.modal(owner, args[0] if args else '', args[1:])

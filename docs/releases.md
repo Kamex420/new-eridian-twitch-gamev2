@@ -1,5 +1,55 @@
 # Release notes
 
+## A livelier Discord channel, Twitch as the lite version, and Seedling looks
+
+### 📣 A livelier channel
+Why the channel felt empty: every button in `/menu` and on the pinned game panel answers privately ("Only you can see this"), and so do most slash commands and the popups. Discord only lets a bot show a button reply to the presser or to everyone, and private keeps each player's buttons their own. The result was that the channel showed only queue alerts and a few public commands.
+- **Live activity feed.** The bot posts what everyone is doing in one compact message. The message includes:
+  - who gathered, mined or crafted what, from Twitch and Discord;
+  - level ups, trophies, new citizens and finished queues;
+  - events, stream challenges, vote results, projects and seasons;
+  - a line for Seedlings working on their own.
+- **How often.** It updates about every minute (`FEED_SECONDS`). Big moments (a challenge starting, a vote result, a new tier) go out straight away.
+- **No spam.** While nobody else talks, the bot keeps editing the same message, up to 15 lines within 30 minutes. Once someone posts, the next update starts a new message below.
+- **Buttons on every feed message.** "My menu", "Status" and "Community" open the presser's own menu, so the feed is also a way in.
+- **Where it posts.** `/mod` → **Activity feed: post here** picks the channel; the game channel (`DISCORD_GAME_CHANNEL_ID`) is the default, or set `DISCORD_FEED_CHANNEL_ID`. **Activity feed: off** stops it.
+- **Privacy.** Players can keep themselves out of the feed with `/settings feed:off`, or `/menu` → Settings.
+- **📣 Share button.** It appears on private cards: profile, Seedling, trophies, season, and your Seedling's look. It posts a public copy to the channel, marked "📣 Name shared their …".
+
+### 🎮 Twitch is the lite version; Discord has the full game
+- **On Twitch:** start, link, status and profile, gathering, mining (one at a time), jobs and work, eating and resting, your Seedling and diary, the society and events, votes, stream challenges, seasons and trophies.
+- **Discord only:**
+  - crafting and workshops, queues and routines;
+  - trading (Seed Industries, selling, market prices), homes and businesses;
+  - gear and item use, the full catalog and collections;
+  - settings and Seedling schedules, titles, districts, shifts and specializations;
+  - hats, badges and Seedling looks, duos, mentoring and the journal.
+- **What Twitch players see.** A Discord-only command typed on Twitch does nothing and replies with where it is and the invite, e.g. "🔒 Crafting is part of the full game on Discord: join discord.gg/… and use /make. On Twitch: !gather !mine !work !eat !status !vote". Set `DISCORD_INVITE_URL` so the invite shows.
+- **Updated for Twitch:**
+  - First Steps point crafting and queues to Discord.
+  - The Twitch handbook (`!seed`) and the stream overlays' "how to play" tips are updated.
+  - The guide panels say Twitch is the lite version.
+- **Switching it off.** `TWITCH_LITE=false` gives Twitch the full game again.
+
+### 🎨 Seedling looks and personality
+- **`/customize`** (or `/menu` → My Seedling → Looks & personality) lets players choose:
+  - skin tone: 14, including four Avesta colours;
+  - hair style (9, including bald) and hair colour (12);
+  - outfit colour, or "follows its mood";
+  - an accessory: glasses, sunglasses, scarf, bow tie, backpack, flower or headphones;
+  - headwear: its job hat, or no hat so the hair shows;
+  - an attitude: cheerful, grumpy, shy, bold, dreamy, sarcastic, curious, chill, dramatic or wise;
+  - a catchphrase from a curated list, so nothing unkind reaches the stream.
+- **On the stream map.** The Seedling is drawn with its look. The attitude flavours its speech bubbles ("Hmph. …", "Behold! …"), and it says its catchphrase now and then.
+- **Resetting.** "Back to its original look" resets any choice.
+- **Cosmetic only.** None of it changes how well it works.
+- **Map fix.** With names shown, neighbouring name labels now alternate height so they never overlap.
+
+### Setup
+- **Discord.** There's a new `/customize` command, a `feed` option on `/settings`, and new `/mod` actions (Activity feed: post here / off). Commands re-register on deploy as usual.
+- **Database.** New tables are created automatically: `activity_feed_v1`, `activity_feed_events_v1`, `activity_feed_privacy_v1` and `seedling_looks_v1`.
+- **Environment.** Set `DISCORD_INVITE_URL` (used in the Twitch replies). Optional: `DISCORD_FEED_CHANNEL_ID`, `FEED_SECONDS`, `TWITCH_LITE`.
+
 ## Discord guide panels, refreshed
 
 - **Twelve panels** now (up from eight), written for players: what to do and where to find it, without every number.

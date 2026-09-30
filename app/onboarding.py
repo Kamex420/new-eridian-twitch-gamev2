@@ -66,7 +66,10 @@ def done_of(found):
 
 
 def _cmd(key, provider):
-    return INFO[key][2] if provider == 'discord' else INFO[key][3]
+    if provider == 'discord':
+        return INFO[key][2]
+    from . import twitch_lite
+    return twitch_lite.step_command(key, INFO[key][3])     # crafting and queues are Discord-only when Twitch is lite
 
 
 def next_step(found):
@@ -216,10 +219,15 @@ def welcome(m, db, p):
     return True
 
 
+def _craft_hint():
+    from . import twitch_lite
+    return f' Crafting is on Discord: {twitch_lite.invite()}' if twitch_lite.ENABLED else ' Then !make campfire.'
+
+
 def welcome_text(m, db, p, provider):
     kit = ', '.join(f'{n} {name}' for name, n in WELCOME_KIT.items())
     if provider != 'discord':
         return (f"🌱 Welcome to New Eridian, {p.display_name}! Your Seedling just moved in and you're on the stream map now. "
-                f"Welcome kit: {kit}. First step: !gather lumber (then !make campfire).")
+                f"Welcome kit: {kit}. First step: !gather lumber." + _craft_hint())
     return (f"🌱 **Welcome to New Eridian, {p.display_name}!**\nYour Seedling just moved into the Residential Ring, and you are now on the stream map.\n"
             f"🎁 Welcome kit: {kit}. That is enough for a Campfire and a snack.\n\n" + status(m, db, p, provider))

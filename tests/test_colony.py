@@ -30,6 +30,8 @@ def reset(monkeypatch):
     monkeypatch.setattr(m.onboarding,"ENABLED",False)
     # Votes, seasons, trophies and stream challenges pay SC too; tests/test_community.py turns them on.
     monkeypatch.setattr(m.community,"ENABLED",False)
+    # Twitch is a lite version of the game; the tests exercise every command on both platforms (tests/test_twitch_lite.py covers the split).
+    monkeypatch.setattr(m.twitch_lite,"ENABLED",False)
 
 def seed(uid='u',provider='twitch',name='Kamex'):
     with m.SessionLocal() as db:

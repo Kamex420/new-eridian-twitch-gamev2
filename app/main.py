@@ -5651,7 +5651,7 @@ def twitch_seed(topic:str="overview",page:str="1"):
     if topic not in SEED_HELP_TOPICS:
         return out(f"New Eridian: !start then !job then !guide. Handbook: !seed start, character, property, life, production, operations, society, other, moderator, terms. Example: !seed property 2. Work, !eat, !make, !gather: 5s; social/recovery: 20–60s; !sleep: once per {duration_text(SLEEP_COOLDOWN_SECONDS)}.")
     from .twitch_help import TOPICS
-    content=TOPICS[topic]
+    content=twitch_lite.topic(topic,TOPICS[topic])
     return twitch_pages(content,page,f"!seed {topic}")
 
 @app.get("/api/v1/admin/modlog")
@@ -5681,7 +5681,7 @@ DISCORD_PRIVATE_COMMANDS = {
     "home", "business", "make", "seedindustries", "link", "specialize", "modlog",
     "world", "linklookup", "ducks", "training", "catalog", "gather", "workshop",
     "status", "settings", "mod", "menu", "guidepanels", "menupanel", "inbox", "queuedetails", "find", "undo", "seedling", "seedlingstep",
-    "vote", "season", "challenge", "trophies",
+    "vote", "season", "challenge", "trophies", "customize",
     "challengestart", "challengestop", "liveon", "liveoff", "liveauto", "recappreview", "recappost"
 }
 
@@ -6987,7 +6987,7 @@ def _discord_call_internal(command: str, uid: str, name: str, options: dict, int
     if command == "status":
         return status_view(channel=channel,uid=uid,name=name,provider="discord").body.decode("utf-8")
     if command == "settings":
-        return settings(channel=channel,uid=uid,name=name,alerts=str(options.get("alerts") or ""),autorecover=str(options.get("autorecover") or ""),provider="discord",popups=str(options.get("popups") or "")).body.decode("utf-8")
+        return settings(channel=channel,uid=uid,name=name,alerts=str(options.get("alerts") or ""),autorecover=str(options.get("autorecover") or ""),provider="discord",popups=str(options.get("popups") or ""),feed=str(options.get("feed") or "")).body.decode("utf-8")
     if command == "inbox":
         from . import inbox as player_inbox
         with SessionLocal() as db:
@@ -7008,6 +7008,9 @@ def _discord_call_internal(command: str, uid: str, name: str, options: dict, int
         if options.get("autonomy"):seedling_autonomy(channel,uid,name,str(options["autonomy"]),"discord")
         if str(options.get("section") or "")=="diary":return seedling_diary(channel,uid,name,"discord").body.decode()
         return seedling_view(channel,uid,name,"discord").body.decode()
+    if command == "customize":
+        from . import looks
+        return seedling_looks(channel,uid,name,provider="discord",**{k:str(options.get(k) or "") for k in looks.FIELDS}).body.decode()
     if command == "eatfull":
         return eat_full(channel,uid,name,"discord").body.decode()
     if command == "undo":
@@ -7374,8 +7377,9 @@ from . import autonomy
 autonomy.install(sys.modules[__name__])
 from . import onboarding
 onboarding.install(sys.modules[__name__])
-from . import community, votes, seasons, trophies, live_events, recap
+from . import community, votes, seasons, trophies, live_events, recap, activity_feed, twitch_lite
 community.install(sys.modules[__name__])
+twitch_lite.install(sys.modules[__name__])
 presentation.SKILL_NAMES=tuple(SKILL_LABELS.values())
 # Every module above is loaded now: create any table a module added since the first create_all (existing tables are left alone).
 Base.metadata.create_all(engine)
@@ -7393,10 +7397,15 @@ def status_view(channel:str,uid:str,name:str='Citizen',provider:str='twitch'):
 
 @app.get('/api/v1/settings')
 @game_transaction
-def settings(channel:str,uid:str,name:str='Citizen',alerts:str='',autorecover:str='',provider:str='twitch',text:str='',popups:str=''):
+def settings(channel:str,uid:str,name:str='Citizen',alerts:str='',autorecover:str='',provider:str='twitch',text:str='',popups:str='',feed:str=''):
     with SessionLocal() as db:
         _,p=player(db,channel,provider,uid,name)
-        return platform_response(provider,*(qol.settings_text(sys.modules[__name__],db,p,provider,alerts,autorecover,text,popups),)*2)
+        note=''
+        if str(feed).lower() in {'on','off'}:
+            note=activity_feed.set_hidden(db,p,str(feed).lower()=='off')+'\n\n';db.commit()
+        body=qol.settings_text(sys.modules[__name__],db,p,provider,alerts,autorecover,text,popups)
+        if provider=='discord':body+='\n'+('🙈 Channel feed: your activity is hidden (/settings feed:on shows it).' if activity_feed.hidden(db,p) else '📣 Channel feed: your gathering, crafting, level ups and trophies show in the channel (/settings feed:off hides them).')
+        return platform_response(provider,note+body,note.strip() or body)
 
 
 @app.get('/api/v1/favorite')
@@ -7691,6 +7700,19 @@ def seedling_autonomy(channel:str,uid:str,name:str='Citizen',state:str='',provid
             text=f"🌱 Autonomy is {'on' if found.enabled else 'off'}. !autonomy on or !autonomy off."
             return platform_response(provider,text,text.replace('**',''))
         text=autonomy.set_enabled(db,p,value=='on');db.commit()
+        return platform_response(provider,text,text.replace('**',''))
+
+@app.get('/api/v1/looks')
+@game_transaction
+def seedling_looks(channel:str,uid:str,name:str='Citizen',skin:str='',hair:str='',hair_colour:str='',outfit:str='',accessory:str='',
+                   attitude:str='',catchphrase:str='',headwear:str='',provider:str='twitch'):
+    """Your Seedling's looks and personality; any option given changes it ("random" puts one back)."""
+    from . import looks
+    with SessionLocal() as db:
+        _,p=player(db,channel,provider,uid,name)
+        changed,problems=looks.change(db,p,skin=skin,hair=hair,hair_colour=hair_colour,outfit=outfit,accessory=accessory,
+                                     headwear=headwear,attitude=attitude,catchphrase=catchphrase)
+        text=looks.view_text(sys.modules[__name__],db,p,provider,changed,problems);db.commit()
         return platform_response(provider,text,text.replace('**',''))
 
 # Extension registration happens after core routes and models are available.

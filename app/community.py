@@ -59,6 +59,12 @@ def tick(m):
             except Exception:
                 log.exception('Weekly recap failed; it will try again')
             db.commit()
+    # The channel feed talks to Discord over the network, so it runs outside the world lock.
+    try:
+        from . import activity_feed
+        activity_feed.tick(m)
+    except Exception:
+        log.exception('Activity feed update failed; it will try again')
 
 
 # ---------------------------------------------------------------- hooks
@@ -79,6 +85,11 @@ def after_command(m, db, p, fn_name, params, before, after):
             if d:
                 discord.append(d)
                 chat.append(c)
+        try:
+            from . import activity_feed
+            activity_feed.record(m, db, p, fn_name, params, before, after, acting)
+        except Exception:
+            log.exception('Activity feed entry not recorded')
         note = seasons.from_command(m, db, p, before, after, acting)
         if note:
             discord.append(note)
@@ -308,7 +319,7 @@ def _routes(m):
 # ---------------------------------------------------------------- Discord
 
 DISCORD = {'vote', 'season', 'challenge', 'trophies'}
-MOD = {'challengestart', 'challengestop', 'liveon', 'liveoff', 'liveauto', 'recappreview', 'recappost'}
+MOD = {'challengestart', 'challengestop', 'liveon', 'liveoff', 'liveauto', 'recappreview', 'recappost', 'feedhere', 'feedoff'}
 
 
 def discord(m, command, uid, name, options):
@@ -334,6 +345,12 @@ def discord(m, command, uid, name, options):
             text = live_events.cancel(m, db, name)
         elif command in {'liveon', 'liveoff', 'liveauto'}:
             text = live_events.set_live(m, db, command[4:], actor)
+        elif command == 'feedhere':
+            from . import activity_feed
+            text = activity_feed.here(m, db, m.task_queue.queue_notifications.origin_channel.get())
+        elif command == 'feedoff':
+            from . import activity_feed
+            text = activity_feed.off(m, db)
         elif command == 'recappost':
             ok, text = recap.post(m, db, force=True)
         else:

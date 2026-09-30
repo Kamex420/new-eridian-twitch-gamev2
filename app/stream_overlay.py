@@ -163,6 +163,9 @@ def extra(m, db, source_ids, world):
                      ['!craftmax lumber', 'Queue up to 10 gathers and watch them run'], ['!status', 'Needs, queue and your next step'],
                      ['!find <word>', 'Search recipes, items and help'], ['!target <recipe>', 'Pin a goal and track it'],
                      ['!again', 'Repeat your last action'], ['!seed', 'Every command, by topic']]}
+    from . import twitch_lite
+    if twitch_lite.ENABLED:
+        join['tips'] = twitch_lite.join_tips()
     from . import autonomy
     return {'highlights': highlights, 'leaders': leaders, 'working': working, 'festival': festival, 'join': join,
             **autonomy.overlay_data(m, db, source_ids)}
@@ -698,15 +701,32 @@ function hat(g,job){g.innerHTML='';if(COSMETIC.has(job))return cosmetic(g,job);c
   if(k==='cap'){el('path',{d:'M-6.8 -33 A6.8 6.5 0 0 1 6.8 -33Z',fill:'#3f6fa8'},g);el('rect',{x:0,y:-34,width:9,height:2,rx:1,fill:'#2d5b90'},g)}
   if(k==='ranger'){el('ellipse',{cx:0,cy:-35,rx:10,ry:2.4,fill:'#5a7a3a'},g);el('path',{d:'M-5.5 -35 Q0 -42 5.5 -35Z',fill:'#6a8a4a'},g)}
   if(k==='bandana'){el('path',{d:'M-6.8 -33 A6.8 6.5 0 0 1 6.8 -33Z',fill:'#c24b3c'},g);el('polygon',{points:'6,-33 10,-31 7,-29',fill:'#c24b3c'},g)}}
-function figure(s){const g=el('g',{class:'token'},tokens),r=rng(s.id),skin=SKIN[Math.floor(r()*SKIN.length)];el('ellipse',{cx:0,cy:0,rx:8,ry:3,fill:'rgba(0,0,0,.45)'},g);const bod=el('g',{class:'bod'},g);
+// Players' own choices (/customize): hair styles and accessories. Anything not chosen keeps the random look.
+function hairDraw(g,style,c){const ci=(x,y,rr)=>el('circle',{cx:x,cy:y,r:rr,fill:c},g);if(style==='bald')return;
+  if(style==='long'){el('rect',{x:-7.6,y:-33,width:3,height:11,rx:1.5,fill:c},g);el('rect',{x:4.6,y:-33,width:3,height:11,rx:1.5,fill:c},g)}
+  if(style==='braid')for(let k=0;k<4;k++)ci(6,-28+k*3,1.6);
+  if(style==='pigtails'){ci(-8.2,-31,2.6);ci(8.2,-31,2.6)}
+  if(style==='curly'){[-5,-2.5,0,2.5,5].forEach((x,i)=>ci(x,-35.2+(i%2)*.9,2.5));return}
+  if(style==='spiky'){el('polygon',{points:'-6.5,-32 -5.2,-38.5 -2.6,-34 0,-39.5 2.6,-34 5.2,-38.5 6.5,-32',fill:c},g);return}
+  if(style==='mohawk'){el('rect',{x:-1.6,y:-41.5,width:3.2,height:10,rx:1.3,fill:c},g);return}
+  el('path',{d:'M-6.5 -32 A6.5 6.5 0 0 1 6.5 -32 Q0 -35 -6.5 -32Z',fill:c},g);if(style==='bun')ci(0,-38.6,3)}
+function accessory(bod,eyes,k){const ink='#10131f';
+  if(k==='glasses'||k==='sunglasses'){const f=k==='sunglasses'?ink:'rgba(200,230,255,.25)';for(const x of [-2.3,2.3])el('circle',{cx:x,cy:-30.5,r:2,fill:f,stroke:ink,'stroke-width':.8},eyes);el('line',{x1:-.3,y1:-30.5,x2:.3,y2:-30.5,stroke:ink,'stroke-width':.8},eyes)}
+  if(k==='scarf'){el('rect',{x:-7,y:-26.5,width:14,height:3.2,rx:1.5,fill:'#e0564f'},bod);el('rect',{x:2.5,y:-24.5,width:3,height:7,rx:1,fill:'#c2443e'},bod)}
+  if(k==='bowtie'){el('polygon',{points:'-4.2,-26.5 0,-24.8 -4.2,-23',fill:'#d9303a'},bod);el('polygon',{points:'4.2,-26.5 0,-24.8 4.2,-23',fill:'#d9303a'},bod);el('circle',{cx:0,cy:-24.8,r:1,fill:'#a8202a'},bod)}
+  if(k==='flower'){['#ff7aa8','#ffd35a','#ff7aa8','#ffd35a'].forEach((c,n)=>el('circle',{cx:5.6+Math.cos(n*1.57)*1.7,cy:-35.2+Math.sin(n*1.57)*1.7,r:1.4,fill:c},bod));el('circle',{cx:5.6,cy:-35.2,r:.9,fill:'#fff6c0'},bod)}
+  if(k==='headphones'){el('path',{d:'M-7 -31.5 A7 7.5 0 0 1 7 -31.5',fill:'none',stroke:'#2b2f45','stroke-width':1.7},bod);for(const x of [-8.6,5.6])el('rect',{x,y:-32.5,width:3,height:5,rx:1.2,fill:'#4f7fe0',stroke:'#2b2f45','stroke-width':.6},bod)}}
+function figure(s){const L=s.look||{},g=el('g',{class:'token'},tokens),r=rng(s.id),skin0=SKIN[Math.floor(r()*SKIN.length)],skin=L.skin||skin0;el('ellipse',{cx:0,cy:0,rx:8,ry:3,fill:'rgba(0,0,0,.45)'},g);const bod=el('g',{class:'bod'},g);
+  if(L.accessory==='backpack')el('rect',{x:-11,y:-25,width:7,height:13,rx:2.5,fill:'#8a5a3a',stroke:'#0b0f24','stroke-width':1},bod);
   el('rect',{class:'leg l',x:-5,y:-9,width:4,height:9,rx:2,fill:'#2b2f45'},bod);el('rect',{class:'leg r',x:1,y:-9,width:4,height:9,rx:2,fill:'#2b2f45'},bod);
   el('rect',{class:'arm l',x:-11.5,y:-23,width:4,height:12,rx:2,fill:skin,stroke:'#0b0f24','stroke-width':1},bod);el('rect',{class:'arm r',x:7.5,y:-23,width:4,height:12,rx:2,fill:skin,stroke:'#0b0f24','stroke-width':1},bod);
   el('rect',{class:'shirt',x:-8.5,y:-25,width:17,height:18,rx:6},bod);el('text',{class:'ini',y:-16},bod);
   el('circle',{cx:0,cy:-31,r:6.5,fill:skin,stroke:'#0b0f24','stroke-width':1.5},bod);
-  el('path',{d:'M-6.5 -32 A6.5 6.5 0 0 1 6.5 -32 Q0 -35 -6.5 -32Z',fill:HAIR[Math.floor(r()*HAIR.length)]},bod);
+  const hair0=HAIR[Math.floor(r()*HAIR.length)];hairDraw(bod,L.hair||'short',L.hair_colour||hair0);
   const eyes=el('g',{class:'eyes'},bod);el('circle',{cx:-2.3,cy:-30.5,r:1.05,fill:'#10131f'},eyes);el('circle',{cx:2.3,cy:-30.5,r:1.05,fill:'#10131f'},eyes);
-  const h=el('g',{class:'hat'},bod);hat(h,s.hat||s.job);
-  el('text',{class:'act',x:13,y:-20,'font-size':10},bod);el('text',{class:'label',y:13},g);return {g,x:0,y:0,path:[],place:null,job:s.hat||s.job,eyes,face:0}}
+  if(L.accessory&&L.accessory!=='backpack')accessory(bod,eyes,L.accessory);
+  const h=el('g',{class:'hat'},bod);hat(h,s.hat||(L.nohat?'':s.job));
+  el('text',{class:'act',x:13,y:-20,'font-size':10},bod);el('text',{class:'label',y:13},g);return {g,x:0,y:0,path:[],place:null,job:s.hat||(L.nohat?'':s.job),eyes,face:0,lookSig:JSON.stringify(L)}}
 // Which way a Seedling looks: eyes shift toward where it walks, and it shows its back when walking away (up the screen).
 function face(t,dx,dy){const away=dy<-Math.abs(dx)*.6,x=Math.abs(dx)<.01?0:Math.sign(dx)*1.8;if(t.face===x+':'+away)return;t.face=x+':'+away;
   t.eyes.setAttribute('transform',`translate(${x},0)`);t.eyes.style.opacity=away?0:1}
@@ -720,7 +740,10 @@ function seedlings(list){const groups={};for(const s of list)(groups[s.place]=gr
   for(const k in groups){const all=groups[k].sort((a,b)=>(isNew(b)-isNew(a))||(a.id<b.id?-1:1)),n=Math.min(all.length,PER_PLACE),extra=all.length-n;
     all.forEach((s,i)=>{seen.add(s.id);const [tx,ty]=home(k,Math.min(i,n-1),n);let t=live[s.id];
       if(!t){t=live[s.id]=figure(s);t.id=s.id;t.x=tx;t.y=ty;t.place=k;t.g.setAttribute('transform',place_(tx,ty))}
-      t.hidden=i>=n;t.s=s;const hk=s.hat||s.job;if(t.job!==hk){t.job=hk;hat(t.g.querySelector('.hat'),hk)}t.g.querySelector('.shirt').setAttribute('fill',MOOD[s.mood]||'#b8f4d0');t.g.querySelector('.ini').textContent=(s.name||'?').slice(0,1).toUpperCase();
+      else if(t.lookSig!==JSON.stringify(s.look||{})){const old=t;t=live[s.id]=figure(s);Object.assign(t,{id:s.id,x:old.x,y:old.y,place:old.place,path:old.path});   // a new look: redraw in place
+        t.g.setAttribute('transform',old.g.getAttribute('transform'));old.g.remove()}
+      t.hidden=i>=n;t.s=s;const hk=s.hat||(s.look&&s.look.nohat?'':s.job);if(t.job!==hk){t.job=hk;hat(t.g.querySelector('.hat'),hk)}t.g.querySelector('.shirt').setAttribute('fill',(s.look&&s.look.outfit)||MOOD[s.mood]||'#b8f4d0');t.g.querySelector('.ini').textContent=(s.name||'?').slice(0,1).toUpperCase();
+      t.g.querySelector('.label').setAttribute('y',13+(i%2)*11);   // neighbours' names alternate height so they never overlap
       t.g.querySelector('.label').textContent=SHOW_NAMES?(s.badge?s.badge+' ':'')+(s.name.length>8?s.name.slice(0,7)+'…':s.name):'';t.g.querySelector('.act').textContent=s.emoji||'';
       if(t.place!==k){t.path=[...route(t.place,k),[tx,ty]];t.place=k;t.g.style.display='';hushBubble(t)}else if(!t.path.length&&(Math.abs(t.x-tx)>1||Math.abs(t.y-ty)>1))t.path=[[tx,ty]];
       else if(t.path.length)t.path[t.path.length-1]=[tx,ty];

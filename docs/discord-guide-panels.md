@@ -26,6 +26,7 @@ New Eridian is a Twitch + Discord life game on the planet Avesta. Build your cit
 **Playing On Twitch Too?**
 
 - `/link` Type !link in Twitch chat, then enter the code here. Both accounts become one citizen.
+- **Twitch is the lite version:** Crafting, queues, trading, homes and customizing your Seedling are here on Discord.
 
 **RECOVER → WORK → GATHER → MAKE → IMPROVE → CONTRIBUTE**
 
@@ -65,7 +66,7 @@ Your Seedling is you on the stream map. It has moods and thoughts, and it keeps 
 - `/seedling` Its mood, what it is thinking, where it is and what it is doing.
 - `/seedling → Diary` What it did while you were away, with everything it gathered.
 - `/seedling → Schedule` Balanced, workaholic, night owl, socialite or homebody.
-- **🎲 Let it decide:** Your Seedling picks its next step right now.
+- `/customize` Skin tone, hair, outfit, accessory, attitude and a catchphrase. Your look shows on the stream map.
 
 **Good To Know**
 
@@ -264,7 +265,7 @@ Every command, grouped. /menu shows all of them as buttons.
 
 **You**
 
-- `/status  /me  /seedling  /inventory  /settings` Needs, profile, your Seedling, items and preferences.
+- `/status  /me  /seedling  /customize  /inventory  /settings` Needs, profile, your Seedling and its look, items and preferences.
 
 **Do Things**
 
