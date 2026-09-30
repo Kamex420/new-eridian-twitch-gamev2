@@ -13,7 +13,7 @@ from datetime import datetime, timezone, timedelta
 from fastapi import FastAPI, HTTPException, Request, BackgroundTasks
 from starlette.concurrency import run_in_threadpool
 from . import discord_deferred, message_layout, discord_execution, ui
-from fastapi.responses import PlainTextResponse, HTMLResponse
+from fastapi.responses import PlainTextResponse, HTMLResponse, JSONResponse
 from sqlalchemy import create_engine, Column, Integer, String, DateTime, Boolean, UniqueConstraint, select, inspect, text as sql_text
 from sqlalchemy.orm import declarative_base, sessionmaker
 
@@ -5027,6 +5027,54 @@ def siro(channel:str):
         if w.active_event=="siro":
             return out(f"☣️ SIRO ALERT | Containment {w.event_progress}/{w.event_goal}. Use !research.")
         return out("☣️ Siro report: levels are manageable. Sensors remain active around New Eridian.")
+
+def _player_summary(db,channel,p):
+    ids=db.execute(select(Identity).where(Identity.channel_id==channel,Identity.canonical_uid==p.twitch_uid)).scalars().all()
+    kinds=sorted({i.provider for i in ids}) or (["discord"] if p.twitch_uid.startswith("discord:") else ["twitch"])
+    xp=sum(getattr(p,f) for f in ("farm_xp","mining_xp","industry_xp","research_xp","delivery_xp","explore_xp","environmental_xp","fabrication_xp","infrastructure_xp","commerce_xp","cooking_xp","medicine_xp","emergency_xp"))
+    return {"uid":p.twitch_uid,"name":p.display_name,"accounts":"+".join(kinds),"sc":p.sc,"contribution":p.contribution,"actions":p.actions,"xp":xp,
+            "created":as_utc(p.created_at).strftime("%Y-%m-%d"),"last_seen":as_utc(p.last_seen).strftime("%Y-%m-%d %H:%M")}
+
+@app.get("/api/v1/admin/duplicates")
+def admin_duplicates(channel:str=DISCORD_WORLD_ID,key:str=""):
+    """Characters that share a name (ignoring case and [tags]): usually a Twitch and a Discord character never linked."""
+    if not valid_admin_key(key):return JSONResponse({"ok":False,"error":"Invalid game-admin key."},status_code=403)
+    from .autonomy import clean_name
+    with SessionLocal() as db:
+        groups={}
+        for p in db.execute(select(Player).where(Player.channel_id==channel)).scalars().all():
+            groups.setdefault(clean_name(p.display_name).strip().lower(),[]).append(p)
+        dupes=[{"name":ps[0].display_name,"characters":[_player_summary(db,channel,p) for p in sorted(ps,key=lambda x:-x.actions)]} for k,ps in groups.items() if len(ps)>1]
+        return JSONResponse({"ok":True,"channel":channel,"duplicates":dupes,
+                             "how_to_merge":"/api/v1/admin/merge?channel=CHANNEL&keep=UID&merge=UID&key=KEY (add &confirm=1 to apply)"})
+
+@app.get("/api/v1/admin/merge")
+@game_transaction
+def admin_merge(keep:str,merge:str,channel:str=DISCORD_WORLD_ID,key:str="",confirm:int=0):
+    """Merge one character into another with the same code as /link: stats, XP, items, skills, homes, businesses,
+    achievements, queues and Seedling life are combined, and both sets of Twitch/Discord IDs point at the kept character.
+    Without confirm=1 it only shows what the merged character would look like."""
+    if not valid_admin_key(key):return JSONResponse({"ok":False,"error":"Invalid game-admin key."},status_code=403)
+    if keep==merge:return JSONResponse({"ok":False,"error":"keep and merge are the same character."},status_code=400)
+    with SessionLocal() as db:
+        a=db.execute(select(Player).where(Player.channel_id==channel,Player.twitch_uid==keep)).scalar_one_or_none()
+        b=db.execute(select(Player).where(Player.channel_id==channel,Player.twitch_uid==merge)).scalar_one_or_none()
+        if not a or not b:return JSONResponse({"ok":False,"error":"Both characters must exist in this channel (use the uid values from /api/v1/admin/duplicates)."},status_code=404)
+        before=[_player_summary(db,channel,a),_player_summary(db,channel,b)]
+        combined={k:before[0][k]+before[1][k] for k in ("sc","contribution","actions","xp")}
+        if not confirm:
+            return JSONResponse({"ok":True,"preview":True,"keep":before[0],"merge":before[1],"after":{**combined,"uid":keep,"name":a.display_name},
+                                 "apply":"repeat this URL with &confirm=1"})
+        merge_accounts(db,channel,merge,keep)
+        # A Twitch + Discord pair becomes a permanent link, exactly as if the player had used /link.
+        ids=db.execute(select(Identity).where(Identity.channel_id==channel,Identity.canonical_uid==keep)).scalars().all()
+        tw=[i.provider_uid for i in ids if i.provider=="twitch"];dc=[i.provider_uid for i in ids if i.provider=="discord"]
+        if len(dc)==1 and not db.execute(select(AccountLink).where(AccountLink.channel_id==channel,AccountLink.discord_uid==dc[0])).scalar_one_or_none() \
+           and not db.execute(select(AccountLink).where(AccountLink.channel_id==channel,AccountLink.twitch_uid==keep)).scalar_one_or_none():
+            db.add(AccountLink(channel_id=channel,twitch_uid=keep,discord_uid=dc[0]))
+        audit_moderator(db,channel,"game admin","merge",f"{before[1]['name']} ({merge}) into {before[0]['name']} ({keep})");db.commit()
+        p=db.execute(select(Player).where(Player.channel_id==channel,Player.twitch_uid==keep)).scalar_one()
+        return JSONResponse({"ok":True,"merged":True,"character":_player_summary(db,channel,p),"expected":combined})
 
 @app.get("/api/v1/admin/event/{event}/{state}")
 @game_transaction

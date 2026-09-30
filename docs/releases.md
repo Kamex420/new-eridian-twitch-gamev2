@@ -1,5 +1,22 @@
 # Release notes
 
+## Admin tools to find and merge duplicate characters
+
+When someone plays on both Twitch and Discord without linking the accounts, they end up as two characters with the same name. Two admin endpoints fix this without losing anything. Both need the game's `ADMIN_KEY`.
+
+- **Find duplicates:** `/api/v1/admin/duplicates?channel=new-eridian&key=ADMIN_KEY` lists every name held by more than one character (ignoring capitals and [tags]). For each copy it shows the ID (`uid`), whether it is a Twitch or Discord character, SC, contribution, actions, XP, and when it was created and last seen.
+- **Merge:** `/api/v1/admin/merge?channel=new-eridian&keep=UID&merge=UID&key=ADMIN_KEY`
+  - On its own, it only shows a preview of the combined character.
+  - Adding `&confirm=1` applies the merge. It uses the same code as `/link`:
+    - SC, contribution, actions, XP and skills are added together.
+    - Items and quality gear stack.
+    - The best home and business level are kept, and achievements, dailies, cooldowns, event contributions, crafting history, queues, Seedling life and relationships are combined.
+    - Both the Twitch and Discord IDs then point at the kept character, and a Twitch + Discord pair becomes a permanent link.
+  - Society stats are not touched. Population drops by one, because the duplicate was being counted as an extra citizen.
+  - The merge is recorded in the moderator log.
+
+Players can still do this themselves: `!link` on Twitch gives a code, and `/link CODE` on Discord merges the two characters in the same way.
+
 ## Weather changes through the day; every overlay option on the setup page
 
 - **Weather changes every phase.** Avesta's weather used to be picked once per Avesta day (every 6 real hours) and often repeated on the next day, so it barely changed during a stream. It now changes with every phase (Morning, Day, Evening, Night), which is about every 90 minutes of real time with the default day length, and it never repeats back to back. Every weather type comes up about equally often. The weather's game effects (bonuses and harder work) follow the current weather as before. The map announces each change with a banner, for example "🌧️ Good Growing Weather rolling in", and switches its rain, dust, spores, fireflies or glitches.
