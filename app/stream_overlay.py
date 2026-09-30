@@ -922,7 +922,7 @@ function caption(){const cap=document.getElementById('cap'),pool=latest.filter(s
 setInterval(caption,SECONDS);
 poll(d=>{try{
   if(Q.get('phase'))d.phase=Q.get('phase');if(Q.get('weather')){d.condition_key=Q.get('weather');d.condition=Q.get('weather').replace(/_/g,' ')}
-  festival=previewHoliday()||d.festival||null;weatherKey=d.condition_key||'';
+  festival=previewHoliday()||d.festival||null;if(!first&&weatherKey&&d.condition_key&&d.condition_key!==weatherKey&&!Q.get('weather'))toast(`${WEATHER_ICON[d.condition_key]||'🌤️'} ${d.condition||'The weather'} rolling in`);weatherKey=d.condition_key||'';
   const hour=Q.get('hour')?Number(Q.get('hour')):Q.get('phase')?PREVIEW_HOUR[d.phase]??12:(d.hour??PREVIEW_HOUR[d.phase]??12);
   if(Q.get('hour')){const h=((hour%24)+24)%24;d.phase=h<6?'Morning':h<15?'Day':h<19?'Evening':'Night';d.phase_emoji={Morning:'🌅',Day:'☀️',Evening:'🌇',Night:'🌙'}[d.phase]}
   if(!first&&lastPhase&&d.phase!==lastPhase&&PHASE_NEWS[d.phase])toast(PHASE_NEWS[d.phase]);lastPhase=d.phase;
@@ -1130,8 +1130,65 @@ SOURCES = [
 
 
 # Layout choices offered on the setup page (empty value = pick automatically from the size).
-LAYOUT_CHOICES = {'map': [('', 'Automatic'), ('card', 'Card (side column)'), ('wide', 'Wide (full map)')],
-                  'hub': [('', 'Automatic'), ('compact', 'Compact (small box)'), ('tall', 'Tall (column)'), ('wide', 'Wide (16:9)'), ('strip', 'Strip (one row)')]}
+# Options offered as controls on the setup page. Each becomes a URL parameter only when it differs from the default.
+#   kind: select (choices), number (min, max, step), check (on = value added when ticked, off = value added when unticked),
+#   multi (choices joined with commas; nothing ticked = all). 'preview' options are for trying a look before going live.
+_HUB_SLIDES = [('society', 'Society'), ('stats', 'Stats'), ('today', 'Today'), ('event', 'Live event'), ('projects', 'Project & story'), ('market', 'Market'),
+               ('leaders', 'Leaders'), ('working', 'Working now'), ('seedlings', 'Seedlings'), ('news', 'News'), ('join', 'How to join')]
+_ALERT_KINDS = [('join', 'New citizen'), ('level', 'Level up'), ('achievement', 'Achievement'), ('queue', 'Queue done'), ('event_start', 'Event start'),
+                ('event_win', 'Event won'), ('event_fail', 'Event over'), ('event_cancel', 'Event cancelled'), ('tier', 'Society tier'), ('project', 'Project'),
+                ('story', 'Story'), ('directive', 'Directive')]
+_HOLIDAY_PICK = [('', 'Live (automatic)'), ('newyear', 'New Year'), ('valentine', "Valentine's Day"), ('memorial', 'Memorial Day'), ('father', "Father's Day"),
+                 ('independence', 'Independence Day'), ('labor', 'Labor Day'), ('halloween', 'Halloween'), ('thanksgiving', 'Thanksgiving'), ('christmas', 'Christmas')]
+_WEATHER_PICK = [('', 'Live (automatic)'), ('clear_skies', 'Clear skies'), ('good_growing', 'Rain (good growing)'), ('spore_drift', 'Siro spores'), ('dust_winds', 'Dust winds'),
+                 ('busy_spaceport', 'Busy spaceport'), ('water_watch', 'Overcast (water watch)'), ('quiet_cycle', 'Quiet (fireflies)'), ('sensor_noise', 'Sensor noise')]
+OPTIONS = {
+    'hub': [dict(p='layout', label='Layout', kind='select', choices=[('', 'Automatic'), ('compact', 'Compact (small box)'), ('tall', 'Tall (column)'), ('wide', 'Wide (16:9)'), ('strip', 'Strip (one row)')]),
+            dict(p='seconds', label='Seconds per slide', kind='number', default=12, min=4, max=120, step=1),
+            dict(p='slides', label='Slides to show (none ticked = all)', kind='multi', choices=_HUB_SLIDES)],
+    'map': [dict(p='layout', label='Layout', kind='select', choices=[('', 'Automatic'), ('card', 'Card (side column)'), ('wide', 'Wide (full map)')]),
+            dict(p='quality', label='Quality', kind='select', choices=[('', 'Normal'), ('high', 'High (glows, water, flags)'), ('low', 'Low (lighter for slower PCs)')]),
+            dict(p='camera', label='Camera close-ups', kind='check', default=True, off='0'),
+            dict(p='names', label='Names under Seedlings', kind='check', default=False, on='1'),
+            dict(p='stats', label='Society stats panel', kind='check', default=False, on='1'),
+            dict(p='per', label='Seedlings per district', kind='number', default=0, min=1, max=10, step=1, blank='Auto'),
+            dict(p='seconds', label='Seconds per caption', kind='number', default=7, min=3, max=60, step=1),
+            dict(p='hour', label='Preview: time of day (0–24)', kind='number', default='', min=0, max=23.9, step=.5, blank='Live', preview=True),
+            dict(p='weather', label='Preview: weather', kind='select', choices=_WEATHER_PICK, preview=True),
+            dict(p='holiday', label='Preview: holiday', kind='select', choices=_HOLIDAY_PICK, preview=True)],
+    'ticker': [dict(p='speed', label='Scroll speed (px/s)', kind='number', default=80, min=20, max=400, step=10)],
+    'alerts': [dict(p='seconds', label='Seconds on screen', kind='number', default=7, min=3, max=60, step=1),
+               dict(p='sound', label='Chime sound', kind='check', default=False, on='1'),
+               dict(p='hide', label='Hide these alerts', kind='multi', choices=_ALERT_KINDS),
+               dict(p='test', label='Preview: demo alerts', kind='check', default=False, on='1', preview=True)],
+    'narrator': [dict(p='lines', label='Older headlines', kind='number', default=3, min=0, max=6, step=1),
+                 dict(p='seconds', label='Seconds per story', kind='number', default=10, min=4, max=60, step=1)],
+    'join': [dict(p='seconds', label='Seconds per tip', kind='number', default=7, min=3, max=60, step=1)],
+}
+
+
+def _option_controls(key):
+    from html import escape
+    out = []
+    for o in OPTIONS.get(key, []):
+        attrs = f'data-p="{o["p"]}" data-kind="{o["kind"]}"' + (f' data-default="{o.get("default", "")}"' if o['kind'] == 'number' else '')
+        cls = 'opt' + (' prev' if o.get('preview') else '')
+        if o['kind'] == 'select':
+            ctl = f'<select {attrs}>' + ''.join(f'<option value="{v}">{escape(t)}</option>' for v, t in o['choices']) + '</select>'
+        elif o['kind'] == 'number':
+            val = '' if o.get('default') in ('', 0) else o['default']
+            ctl = f'<input type="number" {attrs} min="{o["min"]}" max="{o["max"]}" step="{o["step"]}" value="{val}" placeholder="{o.get("blank", "")}">'
+        elif o['kind'] == 'check':
+            ctl = f'<input type="checkbox" {attrs} data-on="{o.get("on", "")}" data-off="{o.get("off", "")}"{" checked" if o["default"] else ""}>'
+            out.append(f'<label class="{cls} chk">{ctl}<span>{escape(o["label"])}</span></label>')
+            continue
+        else:
+            ctl = f'<div class="multi" {attrs}>' + ''.join(f'<label><input type="checkbox" value="{v}"><span>{escape(t)}</span></label>' for v, t in o['choices']) + '</div>'
+            out.append(f'<div class="{cls} wide"><span class="lbl">{escape(o["label"])}</span>{ctl}</div>')
+            continue
+        out.append(f'<label class="{cls}"><span class="lbl">{escape(o["label"])}</span>{ctl}</label>')
+    return f'<div class="opts">{"".join(out)}</div>' if out else ''
+
 
 
 def setup_page(channel):
@@ -1143,11 +1200,9 @@ def setup_page(channel):
         url = f'/obs/{key}?channel={channel}'
         preview = url + ('&test=1' if key == 'alerts' else '')
         scale = min(1, 560 / w)
-        layouts = LAYOUT_CHOICES.get(key)
-        pick = (f'<label>Layout <select data-k="layout">' + ''.join(f'<option value="{v}">{t}</option>' for v, t in layouts) + '</select></label>') if layouts else ''
         cards.append(f'''<article data-key="{key}" data-w="{w}" data-h="{h}" data-url="{url}" data-preview="{preview}"><div class="head"><h2>{title}</h2><span>Recommended {w} × {h}</span></div><p>{text}</p>
-<div class="size"><label>Width <input type="number" min="100" max="3840" step="1" data-k="w" value="{w}"></label><span>×</span><label>Height <input type="number" min="40" max="2160" step="1" data-k="h" value="{h}"></label>{pick}<button class="reset" type="button">Reset</button></div>
-<div class="url"><input readonly value=""><button>Copy</button></div>{f'<p class="params">Options: {params}</p>' if params else ''}
+<div class="size"><label>Width <input type="number" min="100" max="3840" step="1" data-k="w" value="{w}"></label><span>×</span><label>Height <input type="number" min="40" max="2160" step="1" data-k="h" value="{h}"></label><button class="reset" type="button">Reset all</button></div>{_option_controls(key)}
+<div class="url"><input readonly value=""><button>Copy</button></div><p class="params warnprev" hidden>⚠️ A preview option is set: clear it before using this URL live.</p>
 <div class="preview"><iframe loading="lazy"></iframe></div></article>''')
     return f'''<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>New Eridian · OBS setup</title>
 {FONTS_LINK}<style>{THEME_CSS}{BASE_CSS}
@@ -1162,6 +1217,12 @@ article p{{color:var(--muted);font-size:14px;line-height:1.45;margin:6px 0}}.par
 .size{{display:flex;flex-wrap:wrap;align-items:flex-end;gap:8px;margin-top:10px}}.size label{{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--muted);font-weight:700}}
 .size input,.size select{{width:96px;padding:7px 8px;border-radius:8px;border:1px solid rgba(255,255,255,.18);background:#060816;color:var(--text);font:600 14px var(--font-body)}}.size select{{width:auto}}
 .size>span{{padding-bottom:8px;color:var(--muted)}}.size .reset{{padding:8px 12px;border-radius:8px;border:1px solid rgba(255,255,255,.18);background:transparent;color:var(--text);font-weight:700;cursor:pointer}}
+.opts{{display:flex;flex-wrap:wrap;gap:8px 12px;margin-top:10px;padding:10px;border-radius:10px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08)}}
+.opt{{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--muted);font-weight:700}}.opt.prev .lbl,.opt.prev.chk span{{color:#ffd27a}}
+.opt select,.opt input[type=number]{{padding:6px 8px;border-radius:8px;border:1px solid rgba(255,255,255,.18);background:#060816;color:var(--text);font:600 13px var(--font-body);min-width:92px}}
+.opt.chk{{flex-direction:row;align-items:center;gap:6px;align-self:flex-end;padding-bottom:6px;color:var(--text)}}.opt.wide{{flex-basis:100%}}
+.multi{{display:flex;flex-wrap:wrap;gap:4px 10px}}.multi label{{display:flex;align-items:center;gap:4px;color:var(--text);font-weight:600}}
+.warnprev{{color:#ffd27a!important}}
 .url{{display:flex;gap:8px;margin-top:10px}}.url input{{flex:1;min-width:0;padding:8px 10px;border-radius:8px;border:1px solid rgba(255,255,255,.14);background:#060816;color:var(--green2);font:13px ui-monospace,monospace}}
 .url button{{padding:8px 14px;border-radius:8px;border:0;background:var(--green);color:#07101d;font-weight:800;cursor:pointer}}
 .preview{{margin-top:12px;border-radius:10px;overflow:hidden;background:repeating-conic-gradient(#1a1d33 0 25%,#141629 0 50%) 0 0/22px 22px;position:relative}}
@@ -1176,17 +1237,28 @@ article p{{color:var(--muted);font-size:14px;line-height:1.45;margin:6px 0}}.par
 // Every source: type your own width and height (and layout); the preview redraws at that exact size and the URL follows. Saved in this browser.
 const load=k=>{{try{{return JSON.parse(localStorage.getItem('ne-obs:'+k)||'{{}}')}}catch(e){{return {{}}}}}},save=(k,v)=>{{try{{localStorage.setItem('ne-obs:'+k,JSON.stringify(v))}}catch(e){{}}}};
 for(const a of document.querySelectorAll('article[data-key]')){{
-  const key=a.dataset.key,W=a.querySelector('[data-k=w]'),H=a.querySelector('[data-k=h]'),L=a.querySelector('[data-k=layout]'),url=a.querySelector('.url input'),frame=a.querySelector('iframe'),box=a.querySelector('.preview'),tag=a.querySelector('.head span');
-  const saved=load(key);if(saved.w)W.value=saved.w;if(saved.h)H.value=saved.h;if(L&&saved.layout!=null)L.value=saved.layout;
+  const key=a.dataset.key,W=a.querySelector('[data-k=w]'),H=a.querySelector('[data-k=h]'),url=a.querySelector('.url input'),frame=a.querySelector('iframe'),box=a.querySelector('.preview'),tag=a.querySelector('.head span'),warn=a.querySelector('.warnprev');
+  const opts=[...a.querySelectorAll('[data-p]')],saved=load(key);if(saved.w)W.value=saved.w;if(saved.h)H.value=saved.h;
+  const read=el=>el.dataset.kind==='check'?el.checked:el.dataset.kind==='multi'?[...el.querySelectorAll('input:checked')].map(i=>i.value):el.value;
+  const write=(el,v)=>{{if(el.dataset.kind==='check')el.checked=!!v;else if(el.dataset.kind==='multi')el.querySelectorAll('input').forEach(i=>i.checked=(v||[]).includes(i.value));else el.value=v}};
+  const defaults=Object.fromEntries(opts.map(el=>[el.dataset.p,read(el)]));
+  if(saved.opts)for(const el of opts)if(el.dataset.p in saved.opts)write(el,saved.opts[el.dataset.p]);else if(el.dataset.p==='layout'&&saved.layout!=null)write(el,saved.layout);
+  // Only options that differ from the default go in the URL.
+  const query=()=>{{let q='',prev=false;for(const el of opts){{const v=read(el),k=el.dataset.p;let part='';
+      if(el.dataset.kind==='check'){{if(v&&el.dataset.on)part=el.dataset.on;if(!v&&el.dataset.off)part=el.dataset.off}}
+      else if(el.dataset.kind==='multi'){{if(v.length)part=v.join(',')}}
+      else if(el.dataset.kind==='number'){{if(v!==''&&String(+v)!==String(el.dataset.default))part=String(+v)}}
+      else if(v)part=v;
+      if(part){{q+='&'+k+'='+encodeURIComponent(part).replace(/%2C/g,',');if(el.closest('.prev'))prev=true}}}}return [q,prev]}};
   let timer=null;
-  const draw=()=>{{const w=Math.max(100,Math.min(3840,+W.value||+a.dataset.w)),h=Math.max(40,Math.min(2160,+H.value||+a.dataset.h)),lay=L?L.value:'';
-    const q=lay?'&layout='+lay:'';url.value=location.origin+a.dataset.url+q;
+  const draw=()=>{{const w=Math.max(100,Math.min(3840,+W.value||+a.dataset.w)),h=Math.max(40,Math.min(2160,+H.value||+a.dataset.h)),[q,prev]=query();
+    url.value=location.origin+a.dataset.url+q;warn.hidden=!prev;
     const scale=Math.min(1,(box.clientWidth||560)/w);box.style.height=Math.round(h*scale)+2+'px';frame.style.width=w+'px';frame.style.height=h+'px';frame.style.transform=`scale(${{scale}})`;
-    const src=a.dataset.preview+q;if(frame.dataset.src!==src+w+'x'+h){{frame.dataset.src=src+w+'x'+h;frame.src=src}}
+    const src=a.dataset.preview+q.replace(/&test=1/,'');if(frame.dataset.src!==src+w+'x'+h){{frame.dataset.src=src+w+'x'+h;frame.src=src}}
     tag.textContent=(w==+a.dataset.w&&h==+a.dataset.h?'Recommended ':'Your size ')+w+' × '+h;
-    save(key,{{w,h,layout:lay}})}};
-  for(const i of [W,H,L].filter(Boolean))i.addEventListener('input',()=>{{clearTimeout(timer);timer=setTimeout(draw,350)}});
-  a.querySelector('.reset').onclick=()=>{{W.value=a.dataset.w;H.value=a.dataset.h;if(L)L.value='';draw()}};
+    save(key,{{w,h,opts:Object.fromEntries(opts.map(el=>[el.dataset.p,read(el)]))}})}};
+  for(const i of [W,H,...opts])for(const ev of ['input','change'])i.addEventListener(ev,()=>{{clearTimeout(timer);timer=setTimeout(draw,350)}});
+  a.querySelector('.reset').onclick=()=>{{W.value=a.dataset.w;H.value=a.dataset.h;for(const el of opts)write(el,defaults[el.dataset.p]);draw()}};
   draw()}}
 addEventListener('resize',()=>document.querySelectorAll('article[data-key] [data-k=w]').forEach(i=>i.dispatchEvent(new Event('input'))));
 for(const b of document.querySelectorAll('.url button'))b.onclick=()=>{{const i=b.previousElementSibling;i.select();navigator.clipboard&&navigator.clipboard.writeText(i.value);b.textContent='Copied';setTimeout(()=>b.textContent='Copy',1500)}};</script>

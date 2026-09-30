@@ -385,3 +385,9 @@ def test_training_level_locks_remain_enforced(task):
     assert 'requires' in result.text and 'Nothing spent' in result.text
     with m.SessionLocal() as db:
         assert db.query(m.Cooldown).count()==0
+
+
+def test_weather_changes_every_phase_and_never_repeats_back_to_back():
+    seq = [m.weather_index('new-eridian', day, phase) for day in range(1, 300) for phase in range(len(m.WORLD_PHASES))]
+    assert all(a != b for a, b in zip(seq, seq[1:]))
+    assert len(set(seq)) == len(m.WORLD_CONDITIONS)

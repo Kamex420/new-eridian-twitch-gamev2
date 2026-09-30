@@ -1231,6 +1231,16 @@ def _stable_index(text,count):
     digest=hashlib.sha256(text.encode("utf-8")).hexdigest()
     return int(digest[:12],16)%count
 
+_WEATHER_TRACK={}
+def weather_index(channel,day,phase_index):
+    """Weather changes with every phase (four times an Avesta day) and never repeats back to back:
+    one continuous track where each phase steps 1..n-1 places on from the one before. Steps are cached per world."""
+    n=len(WORLD_CONDITIONS);slot=max(0,day*len(WORLD_PHASES)+phase_index)
+    track=_WEATHER_TRACK.setdefault(channel,[_stable_index(f"{channel}:weather",n)])
+    while len(track)<=slot:
+        k=len(track);track.append((track[-1]+1+_stable_index(f"{channel}:{k}:weather-step",n-1))%n)
+    return track[slot]
+
 def world_clock(db,channel,s=None):
     s=s or society(db,channel)
     row=db.execute(select(WorldClock).where(WorldClock.channel_id==channel)).scalar_one_or_none()
@@ -1243,7 +1253,7 @@ def world_clock(db,channel,s=None):
     phase=next((p for p in WORLD_PHASES if p[1]<=hour<p[2]),WORLD_PHASES[-1])
     if s.day!=day:
         s.day=day;db.commit()
-    condition=WORLD_CONDITIONS[_stable_index(f"{channel}:{day}:condition",len(WORLD_CONDITIONS))]
+    condition=WORLD_CONDITIONS[weather_index(channel,day,WORLD_PHASES.index(phase))]
     return {"day":day,"seconds":sec,"hour":hour,"phase":phase[0],"phase_emoji":phase[3],
             "condition_key":condition[0],"condition":condition[1],"condition_text":condition[2]}
 

@@ -142,8 +142,8 @@ def test_hub_never_cuts_text_off():
 def test_setup_page_lets_the_streamer_set_any_size_and_layout():
     from test_colony import client
     page = client.get('/obs', params={'channel': 'test'}).text
-    assert 'data-k="w"' in page and 'data-k="h"' in page and 'data-k="layout"' in page
-    assert "'&layout='" in page and 'localStorage' in page and 'Any size you like' in page
+    assert 'data-k="w"' in page and 'data-k="h"' in page and 'data-p="layout"' in page
+    assert 'localStorage' in page and 'Any size you like' in page
 
 
 def test_map_scenery_fills_any_source_shape():
@@ -156,3 +156,15 @@ def test_map_relayouts_on_resize_and_leaves_stats_to_the_hub():
     from test_colony import client
     page = client.get('/obs/map', params={'channel': 'test'}).text
     assert "if(wantCard()!==CARD||" in page and "L-narrow" in page and "if(Q.get('stats')!=='1')" in page
+
+
+def test_setup_page_has_controls_for_every_overlay_option():
+    import re
+    from test_colony import client
+    from app import stream_overlay as o
+    page = client.get('/obs', params={'channel': 'test'}).text
+    for key, (css, body) in o.PAGES.items():
+        used = set(re.findall(r"Q\.get\('(\w+)'\)", body)) - {'phase', 'days'}   # phase/days: covered by hour and holiday
+        offered = {opt['p'] for opt in o.OPTIONS.get(key, [])}
+        assert used <= offered, (key, used - offered)
+    assert page.count('data-p="') >= sum(len(v) for v in o.OPTIONS.values())

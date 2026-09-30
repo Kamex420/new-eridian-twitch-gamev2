@@ -1,5 +1,17 @@
 # Release notes
 
+## Weather changes through the day; every overlay option on the setup page
+
+- **Weather changes every phase.** Avesta's weather used to be picked once per Avesta day (every 6 real hours) and often repeated on the next day, so it barely changed during a stream. It now changes with every phase (Morning, Day, Evening, Night), which is about every 90 minutes of real time with the default day length, and it never repeats back to back. Every weather type comes up about equally often. The weather's game effects (bonuses and harder work) follow the current weather as before. The map announces each change with a banner, for example "🌧️ Good Growing Weather rolling in", and switches its rain, dust, spores, fireflies or glitches.
+- **Options as controls on `/obs`.** Every overlay's options are now drop-downs, number boxes and checkboxes on the setup page. Only options that differ from the default go into the URL. The preview updates live, and the choices are saved with your width and height. **Reset all** restores the defaults.
+  - Hub: layout, seconds per slide, and which slides to show.
+  - Map: layout, quality, camera close-ups, names, stats panel, Seedlings per district, and seconds per caption. It also has preview-only settings for time of day, weather and holiday; a warning appears while one is set, so you remember to clear it before going live.
+  - Ticker: scroll speed.
+  - Alerts: seconds on screen, chime sound, which alert types to hide, and demo alerts.
+  - News: number of older headlines and seconds per story.
+  - How to play: seconds per tip.
+- **Checked end to end.** Every option was tested in a browser against its overlay, along with a weather and phase change arriving mid-stream, and every overlay page loads without script errors.
+
 ## Map: full-width caption when the Wide layout is used in a smaller source
 
 With `&layout=wide` (or "Wide (full map)" on the setup page) in a source narrower than 800 px or less wide than 3:2, for example 400×400:
