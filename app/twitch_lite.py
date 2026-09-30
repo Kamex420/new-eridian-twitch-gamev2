@@ -91,6 +91,33 @@ def key_problem(path, params):
     return '⛔ This command is missing the game key. A moderator needs to update it from integrations/twitch/ALL_COMMANDS.txt.'
 
 
+# Commands Twitch chat can type (the lite game), and Discord names that mean the same Twitch command.
+TWITCH_COMMANDS = set('''seed start link status me skills wallet job inventory inv find gather gatherpage mine mineinfo farm harvest forage water
+    scan research rare scavenge craft machine build repair project work cargo delivery spaceport explore survey market training life eat
+    sleep relax games walk hobby hi hangout meal recover eatfull cooldowns bonus seedling diary society progress event eventhistory
+    leaderboard contracts achievements siro rocky vote challenge season trophies recap'''.split())
+SAME_ON_TWITCH = {'profile': 'me', 'bonuses': 'bonus', 'world': 'society', 'daily': 'contracts', 'tend': 'farm', 'scout': 'explore',
+                  'field_analysis': 'research', 'expedite': 'spaceport', 'seasons': 'season'}
+_SLASH = __import__('re').compile(r'(?<![\w/:.<])/([a-z][a-z_]*)((?: [a-z_]+:[\w\-]+)*)')
+
+
+def twitchify(text):
+    """Twitch chat can only type !commands: '/mine' becomes '!mine', '/life action:eat' becomes '!eat', and a
+    Discord-only command is marked 'on Discord'. Text that already talks about Discord is left as it is."""
+    def swap(match):
+        if 'discord' in text[max(0, match.start() - 70):match.start()].lower():
+            return match.group(0)
+        cmd, opts = match.group(1), match.group(2)
+        values = [o.split(':', 1)[1] for o in opts.split()]
+        for name in values + [cmd]:
+            for candidate in (name, name.split('_')[-1], SAME_ON_TWITCH.get(name, '')):
+                candidate = SAME_ON_TWITCH.get(candidate, candidate)
+                if candidate in TWITCH_COMMANDS:
+                    return '!' + candidate
+        return f'/{cmd} on Discord'
+    return _SLASH.sub(swap, text)
+
+
 def install(m):
     @m.app.middleware('http')
     async def lite(request, call_next):
@@ -100,7 +127,12 @@ def install(m):
         found = blocked(request.url.path, request.query_params)
         if found:
             return PlainTextResponse(gate_text(*found))
-        return await call_next(request)
+        response = await call_next(request)
+        twitch = str(request.query_params.get('provider') or 'twitch').lower() != 'discord'
+        if twitch and request.url.path.startswith('/api/v1/') and response.headers.get('content-type', '').startswith('text/plain'):
+            body = b''.join([chunk async for chunk in response.body_iterator])
+            return PlainTextResponse(twitchify(body.decode('utf-8', 'replace')), status_code=response.status_code)
+        return response
 
 
 # ---------------------------------------------------------------- Twitch copy that points to Discord

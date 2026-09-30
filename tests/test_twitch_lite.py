@@ -109,3 +109,19 @@ def test_mine_on_twitch_mines_once_right_away_with_short_ore_names():
             db.query(m.Cooldown).delete(); db.commit()
         assert twitch('/api/v1/mining', action='mine', count='1', ore=typo).startswith(('✅ Gathered Hematite Ore', '❌ Mining failed')), typo
     assert 'No ore called "banana"' in twitch('/api/v1/mining', action='mine', count='1', ore='banana')
+
+
+def test_twitch_chat_is_never_told_to_type_a_slash_command():
+    assert lite.twitchify('Gather common materials or use /mine first.') == 'Gather common materials or use !mine first.'
+    assert lite.twitchify('Use /life action:eat or /work task:farm_harvest.') == 'Use !eat or !harvest.'
+    assert lite.twitchify('Season 1: no points yet · /season') == 'Season 1: no points yet · !season'
+    assert lite.twitchify('Open /menu → Bag') == 'Open /menu on Discord → Bag'
+    assert lite.twitchify('join discord.gg/x and use /make.') == 'join discord.gg/x and use /make.'     # already about Discord
+    assert lite.twitchify('3/10 done · https://a.b/c') == '3/10 done · https://a.b/c'
+    twitch('/api/v1/start')
+    profile = twitch('/api/v1/profile')
+    assert '/season' not in profile and '/me' not in profile
+    with m.SessionLocal() as db:
+        db.query(m.Cooldown).delete(); db.commit()
+    rare = twitch('/api/v1/mining', action='mine', count='1', ore='rutile')
+    assert '!mine' in rare and '/mine' not in rare
