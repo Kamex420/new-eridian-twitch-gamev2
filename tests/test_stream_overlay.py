@@ -109,3 +109,13 @@ def test_ticker_tags_every_item_and_the_map_has_stats_characters_and_quality():
     for feature in ('function statPanel(', 'const HAT=', 'function face(', 'function idle(', "Q.get('quality')", "Q.get('stats')", '.q-low', 'function flag(',
                     'function fitHome(', 'function tidyLabels(', 'function hushBubble(', 'function dropBubbleIfHidden('):
         assert feature in page, feature
+
+
+def test_hub_and_map_adapt_to_side_columns_and_bands():
+    from test_colony import client
+    hub = client.get('/obs/hub', params={'channel': 'test'}).text
+    for feature in ("'strip'", "'compact'", "'tall'", 'const STRIP=', 'function fit(', '.L-compact .hub', '.L-strip .hub'):
+        assert feature in hub, feature
+    page = client.get('/obs/map', params={'channel': 'test'}).text
+    for feature in ('const CARD=', '.L-card .cap', 'place_(', 'closeUp'):
+        assert feature in page, feature

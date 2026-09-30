@@ -1,5 +1,23 @@
 # Release notes
 
+## Map and Hub fit a side column
+
+The map and the Hub now adapt to the shape of their Browser Source. You can put them in a streamer's side column, next to a game capture, instead of over it.
+
+**Recommended for a layout with a 340 px column beside the game** (they replace the Join card and the Avesta Operations panel; the Hub rotates through both):
+- **Map: 340×250**, top of the column. It switches to a *card*:
+  - The header, the town, and the caption (who is talking and what they say) are stacked, and none covers another.
+  - District names become large icon badges, and Seedlings are drawn bigger.
+  - Speech bubbles are off, because the caption carries the words.
+  - The camera spends two of every three turns close up on the speaker.
+  - The stat panel appears below the caption when the card is at least 380 px tall, or with `&stats=1`.
+- **Hub: 340×176**, right below. It switches to a *compact* layout with type at about 15 px at 1080p. Any slide that would still overflow shrinks until it fits.
+
+**Other layouts:**
+- `&layout=tall` suits a column taller than it is wide, for example 340×440.
+- `&layout=strip` suits a band such as 1440×120 under a game window. Every slide is laid out in one row: six stat tiles, the market's top items, the leaders, the queues, the Seedlings, two headlines, or four join commands.
+- Layouts are chosen automatically from the source size. `&layout=` forces one: `compact`, `tall`, `strip` or `wide` for the Hub, and `card` or `wide` for the map.
+
 ## No more clipping on the map
 
 An automated check measured every name tag, speech bubble, bar and panel on `/obs/map` at 960×540 and 1920×1080. It covered the wide shot, 16 camera turns with close-ups, a level-up banner and a holiday night. Everything it found is fixed. The check now passes with no overlaps.

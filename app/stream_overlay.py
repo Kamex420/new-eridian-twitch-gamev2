@@ -421,6 +421,15 @@ svg{position:absolute;inset:0;width:100%;height:100%;display:block}
 .stats .m.low em{color:var(--amber)}.stats .m.low .meter i{background:linear-gradient(90deg,#ffb36b,#ffd27a)}
 .stats .next{margin-top:.45em;padding-top:.35em;border-top:1px solid var(--edge-soft);font-size:.8em;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.stats .next b{color:var(--text)}
 .stats.hide{opacity:0}
+/* 'card' layout for a side column (e.g. 340×440): header, town, caption and stats stacked, none on top of another.
+   District names become large icon badges and Seedlings are drawn bigger, so they read at column size. */
+.L-card .wrap{display:flex;flex-direction:column;border-radius:.9em;border:2px solid var(--edge);background:#1d1a24}
+.L-card #map{position:relative;inset:auto;flex:1 1 0;min-height:0;height:auto;order:1}
+.L-card .head{position:relative;order:0;height:auto;flex:none;flex-wrap:wrap;row-gap:.15em;padding:.35em .6em;gap:.45em;font-size:clamp(11px,4.8vw,34px)}
+.L-card .head .info{margin-left:0;width:100%;font-size:.72em}
+.L-card .cap{position:relative;order:2;right:auto;bottom:auto;width:auto;margin:.35em .45em 0;font-size:clamp(11px,4.3vw,30px);flex:none}
+.L-card .stats{position:relative;order:3;left:auto;top:auto;width:auto;margin:.35em .45em .45em;font-size:clamp(10px,3.9vw,28px);flex:none}
+.L-card .toast{left:.5em;right:.5em;max-width:none;text-align:center;font-size:clamp(11px,4.2vw,30px);white-space:normal}
 .q-low .smoke,.q-low .shade,.q-low .cloud,.q-low .shopper{display:none}.q-low .ripple,.q-low .beacon,.q-low .hook{animation:none}
 .q-high .dlabel{filter:drop-shadow(0 2px 3px rgba(0,0,0,.55))}
 .shimmer{animation:shimmer 3.2s ease-in-out infinite}@keyframes shimmer{0%,100%{opacity:0;transform:translateX(-4px)}50%{opacity:.85;transform:translateX(4px)}}
@@ -473,6 +482,8 @@ const LOOK={commons:['⛲','Commons','#b8f4d0'],residential_ring:['🏠','Homes'
 const GROUND={commons:'#b9b1a0',residential_ring:'#7f9a5a',agricultural_district:'#6d8c46',industrial_ward:'#8a8578',research_block:'#9aa3a8',market_concourse:'#b5a88c',spaceport_quarter:'#8e8f93',frontier_edge:'#8b7355',park:'#5f8a45',wild:'#6f6446'};
 const MOOD={Inspired:'#ffd27a',Content:'#7ee3b0',Tired:'#9aa3c7',Hungry:'#ffb36b',Lonely:'#8fb3ff',Uneasy:'#d6a4ff',Stressed:'#ff9a76',Miserable:'#ff7484'};
 const WEATHER_ICON={clear_skies:'☀️',good_growing:'🌧️',spore_drift:'🍃',dust_winds:'🌪️',busy_spaceport:'🚀',water_watch:'💧',quiet_cycle:'🌙',sensor_noise:'📡'};
+const CARD=Q.get('layout')==='card'||(Q.get('layout')!=='wide'&&(innerWidth<560||innerWidth/Math.max(1,innerHeight)<=1.3));if(CARD)document.body.classList.add('L-card');
+let LS=1,TS=1;   // card layout: label and Seedling scale so they stay readable in a small source
 const QUALITY=['low','high'].includes(Q.get('quality'))?Q.get('quality'):'normal';document.body.classList.add('q-'+QUALITY);
 const SHOW_NAMES=Q.get('names')==='1',PER_PLACE=Number(Q.get('per')||4),CAMERA=Q.get('camera')!=='0',SECONDS=Number(Q.get('seconds')||7)*1000;
 // Holidays: colours, and what the town puts up for each.
@@ -593,10 +604,10 @@ let labelSig='';
 function labelsFor(d){const sig=JSON.stringify(Object.entries(d.districts||{}).map(([k,v])=>[k,v.unlocked,v.level,v.unlocks_at]));if(sig===labelSig)return;labelSig=sig;   // rebuilt only when a district changes
   const labels=document.getElementById('labels');labels.innerHTML='';
   for(const k in LOOK){const info=(d.districts||{})[k]||{unlocked:k==='commons',level:1},[x,y]=labelXY(k),[icon,short,color]=LOOK[k];
-    const sub=k==='commons'?'':info.unlocked?`LV ${info.level}`:`AT ${String(info.unlocks_at||'').toUpperCase()}`,lab=el('g',{class:'dlabel'},labels);
-    const box_=el('rect',{y:y-12,height:24,rx:12,fill:'rgba(8,13,39,.9)',stroke:color,'stroke-width':2},lab),t=el('text',{y:y+1,fill:color},lab);t.textContent=`${icon} ${short.toUpperCase()}`;
-    const s=sub?el('text',{class:'lvl',y:y+1},lab):null;if(s)s.textContent=sub;const tw=t.getComputedTextLength(),sw=s?s.getComputedTextLength()+8:0,w=tw+sw+22;
-    box_.setAttribute('x',x-w/2);box_.setAttribute('width',w);t.setAttribute('x',x-w/2+11+tw/2);if(s)s.setAttribute('x',x+w/2-11-sw/2+4)}}
+    const sub=CARD?'':k==='commons'?'':info.unlocked?`LV ${info.level}`:`AT ${String(info.unlocks_at||'').toUpperCase()}`,lab=el('g',{class:'dlabel'},labels);
+    const box_=el('rect',{y:y-12*LS,height:24*LS,rx:12*LS,fill:'rgba(8,13,39,.9)',stroke:color,'stroke-width':2*LS},lab),t=el('text',{y:y+LS,fill:color,style:`font-size:${16*LS}px`},lab);t.textContent=CARD?icon+(info.unlocked||k==='commons'?'':'🔒'):`${icon} ${short.toUpperCase()}`;
+    const s=sub?el('text',{class:'lvl',y:y+1},lab):null;if(s)s.textContent=sub;const tw=t.getComputedTextLength(),sw=s?s.getComputedTextLength()+8:0,w=tw+sw+22*LS;
+    box_.setAttribute('x',x-w/2);box_.setAttribute('width',w);t.setAttribute('x',x-w/2+11*LS+tw/2);if(s)s.setAttribute('x',x+w/2-11-sw/2+4)}}
 function labelXY(k){const [r,c]=CELLS[k]||CELLS.commons,[a,b]=cellTiles(r,c);return iso(a+1.5,b+1.5)}
 
 // ---- the town reacts to the society: crops, smoke, lit windows and market crowds
@@ -621,7 +632,8 @@ function liveTown(d){const st=d.stats||{},pop=d.population||0,ds=d.districts||{}
 // ---- Seedlings: little people who walk the streets between districts and stand under the district name
 const tokens=document.getElementById('tokens'),live={};let latest=[];
 const SKIN=['#f1c9a5','#e0ac7e','#c68a5a','#8d5a3b','#5e3b26'],HAIR=['#2b1d14','#5a3a22','#b07a3a','#e2c27a','#7a2a1a','#c9c9d6'];
-function home(k,i,n){const [x,y]=labelXY(k);return [x+(i-(n-1)/2)*30,y+60]}
+function home(k,i,n){const [x,y]=labelXY(k);return [x+(i-(n-1)/2)*30*TS,y+12*LS+48*TS]}
+const place_=(x,y)=>`translate(${x.toFixed?x.toFixed(1):x},${y.toFixed?y.toFixed(1):y})`+(TS!==1?` scale(${TS.toFixed(2)})`:'');
 function roadFor(r,other){return r===0?6:r===2?13:(other===2?13:6)}
 function route(from,to){if(from===to||!CELLS[from]||!CELLS[to])return [];const [ra,ca]=CELLS[from],[rb,cb]=CELLS[to],IA=roadFor(ra,rb),IB=roadFor(rb,ra),ja=ca*7+3,jb=cb*7+3;
   let p;if(IA===IB)p=[[IA+.5,ja],[IA+.5,jb]];else{const J=[6,13].sort((x,y)=>Math.abs(ja-x)+Math.abs(jb-x)-Math.abs(ja-y)-Math.abs(jb-y))[0];p=[[IA+.5,ja],[IA+.5,J+.5],[IB+.5,J+.5],[IB+.5,jb]]}
@@ -661,7 +673,7 @@ setInterval(idle,2600);
 function seedlings(list){const groups={};for(const s of list)(groups[s.place]=groups[s.place]||[]).push(s);const seen=new Set();document.querySelectorAll('.more').forEach(e=>e.remove());
   for(const k in groups){const all=groups[k].sort((a,b)=>a.id<b.id?-1:1),n=Math.min(all.length,PER_PLACE),extra=all.length-n;
     all.forEach((s,i)=>{seen.add(s.id);const [tx,ty]=home(k,Math.min(i,n-1),n);let t=live[s.id];
-      if(!t){t=live[s.id]=figure(s);t.id=s.id;t.x=tx;t.y=ty;t.place=k;t.g.setAttribute('transform',`translate(${tx},${ty})`)}
+      if(!t){t=live[s.id]=figure(s);t.id=s.id;t.x=tx;t.y=ty;t.place=k;t.g.setAttribute('transform',place_(tx,ty))}
       t.hidden=i>=n;t.s=s;if(t.job!==s.job){t.job=s.job;hat(t.g.querySelector('.hat'),s.job)}t.g.querySelector('.shirt').setAttribute('fill',MOOD[s.mood]||'#b8f4d0');t.g.querySelector('.ini').textContent=(s.name||'?').slice(0,1).toUpperCase();
       t.g.querySelector('.label').textContent=SHOW_NAMES?(s.name.length>8?s.name.slice(0,7)+'…':s.name):'';t.g.querySelector('.act').textContent=s.emoji||'';
       if(t.place!==k){t.path=[...route(t.place,k),[tx,ty]];t.place=k;t.g.style.display='';hushBubble(t)}else if(!t.path.length&&(Math.abs(t.x-tx)>1||Math.abs(t.y-ty)>1))t.path=[[tx,ty]];
@@ -675,7 +687,7 @@ function walk(){if(walking)return;walking=true;lastT=performance.now();requestAn
 function stepAll(now){const dt=Math.min(.1,(now-lastT)/1000);lastT=now;let any=false;
   for(const id in live){const t=live[id];if(!t.path.length){if(t.g.classList.contains('walking')){t.g.classList.remove('walking');face(t,0,0)}continue}any=true;t.g.classList.add('walking');t.g.style.display='';
     let left=46*dt;while(left>0&&t.path.length){const [px,py]=t.path[0],dx=px-t.x,dy=py-t.y,dist=Math.hypot(dx,dy);face(t,dx,dy);if(dist<=left){t.x=px;t.y=py;left-=dist;t.path.shift()}else{t.x+=dx/dist*left;t.y+=dy/dist*left;left=0}}
-    t.g.setAttribute('transform',`translate(${t.x.toFixed(1)},${t.y.toFixed(1)})`);if(id===speaking)dropBubbleIfHidden(t);if(!t.path.length&&t.hidden&&!t.g.querySelector('.bubble'))t.g.style.display='none'}
+    t.g.setAttribute('transform',place_(t.x,t.y));if(id===speaking)dropBubbleIfHidden(t);if(!t.path.length&&t.hidden&&!t.g.querySelector('.bubble'))t.g.style.display='none'}
   sortTokens();if(any)requestAnimationFrame(stepAll);else walking=false}
 // Nearer Seedlings draw in front. Nodes are only moved when the order really changes: moving one restarts its animations.
 let sortAt=0,speaking=null;function sortTokens(force){const now=performance.now();if(!force&&now-sortAt<400)return;sortAt=now;
@@ -687,7 +699,7 @@ function speak(t,line){document.querySelectorAll('.bubble').forEach(b=>b.remove(
   // The whole line, word-wrapped. The bubble tries above the head, higher up, then to either side,
   // and takes the first spot that covers no district name, panel or bar and stays on screen.
   // No bubble for a speaker the camera cannot see (off-frame, or behind a bar or panel); the caption still names them.
-  if(t.path.length||t.hidden)return;const [hx0,hy0]=toScreen(t.x,t.y-30),walls0=panels();if(hx0<10||hx0>950||hy0<band[0]||hy0>536||walls0.some(q=>hx0>q.l&&hx0<q.r&&hy0>q.t&&hy0<q.b))return;
+  if(CARD||t.path.length||t.hidden)return;const [hx0,hy0]=toScreen(t.x,t.y-30),walls0=panels();if(hx0<10||hx0>950||hy0<band[0]||hy0>536||walls0.some(q=>hx0>q.l&&hx0<q.r&&hy0>q.t&&hy0<q.b))return;
   const b=el('g',{class:'bubble'},t.g),pop=el('g',{class:'pop'},b),tx=el('text',{},pop),MAX=200,LH=15,rows=[];let cur='';
   const width=str=>{tx.textContent=str;return tx.getComputedTextLength()};
   for(const word of line.split(/\s+/)){const next=cur?cur+' '+word:word;if(cur&&width(next)>MAX){rows.push(cur);cur=word}else cur=next}if(cur)rows.push(cur);
@@ -735,9 +747,13 @@ const BOUNDS={left:OX-N*TW/2-8,right:OX+N*TW/2+8,bottom:OY+N*TH+8,top:OY};
 let HOME={x:480,y:254,s:1.1,px:480,py:290},CAM=HOME,band=[50,534];
 // The wide shot is sized so every building fits below the header and inside the frame.
 function fitHome(){try{const c=document.getElementById('city').getBBox();BOUNDS.top=Math.min(c.height?c.y:OY,OY)-4}catch(e){}
-  band=[vb(document.querySelector('.head')).b+6,534];const s=Math.min(944/(BOUNDS.right-BOUNDS.left),(band[1]-band[0])/(BOUNDS.bottom-BOUNDS.top));
+  band=[Math.max(4,vb(document.querySelector('.head')).b+6),534];const s=Math.min(944/(BOUNDS.right-BOUNDS.left),(band[1]-band[0])/(BOUNDS.bottom-BOUNDS.top));
   const next={x:(BOUNDS.left+BOUNDS.right)/2,y:(BOUNDS.top+BOUNDS.bottom)/2,s,px:480,py:(band[0]+band[1])/2};
-  if(Math.abs(next.s-HOME.s)>.002||Math.abs(next.y-HOME.y)>.5||Math.abs(next.py-HOME.py)>.5){const wasHome=CAM===HOME;HOME=next;if(wasHome)apply(HOME)}}
+  if(Math.abs(next.s-HOME.s)>.002||Math.abs(next.y-HOME.y)>.5||Math.abs(next.py-HOME.py)>.5){const wasHome=CAM===HOME;HOME=next;if(wasHome)apply(HOME)}
+  if(CARD){const ppu=Math.min(svgEl.clientWidth/960,svgEl.clientHeight/540)*HOME.s,ls=Math.min(2.8,Math.max(1,15/(16*ppu))),ts=Math.min(2.2,Math.max(1,24/(38*ppu)));
+    if(Math.abs(ls-LS)>.02||Math.abs(ts-TS)>.02){LS=ls;TS=ts;labelSig='';if(lastData){labelsFor(lastData);tidyLabels();seedlings(latest);for(const id in live)live[id].g.setAttribute('transform',place_(live[id].x,live[id].y))}}
+    const tt=document.getElementById('toast');tt.style.top=(document.querySelector('.head').offsetHeight+6)+'px'}}
+let lastData=null;
 function apply(c){CAM=c;world.style.transform=`translate(${c.px}px,${c.py}px) scale(${c.s}) translate(${-c.x}px,${-c.y}px)`;tidyLabels()}
 // In a close-up, district names that would be cut by the frame or slide under a bar or panel fade out instead.
 function panels(){const out=[vb(document.querySelector('.head')),vb(document.getElementById('cap'))],st=document.getElementById('stats'),tt=document.getElementById('toast');
@@ -861,7 +877,7 @@ function shuttles(on){if(on&&!shuttle){const [x,y]=iso(3,3);shuttle=el('g',{clas
 const STATS=[['🌾','food'],['⛏️','materials'],['⚙️','development'],['🔬','knowledge'],['🪙','treasury'],['⭐','reputation']];
 const short=v=>v>=1e6?(v/1e6).toFixed(1)+'M':v>=1e4?Math.round(v/1e3)+'k':v>=1e3?(v/1e3).toFixed(1)+'k':String(Math.round(v));
 let statsBuilt=false;
-function statPanel(d){const box=document.getElementById('stats');if(Q.get('stats')==='0'){box.remove();return}const st=d.stats||{},target=d.tier_target||1,low=d.bottleneck&&d.bottleneck.key;
+function statPanel(d){const box=document.getElementById('stats');if(!box)return;if(Q.get('stats')==='0'||(CARD&&Q.get('stats')!=='1'&&innerHeight<380)){box.remove();return}   // a short card leaves the stats to the Hubconst st=d.stats||{},target=d.tier_target||1,low=d.bottleneck&&d.bottleneck.key;
   if(!statsBuilt){statsBuilt=true;box.innerHTML=`<div class="tl"><b id="st-tier"></b><small id="st-next"></small><span id="st-pct"></span></div><div class="meter big"><i id="st-bar"></i></div>
     <div class="grid">${STATS.map(([i,k])=>`<div class="m" id="st-${k}" title="${k}"><span>${i}</span><div class="meter"><i></i></div><em></em></div>`).join('')}</div><div class="next" id="st-open"></div>`}
   document.getElementById('st-tier').textContent=(d.tier_name||d.tier||'Outpost').toUpperCase();document.getElementById('st-next').textContent=d.next_tier?'→ '+d.next_tier:'· top tier';
@@ -877,7 +893,8 @@ function caption(){const cap=document.getElementById('cap'),pool=latest.filter(s
   const s=pool[capIndex++%pool.length],lines=(s.lines&&s.lines.length)?s.lines:[s.thought],idx=said[s.id]||0,line=lines[idx%lines.length],place=(LOOK[s.place]||LOOK.commons);
   cap.classList.add('hide');setTimeout(()=>{cap.innerHTML=`<span class="mood">${esc(s.mood_emoji||'🙂')}</span><div class="text"><div class="top"><span class="who">${esc(s.name)}</span> · <span class="what">${esc(place[0])} ${esc(s.activity)}</span></div>${line?`<div class="said">“${esc(line)}”</div>`:''}</div>`;cap.classList.remove('hide');tidyLabels()},450);
   said[s.id]=idx+1;const t=live[s.id];speaking=s.id;
-  if(Date.now()>=lockUntil){capTick++;if(t&&!t.path.length&&capTick%2===1)look(t.x,t.y-24,1.9);else look()}
+  if(Date.now()>=lockUntil){capTick++;const closeUp=CARD?capTick%3!==0:capTick%2===1;   // a small card spends more time close up
+    if(t&&!t.path.length&&closeUp)look(t.x,t.y-24,CARD?1.75:1.9);else look()}
   speak(t,line)}
 setInterval(caption,SECONDS);
 poll(d=>{try{
@@ -889,12 +906,12 @@ poll(d=>{try{
   const tier=d.tier_index||0;if(!first&&lastTier>=0&&tier>lastTier)toast(`🏙️ New Eridian is now a ${d.tier_name||d.tier}!`);
   if(tier!==lastTier){streets(d,tier);lastTier=tier}for(const k in CELLS)district(k,(d.districts||{})[k]||{},tier);labelsFor(d);tidyLabels();
   sky(hour,weatherKey);night=darkness>.3;effects(d.phase);glitches(weatherKey==='sensor_noise');shuttles(weatherKey==='busy_spaceport'&&darkness<.6);
-  latest=d.seedlings||[];liveTown(d);statPanel(d);fitHome();seedlings(latest);if(first){first=false;caption()}
+  latest=d.seedlings||[];lastData=d;liveTown(d);statPanel(d);fitHome();seedlings(latest);if(first){first=false;caption()}
   document.getElementById('tier').textContent=`${d.tier_name||d.tier||'Outpost'} · ${d.population||0} citizens`;
   const hol=document.getElementById('hol');if(festival&&HOLIDAYS[festival.name]){const n=festival.days_to_holiday;hol.style.setProperty('--hol',HOLIDAYS[festival.name][1][0]);
     const GREET={'Christmas':'Merry Christmas!','Memorial Day':'Memorial Day','Thanksgiving':'Happy Thanksgiving!'};hol.textContent=`${festival.emoji} `+(n===0?(GREET[festival.name]||`Happy ${festival.name}!`):n>0?`${festival.name} in ${n} day${n===1?'':'s'}`:`${festival.name} festival`)}else hol.textContent='';
   const busy=latest.filter(s=>/^Working|^Queue|^Gathering/.test(s.activity)).length;
-  const hh=Math.floor(((hour%24)+24)%24),mm=Math.floor((hour%1)*60);document.getElementById('info').textContent=`${d.phase_emoji||''} Day ${d.day} · ${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')} ${d.phase} · ${WEATHER_ICON[weatherKey]||''} ${d.condition||''}`+(festival?'':` · ${busy} working`);
+  const hh=Math.floor(((hour%24)+24)%24),mm=Math.floor((hour%1)*60);document.getElementById('info').textContent=`${d.phase_emoji||''} Day ${d.day} · ${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')} ${d.phase} · ${WEATHER_ICON[weatherKey]||''} ${d.condition||''}`+(festival||CARD?'':` · ${busy} working`);
 }catch(e){console.error(e)}},4000);
 </script>""")
 
@@ -933,7 +950,7 @@ body{padding:0}.hub{position:fixed;inset:0;display:flex;flex-direction:column;ov
 .top{display:flex;align-items:center;gap:.6em;padding:.55em .9em .4em;border-bottom:1px solid rgba(255,255,255,.08)}
 .swap{animation:ne-in var(--dur) var(--ease) both}.top .title{font-weight:900;letter-spacing:.12em;text-transform:uppercase;color:var(--green2);font-size:.9em;white-space:nowrap}
 .dots{margin-left:auto;display:flex;gap:.35em}.dots i{width:.5em;height:.5em;border-radius:50%;background:rgba(255,255,255,.2)}.dots i.on{background:var(--green)}.dots i.live{background:var(--danger)}
-.body{flex:1;padding:.5em .9em;min-height:0;display:flex;flex-direction:column;justify-content:center;gap:.45em}.slide{animation:ne-slide-in .6s var(--ease) both}.slide.out{animation:ne-slide-out .35s var(--ease) both}
+.body{flex:1;padding:.5em .9em;min-height:0;min-width:0;overflow:hidden;display:flex;flex-direction:column;justify-content:center;gap:.45em}.slide{animation:ne-slide-in .6s var(--ease) both}.slide.out{animation:ne-slide-out .35s var(--ease) both}
 @keyframes in{from{opacity:0;transform:translateX(3%)}to{opacity:1;transform:none}}
 .timer{height:.28em;background:rgba(255,255,255,.07)}.timer i{display:block;height:100%;background:linear-gradient(90deg,var(--green),var(--violet));transform-origin:left}
 h2{margin:0;font:700 1.45em/1.1 var(--font-display);color:var(--ivory)}.sub{color:var(--muted);font-size:.78em;line-height:1.3}
@@ -943,6 +960,22 @@ h2{margin:0;font:700 1.45em/1.1 var(--font-display);color:var(--ivory)}.sub{colo
 .list{display:flex;flex-direction:column;gap:.3em}.list .row{padding:.22em .45em;border-radius:.4em;background:rgba(0,0,0,.2);font-size:.9em}
 .num{color:var(--green2);font-weight:900;font-variant-numeric:tabular-nums;white-space:nowrap}.hot{color:var(--amber)}.red{color:#ff9aa6}
 .cols{display:grid;grid-template-columns:1fr 1fr;gap:.6em}.cols h3{margin:0 0 .2em;font-size:.7em;letter-spacing:.1em;text-transform:uppercase;color:var(--cyan)}
+/* Layouts by source shape: 'strip' for a wide band (e.g. 1440×120 under a game window), 'tall' for a side column (e.g. 340×440).
+   Text is sized from the source so it stays readable; anything that still overflows shrinks to fit. */
+.L-tall .hub{border-radius:1.1em;font-size:clamp(12px,min(4.9vw,3.6vh),40px)}.L-tall .grid{grid-template-columns:repeat(2,1fr)}.L-tall .cols{grid-template-columns:1fr}
+.L-tall h2{font-size:1.3em}
+/* 'compact': a small side-column box (e.g. 340×180): larger type, tighter spacing; slides shrink to fit if needed. */
+.L-compact .hub{border-radius:.8em;font-size:clamp(12px,min(4.9vw,9vh),30px)}.L-compact .top{padding:.35em .6em .25em}.L-compact .body{padding:.3em .6em;gap:.3em}
+.L-compact h2{font-size:1.2em}.L-compact .grid{gap:.25em .4em}.L-compact .stat{padding:.2em .35em}.L-compact .list{gap:.2em}.L-compact .cols{gap:.4em}
+.L-strip .hub{flex-direction:row;border-radius:.9em;font-size:clamp(11px,min(15vh,1.5vw),40px)}
+.L-strip .top{flex:none;width:9.5em;flex-direction:column;align-items:flex-start;justify-content:center;gap:.4em;border-bottom:0;border-right:1px solid rgba(255,255,255,.1);padding:.4em .8em}
+.L-strip .top .title{font-size:.85em;white-space:normal;line-height:1.15}.L-strip .dots{margin-left:0}
+.L-strip .body{flex-direction:row;align-items:center;padding:.35em .9em .5em}.L-strip .timer{position:absolute;left:0;right:0;bottom:0}
+.srow{display:flex;align-items:stretch;gap:.7em;width:100%;min-width:0}.scol{display:flex;flex-direction:column;justify-content:center;gap:.18em;min-width:0}
+.tile{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:center;gap:.15em;padding:.25em .55em;border-radius:.45em;background:rgba(0,0,0,.24)}
+.tile small{color:var(--muted);font-size:.62em;font-weight:800;text-transform:uppercase;letter-spacing:.08em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tile b{font-size:1em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.tile .sub{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ell{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 code{padding:.08em .4em;border-radius:.35em;background:rgba(126,227,176,.14);border:1px solid rgba(126,227,176,.45);color:var(--green2);font:800 .95em ui-monospace,monospace}
 .tag{display:inline-block;padding:.05em .45em;border-radius:.35em;background:rgba(112,221,255,.14);color:var(--cyan);font-size:.62em;font-weight:900;letter-spacing:.12em}
 """, r"""
@@ -985,15 +1018,45 @@ const SLIDES=[
  ['join','🌱 Play from chat',d=>d.join,d=>{const t=(d.join.tips||[]).slice(0,4);return `<h2>Join New Eridian</h2><div class="list">${t.map(x=>`<div class="row"><code>${esc(x[0])}</code><span class="grow sub">${esc(x[1])}</span></div>`).join('')}</div>
    ${d.join.discord?`<div class="sub">Buttons, crafting and more on Discord: <b>${esc(d.join.discord.replace(/^https?:\/\//,''))}</b></div>`:''}`}],
 ];
+// The same slides laid out in one horizontal band for the 'strip' layout.
+const T=(label,value,extra='')=>`<div class="tile"><small>${label}</small><b>${value}</b>${extra}</div>`;
+const STRIP={
+ society:d=>{const s=d.stats||{},b=d.bottleneck||{};return `<div class="srow"><div class="scol" style="flex:1.3"><h2 class="ell">New Eridian · ${esc(d.tier)}</h2><div class="sub ell">${esc(d.phase_emoji||'')} Day ${d.day} · ${esc(d.phase)} · ${d.active_players||0} active · ${n(s.population)} citizens</div></div>
+   <div class="scol" style="flex:1.2"><b class="ell">${esc(d.condition||'')}</b><div class="sub ell">${esc(d.condition_text||'')}</div></div>
+   <div class="scol" style="flex:1">${d.next_tier?`<div class="row"><span class="grow">→ <b>${esc(d.next_tier)}</b> · needs ${esc(b.name||'')}</span><span class="num">${Math.round(d.tier_percent||0)}%</span></div>${bar(d.tier_percent)}`:'<b>Top tier reached</b>'}</div></div>`},
+ stats:d=>{const s=d.stats,t=d.tier_target||1,m=[['🌾','Food','food'],['⛏️','Materials','materials'],['⚙️','Development','development'],['🔬','Knowledge','knowledge'],['🪙','Treasury','treasury'],['⭐','Reputation','reputation']];
+   return `<div class="srow">${m.map(([i,l,k])=>T(`${i} ${l}`,n(s[k]),bar(s[k]/t*100))).join('')}</div>`},
+ today:d=>{const q=d.directive,a=d.aftermath,f=d.festival;return `<div class="srow"><div class="scol" style="flex:1.4"><b class="ell">${q.complete?'✅ ':''}📋 ${esc(q.name)}</b><div class="sub ell">${esc(q.description||'')}</div></div>
+   <div class="scol" style="flex:1"><div class="row"><span class="grow sub">${esc((q.skills||[]).join(' · '))}</span><span class="num">${q.progress}/${q.goal}</span></div>${bar(q.percent)}</div>
+   ${a?T('Aftermath',`<span class="${Number(a.modifier)>=0?'hot':'red'}">${Number(a.modifier)>=0?'+':''}${a.modifier}%</span>`,`<span class="sub">${esc(a.event)}</span>`):''}${f?T(`${esc(f.emoji)} Festival`,esc(f.name),`<span class="sub">${f.days_left} days left</span>`):''}</div>`},
+ event:d=>{const e=d.event,t=Math.max(0,e.seconds_remaining|0);return `<div class="srow"><div class="scol" style="flex:1.2"><h2 class="red ell">${esc(e.emoji)} ${esc(e.name)}</h2><div class="sub ell">Primary <b>${esc(e.primary)}</b> · Support <b>${esc(e.support)}</b></div></div>
+   <div class="scol" style="flex:1"><div class="row"><span class="grow">${e.progress}/${e.goal}</span><span class="num">${Math.floor(t/60)}:${String(t%60).padStart(2,'0')}</span></div>${bar(e.percent)}</div>
+   ${(e.leaders||[]).slice(0,3).map((l,i)=>T(['🥇','🥈','🥉'][i],esc(l.name),`<span class="num">${l.primary} + ${l.support}</span>`)).join('')}</div>`},
+ projects:d=>{const p=d.project,s=d.story||{};return `<div class="srow"><div class="scol" style="flex:1"><div class="row"><b class="grow ell">🏗️ ${esc(p.name)}</b><span class="num">${p.progress}/${p.goal}</span></div>${bar(p.percent)}<div class="sub ell">Helps: ${esc((p.skills||[]).join(' · '))}</div></div>
+   <div class="scol" style="flex:1"><div class="row"><b class="grow ell">📖 ${esc(s.name||'')}</b><span class="num">${Math.round(s.percent||0)}%</span></div>${bar(s.percent)}<div class="sub ell">${(s.tracks||[]).map(x=>esc(x.name)).join(' · ')}</div></div></div>`},
+ market:d=>{const m=d.market;return `<div class="srow">${T('🔥 Top demand',esc(m.primary.name),`<span class="num hot">${m.primary.price} SC</span>`)}${m.secondary?T('↑ Also wanted',esc(m.secondary.name),`<span class="num">${m.secondary.price} SC</span>`):''}
+   ${T('⚠️ Shortages',esc(d.pressure&&d.pressure.length?d.pressure.join(', '):'None'))}${d.rumor?`<div class="scol" style="flex:2"><small class="sub">🗣️ RUMOR</small><div class="sub" style="line-height:1.25">${esc(d.rumor)}</div></div>`:''}</div>`},
+ leaders:d=>{const L=d.leaders;return `<div class="srow">${(L.contributors||[]).slice(0,4).map((x,i)=>T(['🥇 Top','🥈 2nd','🥉 3rd','4th'][i],esc(x.name),`<span class="num">${n(x.contribution)}</span>`)).join('')}${(L.active_today||[]).slice(0,1).map(x=>T('⚡ Most active 24h',esc(x.name),`<span class="num">${x.actions} actions</span>`)).join('')}</div>`},
+ working:d=>`<div class="srow">${d.working.slice(0,4).map(x=>T(esc(x.name),esc(x.task),bar(x.total?x.done/x.total*100:0))).join('')}${d.working.length>4?`<div class="scol"><span class="sub">+${d.working.length-4} more</span></div>`:''}</div>`,
+ seedlings:d=>`<div class="srow">${d.seedlings.slice(0,4).map(x=>T(`${esc(x.mood_emoji)} ${esc(x.place_name)}`,esc(x.name),`<span class="sub">${esc(x.activity)}</span>`)).join('')}</div>`,
+ news:d=>`<div class="srow">${d.narration.slice(0,2).map(x=>`<div class="scol" style="flex:1"><div class="row"><span class="tag">${esc(x.desk||'COLONY')}</span><b class="ell">${esc(x.emoji)} ${esc(x.headline||'')}</b></div><div class="sub ell">${esc((x.text||'').split(' — ').slice(-1)[0])}</div></div>`).join('')}</div>`,
+ join:d=>`<div class="srow"><div class="scol"><h2 style="white-space:nowrap">Join New Eridian</h2>${d.join.discord?`<div class="sub ell">Discord: <b>${esc(d.join.discord.replace(/^https?:\/\//,''))}</b></div>`:'<div class="sub">Type in chat</div>'}</div>${(d.join.tips||[]).slice(0,4).map(x=>T(`<code>${esc(x[0])}</code>`,'',`<span class="sub">${esc(x[1])}</span>`)).join('')}</div>`,
+};
+function layoutOf(){const q=Q.get('layout');if(['strip','tall','wide','compact'].includes(q))return q;const r=innerWidth/Math.max(1,innerHeight);return r>=4?'strip':r<=1.15?'tall':innerWidth<560?'compact':'wide'}
+let LAYOUT=layoutOf();document.body.classList.add('L-'+LAYOUT);
+addEventListener('resize',()=>{const l=layoutOf();if(l!==LAYOUT){document.body.classList.replace('L-'+LAYOUT,'L-'+l);LAYOUT=l;index--;next()}else fit()});
+// Whatever the layout, a slide that is still too big for the source shrinks until it fits.
+function fit(){const body=document.getElementById('body'),sl=body.querySelector('.slide');if(!sl)return;let f=1;sl.style.fontSize='';
+  while(f>.55&&(sl.scrollHeight>body.clientHeight+1||sl.scrollWidth>body.clientWidth+1)){f-=.05;sl.style.fontSize=f+'em'}}
 const ACTIVE=SLIDES.filter(s=>!PICK.length||PICK.includes(s[0]));
 let data=null,index=-1,eventTurn=false;
 function next(){if(!data)return;let tries=0,slide;
   // A live event takes every other slide until it ends.
   if(data.event&&!eventTurn&&ACTIVE.some(s=>s[0]==='event')){slide=ACTIVE.find(s=>s[0]==='event');eventTurn=true}
   else{eventTurn=false;do{index=(index+1)%ACTIVE.length;slide=ACTIVE[index];tries++}while((slide[0]==='event'&&data.event)||(!slide[2](data)&&tries<=ACTIVE.length))}
-  const body=document.getElementById('body'),old=body.querySelector('.slide'),html=slide[3](data),title=document.getElementById('title');
+  const body=document.getElementById('body'),old=body.querySelector('.slide'),html=(LAYOUT==='strip'&&STRIP[slide[0]]?STRIP[slide[0]]:slide[3])(data),title=document.getElementById('title');
   const put=()=>{title.textContent=slide[1];title.classList.remove('swap');void title.offsetWidth;title.classList.add('swap');
-    body.innerHTML=`<div class="slide" style="display:flex;flex-direction:column;gap:.45em">${html}</div>`};
+    body.innerHTML=`<div class="slide" style="display:flex;flex-direction:column;gap:.45em;width:100%;max-height:100%">${html}</div>`;fit()};
   if(old){old.classList.add('out');setTimeout(put,330)}else put();
   const shown=ACTIVE.filter(s=>s[2](data));document.getElementById('dots').innerHTML=shown.map(s=>`<i class="${s===slide?'on':''}${s[0]==='event'?' live':''}"></i>`).join('');
   const t=document.getElementById('timer');t.animate([{transform:'scaleX(0)'},{transform:'scaleX(1)'}],{duration:EVERY,easing:'linear'})}
@@ -1009,8 +1072,8 @@ def page(panel, channel):
 
 # Every OBS source, with a sensible Browser Source size.
 SOURCES = [
-    ('hub', 'Hub (rotating)', 'Everything in one panel: society, stats, today, the live event, project and story, market, leaders, working now, Seedlings, news and how to join. Rotates every 12 seconds; a live event shows every other slide.', 640, 360, '&seconds=12 · &slides=society,event,news (pick and order the slides)'),
-    ('map', 'Avesta map', 'New Eridian as a living town: buildings go up (with scaffolding and a crane) as the society grows, Seedlings walk the streets and talk in speech bubbles, the camera drifts in on whoever is speaking, the sky and weather follow Avesta, and the town decorates itself for holidays. Keep it at least a quarter of the screen.', 960, 540, '&quality=high (glows, water, flags) or low (lighter for slower PCs) · &stats=0 hides the stat panel · &camera=0 fixed wide shot · &names=1 · &per=6 · &seconds=7 · preview: &hour=18 &holiday=christmas &weather=dust_winds'),
+    ('hub', 'Hub (rotating)', 'Everything in one panel: society, stats, today, the live event, project and story, market, leaders, working now, Seedlings, news and how to join. Rotates every 12 seconds; a live event shows every other slide. Adapts to any source shape: a side column (340×176 compact, 340×440 tall) or a band under the game (1440×120 strip).', 640, 360, '&seconds=12 · &slides=society,event,news · &layout=compact|tall|strip|wide to force a layout'),
+    ('map', 'Avesta map', 'New Eridian as a living town: buildings go up (with scaffolding and a crane) as the society grows, Seedlings walk the streets and talk in speech bubbles, the camera drifts in on whoever is speaking, the sky and weather follow Avesta, and the town decorates itself for holidays. Keep it at least a quarter of the screen, or use it as a card in a side column (340×250 or taller), where the caption sits below the town.', 960, 540, '&layout=card forces the column card · &quality=high (glows, water, flags) or low (lighter for slower PCs) · &stats=0 hides the stat panel · &camera=0 fixed wide shot · &names=1 · &per=6 · &seconds=7 · preview: &hour=18 &holiday=christmas &weather=dust_winds'),
     ('ticker', 'News ticker', 'A TV-style lower third: every item has a coloured section tag (Event, Weather, News, Society, Today, Market, Holiday, Project, Report, Join) and the Avesta clock sits on the right.', 1920, 56, '&speed=80 · works at any height'),
     ('alerts', 'Live alerts', 'Animated pop-up for joins, level ups, achievements, events and milestones. Transparent when idle.', 700, 220, '&test=1 shows demo alerts · &sound=1 plays a chime · &seconds=7 · &hide=queue,join'),
     ('leaders', 'Leaders', 'Top contributors, the most active citizens today and live event leaders.', 620, 330, ''),
