@@ -7344,7 +7344,12 @@ def mining(channel:str,uid:str,name:str='Citizen',ore:str='',action:str='view',c
             rare=[seed_content.item_label(k).replace(' Ore','').lower() for k in sorted(crafting_progression.RARE,key=seed_content.item_label) if k in task_queue.ores()]
             return out('⛏️ !mine <ore>: '+', '.join(common)+(' · Rare (Harvesting Lv 3): '+', '.join(rare) if rare else '')+' · Mining can fail (you get Stone Dust).')
         if action=='mine' and count==1 and twitch_lite.ENABLED:
-            return seed_supplies(channel,uid,name,'gather',ore,1,False,provider)
+            # Typos are forgiven when they clearly mean one ore ("hemetite" → Hematite Ore).
+            found,suggestions=qol.fuzzy_item(ore.strip() if ' ore' in ore.lower() or ore.lower().strip()=='coal' else ore.strip()+' ore',set(task_queue.ores()))
+            if found is None and len(suggestions)!=1:found,suggestions=qol.fuzzy_item(ore.strip(),set(task_queue.ores()))
+            if found is None and len(suggestions)==1:found=next((k for k in task_queue.ores() if seed_content.item_label(k)==suggestions[0]),None)
+            if found is None:return out('⛏️ No ore called "'+ore.strip()[:30]+'".'+qol.did_you_mean(suggestions)+' Type !mine to see them all. Nothing spent.')
+            return seed_supplies(channel,uid,name,'gather',seed_content.item_label(found),1,False,provider)
     if not ore:
         lines=['MINING — CHOOSE AN ORE OR COAL','Mining can fail: each failure gives 1 Stone Dust instead of ore. Select Ore (including Coal) to inspect its requirements, then choose Mine. Count queues up to 10 attempts of that ore.']
         for k in sorted(task_queue.ores(),key=seed_content.item_label):

@@ -104,3 +104,8 @@ def test_mine_on_twitch_mines_once_right_away_with_short_ore_names():
     assert result.startswith(('✅ Gathered Hematite Ore', '❌ Mining failed')), result
     with m.SessionLocal() as db:
         assert db.query(m.task_queue.TaskQueue).count() == 0          # no queue: queues are on Discord
+    for typo in ('hemetite', 'Hematite Ore'):
+        with m.SessionLocal() as db:
+            db.query(m.Cooldown).delete(); db.commit()
+        assert twitch('/api/v1/mining', action='mine', count='1', ore=typo).startswith(('✅ Gathered Hematite Ore', '❌ Mining failed')), typo
+    assert 'No ore called "banana"' in twitch('/api/v1/mining', action='mine', count='1', ore='banana')
