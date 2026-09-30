@@ -3483,7 +3483,7 @@ def overlay_state_fresh(channel:str):
             "day":clock["day"],
             "phase":clock["phase"],
             "phase_emoji":clock["phase_emoji"],
-            "condition":clock["condition"],
+            "condition":clock["condition"],"condition_key":clock["condition_key"],
             "condition_text":clock["condition_text"],
             "stats":stats,
             "project":project_data,

@@ -1,5 +1,36 @@
 # Release notes
 
+## The Avesta map comes alive
+
+`/obs/map` is now a town you can watch. No OBS changes are needed.
+
+- **Bigger town.** The outer ring road and empty ground are gone, and the town is drawn about 15% larger, so buildings and labels read better on stream.
+- **Seedlings walk and talk.** Seedlings are little people (mood-coloured shirt, their initial, what they are doing) who walk along the streets from district to district, then stand under the district name. Every caption turn, the Seedling being named also speaks in a speech bubble.
+- **More to say.** Each Seedling now has several lines, refreshed every ten minutes: its mood (twice as many thoughts per mood), what it is doing (the item it is gathering, its hobby, its job), where it is, the time of day, the weather, the market's top demand, what the society needs for its next tier, a holiday, and greetings to other Seedlings in the same district. The overlay's `seedlings[].lines` carries them.
+- **Construction.** When a district levels up, scaffolding and a crane go up where the new buildings will stand, then the buildings rise about seven seconds later. A banner announces it ("Market grew to LV 9", "Research is open for building!", "New Eridian is now a City!") and the camera moves in.
+- **Camera.** The view slowly zooms in on the Seedling who is speaking, then drifts back to the wide shot on the next turn. `&camera=0` keeps a fixed wide shot.
+- **The town follows the numbers.** Fields turn dry when food is short and golden when food is plentiful (green in good growing weather). Chimney smoke grows with Industry and the Seedlings working there. At night, more windows light up as the population grows. Shoppers crowd the market with its level, today's demand and the Seedlings there.
+- **Sky and weather.** The sky changes through dawn, day, dusk and night, with a sun, a moon and stars, drifting clouds and cloud shadows. Each weather has its own look:
+  - Good Growing Weather: rain.
+  - Dust Winds: a dust storm.
+  - Light Siro Drift: spores.
+  - Water Watch: overcast.
+  - Busy Spaceport: shuttles taking off.
+  - Quiet Cycle: fireflies at night.
+  - Sensor Noise: sensor glitches, plus an aurora at night.
+- **Holidays.** During each holiday's festival (from 30 days before until 7 days after), the town decorates itself. Bunting is strung along the streets (lit at night), and a centrepiece stands on the square in front of the Commons:
+  - Christmas: a lit tree with presents, and snow.
+  - Halloween: carved pumpkins by every street lamp, a giant jack-o'-lantern and a scarecrow, bats at night and falling leaves by day.
+  - Thanksgiving: a feast table, hay bales, pumpkins and leaves.
+  - Independence Day and Memorial Day: a flag.
+  - New Year: a countdown ball and a "Happy <year>!" sign.
+  - Valentine's Day: a heart arch and floating hearts.
+  - Father's Day: a grill.
+  - Labor Day: a thank-you sign.
+
+  Fireworks go off in the evening and at night on the holiday itself, and in the days around New Year and Independence Day. Festival-goers fill the Commons, the header shows "🎃 Halloween in 12 days" or "🎄 Merry Christmas!", and Seedlings talk about the holiday.
+- **Preview options.** Streamers can check a look ahead of time with `&holiday=christmas`, `&phase=Night` or `&weather=dust_winds`. `&days=3` previews a festival that is three days before its holiday.
+
 ## The Avesta map is a living town
 
 `/obs/map` now draws New Eridian as an isometric town on a street grid instead of flat zones. Each district has its own buildings: houses with pitched roofs (apartment towers and domes as Homes levels up), striped fields, barns and greenhouses, factories with smoking chimneys and tanks, labs with dishes and a glass dome, a market hall with awning stalls, a spaceport with a control tower, landing pads and a rocket, frontier mine headframes and tents, a Commons with a fountain and statue, and a park with a lake. The town grows with the society: every level adds buildings (they rise into place, never disappear), roads get paved and lit as tiers go up, and districts that are not open yet show wild ground with survey stakes and the tier that opens them. At night windows and street lamps light up. District names sit in the middle of each district, and the Seedlings in a district line up under its name as coloured initials (mood colour, with what they are doing), so nothing overlaps; the caption bar still names each Seedling in turn. Options: `&names=1` adds names under the initials, `&per=6` shows more per district, `&seconds=7`, `&bg=0`. Same 960×540 Browser Source, no new setup needed.

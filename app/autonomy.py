@@ -101,16 +101,78 @@ MOODS = {
 }
 THOUGHTS = {
     'inspired': ['Everything I touch today just works.', 'I could build a whole district before nightfall.', 'Rocky would be proud of me today.',
-                 'Avesta is starting to feel like home.'],
+                 'Avesta is starting to feel like home.', 'Give me a hammer and a reason. I am unstoppable.', 'I have ideas for days.',
+                 'Someone write this day down. It is a good one.', 'I feel like I could outrun a dust wind.'],
     'content': ['Good day on Avesta.', 'The {place} is starting to feel like home.', 'Not bad for a colony at the edge of nowhere.',
-                'Steady work, good company. That is enough.'],
-    'tired': ['I could sleep for a whole Avesta day.', 'My eyes keep closing mid-task.', 'One more shift and I am done.'],
-    'hungry': ['When did I last eat something real?', 'I would trade a day of pay for a warm meal.', 'My stomach is louder than the spaceport.'],
-    'lonely': ['I have not talked to anyone in ages.', 'I miss {friend}.', 'The Commons would do me good.'],
-    'uneasy': ['This {weather} makes my skin crawl.', 'Something about the air feels wrong today.', 'I keep checking the Siro readings.'],
-    'stressed': ['Too much to do and not enough of me.', 'Nothing is going right today.', 'Why does everything break at once?'],
-    'miserable': ['I need a break. A real one.', 'Is this colony even worth it?', 'I cannot keep going like this.'],
+                'Steady work, good company. That is enough.', 'Fed, rested and busy. Life is fine.', 'Nothing to complain about. Weird.',
+                'I like the hum of this place.', 'One brick at a time, that is how colonies get built.'],
+    'tired': ['I could sleep for a whole Avesta day.', 'My eyes keep closing mid-task.', 'One more shift and I am done.',
+              'Is it bedtime yet? It feels like bedtime.', 'I yawned so hard I scared a duck.', 'Coffee. Or Siro tea. Anything.'],
+    'hungry': ['When did I last eat something real?', 'I would trade a day of pay for a warm meal.', 'My stomach is louder than the spaceport.',
+               'I can smell the kitchens from here.', 'Berries. I am thinking about berries.', 'Food first, heroics later.'],
+    'lonely': ['I have not talked to anyone in ages.', 'I miss {friend}.', 'The Commons would do me good.',
+               'Anyone want to grab a meal?', 'It is quiet out here. Too quiet.', 'Maybe {friend} is free later.'],
+    'uneasy': ['This {weather} makes my skin crawl.', 'Something about the air feels wrong today.', 'I keep checking the Siro readings.',
+               'Did anyone else hear that?', 'I will feel better indoors.', 'Stay close to the wall today.'],
+    'stressed': ['Too much to do and not enough of me.', 'Nothing is going right today.', 'Why does everything break at once?',
+                 'Deep breaths. Deep breaths.', 'I need five minutes. Just five.', 'Who scheduled all of this?'],
+    'miserable': ['I need a break. A real one.', 'Is this colony even worth it?', 'I cannot keep going like this.',
+                  'Someone tell me tomorrow is better.', 'I just want a warm bed and a hot meal.'],
 }
+# What Seedlings say on the stream map, beyond their mood: about what they are doing,
+# where they are, the time of day, the weather, the society, the market, a holiday and each other.
+SAY_DOING = {
+    'Gathering': ['Another basket of {item} for the stores.', 'This {item} will not gather itself.', 'Good {item} out here today.',
+                  'Somebody in New Eridian needs this {item}.', 'Almost a full load of {item}.'],
+    'Eating': ['Mm. Real food.', 'Eating first. Saving the colony second.', 'Pass the salt, would you?', 'Best meal all week.'],
+    'Sleeping': ['Zzz…', 'Five more minutes…', 'Dreaming of a bigger New Eridian.'],
+    'Resting': ['Feet up, just for a bit.', 'A quiet hour at home.'],
+    'Relaxing': ['Just watching the clouds go by.', 'This is what days off are for.', 'Recharging. Do not disturb.'],
+    'Recovering': ['Patching myself up.', 'Back on my feet soon.'],
+    'Out for a walk': ['Nice day for a walk.', 'Stretching my legs around the {place}.', 'I never noticed that building before.'],
+    'Playing games': ['Best of three?', 'I am definitely winning this one.', 'Who taught you that move?'],
+    'With': ['Did you hear about the signal below?', 'Tell me everything.', 'We should do this more often.'],
+    'Saying hi': ['Hey there! How is the shift going?', 'Good to see a friendly face.', 'Long time no see!'],
+    'Hobby': ['A little {hobby} clears the head.', 'Getting better at {hobby} every day.', 'Nobody bother me, it is {hobby} time.'],
+    'Working': ['On the clock. Back soon.', 'Somebody has to keep this place running.', 'Nearly done with this shift.'],
+    'Waiting': ['Waiting on things out of my hands.', 'Hurry up and wait, colony life.'],
+}
+SAY_PLACE = {
+    'residential_ring': ['Home sweet home.', 'The neighbours are painting again.', 'More houses going up every week.'],
+    'agricultural_district': ['The crops look thirsty.', 'Fresh soil smells like hope.', 'Watch where you step, new seedlings.'],
+    'industrial_ward': ['Loud in here. Good loud.', 'The furnaces never sleep.', 'Mind the sparks.'],
+    'research_block': ['The readings are strange today.', 'Do not touch anything glowing.', 'Science waits for no one.'],
+    'market_concourse': ['Prices are moving fast today.', 'Fresh stock at the stalls!', 'I love a good bargain.'],
+    'spaceport_quarter': ['Another shuttle on the pad.', 'One day I will fly out of here.', 'Cargo is stacking up fast.'],
+    'frontier_edge': ['The wilds go on forever.', 'Stay inside the markers.', 'Found tracks out here. Big ones.'],
+    'commons': ['Best spot in New Eridian.', 'The fountain is running again.', 'Everyone ends up at the Commons.'],
+}
+SAY_PHASE = {'Morning': ['Morning, Avesta!', 'Up early and ready.', 'First light is the best light.'],
+             'Day': ['Middle of the day and going strong.', 'Hot one today.'],
+             'Evening': ['Look at that sunset.', 'Winding down soon.', 'Lamps are coming on.'],
+             'Night': ['The stars are out.', 'Quiet night in New Eridian.', 'Who is still up?']}
+SAY_WEATHER = {
+    'clear_skies': ['Not a cloud in the sky.', 'Perfect weather for work.'],
+    'good_growing': ['Rain on the fields. The farmers will be happy.', 'Everything is growing like mad.'],
+    'spore_drift': ['Masks on, the Siro is drifting.', 'Green specks everywhere today.'],
+    'dust_winds': ['Dust in my teeth again.', 'Hold onto your hat, the wind is up.'],
+    'busy_spaceport': ['Shuttles all day long.', 'The spaceport is packed.'],
+    'water_watch': ['Save water, everyone.', 'Every drop counts today.'],
+    'quiet_cycle': ['So calm today.', 'A good day to catch up with friends.'],
+    'sensor_noise': ['The sensors keep beeping at nothing.', 'Research says the noise is normal. Sure.'],
+}
+SAY_HOLIDAY = {
+    'New Year': ['Any resolutions?', 'Save me a spot for the fireworks!', 'This year New Eridian gets bigger.'],
+    "Valentine's Day": ['Someone left flowers at the fountain.', 'Love is in the Avesta air.', 'Who is your valentine?'],
+    'Memorial Day': ['We remember the first settlers.', 'Flags up across the colony.'],
+    "Father's Day": ['Thanks to every mentor out there.', 'The grill is on at the Commons.'],
+    'Independence Day': ['Fireworks tonight!', 'Red, white and blue everywhere.', 'Happy Independence Day!'],
+    'Labor Day': ['A day off for the hardest workers.', 'Here is to every shift we ever pulled.'],
+    'Halloween': ['Did that pumpkin just move?', 'Trick or treat!', 'I am going as a Siro spore.', 'Boo!'],
+    'Thanksgiving': ['So thankful for this colony.', 'Save me some pie.', 'The feast is almost ready.'],
+    'Christmas': ['Merry Christmas, New Eridian!', 'Look at the lights on the tree!', 'I wrapped a present for everyone.'],
+}
+SAY_TO = ['Hey {other}!', '{other}, over here!', 'Nice work today, {other}.', '{other}, race you to the Commons?', 'Morning, {other}.']
 
 
 class SeedlingLife(Base):
@@ -802,6 +864,63 @@ def status_line(m, db, p):
 
 # ---------------------------------------------------------------- the stream
 
+def say_context(m, db, source_ids):
+    """The shared things Seedlings talk about: time, weather, holiday, the society and the market."""
+    context = {'phase': '', 'condition': '', 'holiday': '', 'bucket': int(m.now().timestamp() // 600), 'extra': []}
+    try:
+        clock = m.world_clock(db, source_ids[0])
+        context.update(phase=clock.get('phase', ''), condition=clock.get('condition_key', ''))
+        a, b = m.market_demand(source_ids[0], clock.get('day'))
+        context['extra'].append(f'Heard {m.resource_name(a)} is selling high today.')
+    except Exception:
+        pass
+    try:
+        from . import seasonal
+        active = seasonal.holidays_active_for(m.now().date())
+        if active:
+            context['holiday'] = active[0]['name']
+    except Exception:
+        pass
+    try:
+        rows = list(db.scalars(select(m.Society).where(m.Society.channel_id.in_(source_ids))))
+        stats = {f: sum(getattr(r, f) for r in rows) for f in ('food', 'materials', 'development', 'knowledge', 'treasury', 'reputation')}
+        low = min(stats, key=stats.get)
+        tier = m.society_tier(m.Society(**stats))
+        index = m.SOCIETY_TIERS.index(tier)
+        if index + 1 < len(m.SOCIETY_TIERS):
+            context['extra'].append(f'We need more {low} to become a {m.SOCIETY_TIERS[index + 1][0]}.')
+        else:
+            context['extra'].append('Look how far New Eridian has come.')
+    except Exception:
+        pass
+    return context
+
+
+def chatter(s, everyone, context):
+    """A handful of short lines for one Seedling on the stream map, varied every ten minutes."""
+    r = random.Random(f"{s['id']}:{context['bucket']}")
+    activity = s.get('activity') or ''
+    fill = {'place': PLACES.get(s['place'], ('home', ''))[0], 'hobby': activity.partition('Hobby: ')[2].lower() or 'my hobby',
+            'item': activity.partition('Gathering ')[2] or 'material'}
+    lines = [s.get('thought') or '']
+    doing = next((v for k, v in SAY_DOING.items() if activity.startswith(k)), None)
+    if doing:
+        lines.append(r.choice(doing).format(**fill))
+    lines.append(r.choice(SAY_PLACE.get(s['place'], SAY_PLACE['commons'])))
+    if context['holiday'] in SAY_HOLIDAY:
+        lines.append(r.choice(SAY_HOLIDAY[context['holiday']]))
+    others = [o['name'] for o in everyone if o['place'] == s['place'] and o['id'] != s['id']]
+    if others:
+        lines.append(r.choice(SAY_TO).format(other=r.choice(others)))
+    pool = SAY_PHASE.get(context['phase'], []) + SAY_WEATHER.get(context['condition'], []) + context['extra']
+    if pool:
+        lines.append(r.choice(pool))
+    lines = [line for line in lines if line]
+    head, rest = lines[:1], lines[1:]
+    r.shuffle(rest)
+    return (head + rest)[:6]
+
+
 def districts(m, db, source_ids):
     """How far each district has grown, from the society's tier and stats."""
     import math
@@ -837,6 +956,9 @@ def overlay_data(m, db, source_ids):
                           'place': place, 'place_name': PLACES[place][0], 'activity': found.activity if found else 'Settling in',
                           'emoji': found.emoji if found else '🏠', 'mood': MOODS[mood][1], 'mood_emoji': MOODS[mood][0],
                           'thought': found.thought if found else ''})
+    context = say_context(m, db, source_ids)
+    for s_ in seedlings:
+        s_['lines'] = chatter(s_, seedlings, context)
     rows = list(db.scalars(select(SeedlingDiary).where(SeedlingDiary.channel_id.in_(source_ids)).order_by(SeedlingDiary.id.desc()).limit(14)))
     narration = [{'id': e.id, 'name': e.name, 'emoji': e.emoji, 'desk': e.desk, 'headline': e.headline, 'text': e.text,
                   'place': PLACES.get(e.place, ('', ''))[0], 'at': m.as_utc(e.created_at).isoformat()} for e in rows]

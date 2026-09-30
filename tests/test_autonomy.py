@@ -62,7 +62,8 @@ def test_moods_follow_needs_weather_and_failures():
     assert a.mood_of(SimpleNamespace(**{**vars(life), 'energy': 10}))[0] == 'miserable'
     assert a.mood_of(SimpleNamespace(**{**vars(life), 'morale': 50}), 'dust_winds')[0] == 'uneasy'
     assert a.mood_of(SimpleNamespace(**{**vars(life), 'morale': 50}), '', failures=3)[0] == 'stressed'
-    assert a.thought_for('lonely', friend='Astra', seed='x') in {'I have not talked to anyone in ages.', 'I miss Astra.', 'The Commons would do me good.'}
+    assert a.thought_for('lonely', friend='Astra', seed='x') in {t.format(friend='Astra') for t in a.THOUGHTS['lonely']}
+    assert all(len(lines) >= 5 for lines in a.THOUGHTS.values())
 
 
 def test_mood_changes_success_chance():
@@ -231,6 +232,26 @@ def test_overlay_map_and_narrator():
         page = client.get(f'/obs/{panel}', params={'channel': 'test'})
         assert page.status_code == 200 and '/api/v1/overlay' in page.text
     assert '/obs/map' in client.get('/obs', params={'channel': 'test'}).text
+    assert len(me['lines']) >= 3 and me['lines'][0] == me['thought'] and 'condition_key' in data
+
+
+def test_seedlings_talk_about_their_work_friends_and_holidays():
+    context = {'phase': 'Night', 'condition': 'dust_winds', 'holiday': 'Halloween', 'bucket': 1, 'extra': ['Heard Corn is selling high today.']}
+    me = {'id': 'a', 'name': 'Kam', 'place': 'agricultural_district', 'activity': 'Gathering Corn', 'thought': 'Good day on Avesta.'}
+    friend = {'id': 'b', 'name': 'Mira', 'place': 'agricultural_district', 'activity': 'Relaxing', 'thought': ''}
+    lines = a.chatter(me, [me, friend], context)
+    assert lines[0] == 'Good day on Avesta.' and len(lines) == 6 and len(set(lines)) == 6
+    assert any('Corn' in line for line in lines) and any('Mira' in line for line in lines)
+    assert any(line in a.SAY_HOLIDAY['Halloween'] for line in lines)
+    later = a.chatter(me, [me, friend], {**context, 'bucket': 2})
+    assert later[0] == lines[0] and all(len(line) <= 60 for line in lines + later)
+
+
+def test_map_page_has_the_camera_walking_holidays_and_weather():
+    page = client.get('/obs/map', params={'channel': 'test'}).text
+    for feature in ('function look(', 'function route(', 'function scaffold(', 'function decorate(', 'function sky(', 'function liveTown(',
+                    "'Christmas'", "'Halloween'", 'good_growing', 'dust_winds', "Q.get('holiday')", "Q.get('camera')"):
+        assert feature in page, feature
 
 
 def test_merge_moves_the_seedling_and_diary():
