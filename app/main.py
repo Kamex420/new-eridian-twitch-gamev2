@@ -4960,7 +4960,7 @@ refresh();setInterval(refresh,3500);
     html=(html.replace("__BODY_CLASS__",panel)
               .replace("__PANEL__",panel_json)
               .replace("__CHANNEL__",channel_json))
-    return HTMLResponse(stream_overlay.themed(html))
+    return HTMLResponse(stream_overlay.themed(html, fit=True))
 
 @app.get("/api/v1/tick")
 @game_transaction

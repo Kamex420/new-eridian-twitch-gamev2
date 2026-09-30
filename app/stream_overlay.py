@@ -189,11 +189,14 @@ FONT_SWAPS = [(SERIF + ',"Times New Roman",serif', 'var(--font-display)'), (SERI
               ('Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif', 'var(--font-body)'), ('Inter,system-ui,sans-serif', 'var(--font-body)')]
 
 
-def themed(html):
+def themed(html, fit=False):
     """Give any overlay page the shared fonts and tokens (used for the older panels served from main)."""
     for old, new in FONT_SWAPS:
         html = html.replace(old, new)
-    return html.replace('<style>', FONTS_LINK + '<style>' + THEME_CSS, 1)
+    script = ("<script>setInterval(()=>{const c=document.querySelector('#root>.card,#root>section,body>.card');if(!c)return;c.style.zoom=1;"
+           "const h=c.getBoundingClientRect().bottom+6;const z=Math.min(1,innerHeight/h);if(z<.995)c.style.zoom=z.toFixed(3)},1000)</script>")
+    html = html.replace('<style>', FONTS_LINK + '<style>' + THEME_CSS, 1)
+    return html.replace('</body>', script + '</body>', 1) if fit else html
 
 
 BASE_CSS = r"""
@@ -485,7 +488,7 @@ const WEATHER_ICON={clear_skies:'☀️',good_growing:'🌧️',spore_drift:'�
 const CARD=Q.get('layout')==='card'||(Q.get('layout')!=='wide'&&(innerWidth<560||innerWidth/Math.max(1,innerHeight)<=1.3));if(CARD)document.body.classList.add('L-card');
 let LS=1,TS=1;   // card layout: label and Seedling scale so they stay readable in a small source
 const QUALITY=['low','high'].includes(Q.get('quality'))?Q.get('quality'):'normal';document.body.classList.add('q-'+QUALITY);
-const SHOW_NAMES=Q.get('names')==='1',PER_PLACE=Number(Q.get('per')||4),CAMERA=Q.get('camera')!=='0',SECONDS=Number(Q.get('seconds')||7)*1000;
+const SHOW_NAMES=Q.get('names')==='1',PER_PLACE=Number(Q.get('per')||(Q.get('layout')==='card'||innerWidth<560||innerWidth/Math.max(1,innerHeight)<=1.3?3:4)),CAMERA=Q.get('camera')!=='0',SECONDS=Number(Q.get('seconds')||7)*1000;
 // Holidays: colours, and what the town puts up for each.
 const HOLIDAYS={'New Year':['🎆',['#ffd35a','#c9d3ff','#ff5ad1'],'newyear'],"Valentine's Day":['💝',['#ff5a8a','#ffb3c8','#ffffff'],'valentine'],
   'Memorial Day':['🇺🇸',['#d9303a','#ffffff','#2d5bd8'],'flag'],"Father's Day":['👔',['#3f7fd8','#8fd3ff','#ffd35a'],'grill'],'Independence Day':['🇺🇸',['#d9303a','#ffffff','#2d5bd8'],'flag'],
@@ -601,12 +604,12 @@ function district(key,info,tier){const [r,c]=CELLS[key],[a,b]=cellTiles(r,c),cit
     // New buildings: scaffolding and a crane first, then the building rises.
     const sc=add.map(([i,j],n)=>{const g=el('g',{'data-depth':i+j},dg.g);scaffold(g,i,j,n===0);return g});setTimeout(()=>{sc.forEach(g=>g.remove());put()},7000)}}
 let labelSig='';
-function labelsFor(d){const sig=JSON.stringify(Object.entries(d.districts||{}).map(([k,v])=>[k,v.unlocked,v.level,v.unlocks_at]));if(sig===labelSig)return;labelSig=sig;   // rebuilt only when a district changes
+function labelsFor(d){const sig=JSON.stringify(Object.entries(d.districts||{}).map(([k,v])=>[k,v.unlocked,v.level,v.unlocks_at]));if(sig===labelSig)return;labelSig=sig;for(const k in rowShift)delete rowShift[k];   // rebuilt only when a district changes
   const labels=document.getElementById('labels');labels.innerHTML='';
   for(const k in LOOK){const info=(d.districts||{})[k]||{unlocked:k==='commons',level:1},[x,y]=labelXY(k),[icon,short,color]=LOOK[k];
     const sub=CARD?'':k==='commons'?'':info.unlocked?`LV ${info.level}`:`AT ${String(info.unlocks_at||'').toUpperCase()}`,lab=el('g',{class:'dlabel'},labels);
     const box_=el('rect',{y:y-12*LS,height:24*LS,rx:12*LS,fill:'rgba(8,13,39,.9)',stroke:color,'stroke-width':2*LS},lab),t=el('text',{y:y+LS,fill:color,style:`font-size:${16*LS}px`},lab);t.textContent=CARD?icon+(info.unlocked||k==='commons'?'':'🔒'):`${icon} ${short.toUpperCase()}`;
-    const s=sub?el('text',{class:'lvl',y:y+1},lab):null;if(s)s.textContent=sub;const tw=t.getComputedTextLength(),sw=s?s.getComputedTextLength()+8:0,w=tw+sw+22*LS;
+    lab.dataset.key=k;const s=sub?el('text',{class:'lvl',y:y+1},lab):null;if(s)s.textContent=sub;const tw=t.getComputedTextLength(),sw=s?s.getComputedTextLength()+8:0,w=tw+sw+22*LS;
     box_.setAttribute('x',x-w/2);box_.setAttribute('width',w);t.setAttribute('x',x-w/2+11*LS+tw/2);if(s)s.setAttribute('x',x+w/2-11-sw/2+4)}}
 function labelXY(k){const [r,c]=CELLS[k]||CELLS.commons,[a,b]=cellTiles(r,c);return iso(a+1.5,b+1.5)}
 
@@ -632,7 +635,14 @@ function liveTown(d){const st=d.stats||{},pop=d.population||0,ds=d.districts||{}
 // ---- Seedlings: little people who walk the streets between districts and stand under the district name
 const tokens=document.getElementById('tokens'),live={};let latest=[];
 const SKIN=['#f1c9a5','#e0ac7e','#c68a5a','#8d5a3b','#5e3b26'],HAIR=['#2b1d14','#5a3a22','#b07a3a','#e2c27a','#7a2a1a','#c9c9d6'];
-function home(k,i,n){const [x,y]=labelXY(k);return [x+(i-(n-1)/2)*30*TS,y+12*LS+48*TS]}
+const rowShift={};
+function home(k,i,n){const [x,y]=labelXY(k),yy=y+12*LS+48*TS,key=k+':'+n+':'+LS.toFixed(2)+':'+TS.toFixed(2);
+  if(!(key in rowShift)){const half=(n-1)/2*30*TS+14*TS,extra=40,rects=[...document.querySelectorAll('#labels .dlabel')].filter(g=>g.dataset.key!==k).map(g=>{const r=g.querySelector('rect');return [+r.getAttribute('x'),+r.getAttribute('y'),+r.getAttribute('x')+(+r.getAttribute('width')),+r.getAttribute('y')+(+r.getAttribute('height'))]});
+    // overlap area between the row (people, feet and the +N badge) and every other district name; pick the nearest shift with the least
+    // The row stays inside its own district: a small sideways nudge or a step down the block, never into a neighbour.
+    const cost=(dx,dy)=>rects.reduce((c,[l,t,r,b])=>c+Math.max(0,Math.min(r+4,x+dx+half+extra)-Math.max(l-4,x+dx-half))*Math.max(0,Math.min(b+2,yy+dy+6*TS)-Math.max(t-2,yy+dy-46*TS)),0);
+    let best=[0,0],bestC=Infinity;for(const dy of [0,10,20,30])for(let dx=0;dx<=48;dx+=8)for(const d of dx?[-dx,dx]:[0]){const c=cost(d,dy)+Math.abs(d)*.6+dy*.8;if(c<bestC){bestC=c;best=[d,dy]}}rowShift[key]=best}
+  const [sx,sy]=rowShift[key];return [x+sx+(i-(n-1)/2)*30*TS,yy+sy]}
 const place_=(x,y)=>`translate(${x.toFixed?x.toFixed(1):x},${y.toFixed?y.toFixed(1):y})`+(TS!==1?` scale(${TS.toFixed(2)})`:'');
 function roadFor(r,other){return r===0?6:r===2?13:(other===2?13:6)}
 function route(from,to){if(from===to||!CELLS[from]||!CELLS[to])return [];const [ra,ca]=CELLS[from],[rb,cb]=CELLS[to],IA=roadFor(ra,rb),IB=roadFor(rb,ra),ja=ca*7+3,jb=cb*7+3;
@@ -708,11 +718,14 @@ function speak(t,line){document.querySelectorAll('.bubble').forEach(b=>b.remove(
   document.querySelectorAll('.dlabel').forEach(g=>{if(g.dataset.hidden)return;const r=g.querySelector('rect');const x=+r.getAttribute('x'),y=+r.getAttribute('y'),[l,tp]=toScreen(x,y),[rr,bt]=toScreen(x+(+r.getAttribute('width')),y+(+r.getAttribute('height')));walls.push({l,t:tp,r:rr,b:bt})});
   const cost=(bx,by)=>{const [l,tp]=toScreen(t.x+bx*k,t.y+by*k),[r,bt]=toScreen(t.x+(bx+w)*k,t.y+(by+h)*k);let c=0;
     for(const q of walls){const ox=Math.min(r,q.r)-Math.max(l,q.l),oy=Math.min(bt,q.b)-Math.max(tp,q.t);if(ox>-3&&oy>-3)c+=6000+Math.max(0,ox)*Math.max(0,oy)*4}
+    // it should not sit on other Seedlings either (a lighter penalty: names and panels matter most)
+    for(const o of Object.values(live)){if(o===t||o.g.style.display==='none')continue;const [ox,oy]=toScreen(o.x,o.y-20*TS),hw=11*CAM.s*TS,hh=22*CAM.s*TS;
+      const ix=Math.min(r,ox+hw)-Math.max(l,ox-hw),iy=Math.min(bt,oy+hh)-Math.max(tp,oy-hh);if(ix>0&&iy>0)c+=1500+ix*iy}
     // the tail must not cross a name or panel either
     const [hx1,hy1]=toScreen(t.x,t.y-38),ex=Math.max(l,Math.min(r,hx1)),ey=Math.max(tp,Math.min(bt,hy1));
-    for(const f of [.25,.5,.75]){const px=ex+(hx1-ex)*f,py=ey+(hy1-ey)*f;if(walls.some(q=>px>q.l&&px<q.r&&py>q.t&&py<q.b))c+=3000}
+    const steps=Math.max(3,Math.ceil(Math.hypot(hx1-ex,hy1-ey)/4));for(let i=1;i<steps;i++){const f=i/steps,px=ex+(hx1-ex)*f,py=ey+(hy1-ey)*f;if(walls.some(q=>px>q.l-1&&px<q.r+1&&py>q.t-1&&py<q.b+1)){c+=8000;break}}
     c+=(Math.max(0,4-l)+Math.max(0,r-956))*(bt-tp)*9+(Math.max(0,band[0]+2-tp)+Math.max(0,bt-536))*(r-l)*9;
-    const [hx,hy]=toScreen(t.x,t.y-38),cx=(l+r)/2,cy=(tp+bt)/2;return c+Math.hypot(cx-hx,cy-hy)*.8};   // prefer spots close to the speaker
+    const [hx,hy]=toScreen(t.x,t.y-38),cx=(l+r)/2,cy=(tp+bt)/2;return c+Math.hypot(cx-hx,cy-hy)*2.2};   // strongly prefer short tails   // prefer spots close to the speaker
   // Candidate spots all around the head: above (at several heights), to either side, and below the feet.
   const head=-38/k,spots=[];
   for(let lift=0;lift<=160;lift+=20)for(const f of [0,-.25,.25,-.5,.5,-.75,.75])spots.push([-w/2+f*w,head-8-h-lift]);
@@ -750,7 +763,7 @@ function fitHome(){try{const c=document.getElementById('city').getBBox();BOUNDS.
   band=[Math.max(4,vb(document.querySelector('.head')).b+6),534];const s=Math.min(944/(BOUNDS.right-BOUNDS.left),(band[1]-band[0])/(BOUNDS.bottom-BOUNDS.top));
   const next={x:(BOUNDS.left+BOUNDS.right)/2,y:(BOUNDS.top+BOUNDS.bottom)/2,s,px:480,py:(band[0]+band[1])/2};
   if(Math.abs(next.s-HOME.s)>.002||Math.abs(next.y-HOME.y)>.5||Math.abs(next.py-HOME.py)>.5){const wasHome=CAM===HOME;HOME=next;if(wasHome)apply(HOME)}
-  if(CARD){const ppu=Math.min(svgEl.clientWidth/960,svgEl.clientHeight/540)*HOME.s,ls=Math.min(2.8,Math.max(1,15/(16*ppu))),ts=Math.min(2.2,Math.max(1,24/(38*ppu)));
+  if(CARD){const ppu=Math.min(svgEl.clientWidth/960,svgEl.clientHeight/540)*HOME.s,ls=Math.min(2.2,Math.max(1,13/(16*ppu))),ts=Math.min(1.8,Math.max(1,21/(38*ppu)));
     if(Math.abs(ls-LS)>.02||Math.abs(ts-TS)>.02){LS=ls;TS=ts;labelSig='';if(lastData){labelsFor(lastData);tidyLabels();seedlings(latest);for(const id in live)live[id].g.setAttribute('transform',place_(live[id].x,live[id].y))}}
     const tt=document.getElementById('toast');tt.style.top=(document.querySelector('.head').offsetHeight+6)+'px'}}
 let lastData=null;
@@ -957,7 +970,7 @@ body{padding:0}.hub{position:fixed;inset:0;display:flex;flex-direction:column;ov
 h2{margin:0;font:700 1.45em/1.1 var(--font-display);color:var(--ivory)}.sub{color:var(--muted);font-size:.78em;line-height:1.3}
 .big{font-size:1.1em;font-weight:800}.row{display:flex;align-items:center;gap:.5em;min-width:0}.row .grow{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .bar{height:.5em;border-radius:99px;background:rgba(255,255,255,.1);overflow:hidden}.bar i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,var(--green),var(--violet))}
-.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:.35em .7em}.stat{padding:.3em .45em;border-radius:.4em;background:rgba(0,0,0,.22)}.stat b{display:block;font-size:1.05em}.stat small{color:var(--muted);font-size:.66em;text-transform:uppercase;letter-spacing:.06em}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:.35em .7em}.stat{padding:.3em .45em;border-radius:.4em;background:rgba(0,0,0,.22)}.stat b{display:block;font-size:1.05em}.stat small{display:block;color:var(--muted);font-size:.66em;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .list{display:flex;flex-direction:column;gap:.3em}.list .row{padding:.22em .45em;border-radius:.4em;background:rgba(0,0,0,.2);font-size:.9em}
 .num{color:var(--green2);font-weight:900;font-variant-numeric:tabular-nums;white-space:nowrap}.hot{color:var(--amber)}.red{color:#ff9aa6}
 .cols{display:grid;grid-template-columns:1fr 1fr;gap:.6em}.cols h3{margin:0 0 .2em;font-size:.7em;letter-spacing:.1em;text-transform:uppercase;color:var(--cyan)}
@@ -1041,25 +1054,34 @@ const STRIP={
  working:d=>`<div class="srow">${d.working.slice(0,4).map(x=>T(esc(x.name),esc(x.task),bar(x.total?x.done/x.total*100:0))).join('')}${d.working.length>4?`<div class="scol"><span class="sub">+${d.working.length-4} more</span></div>`:''}</div>`,
  seedlings:d=>`<div class="srow">${d.seedlings.slice(0,4).map(x=>T(`${esc(x.mood_emoji)} ${esc(x.place_name)}`,esc(x.name),`<span class="sub">${esc(x.activity)}</span>`)).join('')}</div>`,
  news:d=>`<div class="srow">${d.narration.slice(0,2).map(x=>`<div class="scol" style="flex:1"><div class="row"><span class="tag">${esc(x.desk||'COLONY')}</span><b class="ell">${esc(x.emoji)} ${esc(x.headline||'')}</b></div><div class="sub ell">${esc((x.text||'').split(' — ').slice(-1)[0])}</div></div>`).join('')}</div>`,
- join:d=>`<div class="srow"><div class="scol"><h2 style="white-space:nowrap">Join New Eridian</h2>${d.join.discord?`<div class="sub ell">Discord: <b>${esc(d.join.discord.replace(/^https?:\/\//,''))}</b></div>`:'<div class="sub">Type in chat</div>'}</div>${(d.join.tips||[]).slice(0,4).map(x=>T(`<code>${esc(x[0])}</code>`,'',`<span class="sub">${esc(x[1])}</span>`)).join('')}</div>`,
+ join:d=>`<div class="srow"><div class="scol"><h2 style="white-space:nowrap">Join New Eridian</h2>${d.join.discord?`<div class="sub ell">Discord: <b>${esc(d.join.discord.replace(/^https?:\/\//,''))}</b></div>`:'<div class="sub">Type in chat</div>'}</div>${(d.join.tips||[]).slice(0,4).map(x=>`<div class="tile"><code style="align-self:flex-start">${esc(x[0])}</code><span class="sub">${esc(x[1])}</span></div>`).join('')}</div>`,
 };
 function layoutOf(){const q=Q.get('layout');if(['strip','tall','wide','compact'].includes(q))return q;const r=innerWidth/Math.max(1,innerHeight);return r>=4?'strip':r<=1.15?'tall':innerWidth<560?'compact':'wide'}
 let LAYOUT=layoutOf();document.body.classList.add('L-'+LAYOUT);
 addEventListener('resize',()=>{const l=layoutOf();if(l!==LAYOUT){document.body.classList.replace('L-'+LAYOUT,'L-'+l);LAYOUT=l;index--;next()}else fit()});
 // Whatever the layout, a slide that is still too big for the source shrinks until it fits.
-function fit(){const body=document.getElementById('body'),sl=body.querySelector('.slide');if(!sl)return;let f=1;sl.style.fontSize='';
-  while(f>.55&&(sl.scrollHeight>body.clientHeight+1||sl.scrollWidth>body.clientWidth+1)){f-=.05;sl.style.fontSize=f+'em'}}
+function fit(){const body=document.getElementById('body'),sl=body.querySelector('.slide');if(!sl)return;
+  const over=()=>sl.scrollHeight>body.clientHeight+1||sl.scrollWidth>body.clientWidth+1,room=()=>sl.scrollHeight<body.clientHeight*.8;
+  let f=1;sl.style.fontSize='';
+  // A roomy box (a tall column) grows the slide to use the space; a tight one shrinks it until nothing overflows.
+  if(LAYOUT!=='strip')while(f<1.45&&room()){f+=.05;sl.style.fontSize=f.toFixed(2)+'em';if(over()){f-=.05;sl.style.fontSize=f.toFixed(2)+'em';break}}
+  while(f>.55&&over()){f-=.05;sl.style.fontSize=f.toFixed(2)+'em'}}
+// Shown when none of the chosen slides has anything right now (e.g. &slides=event with no live event).
+const QUIET=['quiet','🌱 New Eridian',d=>true,d=>`<h2>All quiet on Avesta</h2><div class="sub">${esc(d.phase_emoji||'')} Day ${d.day} · ${esc(d.phase||'')} · ${esc(d.condition||'')}</div><div class="sub">Nothing to show on this slide right now. Type <code>!start</code> in chat to join New Eridian.</div>`];
 const ACTIVE=SLIDES.filter(s=>!PICK.length||PICK.includes(s[0]));
 let data=null,index=-1,eventTurn=false;
 function next(){if(!data)return;let tries=0,slide;
+  if(!ACTIVE.some(s=>s[2](data)))return show(QUIET);
   // A live event takes every other slide until it ends.
   if(data.event&&!eventTurn&&ACTIVE.some(s=>s[0]==='event')){slide=ACTIVE.find(s=>s[0]==='event');eventTurn=true}
   else{eventTurn=false;do{index=(index+1)%ACTIVE.length;slide=ACTIVE[index];tries++}while((slide[0]==='event'&&data.event)||(!slide[2](data)&&tries<=ACTIVE.length))}
+  show(slide)}
+function show(slide){
   const body=document.getElementById('body'),old=body.querySelector('.slide'),html=(LAYOUT==='strip'&&STRIP[slide[0]]?STRIP[slide[0]]:slide[3])(data),title=document.getElementById('title');
   const put=()=>{title.textContent=slide[1];title.classList.remove('swap');void title.offsetWidth;title.classList.add('swap');
     body.innerHTML=`<div class="slide" style="display:flex;flex-direction:column;gap:.45em;width:100%;max-height:100%">${html}</div>`;fit()};
   if(old){old.classList.add('out');setTimeout(put,330)}else put();
-  const shown=ACTIVE.filter(s=>s[2](data));document.getElementById('dots').innerHTML=shown.map(s=>`<i class="${s===slide?'on':''}${s[0]==='event'?' live':''}"></i>`).join('');
+  const shown=ACTIVE.filter(s=>s[2](data));if(!shown.includes(slide))shown.push(slide);document.getElementById('dots').innerHTML=shown.map(s=>`<i class="${s===slide?'on':''}${s[0]==='event'?' live':''}"></i>`).join('');
   const t=document.getElementById('timer');t.animate([{transform:'scaleX(0)'},{transform:'scaleX(1)'}],{duration:EVERY,easing:'linear'})}
 poll(d=>{const first=!data;data=d;if(first){next();setInterval(next,EVERY)}},4000);
 </script>""")

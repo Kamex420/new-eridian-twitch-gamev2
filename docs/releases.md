@@ -1,5 +1,20 @@
 # Release notes
 
+## Polish pass across every overlay
+
+Every overlay page was checked in a browser: every Hub slide in all four layouts (640×360, 340×176, 340×440, 1440×120), every panel at its recommended size, and the map at 340×250 up to 1920×1080. The checks looked for text leaving its box, overlaps and script errors, and everything found was fixed:
+
+- **Hub.**
+  - A slide with nothing to show (for example `&slides=event` with no live event) now shows an "All quiet on Avesta" card, instead of staying on "Connecting to Avesta…" or showing an empty panel.
+  - In a roomy source such as a tall side column, slides now grow to fill the space. In a tight one, they shrink until they fit.
+  - Stat labels no longer wrap.
+  - Join commands in the strip layout are proper command chips.
+- **Older panels** (Society, Today, Event, Ops, Activity, Telemetry) shrink to fit their Browser Source. Today's aftermath line was being cut off at 420×280.
+- **Map.**
+  - Speech bubbles keep off other Seedlings as well as names and panels, and prefer short tails that never cross a name.
+  - A group of Seedlings that would stand on a neighbouring district's name nudges sideways or steps down, but stays inside its own district.
+  - The small column card shows three Seedlings per district plus "+N", and its badges are a touch smaller, so everything has room.
+
 ## Fix: the map stuck on "Connecting to Avesta…"
 
 The previous update broke `/obs/map` for every source wider than 560 px. A code comment had been placed in the middle of a line and silently disabled the rest of it. The town drew, but the header, Seedlings and captions never loaded. It is fixed. A new test fails if code ever ends up behind a comment again, and every overlay page was loaded in a browser at several sizes with no script errors.
