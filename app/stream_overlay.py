@@ -592,10 +592,16 @@ let sortAt=0,speaking=null;function sortTokens(force){const now=performance.now(
   if(want.length===have.length&&want.every((g,i)=>g===have[i]))return;want.forEach(g=>tokens.appendChild(g))}
 // A speech bubble pops up once over the speaker, stays a few seconds and fades away.
 let bubbleTimer=null;
-function speak(t,line){document.querySelectorAll('.bubble').forEach(b=>b.remove());clearTimeout(bubbleTimer);if(!t||!line)return;const text=line.length>44?line.slice(0,42)+'…':line;
-  const b=el('g',{class:'bubble'},t.g),tx=el('text',{x:0,y:-58},b);tx.textContent=text;const w=tx.getComputedTextLength()+18;tx.setAttribute('x',-w/2+9);
-  b.insertBefore(el('rect',{x:-w/2,y:-70,width:w,height:24,rx:9,fill:'#fffdf5',stroke:'#171230','stroke-width':1.6}),tx);b.insertBefore(el('polygon',{points:'-5,-47 5,-47 0,-40',fill:'#fffdf5',stroke:'#171230','stroke-width':1.6}),tx);
-  b.insertBefore(el('rect',{x:-6,y:-48,width:12,height:3,fill:'#fffdf5'}),tx);t.g.style.display='';sortTokens(true);
+function speak(t,line){document.querySelectorAll('.bubble').forEach(b=>b.remove());clearTimeout(bubbleTimer);if(!t||!line)return;
+  // The whole line, word-wrapped to at most 200 units wide; the bubble grows upward and stays inside the town.
+  const b=el('g',{class:'bubble'},t.g),tx=el('text',{},b),MAX=200,LH=15,rows=[];let cur='';
+  const width=str=>{tx.textContent=str;return tx.getComputedTextLength()};
+  for(const word of line.split(/\s+/)){const next=cur?cur+' '+word:word;if(cur&&width(next)>MAX){rows.push(cur);cur=word}else cur=next}if(cur)rows.push(cur);
+  tx.textContent='';const w=Math.max(...rows.map(width))+20,h=rows.length*LH+10,top=-48-h;tx.textContent='';
+  let shift=0;const left=t.x-w/2,right=t.x+w/2,minX=OX-400,maxX=OX+400;if(left<minX)shift=minX-left;if(right>maxX)shift=maxX-right;
+  rows.forEach((r,k)=>{const ts=el('tspan',{x:shift-w/2+10,y:top+5+LH/2+k*LH},tx);ts.textContent=r});
+  b.insertBefore(el('rect',{x:shift-w/2,y:top,width:w,height:h,rx:9,fill:'#fffdf5',stroke:'#171230','stroke-width':1.6}),tx);b.insertBefore(el('polygon',{points:'-5,-47 5,-47 0,-40',fill:'#fffdf5',stroke:'#171230','stroke-width':1.6}),tx);
+  b.insertBefore(el('rect',{x:-6,y:-48.5,width:12,height:3,fill:'#fffdf5'}),tx);t.g.style.display='';sortTokens(true);
   b.animate([{opacity:0,transform:'scale(.4)'},{opacity:1,transform:'none'}],{duration:350,easing:'cubic-bezier(.2,1.4,.4,1)'});
   bubbleTimer=setTimeout(()=>{b.animate([{opacity:1},{opacity:0}],{duration:500,fill:'forwards'}).onfinish=()=>{b.remove();if(t.hidden&&!t.path.length)t.g.style.display='none'}},Math.min(5500,SECONDS-800))}
 

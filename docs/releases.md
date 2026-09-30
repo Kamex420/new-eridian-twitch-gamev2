@@ -1,5 +1,9 @@
 # Release notes
 
+## Speech bubbles show the whole line
+
+Map speech bubbles no longer cut lines off with "…". The full line wraps onto as many rows as it needs (up to about 200 units wide) and the bubble grows upward to fit. Near the left and right edges of the town the bubble slides sideways to stay on screen, and its tail still points at the speaker.
+
 ## The map follows the time of day
 
 Morning, Day and Evening used to look almost the same on `/obs/map`: only a faint tint and the corners of the sky changed. The light now follows the actual Avesta hour (the overlay reports `hour`, 0–24), changing smoothly through the day:
