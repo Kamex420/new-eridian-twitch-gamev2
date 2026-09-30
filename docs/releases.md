@@ -1,5 +1,11 @@
 # Release notes
 
+## A bigger town in square sources; stats move to the Hub
+
+- **The map switches layout when OBS resizes it.** OBS often opens a Browser Source at its default size and resizes it a moment later. The map used to keep the layout it chose first, so a 400×400 source showed the full-screen layout with a tiny town. It now switches layout after a resize.
+- **Closer camera in the card layout.** In square and side-column sources, the camera stays close on whoever is speaking for three turns out of four (2.4× zoom), and shows the whole town on the fourth. Buildings, Seedlings and district badges now read at 400×400.
+- **The society stat panel is off the map.** The Hub shows the society stats. Add `&stats=1` to the map URL to bring the panel back.
+
 ## Choose your own panel sizes; the map background fills any shape
 
 - **Your own sizes on `/obs`.** Every panel on the setup page now has its own **Width** and **Height** boxes, and the map and Hub also have a **Layout** menu:

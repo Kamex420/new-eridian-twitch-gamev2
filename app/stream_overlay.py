@@ -487,7 +487,10 @@ const LOOK={commons:['⛲','Commons','#b8f4d0'],residential_ring:['🏠','Homes'
 const GROUND={commons:'#b9b1a0',residential_ring:'#7f9a5a',agricultural_district:'#6d8c46',industrial_ward:'#8a8578',research_block:'#9aa3a8',market_concourse:'#b5a88c',spaceport_quarter:'#8e8f93',frontier_edge:'#8b7355',park:'#5f8a45',wild:'#6f6446'};
 const MOOD={Inspired:'#ffd27a',Content:'#7ee3b0',Tired:'#9aa3c7',Hungry:'#ffb36b',Lonely:'#8fb3ff',Uneasy:'#d6a4ff',Stressed:'#ff9a76',Miserable:'#ff7484'};
 const WEATHER_ICON={clear_skies:'☀️',good_growing:'🌧️',spore_drift:'🍃',dust_winds:'🌪️',busy_spaceport:'🚀',water_watch:'💧',quiet_cycle:'🌙',sensor_noise:'📡'};
-const CARD=Q.get('layout')==='card'||(Q.get('layout')!=='wide'&&(innerWidth<560||innerWidth/Math.max(1,innerHeight)<=1.3));if(CARD)document.body.classList.add('L-card');
+const wantCard=()=>Q.get('layout')==='card'||(Q.get('layout')!=='wide'&&(innerWidth<560||innerWidth/Math.max(1,innerHeight)<=1.3));
+const CARD=wantCard();if(CARD)document.body.classList.add('L-card');
+// OBS often opens a Browser Source at its default size and resizes it a moment later: switch layout when that happens.
+let relayout=null;addEventListener('resize',()=>{clearTimeout(relayout);relayout=setTimeout(()=>{if(wantCard()!==CARD)location.reload()},400)});
 let LS=1,TS=1;   // card layout: label and Seedling scale so they stay readable in a small source
 const QUALITY=['low','high'].includes(Q.get('quality'))?Q.get('quality'):'normal';document.body.classList.add('q-'+QUALITY);
 const SHOW_NAMES=Q.get('names')==='1',PER_PLACE=Number(Q.get('per')||(Q.get('layout')==='card'||innerWidth<560||innerWidth/Math.max(1,innerHeight)<=1.3?3:4)),CAMERA=Q.get('camera')!=='0',SECONDS=Number(Q.get('seconds')||7)*1000;
@@ -892,8 +895,8 @@ function shuttles(on){if(on&&!shuttle){const [x,y]=iso(3,3);shuttle=el('g',{clas
 const STATS=[['🌾','food'],['⛏️','materials'],['⚙️','development'],['🔬','knowledge'],['🪙','treasury'],['⭐','reputation']];
 const short=v=>v>=1e6?(v/1e6).toFixed(1)+'M':v>=1e4?Math.round(v/1e3)+'k':v>=1e3?(v/1e3).toFixed(1)+'k':String(Math.round(v));
 let statsBuilt=false;
-// A short map card leaves the stats to the Hub.
-function statPanel(d){const box=document.getElementById('stats');if(!box)return;if(Q.get('stats')==='0'||(CARD&&Q.get('stats')!=='1'&&innerHeight<380)){box.remove();return}const st=d.stats||{},target=d.tier_target||1,low=d.bottleneck&&d.bottleneck.key;
+// The society stats live in the Hub; the map shows them only with &stats=1.
+function statPanel(d){const box=document.getElementById('stats');if(!box)return;if(Q.get('stats')!=='1'){box.remove();return}const st=d.stats||{},target=d.tier_target||1,low=d.bottleneck&&d.bottleneck.key;
   if(!statsBuilt){statsBuilt=true;box.innerHTML=`<div class="tl"><b id="st-tier"></b><small id="st-next"></small><span id="st-pct"></span></div><div class="meter big"><i id="st-bar"></i></div>
     <div class="grid">${STATS.map(([i,k])=>`<div class="m" id="st-${k}" title="${k}"><span>${i}</span><div class="meter"><i></i></div><em></em></div>`).join('')}</div><div class="next" id="st-open"></div>`}
   document.getElementById('st-tier').textContent=(d.tier_name||d.tier||'Outpost').toUpperCase();document.getElementById('st-next').textContent=d.next_tier?'→ '+d.next_tier:'· top tier';
@@ -909,8 +912,8 @@ function caption(){const cap=document.getElementById('cap'),pool=latest.filter(s
   const s=pool[capIndex++%pool.length],lines=(s.lines&&s.lines.length)?s.lines:[s.thought],idx=said[s.id]||0,line=lines[idx%lines.length],place=(LOOK[s.place]||LOOK.commons);
   cap.classList.add('hide');setTimeout(()=>{cap.innerHTML=`<span class="mood">${esc(s.mood_emoji||'🙂')}</span><div class="text"><div class="top"><span class="who">${esc(s.name)}</span> · <span class="what">${esc(place[0])} ${esc(s.activity)}</span></div>${line?`<div class="said">“${esc(line)}”</div>`:''}</div>`;cap.classList.remove('hide');tidyLabels()},450);
   said[s.id]=idx+1;const t=live[s.id];speaking=s.id;
-  if(Date.now()>=lockUntil){capTick++;const closeUp=CARD?capTick%3!==0:capTick%2===1;   // a small card spends more time close up
-    if(t&&!t.path.length&&closeUp)look(t.x,t.y-24,CARD?1.75:1.9);else look()}
+  if(Date.now()>=lockUntil){capTick++;const closeUp=CARD?capTick%4!==0:capTick%2===1;   // a small card stays close up, with a look at the whole town every fourth turn
+    if(t&&!t.path.length&&closeUp)look(t.x,t.y-24,CARD?2.4:1.9);else look()}
   speak(t,line)}
 setInterval(caption,SECONDS);
 poll(d=>{try{
@@ -1105,7 +1108,7 @@ def page(panel, channel):
 # Every OBS source, with a sensible Browser Source size.
 SOURCES = [
     ('hub', 'Hub (rotating)', 'Everything in one panel: society, stats, today, the live event, project and story, market, leaders, working now, Seedlings, news and how to join. Rotates every 12 seconds; a live event shows every other slide. Adapts to any source shape: a side column (340×176 compact, 340×440 tall) or a band under the game (1440×120 strip).', 640, 360, '&seconds=12 · &slides=society,event,news · &layout=compact|tall|strip|wide to force a layout'),
-    ('map', 'Avesta map', 'New Eridian as a living town: buildings go up (with scaffolding and a crane) as the society grows, Seedlings walk the streets and talk in speech bubbles, the camera drifts in on whoever is speaking, the sky and weather follow Avesta, and the town decorates itself for holidays. Keep it at least a quarter of the screen, or use it as a card in a side column (340×250 or taller), where the caption sits below the town.', 960, 540, '&layout=card forces the column card · &quality=high (glows, water, flags) or low (lighter for slower PCs) · &stats=0 hides the stat panel · &camera=0 fixed wide shot · &names=1 · &per=6 · &seconds=7 · preview: &hour=18 &holiday=christmas &weather=dust_winds'),
+    ('map', 'Avesta map', 'New Eridian as a living town: buildings go up (with scaffolding and a crane) as the society grows, Seedlings walk the streets and talk in speech bubbles, the camera drifts in on whoever is speaking, the sky and weather follow Avesta, and the town decorates itself for holidays. Keep it at least a quarter of the screen, or use it as a card in a side column (340×250 or taller), where the caption sits below the town.', 960, 540, '&layout=card forces the column card · &quality=high (glows, water, flags) or low (lighter for slower PCs) · &stats=1 adds the society stat panel · &camera=0 fixed wide shot · &names=1 · &per=6 · &seconds=7 · preview: &hour=18 &holiday=christmas &weather=dust_winds'),
     ('ticker', 'News ticker', 'A TV-style lower third: every item has a coloured section tag (Event, Weather, News, Society, Today, Market, Holiday, Project, Report, Join) and the Avesta clock sits on the right.', 1920, 56, '&speed=80 · works at any height'),
     ('alerts', 'Live alerts', 'Animated pop-up for joins, level ups, achievements, events and milestones. Transparent when idle.', 700, 220, '&test=1 shows demo alerts · &sound=1 plays a chime · &seconds=7 · &hide=queue,join'),
     ('leaders', 'Leaders', 'Top contributors, the most active citizens today and live event leaders.', 620, 330, ''),
