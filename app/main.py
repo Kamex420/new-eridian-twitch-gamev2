@@ -7337,6 +7337,14 @@ def mining(channel:str,uid:str,name:str='Citizen',ore:str='',action:str='view',c
     module=sys.modules[__name__];key=seed_content.find_item(ore)
     if action not in {'view','mine'}:return out('Choose View Requirements or Mine. Nothing was spent.')
     if not 1<=count<=10:return out('Count must be from 1 to 10. Nothing was spent.')
+    if provider!='discord':
+        # Twitch mines once, right away, and understands short names ("!mine hematite"); queues are on Discord.
+        if not ore.strip():
+            common=[seed_content.item_label(k).replace(' Ore','').lower() for k in sorted(task_queue.ores(),key=seed_content.item_label) if k not in crafting_progression.RARE]
+            rare=[seed_content.item_label(k).replace(' Ore','').lower() for k in sorted(crafting_progression.RARE,key=seed_content.item_label) if k in task_queue.ores()]
+            return out('⛏️ !mine <ore>: '+', '.join(common)+(' · Rare (Harvesting Lv 3): '+', '.join(rare) if rare else '')+' · Mining can fail (you get Stone Dust).')
+        if action=='mine' and count==1 and twitch_lite.ENABLED:
+            return seed_supplies(channel,uid,name,'gather',ore,1,False,provider)
     if not ore:
         lines=['MINING — CHOOSE AN ORE OR COAL','Mining can fail: each failure gives 1 Stone Dust instead of ore. Select Ore (including Coal) to inspect its requirements, then choose Mine. Count queues up to 10 attempts of that ore.']
         for k in sorted(task_queue.ores(),key=seed_content.item_label):

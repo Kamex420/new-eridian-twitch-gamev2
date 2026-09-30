@@ -94,3 +94,13 @@ def test_the_command_list_is_complete_and_every_player_command_carries_the_key()
             assert '&k=YOUR_API_KEY' in response, name
         if '/admin/' in response:
             assert 'key=YOUR_ADMIN_KEY' in response and names.index(name) > names.index('!customize'), name   # moderator commands last
+
+
+def test_mine_on_twitch_mines_once_right_away_with_short_ore_names():
+    twitch('/api/v1/start')
+    menu = twitch('/api/v1/mining', action='mine', count='1', ore='')
+    assert menu.startswith('⛏️ !mine <ore>:') and 'hematite' in menu and len(menu.encode()) <= 200
+    result = twitch('/api/v1/mining', action='mine', count='1', ore='hematite')
+    assert result.startswith(('✅ Gathered Hematite Ore', '❌ Mining failed')), result
+    with m.SessionLocal() as db:
+        assert db.query(m.task_queue.TaskQueue).count() == 0          # no queue: queues are on Discord

@@ -109,7 +109,8 @@ def step_command(key, twitch):
     """First Steps on Twitch: crafting and queues are done on Discord."""
     if not ENABLED:
         return twitch
-    return {'craft': f'on Discord: /make ({invite()})', 'queue': f'on Discord: /queue ({invite()})'}.get(key, twitch)
+    link = f' ({invite()})' if os.getenv('DISCORD_INVITE_URL', '').strip() else ''
+    return {'craft': f'on Discord: /make{link}', 'queue': f'on Discord: /queue{link}'}.get(key, twitch)
 
 
 TOPICS = {
