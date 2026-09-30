@@ -1,5 +1,9 @@
 # Release notes
 
+## Fix: the map stuck on "Connecting to Avesta…"
+
+The previous update broke `/obs/map` for every source wider than 560 px. A code comment had been placed in the middle of a line and silently disabled the rest of it. The town drew, but the header, Seedlings and captions never loaded. It is fixed. A new test fails if code ever ends up behind a comment again, and every overlay page was loaded in a browser at several sizes with no script errors.
+
 ## Map and Hub fit a side column
 
 The map and the Hub now adapt to the shape of their Browser Source. You can put them in a streamer's side column, next to a game capture, instead of over it.

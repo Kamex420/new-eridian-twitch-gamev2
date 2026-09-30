@@ -119,3 +119,13 @@ def test_hub_and_map_adapt_to_side_columns_and_bands():
     page = client.get('/obs/map', params={'channel': 'test'}).text
     for feature in ('const CARD=', '.L-card .cap', 'place_(', 'closeUp'):
         assert feature in page, feature
+
+
+def test_no_overlay_code_is_hidden_behind_a_line_comment():
+    """A '//' comment in the middle of a minified line silently disables the rest of it (the map once stopped loading this way)."""
+    import re
+    from app import stream_overlay as o
+    for name, (css, body) in o.PAGES.items():
+        for line in body.split('\n'):
+            for m in re.finditer(r'(?<![:\\])//(.*)$', line):   # not a URL and not the end of a /regex\//
+                assert not re.search(r'\b(const|let|function|return)\b|[;{}]\s*[A-Za-z_$][\w$.]*\s*[=(]', m.group(1)), (name, line[:160])

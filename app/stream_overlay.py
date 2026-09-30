@@ -877,7 +877,8 @@ function shuttles(on){if(on&&!shuttle){const [x,y]=iso(3,3);shuttle=el('g',{clas
 const STATS=[['🌾','food'],['⛏️','materials'],['⚙️','development'],['🔬','knowledge'],['🪙','treasury'],['⭐','reputation']];
 const short=v=>v>=1e6?(v/1e6).toFixed(1)+'M':v>=1e4?Math.round(v/1e3)+'k':v>=1e3?(v/1e3).toFixed(1)+'k':String(Math.round(v));
 let statsBuilt=false;
-function statPanel(d){const box=document.getElementById('stats');if(!box)return;if(Q.get('stats')==='0'||(CARD&&Q.get('stats')!=='1'&&innerHeight<380)){box.remove();return}   // a short card leaves the stats to the Hubconst st=d.stats||{},target=d.tier_target||1,low=d.bottleneck&&d.bottleneck.key;
+// A short map card leaves the stats to the Hub.
+function statPanel(d){const box=document.getElementById('stats');if(!box)return;if(Q.get('stats')==='0'||(CARD&&Q.get('stats')!=='1'&&innerHeight<380)){box.remove();return}const st=d.stats||{},target=d.tier_target||1,low=d.bottleneck&&d.bottleneck.key;
   if(!statsBuilt){statsBuilt=true;box.innerHTML=`<div class="tl"><b id="st-tier"></b><small id="st-next"></small><span id="st-pct"></span></div><div class="meter big"><i id="st-bar"></i></div>
     <div class="grid">${STATS.map(([i,k])=>`<div class="m" id="st-${k}" title="${k}"><span>${i}</span><div class="meter"><i></i></div><em></em></div>`).join('')}</div><div class="next" id="st-open"></div>`}
   document.getElementById('st-tier').textContent=(d.tier_name||d.tier||'Outpost').toUpperCase();document.getElementById('st-next').textContent=d.next_tier?'→ '+d.next_tier:'· top tier';
