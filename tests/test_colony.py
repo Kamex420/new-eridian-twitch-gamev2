@@ -26,6 +26,8 @@ def reset(monkeypatch):
         monkeypatch.setenv(key, "")
     m.Base.metadata.drop_all(m.engine);m.Base.metadata.create_all(m.engine)
     m.migrate_schema()
+    # First-steps rewards would shift the exact SC and item totals most tests check; tests/test_onboarding.py turns it on.
+    monkeypatch.setattr(m.onboarding,"ENABLED",False)
 
 def seed(uid='u',provider='twitch',name='Kamex'):
     with m.SessionLocal() as db:

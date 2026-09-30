@@ -693,6 +693,9 @@ def tutorial_row(db,p):
     return row
 
 def tutorial_text(db,p,provider):
+    from . import onboarding
+    steps_text=onboarding.status(sys.modules[__name__],db,p,provider)
+    if steps_text:return steps_text
     row=tutorial_row(db,p);prefix='/' if provider=='discord' else '!'
     if provider=="discord":
         steps=[("Check the living world","/world"),("Choose a job","/job"),("Complete a work action","/guide"),
@@ -2064,8 +2067,12 @@ def health():
 @app.get("/api/v1/start")
 @game_transaction
 def start(channel:str,uid:str,name:str="Citizen",provider:str="twitch"):
+    from . import onboarding
     with SessionLocal() as db:
         _,p=player(db,channel,provider,uid,name)
+        if onboarding.welcome(sys.modules[__name__],db,p):
+            text=onboarding.welcome_text(sys.modules[__name__],db,p,provider);db.commit()
+            return platform_response(provider,text,text)
         discord=f"🌱 {p.display_name} — Citizen Ready\n\n🪙 Starting balance: {p.sc} SC\n💼 Next: choose a job with /job\n🧭 Need direction? Use /guide"
         twitch=f"🌱 {p.display_name} is ready in New Eridian with {p.sc} SC. Next: !job to choose work, then !guide for your best action."
         return platform_response(provider,discord,twitch)
@@ -7286,7 +7293,20 @@ def queued_tasks(channel:str,uid:str,name:str='Citizen',action:str='view',task:s
     except ValueError:return out('Count must be a whole number from 1 to 10. No queue was changed.')
     text=task_queue.control(sys.modules[__name__],channel,uid,name,provider,action,task,count)
     short=task_queue.short_status(sys.modules[__name__],channel,uid,name,provider) if provider!='discord' and text.startswith('TASK QUEUE') else text.replace('\n',' | ')
+    note=first_step_note(channel,uid,name,provider,'queue') if action=='start' else ''
+    if note:text,short=text+'\n\n'+note,short+' | '+note
     return platform_response(provider,text,short)
+
+def first_step_note(channel,uid,name,provider,key):
+    """First-steps credit for commands outside the command wrapper (queue start, Seedling views)."""
+    from . import onboarding
+    try:
+        with SessionLocal() as db:
+            _,p=player(db,channel,provider,uid,name)
+            if key=='queue' and db.get(task_queue.TaskQueue,(p.channel_id,p.twitch_uid)) is None:return ''
+            note=onboarding.mark(sys.modules[__name__],db,p,key,provider);db.commit();return note
+    except Exception:
+        return ''
 
 @app.get('/api/v1/mining')
 @game_transaction
@@ -7334,7 +7354,11 @@ from . import stream_overlay
 stream_overlay.install(sys.modules[__name__])
 from . import autonomy
 autonomy.install(sys.modules[__name__])
+from . import onboarding
+onboarding.install(sys.modules[__name__])
 presentation.SKILL_NAMES=tuple(SKILL_LABELS.values())
+# Every module above is loaded now: create any table a module added since the first create_all (existing tables are left alone).
+Base.metadata.create_all(engine)
 
 
 @app.get('/api/v1/status')
@@ -7606,7 +7630,9 @@ def seedling_view(channel:str,uid:str,name:str='Citizen',provider:str='twitch'):
     with SessionLocal() as db:
         _,p=player(db,channel,provider,uid,name)
         text=autonomy.view_text(sys.modules[__name__],db,p,provider);db.commit()
-        return platform_response(provider,text,text)
+    note=first_step_note(channel,uid,name,provider,'seedling')
+    if note:text+=('\n\n' if provider=='discord' else ' | ')+note
+    return platform_response(provider,text,text)
 
 
 @app.get('/api/v1/diary')

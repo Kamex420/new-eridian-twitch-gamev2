@@ -1,5 +1,36 @@
 # Release notes
 
+## First steps, a welcome kit, and new citizens greeted on stream
+
+- **First steps (replaces "First Days").** Six small goals teach the game:
+  1. 🧺 Gather something.
+  2. 🔥 Craft something (a Campfire is easiest).
+  3. 🍲 Eat.
+  4. 💼 Choose a job.
+  5. ⏱️ Start a queue.
+  6. 🌱 Meet your Seedling.
+
+  They count in **any order** and however the player does them: Twitch, Discord slash commands, buttons or a queue. The old First Days only counted steps in one fixed order and paid nothing until the end.
+
+  Each step pays at once (+10–15 SC; crafting also gives 2 Lumber, eating 2 Berries), and the reply names the next step. On Twitch this is one short line, for example "🎓 3/6 +10 SC · next: !job". On Discord it gives the step name and the next command.
+
+  Finishing all six gives +25 SC, +5 Contribution and the new **Settled In** title.
+
+  Where it shows:
+  - "What next?" (`/guide`) and the profile show the checklist.
+  - The `/menu` home screen shows the next step.
+
+  Players who already had 25 or more actions are marked finished and never see it.
+- **Welcome kit.** `!start` / `/start` gives a new citizen, once:
+  - 2 Lumber (enough for a first Campfire) and 4 Berries;
+  - a Seedling that moves into the Residential Ring and writes its first diary entry ("Nova arrives in New Eridian");
+  - a welcome message saying they are now on the stream map, with the checklist.
+- **Greeted on stream.** When someone joins while the map is open:
+  - a "🌱 Welcome to New Eridian, NAME!" banner shows (without [tags]);
+  - the camera finds their Seedling, which says "Hi everyone! I just moved in. 👋";
+  - for five minutes they stand first in their district, so they are never folded into "+N".
+- **Startup safety.** After all modules load, any missing table is created, so a new table can never be missing in production.
+
 ## Welcome back: exact totals of what your Seedling collected
 
 The "While you were away" message now adds up everything your Seedling did on its own since you were last active:

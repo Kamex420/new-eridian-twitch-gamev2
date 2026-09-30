@@ -168,3 +168,9 @@ def test_setup_page_has_controls_for_every_overlay_option():
         offered = {opt['p'] for opt in o.OPTIONS.get(key, [])}
         assert used <= offered, (key, used - offered)
     assert page.count('data-p="') >= sum(len(v) for v in o.OPTIONS.values())
+
+
+def test_map_greets_newcomers_and_keeps_them_visible():
+    from test_colony import client
+    page = client.get('/obs/map', params={'channel': 'test'}).text
+    assert 'function welcomeNew(' in page and 'isNew(b)-isNew(a)' in page and 'I just moved in' in page

@@ -690,7 +690,7 @@ function idle(){if(QUALITY==='low')return;const standing=Object.values(live).fil
   else{const e=t.eyes;e.animate([{transform:'translate(0,0)'},{transform:'translate(-1.8px,0)'},{transform:'translate(-1.8px,0)'},{transform:'translate(1.8px,0)'},{transform:'translate(1.8px,0)'},{transform:'translate(0,0)'}],{duration:2200,easing:'ease-in-out'})}}
 setInterval(idle,2600);
 function seedlings(list){const groups={};for(const s of list)(groups[s.place]=groups[s.place]||[]).push(s);const seen=new Set();document.querySelectorAll('.more').forEach(e=>e.remove());
-  for(const k in groups){const all=groups[k].sort((a,b)=>a.id<b.id?-1:1),n=Math.min(all.length,PER_PLACE),extra=all.length-n;
+  for(const k in groups){const all=groups[k].sort((a,b)=>(isNew(b)-isNew(a))||(a.id<b.id?-1:1)),n=Math.min(all.length,PER_PLACE),extra=all.length-n;
     all.forEach((s,i)=>{seen.add(s.id);const [tx,ty]=home(k,Math.min(i,n-1),n);let t=live[s.id];
       if(!t){t=live[s.id]=figure(s);t.id=s.id;t.x=tx;t.y=ty;t.place=k;t.g.setAttribute('transform',place_(tx,ty))}
       t.hidden=i>=n;t.s=s;if(t.job!==s.job){t.job=s.job;hat(t.g.querySelector('.hat'),s.job)}t.g.querySelector('.shirt').setAttribute('fill',MOOD[s.mood]||'#b8f4d0');t.g.querySelector('.ini').textContent=(s.name||'?').slice(0,1).toUpperCase();
@@ -910,6 +910,19 @@ function statPanel(d){const box=document.getElementById('stats');if(!box)return;
   document.getElementById('st-open').innerHTML=locked.length?`Next: <b>${esc(LOOK[locked[0][0]][0])} ${esc(LOOK[locked[0][0]][1])}</b> opens at ${esc(locked[0][1].unlocks_at)}`:`All districts open${low&&d.next_tier?` · needs <b>${esc(d.bottleneck.name)}</b>`:''}`;
   box.classList.remove('hide')}
 
+// ---- new citizens: a welcome banner, the camera finds their Seedling, and it says hello
+let lastJoin=null;const newcomers={};   // name -> until when they are shown first in their district
+const isNew=s=>(newcomers[(s.name||'').toLowerCase()]||0)>Date.now();
+function welcomeNew(d){const joins=(d.highlights||[]).filter(h=>h.kind==='join');const top=joins.length?Math.max(...joins.map(h=>h.id)):0;
+  if(lastJoin===null){lastJoin=top;return}   // only people who join while the map is open
+  for(const h of joins.filter(h=>h.id>lastJoin).sort((a,b)=>a.id-b.id)){const who=String(h.name||'').replace(/\s*\[.*?\]\s*/g,'').trim();
+    newcomers[who.toLowerCase()]=Date.now()+5*60000;seedlings(latest);toast(`🌱 Welcome to New Eridian, ${who}!`);setTimeout(()=>greet(who),2500)}
+  lastJoin=Math.max(lastJoin,top)}
+function greet(who,tries=0){const s=latest.find(x=>x.name.toLowerCase()===who.toLowerCase());const t=s&&live[s.id];if(!t)return;
+  if(t.path.length||t.hidden){if(tries<12)setTimeout(()=>greet(who,tries+1),700);return}   // wait until they reach their spot
+  lockUntil=Date.now()+9000;look(t.x,t.y-24,CARD?2.4:1.9);speaking=s.id;
+  setTimeout(()=>speak(t,'Hi everyone! I just moved in. 👋'),1600)}
+
 // ---- captions: each Seedling in turn, with something new to say
 let capIndex=0,capTick=0;const said={};
 function caption(){const cap=document.getElementById('cap'),pool=latest.filter(s=>(s.lines&&s.lines.length)||s.thought);if(!pool.length){cap.classList.add('hide');return}
@@ -929,7 +942,7 @@ poll(d=>{try{
   const tier=d.tier_index||0;if(!first&&lastTier>=0&&tier>lastTier)toast(`🏙️ New Eridian is now a ${d.tier_name||d.tier}!`);
   if(tier!==lastTier){streets(d,tier);lastTier=tier}for(const k in CELLS)district(k,(d.districts||{})[k]||{},tier);labelsFor(d);tidyLabels();
   sky(hour,weatherKey);night=darkness>.3;effects(d.phase);glitches(weatherKey==='sensor_noise');shuttles(weatherKey==='busy_spaceport'&&darkness<.6);
-  latest=d.seedlings||[];lastData=d;liveTown(d);statPanel(d);fitHome();seedlings(latest);if(first){first=false;caption()}
+  latest=d.seedlings||[];lastData=d;liveTown(d);statPanel(d);fitHome();welcomeNew(d);seedlings(latest);if(first){first=false;caption()}
   document.getElementById('tier').textContent=`${d.tier_name||d.tier||'Outpost'} · ${d.population||0} citizens`;
   const hol=document.getElementById('hol');if(festival&&HOLIDAYS[festival.name]){const n=festival.days_to_holiday;hol.style.setProperty('--hol',HOLIDAYS[festival.name][1][0]);
     const GREET={'Christmas':'Merry Christmas!','Memorial Day':'Memorial Day','Thanksgiving':'Happy Thanksgiving!'};hol.textContent=`${festival.emoji} `+(n===0?(GREET[festival.name]||`Happy ${festival.name}!`):n>0?`${festival.name} in ${n} day${n===1?'':'s'}`:`${festival.name} festival`)}else hol.textContent='';

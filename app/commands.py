@@ -42,7 +42,7 @@ def command(fn):
         try:
             response=fn(*args,**kwargs)
             if not isinstance(response,PlainTextResponse):return response
-            ctx=context.get();extra=[];prefix=list(dict.fromkeys(notices.get()))
+            ctx=context.get();extra=[];prefix=list(dict.fromkeys(notices.get()));step_note=''
             if ctx["uid"]:
                 with m.SessionLocal() as db:
                     p=db.execute(m.select(m.Player).where(m.Player.channel_id==params.get("channel"),m.Player.twitch_uid==ctx["uid"])).scalar_one_or_none()
@@ -63,6 +63,15 @@ def command(fn):
                                 if new>old:
                                     notice=f"LEVEL UP: {label} Lv. {old} → Lv. {new}"
                                     m.announce(db,p,notice,m.now());prefix.append(notice)
+                        try:
+                            from . import onboarding
+                            step_note=onboarding.after_command(m,db,p,fn.__name__,params,ctx["before"],after)
+                            if step_note and params.get("provider")=="discord":extra.append(step_note)
+                            elif fn.__name__=="guide":
+                                path=onboarding.status(m,db,p,params.get("provider") or "twitch")
+                                if path:extra.insert(0,path)
+                        except Exception:
+                            pass    # the first-steps path never gets in the way of a command
                         st=m.colony_seedling(db,p)
                         if fn.__name__ in {"profile","skills","life_status","guide"}:
                             if st.last_progress:prefix.append("Latest "+st.last_progress)
@@ -94,6 +103,12 @@ def command(fn):
             except Exception:pass
             name=params.get("action") if fn.__name__=="action" else fn.__name__
             text=presentation.chat(m,"\n".join(prefix+[text]+extra),name)
+            if step_note:
+                # The first-steps note survives the one-line chat receipt; the receipt gives way if the line gets too long.
+                room=200-len((" | "+step_note).encode())
+                receipt=text.replace("\n"," ")
+                while len(receipt.encode())>room and receipt:receipt=receipt[:-2]+"…"
+                text=receipt.rstrip("…")+("…" if len(receipt)<len(text.replace("\n"," ")) else "")+" | "+step_note
             return PlainTextResponse(text,status_code=response.status_code)
         finally:
             context.reset(token);notices.reset(nt)

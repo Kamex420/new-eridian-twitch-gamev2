@@ -487,6 +487,9 @@ def area_text(m, db, p, area, ctx=None):
         lines = [f'{emoji} NEW ERIDIAN — {p.display_name}',
                  f'⚡ {life.energy} · 🍲 {life.nutrition} · 💬 {life.social} · 🛋️ {life.comfort} · 🪙 {p.sc} SC',
                  m.qol.queue_summary(m, db, p, 'discord')[0].split('\n')[0], '', text, '']
+        path = m.onboarding.line(m, db, p, 'discord')
+        if path:
+            lines.insert(3, path.replace('🧭 First steps', '🧭 **First steps**') + ' · Help → What next? has the checklist')
     for key in children:
         if key in AREAS:
             e, t, d, _ = AREAS[key]
