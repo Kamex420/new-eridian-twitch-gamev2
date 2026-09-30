@@ -477,6 +477,9 @@ WORK_TASKS=[(W('Tend Fields','farm'),'farm_tend'),(W('Harvest Pumpkins','harvest
             (W('Expedite Spaceport','spaceport','expedite','uses 1 Power Cell'),'expedite'),(W('Scout','explore'),'scout'),
             (W('Survey','survey','','needs Resource Scanner'),'survey')]
 MOD_ACTIONS=[('Start event','eventstart'),('Stop event','eventstop'),('Moderator log','modlog'),('Linked-account lookup (owner)','linklookup'),('Post guide panels here','guidepanels'),('Post game button panel here','menupanel')]
+MOD_ACTIONS+=[('Stream challenge: start','challengestart'),('Stream challenge: stop','challengestop'),('Stream is live: on','liveon'),
+              ('Stream is live: off','liveoff'),('Stream live: automatic','liveauto'),('Weekly recap: preview','recappreview'),('Weekly recap: post now','recappost')]
+from .live_events import CHALLENGES as _CHALLENGES
 PROGRESS_SECTIONS=[('Skills & Level Unlocks','skills'),('Daily Contract','daily'),('Achievements','achievements'),('Collection','collection')]
 WORLD_SECTIONS=[('Society Overview','society'),('Society Next Tier','society_progress'),('Contribution Leaderboard','leaderboard'),
                 ('Active Event','event'),('Event History','event_history'),('Holidays & Festival Foods','holidays')]
@@ -492,7 +495,22 @@ new_commands=[
     cmd('mod','Moderator and owner tools: events, moderator log, linked accounts',[
         {'type':STRING,'name':'action','description':'Moderator tool','required':True,'choices':[{'name':n,'value':v} for n,v in MOD_ACTIONS]},
         dict(_by_name['eventstart']['options'][0],required=False,description='Start event: which event'),
-        dict(_by_name['linklookup']['options'][0],description='Linked-account lookup: player or provider ID')]),
+        dict(_by_name['linklookup']['options'][0],description='Linked-account lookup: player or provider ID'),
+        {'type':STRING,'name':'challenge','description':'Start stream challenge: which one (blank = random)','required':False,
+         'choices':[{'name':f'{v[0]} {v[1]}','value':k} for k,v in _CHALLENGES.items()]}]),
+    cmd('vote','Colony vote: what New Eridian builds or celebrates next (blank shows the ballot)',[
+        {'type':4,'name':'choice','description':'Your vote: 1, 2 or 3 (you can change it until the day ends)','required':False,'min_value':1,'max_value':3}]),
+    cmd('season','This season: your points and rank, the leaderboard, rewards, story and hats',[
+        {'type':STRING,'name':'section','description':'What to show','required':False,
+         'choices':[{'name':'Overview: your points, rank and next reward','value':'overview'},{'name':'Leaderboard','value':'top'},
+                    {'name':'Rewards: titles, hats and milestones','value':'rewards'},{'name':'Story so far','value':'story'},{'name':'My hats','value':'hats'}]},
+        {'type':STRING,'name':'hat','description':'Wear a cosmetic hat on the stream map (job = your job hat)','required':False,'max_length':30}]),
+    cmd('challenge','The live stream challenge: goal, time left, top helpers and how to help'),
+    cmd('trophies','Collections and trophies: what you have, what is close, and your pinned badge',[
+        {'type':STRING,'name':'group','description':'Show one group in full','required':False,
+         'choices':[{'name':'Collections','value':'collections'},{'name':'Crafting','value':'crafting'},{'name':'Festivals','value':'festivals'},
+                    {'name':'Colony','value':'colony'},{'name':'Stream','value':'stream'},{'name':'Seasons','value':'seasons'}]},
+        {'type':STRING,'name':'badge','description':'Pin a trophy badge next to your name on the stream map','required':False,'max_length':40}]),
 ]
 for command in commands:
     if command['name']=='me':

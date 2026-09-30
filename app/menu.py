@@ -25,7 +25,7 @@ from . import ui, workbench as wb
 # area keys or leaf keys; the order is the button order.
 AREAS = {
     'home': ('🏠', 'New Eridian', 'Pick an area. Menus and views spend nothing; action buttons do their task once.',
-             ['status', 'seedling', 'inbox', 'recent', 'find', 'life', 'work', 'craft', 'queue', 'bag', 'trade', 'world', 'me', 'settings', 'help',
+             ['status', 'seedling', 'inbox', 'recent', 'find', 'life', 'work', 'craft', 'queue', 'bag', 'trade', 'world', 'community', 'me', 'settings', 'help',
               'account', 'mod']),
     'recent': ('🔁', 'Recent actions', 'Your last ten actions. Tap one to do it again.', []),
     'life': ('❤️', 'Life & Recovery', 'Keep Energy, Nutrition, Social and Comfort up so work never stops.',
@@ -50,6 +50,8 @@ AREAS = {
     'property': ('🏠', 'Home & Business', 'Your Habitat and your company.', ['habitat', 'homeup', 'business', 'bstart', 'bwork', 'bcontract', 'binvest']),
     'world': ('🌎', 'World', 'Avesta, New Eridian, events, holidays and news.',
               ['wd_overview', 'wd_conditions', 'wd_society_progress', 'wd_event', 'wd_leaderboard', 'wd_more']),
+    'community': ('🎪', 'Community', 'Vote on what the colony does next, join the stream challenge, climb the season and collect trophies.',
+                  ['c_vote', 'c_vote_pick', 'c_challenge', 'c_season', 'c_season_more', 'c_hat', 'c_trophies', 'c_trophy_groups', 'c_badge']),
     'me': ('👤', 'Me', 'Your citizen. Profile, skills, progress and personal choices.',
            ['me_overview', 'me_skills', 'me_daily', 'me_achievements', 'choices', 'me_more']),
     'choices': ('🧭', 'Choices', 'Job, district, shift, delivery partner, title, specialization and display style.',
@@ -62,12 +64,14 @@ AREAS = {
     'account': ('🔗', 'Account', 'Create your citizen, or link your Twitch citizen: type !link in Twitch chat, then enter the code here.',
                 ['start', 'link']),
     'mod': ('🛡️', 'Moderator', 'Events, the moderator log, account lookups and the channel panels. Moderators only.',
-            ['m_eventstart', 'm_eventstop', 'm_modlog', 'm_lookup', 'm_guidepanels', 'm_menupanel', 'h_moderator']),
+            ['m_eventstart', 'm_eventstop', 'm_chalstart', 'm_chalstop', 'm_live', 'm_recap', 'm_recappost', 'm_modlog', 'm_lookup', 'm_guidepanels',
+             'm_menupanel', 'h_moderator']),
 }
 # Areas only moderators see on the Home screen.
 MOD_AREAS = {'mod'}
 # Commands a menu button may only run for moderators (linklookup: owners).
-MOD_COMMANDS = {'eventstart', 'eventstop', 'modlog', 'guidepanels', 'menupanel', 'linklookup'}
+MOD_COMMANDS = {'eventstart', 'eventstop', 'modlog', 'guidepanels', 'menupanel', 'linklookup',
+                'challengestart', 'challengestop', 'liveon', 'liveoff', 'liveauto', 'recappreview', 'recappost'}
 
 # Leaves: key -> dict(label, emoji, kind, cmd, opts, hint[, pick, then]).
 #   kind 'do'   spends or changes something: a one-time ticket button
@@ -238,7 +242,31 @@ leaf('m_lookup', 'Account lookup', '🔍', 'pick', 'linklookup', pick='player_na
      hint='linked accounts of a citizen (owners)')
 leaf('m_guidepanels', 'Post guide panels', '📖', 'do', 'guidepanels', hint='the eight how-to-play panels, in this channel')
 leaf('m_menupanel', 'Post game panel', '🎛️', 'do', 'menupanel', hint='a button panel anyone can press to open their menu')
+leaf('m_chalstart', 'Start stream challenge', '⚡', 'pick', 'challengestart', pick='field:mod:challenge', then='confirm', option='challenge',
+     hint='a 5–10 minute shared goal for chat (normally automatic while live)')
+leaf('m_chalstop', 'Stop stream challenge', '🛑', 'do', 'challengestop', style=4, hint='call off the running challenge, no rewards or penalties')
+leaf('m_live', 'Stream live…', '📡', 'pick', 'liveon', pick='leaves:m_liveon,m_liveoff,m_liveauto', then='leaf', hint='on, off or automatic (from chat activity)')
+leaf('m_liveon', 'Stream is live', '🔴', 'do', 'liveon', hint='stream challenges start every ~25 minutes')
+leaf('m_liveoff', 'Stream is offline', '⚫', 'do', 'liveoff', hint='no stream challenges')
+leaf('m_liveauto', 'Automatic', '🔁', 'do', 'liveauto', hint='live when people use Twitch commands')
+leaf('m_recap', 'Weekly recap preview', '📰', 'view', 'recappreview', hint='what Sunday\'s post will say')
+leaf('m_recappost', 'Post weekly recap now', '📣', 'do', 'recappost', hint='posts to the recap channel')
 leaf('h_moderator', 'Moderator help', '📖', 'view', 'seed', {'topic': 'moderator'}, hint='')
+# Community
+leaf('c_vote', 'Colony vote', '🗳️', 'view', 'vote', hint="today's ballot and how it is going")
+leaf('c_vote_pick', 'Cast your vote', '✅', 'pick', 'vote', pick='ballot', then='do', option='choice', hint='pick a project or festival; change it any time today')
+leaf('c_challenge', 'Stream challenge', '⚡', 'view', 'challenge', hint='the live shared goal and how to help')
+leaf('c_season', 'Season', '🏁', 'view', 'season', hint='your season points, rank and next reward')
+leaf('c_season_more', 'Season more…', '🏆', 'pick', 'season', pick='leaves:c_season_top,c_season_rewards,c_season_story,c_hats', then='leaf',
+     hint='leaderboard, rewards, story and hats')
+leaf('c_season_top', 'Leaderboard', '🏆', 'view', 'season', {'section': 'top'}, hint='the top ten this season')
+leaf('c_season_rewards', 'Rewards', '🎁', 'view', 'season', {'section': 'rewards'}, hint='titles, hats and milestones')
+leaf('c_season_story', 'Story so far', '📖', 'view', 'season', {'section': 'story'}, hint='one chapter a week')
+leaf('c_hats', 'My hats', '🎩', 'view', 'season', {'section': 'hats'}, hint='cosmetic hats you own')
+leaf('c_hat', 'Wear a hat', '🎩', 'pick', 'season', pick='hats', then='do', option='hat', hint='your Seedling wears it on the stream map')
+leaf('c_trophies', 'Trophies', '🏅', 'view', 'trophies', hint='collections and trophies, closest first')
+leaf('c_trophy_groups', 'Trophy group…', '🗂️', 'pick', 'trophies', pick='field:trophies:group', then='view', option='group', hint='one group in full')
+leaf('c_badge', 'Pin a badge', '📌', 'pick', 'trophies', pick='badges', then='do', option='badge', hint='shows next to your name on the stream map')
 for _topic, _label in [('start', 'Start here'), ('character', 'Character'), ('property', 'Home & crafting'), ('life', 'Life'),
                        ('production', 'Work'), ('operations', 'Logistics'), ('society', 'Society'), ('other', 'Other'), ('terms', 'Terms')]:
     leaf('h_' + _topic, _label, '📖', 'view', 'seed', {'topic': _topic}, hint='')
@@ -333,6 +361,9 @@ class Ctx:
             return bool(sale) and (self.m.now() - self.m.as_utc(datetime.fromisoformat(sale['at']))).total_seconds() <= self.m.extras.UNDO_SECONDS
         return self.get('undo', read)
 
+    def challenge_active(self):
+        return self.get('challenge', lambda: self.m.live_events.active(self.m, self.db) is not None)
+
     def event_active(self):
         return self.get('event', lambda: bool(self.m.world(self.db, self.p.channel_id).active_event))
 
@@ -395,11 +426,16 @@ WHEN = {
     'display_detailed': (lambda c: c.m.player_preference(c.db, c.p).result_style == 'compact', 'already detailed'),
     'm_eventstart': (lambda c: not c.event_active(), 'an event is already running'),
     'm_eventstop': (lambda c: c.event_active(), 'no event is running'),
+    'm_chalstart': (lambda c: not c.challenge_active(), 'a stream challenge is running'),
+    'm_chalstop': (lambda c: c.challenge_active(), 'no stream challenge is running'),
+    'c_hat': (lambda c: c.has('hats'), 'no cosmetic hats yet: reach Silver this season'),
+    'c_badge': (lambda c: c.has('badges'), 'no trophies yet'),
     'link': (lambda c: not c.linked(), 'already linked'),
     'account': (lambda c: not c.linked(), 'already linked'),
 }
 # Toggles and one-way switches: the hidden side is just the current state, so it is not listed as unavailable.
-TOGGLES = {'auto_on', 'auto_off', 'sl_on', 'sl_off', 'display_compact', 'display_detailed', 'bstart', 'm_eventstart', 'm_eventstop', 'link', 'account'}
+TOGGLES = {'auto_on', 'auto_off', 'sl_on', 'sl_off', 'display_compact', 'display_detailed', 'bstart', 'm_eventstart', 'm_eventstop', 'link', 'account',
+           'm_chalstart', 'm_chalstop'}
 
 
 def can(ctx, key):
@@ -586,6 +622,20 @@ def choices(m, db, p, source, uid):
     if source == 'popups':
         now = m.inbox.popup_mode(db, p.channel_id, p.twitch_uid)
         return [(f"{k.capitalize()}{' (current)' if k == now else ''} — {d}", k) for k, d in m.inbox.POPUP_MODES.items()]
+    if source == 'ballot':
+        import json
+        row = m.votes.ballot(m, db)
+        counts = m.votes.tally(db, row)
+        return [(f"{i}. {m.votes.label(o)[0]} {m.votes.label(o)[1]} — {c} vote{'s' if c != 1 else ''}", str(i))
+                for i, (o, c) in enumerate(zip(json.loads(row.options), counts), 1)]
+    if source == 'hats':
+        owned, worn = m.seasons.hats_of(db, p)
+        return [(f"{m.seasons.HATS[h][0]} {m.seasons.HATS[h][1]}{' (wearing)' if h == worn else ''}", h) for h in owned if h in m.seasons.HATS] + \
+            ([('💼 My job hat', 'job')] if owned else [])
+    if source == 'badges':
+        m.trophies._build(m)
+        mine = m.trophies.owned(db, p)
+        return [(f"{t['emoji']} {t['name']}", k) for k, t in m.trophies.TROPHIES.items() if k in mine]
     if source.startswith('choices:'):
         command = source.split(':', 1)[1]
         return [(c['name'], c['value']) for c in m.DISCORD_OPTION_SCHEMA[command][0]['choices']]

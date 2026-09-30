@@ -1719,6 +1719,34 @@
         {
           "name": "Post game button panel here",
           "value": "menupanel"
+        },
+        {
+          "name": "Stream challenge: start",
+          "value": "challengestart"
+        },
+        {
+          "name": "Stream challenge: stop",
+          "value": "challengestop"
+        },
+        {
+          "name": "Stream is live: on",
+          "value": "liveon"
+        },
+        {
+          "name": "Stream is live: off",
+          "value": "liveoff"
+        },
+        {
+          "name": "Stream live: automatic",
+          "value": "liveauto"
+        },
+        {
+          "name": "Weekly recap: preview",
+          "value": "recappreview"
+        },
+        {
+          "name": "Weekly recap: post now",
+          "value": "recappost"
         }
       ]
     },
@@ -1776,6 +1804,151 @@
       "description": "Linked-account lookup: player or provider ID",
       "required": false,
       "autocomplete": true
+    },
+    {
+      "type": 3,
+      "name": "challenge",
+      "description": "Start stream challenge: which one (blank = random)",
+      "required": false,
+      "choices": [
+        {
+          "name": "🌪️ Dust Storm",
+          "value": "dust_storm"
+        },
+        {
+          "name": "🌾 Harvest Rush",
+          "value": "harvest_rush"
+        },
+        {
+          "name": "⛏️ Ore Seam Spotted",
+          "value": "ore_seam"
+        },
+        {
+          "name": "🪵 Lumber Drive",
+          "value": "lumber_drive"
+        },
+        {
+          "name": "☣️ Siro Surge",
+          "value": "siro_surge"
+        },
+        {
+          "name": "🚚 Supply Convoy",
+          "value": "supply_convoy"
+        },
+        {
+          "name": "🍲 Feast Prep",
+          "value": "feast_prep"
+        },
+        {
+          "name": "🦆 Lost Duck",
+          "value": "lost_duck"
+        },
+        {
+          "name": "🪙 Market Rush",
+          "value": "market_rush"
+        },
+        {
+          "name": "⚡ Power Surge",
+          "value": "power_surge"
+        },
+        {
+          "name": "🏥 Clinic Rush",
+          "value": "clinic_rush"
+        },
+        {
+          "name": "☄️ Meteor Shower",
+          "value": "meteor_shower"
+        }
+      ]
+    }
+  ],
+  "vote": [
+    {
+      "type": 4,
+      "name": "choice",
+      "description": "Your vote: 1, 2 or 3 (you can change it until the day ends)",
+      "required": false,
+      "min_value": 1,
+      "max_value": 3
+    }
+  ],
+  "season": [
+    {
+      "type": 3,
+      "name": "section",
+      "description": "What to show",
+      "required": false,
+      "choices": [
+        {
+          "name": "Overview: your points, rank and next reward",
+          "value": "overview"
+        },
+        {
+          "name": "Leaderboard",
+          "value": "top"
+        },
+        {
+          "name": "Rewards: titles, hats and milestones",
+          "value": "rewards"
+        },
+        {
+          "name": "Story so far",
+          "value": "story"
+        },
+        {
+          "name": "My hats",
+          "value": "hats"
+        }
+      ]
+    },
+    {
+      "type": 3,
+      "name": "hat",
+      "description": "Wear a cosmetic hat on the stream map (job = your job hat)",
+      "required": false,
+      "max_length": 30
+    }
+  ],
+  "challenge": [],
+  "trophies": [
+    {
+      "type": 3,
+      "name": "group",
+      "description": "Show one group in full",
+      "required": false,
+      "choices": [
+        {
+          "name": "Collections",
+          "value": "collections"
+        },
+        {
+          "name": "Crafting",
+          "value": "crafting"
+        },
+        {
+          "name": "Festivals",
+          "value": "festivals"
+        },
+        {
+          "name": "Colony",
+          "value": "colony"
+        },
+        {
+          "name": "Stream",
+          "value": "stream"
+        },
+        {
+          "name": "Seasons",
+          "value": "seasons"
+        }
+      ]
+    },
+    {
+      "type": 3,
+      "name": "badge",
+      "description": "Pin a trophy badge next to your name on the stream map",
+      "required": false,
+      "max_length": 40
     }
   ],
   "progress": [

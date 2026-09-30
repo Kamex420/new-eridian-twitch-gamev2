@@ -72,6 +72,14 @@ def command(fn):
                                 if path:extra.insert(0,path)
                         except Exception:
                             pass    # the first-steps path never gets in the way of a command
+                        try:
+                            from . import community
+                            cnote,tnote=community.after_command(m,db,p,fn.__name__,params,ctx["before"],after)
+                            if cnote and params.get("provider")=="discord":extra.append(cnote)
+                            if tnote and params.get("provider")!="discord":step_note=" | ".join(x for x in (step_note,tnote) if x)
+                            if fn.__name__=="profile":extra.extend(community.profile_lines(m,db,p))
+                        except Exception:
+                            pass    # community features never get in the way of a command
                         st=m.colony_seedling(db,p)
                         if fn.__name__ in {"profile","skills","life_status","guide"}:
                             if st.last_progress:prefix.append("Latest "+st.last_progress)
@@ -105,6 +113,7 @@ def command(fn):
             text=presentation.chat(m,"\n".join(prefix+[text]+extra),name)
             if step_note:
                 # The first-steps note survives the one-line chat receipt; the receipt gives way if the line gets too long.
+                while len(step_note.encode())>120:step_note=step_note[:-2].rstrip()+"…"
                 room=200-len((" | "+step_note).encode())
                 receipt=text.replace("\n"," ")
                 while len(receipt.encode())>room and receipt:receipt=receipt[:-2]+"…"

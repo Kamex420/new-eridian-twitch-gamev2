@@ -22,9 +22,10 @@ from sqlalchemy import Column, Integer, String, DateTime, select, delete, func
 from .db import Base
 
 KEEP = 120                      # highlights kept per world
-PANELS = {'alerts', 'ticker', 'leaders', 'working', 'join', 'map', 'narrator', 'hub'}
+PANELS = {'alerts', 'ticker', 'leaders', 'working', 'join', 'map', 'narrator', 'hub', 'challenge'}
 EMOJI = {'join': '🌱', 'level': '⬆️', 'achievement': '🏆', 'queue': '✅', 'event_start': '🚨', 'event_win': '🎉',
-         'event_fail': '⌛', 'event_cancel': '🛑', 'tier': '🏛️', 'project': '🏗️', 'story': '📖', 'directive': '📋'}
+         'event_fail': '⌛', 'event_cancel': '🛑', 'tier': '🏛️', 'project': '🏗️', 'story': '📖', 'directive': '📋',
+         'trophy': '🏅', 'challenge_start': '⚡', 'challenge_win': '🎉', 'challenge_fail': '⌛', 'vote': '🗳️', 'season': '🏁'}
 
 
 class StreamHighlight(Base):
@@ -245,7 +246,9 @@ PAGES['alerts'] = (r"""
 const COLORS={join:['#7ee3b0','rgba(126,227,176,.28)','New citizen'],level:['#70ddff','rgba(112,221,255,.28)','Level up'],achievement:['#ffd27a','rgba(255,210,122,.30)','Achievement'],
   queue:['#b8f4d0','rgba(184,244,208,.22)','Queue complete'],event_start:['#ff7484','rgba(255,116,132,.32)','Society event'],event_win:['#ffd27a','rgba(255,210,122,.34)','Event complete'],
   event_fail:['#ff9aa6','rgba(255,154,166,.24)','Event over'],event_cancel:['#aca9c9','rgba(172,169,201,.18)','Event cancelled'],tier:['#bd91ff','rgba(189,145,255,.36)','Society milestone'],
-  project:['#bd91ff','rgba(189,145,255,.30)','Project complete'],story:['#ff9ad5','rgba(255,154,213,.28)','Story'],directive:['#70ddff','rgba(112,221,255,.24)','Daily directive']};
+  project:['#bd91ff','rgba(189,145,255,.30)','Project'],story:['#ff9ad5','rgba(255,154,213,.28)','Story'],directive:['#70ddff','rgba(112,221,255,.24)','Daily directive'],
+  trophy:['#ffd27a','rgba(255,210,122,.34)','Trophy unlocked'],challenge_start:['#ff7484','rgba(255,116,132,.34)','Stream challenge'],challenge_win:['#7ee3b0','rgba(126,227,176,.34)','Challenge complete'],
+  challenge_fail:['#ff9aa6','rgba(255,154,166,.24)','Challenge over'],vote:['#ffd27a','rgba(255,210,122,.28)','Colony vote'],season:['#ff9ad5','rgba(255,154,213,.32)','Season']};
 const SHOW=Number(Q.get('seconds')||7)*1000, SKIP=new Set((Q.get('hide')||'').split(',').filter(Boolean));
 const stage=document.getElementById('stage');let last=null,queue=[],busy=false,audio=null;
 function chime(big){if(!Q.get('sound'))return;try{audio=audio||new AudioContext();const t=audio.currentTime;[0,.12,.24].slice(0,big?3:2).forEach((d,i)=>{const o=audio.createOscillator(),g=audio.createGain();o.type='sine';o.frequency.value=[660,880,1175][i];g.gain.setValueAtTime(.0001,t+d);g.gain.exponentialRampToValueAtTime(.12,t+d+.02);g.gain.exponentialRampToValueAtTime(.0001,t+d+.5);o.connect(g).connect(audio.destination);o.start(t+d);o.stop(t+d+.55)})}catch(e){}}
@@ -253,13 +256,15 @@ function show(h){busy=true;const [accent,glow,label]=COLORS[h.kind]||['#b8f4d0',
   const el=document.createElement('div');el.className='alert';el.style.setProperty('--accent',accent);el.style.setProperty('--glow',glow);
   el.innerHTML=`<div class="icon">${esc(h.emoji)}</div><div style="min-width:0"><div class="kind">${esc(label)}</div><h1>${esc(h.title)}</h1>${h.detail?`<p>${esc(h.detail)}</p>`:''}</div><div class="timer" style="animation-duration:${SHOW}ms"></div>`;
   stage.innerHTML='';stage.appendChild(el);requestAnimationFrame(()=>el.classList.add('show'));
-  const big=['achievement','event_win','tier','project'].includes(h.kind);chime(big);
+  const big=['achievement','event_win','tier','project','trophy','challenge_win','season'].includes(h.kind);chime(big);
   if(big)for(let i=0;i<14;i++){const s=document.createElement('i');s.className='spark';const a=Math.random()*Math.PI*2,r=60+Math.random()*90;s.style.left='52px';s.style.top='52px';s.style.setProperty('--dx',Math.cos(a)*r+'px');s.style.setProperty('--dy',Math.sin(a)*r+'px');s.style.animationDelay=(Math.random()*.25)+'s';el.appendChild(s)}
   setTimeout(()=>{el.classList.add('hide');setTimeout(()=>{el.remove();busy=false;next()},480)},SHOW)}
 function next(){if(!busy&&queue.length)show(queue.shift())}
 const DEMO=[{kind:'join',emoji:'🌱',title:'Kamex arrived in New Eridian',detail:'Type !start in chat to join them.'},{kind:'level',emoji:'⬆️',title:'Kamex levelled up',detail:'Crafting aptitude Lv. 2 → Lv. 3'},
   {kind:'achievement',emoji:'🏆',title:'Astra earned an achievement',detail:'First Masterwork'},{kind:'event_start',emoji:'🚨',title:'Siro Surge has started!',detail:'Research and Engineering help. 10 minutes on the clock.'},
-  {kind:'tier',emoji:'🏛️',title:'New Eridian is now a Settlement!',detail:'The whole society levelled up.'}];
+  {kind:'tier',emoji:'🏛️',title:'New Eridian is now a Settlement!',detail:'The whole society levelled up.'},
+  {kind:'trophy',emoji:'💎',title:'Astra earned 💎 Ore Hunter',detail:'Find every ore on Avesta'},{kind:'challenge_start',emoji:'🌪️',title:'Dust Storm! Everyone repair the walls before the storm hits',detail:'Goal 24 in 8 minutes. Help with !repair or any crafting.'},
+  {kind:'vote',emoji:'🗳️',title:'The colony voted: Clinic Expansion is next!',detail:'🏥 More beds and a pharmacy at the clinic (7 of 12 votes).'}];
 if(Q.get('test')){let i=0;const loop=()=>{queue.push(DEMO[i++%DEMO.length]);next()};loop();setInterval(loop,SHOW+1200)}
 else poll(d=>{const rows=(d.highlights||[]).slice().reverse();if(last===null){last=rows.length?rows[rows.length-1].id:0;return}
   for(const h of rows)if(h.id>last){last=h.id;if(!SKIP.has(h.kind))queue.push(h)}queue=queue.slice(-6);next()},3000);
@@ -287,10 +292,15 @@ body{font-size:clamp(11px,38vh,30px)}
 <script>
 const SPEED=Number(Q.get('speed')||80);let data=null,running=false;
 const TAG={event:['EVENT','#ff7484'],news:['NEWS','#70ddff'],today:['TODAY','#7ee3b0'],market:['MARKET','#ffd27a'],holiday:['HOLIDAY','#ff9ad5'],project:['PROJECT','#bd91ff'],
-  work:['AT WORK','#b8f4d0'],report:['REPORT','#70ddff'],rumor:['RUMOR','#aca9c9'],weather:['WEATHER','#9fd0ff'],society:['SOCIETY','#bd91ff'],join:['JOIN','#7ee3b0']};
+  work:['AT WORK','#b8f4d0'],report:['REPORT','#70ddff'],rumor:['RUMOR','#aca9c9'],weather:['WEATHER','#9fd0ff'],society:['SOCIETY','#bd91ff'],join:['JOIN','#7ee3b0'],
+  challenge:['CHALLENGE','#ff7484'],vote:['VOTE','#ffd27a'],season:['SEASON','#ff9ad5']};
 const tag=k=>`<span class="tag" style="--c:${TAG[k][1]}">${TAG[k][0]}</span>`;
 function items(d){const out=[];const e=d.event,add=(k,html)=>out.push(tag(k)+html);
   if(e)add('event',`🚨 <b>${esc(e.name)}</b> in progress · ${e.progress}/${e.goal} · ${Math.floor(e.seconds_remaining/60)}m left · <em>${esc(e.primary)}</em> work helps`);
+  const c=d.challenge;if(c&&c.state==='active')add('challenge',`${esc(c.emoji)} <b>${esc(c.title)}</b> · ${esc(c.text)} · ${c.progress}/${c.goal} · ${Math.ceil(c.seconds_left/60)}m left · type <em>${esc(c.how)}</em>`);
+  else if(c)add('challenge',`${esc(c.emoji)} <b>${esc(c.title)}</b> ${c.state==='won'?'complete! Rewards paid to '+c.participants+' helpers':'ran out of time'}`);
+  const v=d.vote;if(v&&v.options)add('vote',`Day ${v.day} vote: ${v.options.map(o=>`<b>${o.n}</b> ${esc(o.emoji)} ${esc(o.name)} <em>${o.votes}</em>`).join(' · ')} · type <b>!vote 1</b>, 2 or 3 · closes in ${esc(v.closes_in)}`);
+  if(v&&v.festival)add('vote',`${esc(v.festival.emoji)} <b>${esc(v.festival.name)}</b> today, voted by the colony: ${esc(v.festival.text)}`);
   if(d.condition)add('weather',`${esc(d.condition)} · ${esc(d.condition_text||'')}`);
   for(const h of (d.highlights||[]).slice(0,6))add('news',`${esc(h.emoji)} <b>${esc(h.title)}</b>${h.detail?' · '+esc(h.detail):''} <span class="muted">(${ago(h.at)})</span>`);
   if(d.next_tier)add('society',`<b>${esc(d.tier)}</b> → ${esc(d.next_tier)} · ${Math.round(d.tier_percent||0)}%${d.bottleneck?` · needs more <em>${esc(d.bottleneck.name)}</em>`:''}`);
@@ -301,6 +311,7 @@ function items(d){const out=[];const e=d.event,add=(k,html)=>out.push(tag(k)+htm
   const w=d.working||[];if(w.length)add('work',`<b>${w.length}</b> citizen${w.length>1?'s':''} working: ${w.slice(0,3).map(x=>esc(x.name)+' ('+esc(x.task)+')').join(', ')}`);
   for(const n of (d.narration||[]).slice(0,3))add('report',`<b>${esc(n.headline||'')}</b> · ${esc((n.text||'').split(' — ').slice(-1)[0])}`);
   if(d.rumor)add('rumor',esc(d.rumor));
+  const se=d.season;if(se)add('season',`${esc(se.emoji)} <b>${esc(se.name)}</b> · chapter ${se.chapter}/${se.chapters} · ${se.days_left} days left${(se.top||[]).length?' · leader <b>'+esc(se.top[0].name)+'</b> '+se.top[0].points.toLocaleString():''} · type <b>!season</b>`);
   add('join',`Type <b>!start</b> in chat to join New Eridian${d.join&&d.join.discord?' · Discord: <b>'+esc(d.join.discord.replace(/^https?:\/\//,''))+'</b>':''}`);
   return out}
 function clock(d){const h=d.hour==null?null:((d.hour%24)+24)%24,t=h==null?'':`${String(Math.floor(h)).padStart(2,'0')}:${String(Math.floor(h%1*60)).padStart(2,'0')}`;
@@ -445,6 +456,24 @@ svg{position:absolute;inset:0;width:100%;height:100%;display:block}
 .toast{position:absolute;right:1.6vw;top:10.5vh;transform:translateY(-30%) scale(.9);transform-origin:100% 0;opacity:0;padding:.35em .9em;border-radius:.6em;z-index:4;white-space:nowrap;max-width:44vw;overflow:hidden;text-overflow:ellipsis;
   font:900 clamp(11px,min(1.9vw,3.4vh),40px) var(--font-body);color:#1a1026;background:linear-gradient(90deg,#ffe08a,#ffb86b);box-shadow:0 .3em 1.2em rgba(0,0,0,.45);transition:opacity .5s,transform .5s cubic-bezier(.2,1.3,.4,1)}
 .toast.show{opacity:1;transform:none}
+/* Stream challenge: a goal bar in the top-left corner (under the header in narrow and card layouts). */
+.chal{position:absolute;left:1.2vw;top:10.5vh;width:31vw;padding:.45em .7em .5em;border-radius:.7em;z-index:3;font-size:clamp(10px,min(1.55vw,2.8vh),30px);color:var(--text);
+  background:linear-gradient(145deg,rgba(46,10,28,.94),rgba(26,17,56,.92));border:1px solid rgba(255,116,132,.75);box-shadow:var(--shadow),0 0 1.1em rgba(255,116,132,.3);transition:opacity .5s,transform .5s var(--ease-pop)}
+.chal.hide{opacity:0;transform:translateY(-.6em);pointer-events:none}
+.chal .t{display:flex;align-items:center;gap:.4em;font:700 1.1em/1.15 var(--font-display);color:#fff}.chal .t span{min-width:0;overflow-wrap:anywhere}
+.chal .t em{margin-left:auto;flex:none;padding:.08em .45em;border-radius:.3em;background:#ff4d6a;color:#fff;font:900 .56em var(--font-body);font-style:normal;letter-spacing:.14em;animation:chblink 1.6s infinite}
+.chal .s{font-size:.78em;color:var(--muted);line-height:1.25;margin:.12em 0 .35em}
+.chal .meter{height:.72em;border-radius:99px;background:rgba(255,255,255,.12);overflow:hidden}.chal .meter i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,#ff7484,#ffd27a);transition:width .8s var(--ease)}
+.chal .n{display:flex;justify-content:space-between;gap:.5em;margin-top:.28em;font-size:.82em;font-weight:800;font-variant-numeric:tabular-nums}.chal .n b{color:#ffd27a}
+.chal .how{margin-top:.22em;font-size:.76em;color:var(--muted)}.chal .how b{color:var(--green2);font-family:ui-monospace,monospace}
+.chal.won{border-color:#7ee3b0;box-shadow:var(--shadow),0 0 1.4em rgba(126,227,176,.45)}.chal.won .meter i{background:linear-gradient(90deg,#7ee3b0,#70ddff)}.chal.won .t em{background:#2fa36b}
+.chal.lost{filter:saturate(.45)}.chal.lost .t em{background:#6b6b80;animation:none}
+@keyframes chblink{50%{opacity:.4}}
+.head .fest{--hol:#ffd27a}
+.L-narrow .chal{left:1.4vw;right:1.4vw;width:auto;font-size:clamp(11px,min(3.9vw,4.1vh),30px)}
+.L-card .chal{position:relative;left:auto;top:auto;width:auto;margin:.3em .45em 0;padding:.3em .55em .35em;order:0;font-size:clamp(10px,3.6vw,26px);flex:none}
+.L-card .chal .s,.L-card .chal .how{display:none}.L-card .chal .t{font-size:1em}.L-card .chal .meter{height:.6em;margin-top:.2em}.L-card .chal .n{margin-top:.15em}
+.L-card .chal.hide{display:none}
 .particle{position:absolute;pointer-events:none;animation:drift linear infinite;z-index:2}
 @keyframes drift{from{transform:translate(0,0) rotate(0)}to{transform:translate(var(--dx),var(--dy)) rotate(var(--rot,0deg))}}
 .glitch{position:absolute;left:0;right:0;height:2.2vh;background:linear-gradient(90deg,transparent,rgba(112,221,255,.35),transparent);z-index:2;pointer-events:none;animation:glitch .5s steps(3) forwards}
@@ -464,14 +493,15 @@ svg{position:absolute;inset:0;width:100%;height:100%;display:block}
  <rect x="-2000" y="-2000" width="4960" height="4540" fill="url(#sky)"/><g id="stars"></g><g id="aurora"></g><g id="sun"></g><g id="skyclouds"></g>
  <path id="hills" fill="#39344a" opacity=".85"/><path id="hills2" fill="#2f2b3d" opacity=".95"/>
  <g id="world" style="transform:translate(480px,282px) scale(1.15) translate(-480px,-254px)">
-  <g id="ground"></g><path id="shadows" fill="#141428" opacity="0" style="transition:opacity 4s"/><g id="city"></g><g id="festive"></g><g id="crowd"></g><g id="shades"></g>
+  <g id="ground"></g><path id="shadows" fill="#141428" opacity="0" style="transition:opacity 4s"/><g id="city"></g><g id="festive"></g><g id="civic"></g><g id="crowd"></g><g id="shades"></g>
   <rect id="tint" x="-600" y="-400" width="2160" height="1400" fill="transparent" style="pointer-events:none;transition:fill 4s"/>
   <rect id="haze" x="-600" y="-400" width="2160" height="1400" fill="transparent" style="pointer-events:none;transition:fill 4s"/>
   <g id="lights" style="pointer-events:none"></g><g id="labels"></g><g id="tokens"></g>
  </g>
  <g id="fx"></g>
 </svg><div class="vig"></div></div>
-<div class="head"><span class="name">🏙️ New Eridian</span><span class="tier" id="tier">—</span><span class="hol" id="hol"></span><span class="info" id="info">Connecting to Avesta…</span></div>
+<div class="head"><span class="name">🏙️ New Eridian</span><span class="tier" id="tier">—</span><span class="hol" id="hol"></span><span class="hol fest" id="fest"></span><span class="info" id="info">Connecting to Avesta…</span></div>
+<div class="chal hide" id="chal"></div>
 <div class="toast" id="toast"></div><div class="stats hide" id="stats"></div>
 <div class="cap hide" id="cap"></div>
 </div>
@@ -484,6 +514,7 @@ const iso=(i,j)=>[OX+(i-j)*TW/2,OY+(i+j)*TH/2];
 const ROAD=new Set([6,13]);
 const CELLS={spaceport_quarter:[0,0],research_block:[0,1],agricultural_district:[0,2],industrial_ward:[1,0],commons:[1,1],market_concourse:[2,1],frontier_edge:[2,0],residential_ring:[2,2],park:[1,2]};
 const cellTiles=(r,c)=>[r*7,c*7];   // top-left tile (i,j) of a 6×6 block
+const RESERVE=3;   // tiles kept free in every district for landmarks the colony votes to build (the Commons keeps one more for a season monument)
 const LOOK={commons:['⛲','Commons','#b8f4d0'],residential_ring:['🏠','Homes','#ffd27a'],agricultural_district:['🌾','Farms','#9be37e'],industrial_ward:['🏭','Industry','#ff9a76'],
   research_block:['🔬','Research','#70ddff'],market_concourse:['🪙','Market','#ffd27a'],spaceport_quarter:['🚀','Spaceport','#bd91ff'],frontier_edge:['🧭','Frontier','#ff9ad5']};
 const GROUND={commons:'#b9b1a0',residential_ring:'#7f9a5a',agricultural_district:'#6d8c46',industrial_ward:'#8a8578',research_block:'#9aa3a8',market_concourse:'#b5a88c',spaceport_quarter:'#8e8f93',frontier_edge:'#8b7355',park:'#5f8a45',wild:'#6f6446'};
@@ -605,7 +636,7 @@ function district(key,info,tier){const [r,c]=CELLS[key],[a,b]=cellTiles(r,c),cit
     if(key!=='commons'&&key!=='park')dg.slots.sort((p,q)=>p[2]-q[2]);}
   if(!first&&unlocked&&levels[key]&&level>levels[key]&&LOOK[key])toast(`🏗️ ${LOOK[key][1]} grew to LV ${level}`,key);
   levels[key]=level;
-  const want=!unlocked?0:key==='park'?dg.slots.length:key==='commons'?Math.min(dg.slots.length,4+tier*3):Math.min(dg.slots.length,3+level*3);
+  const want=!unlocked?0:key==='park'?dg.slots.length:key==='commons'?Math.min(dg.slots.length-RESERVE-1,4+tier*3):Math.min(dg.slots.length-RESERVE,3+level*3);
   if(want>dg.count){const add=dg.slots.slice(dg.count,want).map((s,n)=>[...s,dg.count+n]),grow=!first;dg.count=want;
     const put=()=>{for(const [i,j,,n] of add){const g=el('g',{class:grow?'rise':'','data-depth':i+j},dg.g);BUILD[key](g,i,j,rng(key+':'+n),n,level)}
       [...dg.g.children].sort((p,q)=>(+p.dataset.depth||0)-(+q.dataset.depth||0)).forEach(e=>dg.g.appendChild(e));litSig=''};
@@ -635,7 +666,7 @@ function liveTown(d){const st=d.stats||{},pop=d.population||0,ds=d.districts||{}
     document.querySelectorAll('.win').forEach((w,n)=>{const on=+w.dataset.v<litF;w.setAttribute('opacity',on?.95:0);
       const lamp=w.classList.contains('lamp');if(on&&QUALITY!=='low'&&(lamp||n%3===0)){if(QUALITY==='high'&&n%4===0){const bx=+w.getAttribute('x')||+w.getAttribute('cx'),by=+w.getAttribute('y')||+w.getAttribute('cy');el('circle',{cx:bx,cy:by,r:16,fill:'url(#glowdot)',opacity:.35},lights)}const x=+w.getAttribute('x')||+w.getAttribute('cx'),y=+w.getAttribute('y')||+w.getAttribute('cy');if(lamp)el('ellipse',{cx:x,cy:y+11,rx:15,ry:7,fill:'url(#glowdot)',opacity:.8},lights);el('circle',{cx:x+1.5,cy:y+1.5,r:6,fill:'url(#glowdot)'},lights)}})}
   const market=(ds.market_concourse||{}).unlocked?Math.min(14,2+here('market_concourse')*2+(d.market&&d.market.primary?2:0)+Math.floor(((ds.market_concourse||{}).level||1)/2)):0;
-  const party=festival?8:0,csig=market+':'+party;
+  const party=(festival?8:0)+(voteFest?10:0),csig=market+':'+party;
   if(csig!==crowdSig){crowdSig=csig;const g=document.getElementById('crowd');g.innerHTML='';
     const people=(k,n,seed)=>{const [r,c]=CELLS[k],[a,b]=cellTiles(r,c),rr=rng(seed);for(let q=0;q<n;q++){const [x,y]=iso(a+1+Math.floor(rr()*5)+.02,b+1+Math.floor(rr()*5)+.5+rr()*.3);
       const p=el('g',{class:'shopper',style:`animation-delay:-${(rr()*1.1).toFixed(2)}s`},g);el('rect',{x:x-2.5,y:y-9,width:5,height:7,rx:2,fill:['#e0564f','#4fa3e0','#7ec36b','#f2b441','#b86fd6'][Math.floor(rr()*5)]},p);el('circle',{cx:x,cy:y-11.5,r:2.4,fill:['#f1c9a5','#c68a5a','#8d5a3b'][Math.floor(rr()*3)]},p)}};
@@ -660,7 +691,21 @@ function route(from,to){if(from===to||!CELLS[from]||!CELLS[to])return [];const [
 // Each job wears something recognisable: straw hats on farmers, helmets on miners, hard hats on engineers, and so on.
 const HAT={farmer:'straw',cultivator:'straw',harvester:'straw',miner:'helmet',technician:'hardhat',engineer:'hardhat',safety_officer:'hardhat',firefighter:'firehat',
   researcher:'goggles',pharmacist:'goggles',medic:'medic',cook:'chef',merchant:'tophat',courier:'cap',explorer:'ranger',processor:'bandana',artisan:'bandana'};
-function hat(g,job){g.innerHTML='';const k=HAT[job];if(!k)return;
+// Cosmetic hats (season rewards, champions, trophies) replace the job hat when a citizen wears one.
+const COSMETIC=new Set(['flower','viking','wizard','astronaut','beanie','party','crown','laurel','halo','antlers']);
+function cosmetic(g,k){
+  if(k==='flower')['#ff7aa8','#ffd35a','#fff','#b58cff','#ff9a5a'].forEach((c,n)=>el('circle',{cx:-6+n*3,cy:-36.5+(n%2),r:2,fill:c,stroke:'#7a3a4a','stroke-width':.4},g));
+  if(k==='viking'){el('path',{d:'M-7.5 -33 A7.5 7 0 0 1 7.5 -33Z',fill:'#9aa3ad',stroke:'#4a4f58','stroke-width':.8},g);el('rect',{x:-8.5,y:-34,width:17,height:2,rx:1,fill:'#7a5a3a'},g);
+    el('path',{d:'M-7 -36 Q-12 -40 -11 -46 Q-8 -41 -5 -38Z',fill:'#f4ecd8',stroke:'#8a7a5a','stroke-width':.5},g);el('path',{d:'M7 -36 Q12 -40 11 -46 Q8 -41 5 -38Z',fill:'#f4ecd8',stroke:'#8a7a5a','stroke-width':.5},g)}
+  if(k==='wizard'){el('polygon',{points:'-8,-34 8,-34 2,-52',fill:'#6b3fd1',stroke:'#2b1a5a','stroke-width':.7},g);el('rect',{x:-9,y:-35,width:18,height:2.2,rx:1,fill:'#4a2aa0'},g);el('circle',{cx:1,cy:-43,r:1.4,fill:'#ffd35a'},g)}
+  if(k==='astronaut'){el('circle',{cx:0,cy:-31,r:9.5,fill:'rgba(190,230,255,.28)',stroke:'#eef6ff','stroke-width':1.4},g);el('path',{d:'M-5 -37 A6 6 0 0 1 2 -39',fill:'none',stroke:'#fff','stroke-width':1.2,opacity:.8},g)}
+  if(k==='beanie'){el('path',{d:'M-7 -33 A7 7.5 0 0 1 7 -33Z',fill:'#4fa3e0',stroke:'#2a5f8a','stroke-width':.7},g);el('rect',{x:-7.5,y:-34.5,width:15,height:2.6,rx:1.2,fill:'#e8f4ff'},g);el('circle',{cx:0,cy:-41,r:2.3,fill:'#e8f4ff'},g)}
+  if(k==='party'){el('polygon',{points:'-5,-35 5,-35 0,-49',fill:'#ff5ad1',stroke:'#8a2a6a','stroke-width':.6},g);el('line',{x1:-3,y1:-39,x2:3,y2:-40,stroke:'#ffd35a','stroke-width':1.2},g);el('line',{x1:-1.5,y1:-44,x2:1.8,y2:-44.5,stroke:'#70ddff','stroke-width':1.2},g);el('circle',{cx:0,cy:-49.5,r:1.8,fill:'#ffd35a'},g)}
+  if(k==='crown'){el('polygon',{points:'-7,-35 7,-35 8,-43 4,-39 0,-45 -4,-39 -8,-43',fill:'#ffd35a',stroke:'#a8781a','stroke-width':.8},g);el('circle',{cx:0,cy:-38,r:1.3,fill:'#e0303a'},g)}
+  if(k==='laurel'){for(const sd of [-1,1])for(let n=0;n<4;n++)el('ellipse',{cx:sd*(6.5-n*.6),cy:-34.5-n*2.2,rx:2.4,ry:1.1,fill:'#5fae4a',transform:`rotate(${sd*(-35-n*12)} ${sd*(6.5-n*.6)} ${-34.5-n*2.2})`},g)}
+  if(k==='halo')el('ellipse',{cx:0,cy:-42,rx:7,ry:2.2,fill:'none',stroke:'#ffe27a','stroke-width':1.8},g);
+  if(k==='antlers'){for(const sd of [-1,1]){el('path',{d:`M${sd*4} -36 L${sd*7} -44 M${sd*6} -41 L${sd*10} -43 M${sd*6.5} -43 L${sd*5} -47`,stroke:'#8a5a3a','stroke-width':1.4,'stroke-linecap':'round',fill:'none'},g)}}}
+function hat(g,job){g.innerHTML='';if(COSMETIC.has(job))return cosmetic(g,job);const k=HAT[job];if(!k)return;
   if(k==='straw'){el('ellipse',{cx:0,cy:-35,rx:10,ry:2.6,fill:'#e2c27a',stroke:'#a8862e','stroke-width':.8},g);el('path',{d:'M-5 -35 Q0 -43 5 -35Z',fill:'#e8cc86',stroke:'#a8862e','stroke-width':.8},g);el('rect',{x:-5,y:-37,width:10,height:1.6,fill:'#b8452f'},g)}
   if(k==='helmet'||k==='hardhat'||k==='firehat'){const c={helmet:'#f2c230',hardhat:'#f28b3c',firehat:'#d9303a'}[k];el('path',{d:'M-7.5 -33 A7.5 7 0 0 1 7.5 -33Z',fill:c,stroke:'#6b4a1a','stroke-width':.8},g);el('rect',{x:-9,y:-34,width:18,height:2,rx:1,fill:c},g);
     if(k==='helmet'){el('circle',{cx:0,cy:-37,r:1.8,fill:'#fff6c0'},g)}}
@@ -678,8 +723,8 @@ function figure(s){const g=el('g',{class:'token'},tokens),r=rng(s.id),skin=SKIN[
   el('circle',{cx:0,cy:-31,r:6.5,fill:skin,stroke:'#0b0f24','stroke-width':1.5},bod);
   el('path',{d:'M-6.5 -32 A6.5 6.5 0 0 1 6.5 -32 Q0 -35 -6.5 -32Z',fill:HAIR[Math.floor(r()*HAIR.length)]},bod);
   const eyes=el('g',{class:'eyes'},bod);el('circle',{cx:-2.3,cy:-30.5,r:1.05,fill:'#10131f'},eyes);el('circle',{cx:2.3,cy:-30.5,r:1.05,fill:'#10131f'},eyes);
-  const h=el('g',{class:'hat'},bod);hat(h,s.job);
-  el('text',{class:'act',x:13,y:-20,'font-size':10},bod);el('text',{class:'label',y:13},g);return {g,x:0,y:0,path:[],place:null,job:s.job,eyes,face:0}}
+  const h=el('g',{class:'hat'},bod);hat(h,s.hat||s.job);
+  el('text',{class:'act',x:13,y:-20,'font-size':10},bod);el('text',{class:'label',y:13},g);return {g,x:0,y:0,path:[],place:null,job:s.hat||s.job,eyes,face:0}}
 // Which way a Seedling looks: eyes shift toward where it walks, and it shows its back when walking away (up the screen).
 function face(t,dx,dy){const away=dy<-Math.abs(dx)*.6,x=Math.abs(dx)<.01?0:Math.sign(dx)*1.8;if(t.face===x+':'+away)return;t.face=x+':'+away;
   t.eyes.setAttribute('transform',`translate(${x},0)`);t.eyes.style.opacity=away?0:1}
@@ -693,8 +738,8 @@ function seedlings(list){const groups={};for(const s of list)(groups[s.place]=gr
   for(const k in groups){const all=groups[k].sort((a,b)=>(isNew(b)-isNew(a))||(a.id<b.id?-1:1)),n=Math.min(all.length,PER_PLACE),extra=all.length-n;
     all.forEach((s,i)=>{seen.add(s.id);const [tx,ty]=home(k,Math.min(i,n-1),n);let t=live[s.id];
       if(!t){t=live[s.id]=figure(s);t.id=s.id;t.x=tx;t.y=ty;t.place=k;t.g.setAttribute('transform',place_(tx,ty))}
-      t.hidden=i>=n;t.s=s;if(t.job!==s.job){t.job=s.job;hat(t.g.querySelector('.hat'),s.job)}t.g.querySelector('.shirt').setAttribute('fill',MOOD[s.mood]||'#b8f4d0');t.g.querySelector('.ini').textContent=(s.name||'?').slice(0,1).toUpperCase();
-      t.g.querySelector('.label').textContent=SHOW_NAMES?(s.name.length>8?s.name.slice(0,7)+'…':s.name):'';t.g.querySelector('.act').textContent=s.emoji||'';
+      t.hidden=i>=n;t.s=s;const hk=s.hat||s.job;if(t.job!==hk){t.job=hk;hat(t.g.querySelector('.hat'),hk)}t.g.querySelector('.shirt').setAttribute('fill',MOOD[s.mood]||'#b8f4d0');t.g.querySelector('.ini').textContent=(s.name||'?').slice(0,1).toUpperCase();
+      t.g.querySelector('.label').textContent=SHOW_NAMES?(s.badge?s.badge+' ':'')+(s.name.length>8?s.name.slice(0,7)+'…':s.name):'';t.g.querySelector('.act').textContent=s.emoji||'';
       if(t.place!==k){t.path=[...route(t.place,k),[tx,ty]];t.place=k;t.g.style.display='';hushBubble(t)}else if(!t.path.length&&(Math.abs(t.x-tx)>1||Math.abs(t.y-ty)>1))t.path=[[tx,ty]];
       else if(t.path.length)t.path[t.path.length-1]=[tx,ty];
       if(!t.path.length)t.g.style.display=t.hidden?'none':''});
@@ -733,7 +778,7 @@ function speak(t,line){document.querySelectorAll('.bubble').forEach(b=>b.remove(
     // the tail must not cross a name or panel either
     const [hx1,hy1]=toScreen(t.x,t.y-38),ex=Math.max(l,Math.min(r,hx1)),ey=Math.max(tp,Math.min(bt,hy1));
     const steps=Math.max(3,Math.ceil(Math.hypot(hx1-ex,hy1-ey)/4));for(let i=1;i<steps;i++){const f=i/steps,px=ex+(hx1-ex)*f,py=ey+(hy1-ey)*f;if(walls.some(q=>px>q.l-1&&px<q.r+1&&py>q.t-1&&py<q.b+1)){c+=8000;break}}
-    c+=(Math.max(0,4-l)+Math.max(0,r-956))*(bt-tp)*9+(Math.max(0,band[0]+2-tp)+Math.max(0,bt-536))*(r-l)*9;
+    const off=(Math.max(0,4-l)+Math.max(0,r-956))*(bt-tp)*9+(Math.max(0,band[0]+2-tp)+Math.max(0,bt-536))*(r-l)*9;c+=off+(off>0?60000:0);   // off the frame loses to any spot on screen
     const [hx,hy]=toScreen(t.x,t.y-38),cx=(l+r)/2,cy=(tp+bt)/2;return c+Math.hypot(cx-hx,cy-hy)*2.2};   // strongly prefer short tails   // prefer spots close to the speaker
   // Candidate spots all around the head: above (at several heights), to either side, and below the feet.
   const head=-38/k,spots=[];
@@ -779,7 +824,7 @@ let lastData=null;
 function apply(c){CAM=c;world.style.transform=`translate(${c.px}px,${c.py}px) scale(${c.s}) translate(${-c.x}px,${-c.y}px)`;tidyLabels()}
 // In a close-up, district names that would be cut by the frame or slide under a bar or panel fade out instead.
 function panels(){const out=[vb(document.querySelector('.head')),vb(document.getElementById('cap'))],st=document.getElementById('stats'),tt=document.getElementById('toast');
-  if(st&&!st.classList.contains('hide'))out.push(vb(st));if(tt.classList.contains('show'))out.push(vb(tt));return out}
+  if(st&&!st.classList.contains('hide'))out.push(vb(st));if(tt.classList.contains('show'))out.push(vb(tt));const ch=document.getElementById('chal');if(ch&&!ch.classList.contains('hide'))out.push(vb(ch));return out}
 function tidyLabels(){const walls=panels();document.querySelectorAll('.dlabel').forEach(g=>{const r=g.querySelector('rect');if(!r)return;const x=+r.getAttribute('x'),y=+r.getAttribute('y');
   const [l,t]=toScreen(x,y),[rr,b]=toScreen(x+(+r.getAttribute('width')),y+(+r.getAttribute('height')));
   const cut=l<2||rr>958||t<0||b>540||walls.some(q=>Math.min(rr,q.r)-Math.max(l,q.l)>0&&Math.min(b,q.b)-Math.max(t,q.t)>0);
@@ -910,6 +955,60 @@ function statPanel(d){const box=document.getElementById('stats');if(!box)return;
   document.getElementById('st-open').innerHTML=locked.length?`Next: <b>${esc(LOOK[locked[0][0]][0])} ${esc(LOOK[locked[0][0]][1])}</b> opens at ${esc(locked[0][1].unlocks_at)}`:`All districts open${low&&d.next_tier?` · needs <b>${esc(d.bottleneck.name)}</b>`:''}`;
   box.classList.remove('hide')}
 
+// ---- the colony's own choices: the stream challenge bar, landmarks it voted to build, voted festivals and season decorations
+const LM={greenhouse_expansion:['#dff3e6','#3f9a5a'],spaceport_pad:['#c3cad3','#6f5ad1'],research_annex:['#e9eef2','#3f8fc4'],irrigation_grid:['#cfe6f2','#2d7fb0'],
+  recreation_hall:['#f2e2c4','#c2544a'],deepway_terminal:['#a9aeb5','#5a5f66'],community_kitchen:['#f4e6cf','#d9771f'],clinic_expansion:['#f6f6f2','#e0303a'],fire_station:['#e8d8c8','#b8302a']};
+let chalTick=null,chalData=null,chalAt=0,lastChal=null,voteFest='',decorSig='';const marks={};
+function chalBanner(d){const box=document.getElementById('chal'),c=Q.get('challenge')==='0'?null:d.challenge;
+  if(!c){chalData=null;if(!box.classList.contains('hide')){box.classList.add('hide');tidyLabels()}return}
+  if(lastChal!==c.id){if(lastChal!==null&&c.state==='active')toast(`${c.emoji} ${c.title}! Type ${c.how.split(' or ')[0]}`);lastChal=c.id;box.dataset.id=''}
+  chalData=c;chalAt=Date.now();box.className='chal'+(c.state==='won'?' won':c.state==='lost'?' lost':'');
+  if(box.dataset.id!==c.id+':'+c.state){box.dataset.id=c.id+':'+c.state;
+    box.innerHTML=`<div class="t"><span>${esc(c.emoji)} ${esc(c.title)}</span><em>${c.state==='active'?'LIVE':c.state==='won'?'DONE':'OVER'}</em></div><div class="s">${esc(c.state==='won'?'Challenge complete! Rewards paid to everyone who helped.':c.state==='lost'?'Time ran out. Thanks to everyone who helped.':c.text)}</div>
+      <div class="meter"><i id="ch-bar"></i></div><div class="n"><span id="ch-n"></span><span id="ch-t"></span></div><div class="how" id="ch-how"></div>`}
+  document.getElementById('ch-bar').style.width=Math.min(100,c.percent||0)+'%';document.getElementById('ch-n').innerHTML=`<b>${c.progress}</b> / ${c.goal}`;
+  const top=(c.top||[])[0];document.getElementById('ch-how').innerHTML=c.state==='active'?`Type <b>${esc(c.how)}</b>`+(top?` · 🥇 ${esc(top.name)} ${top.amount}`:''):top?`🥇 MVP ${esc(top.name)} · ${c.participants} helped`:'';
+  if(!CARD)box.style.top=(document.querySelector('.head').offsetHeight+Math.round(innerHeight*.015))+'px';
+  if(!chalTick)chalTick=setInterval(chalClock,1000);chalClock();tidyLabels()}
+function chalClock(){if(!chalData)return;const c=chalData,left=Math.max(0,(c.seconds_left||0)-Math.floor((Date.now()-chalAt)/1000)),t=document.getElementById('ch-t');
+  if(t)t.textContent=c.state==='active'?`${Math.floor(left/60)}:${String(left%60).padStart(2,'0')} left`:c.state==='won'?`${c.participants} helped`:'time up'}
+function placeFor(p){const info=((lastData&&lastData.districts)||{})[p];return !CELLS[p]||p==='park'?'commons':p==='commons'||!info||info.unlocked?p:'commons'}
+function landmark(g,i,j,x){const [wall,roof]=LM[x.key]||['#e9e2cf','#8a5aa8'];box(g,i,j,1,1,20,wall,{roof:'pitched',roofColor:roof,windows:true});
+  const [cx,cy]=centre(i,j),m=el('g',{},g);el('circle',{cx,cy:cy-54,r:8.5,fill:'#fff8e6',stroke:roof,'stroke-width':2},m);
+  el('text',{x:cx,y:cy-53.5,'text-anchor':'middle','dominant-baseline':'central','font-size':10},m).textContent=x.emoji;flag(g,cx+9,cy-38,roof)}
+function site(g,i,j,b){scaffold(g,i,j,true);const [cx,cy]=centre(i,j),w=36,h=13,yy=cy+5;el('rect',{x:cx-w/2,y:yy,width:w,height:h,rx:3,fill:'rgba(8,13,39,.92)',stroke:'#f2b441','stroke-width':1},g);
+  el('rect',{x:cx-w/2+2,y:yy+h-3.6,width:Math.max(1,(w-4)*Math.min(1,b.percent/100)),height:2,rx:1,fill:'#f2b441'},g);
+  el('text',{x:cx,y:yy+4.8,'text-anchor':'middle','dominant-baseline':'central','font-size':7.5,'font-weight':900,fill:'#fff'},g).textContent=`${b.emoji} ${b.percent}%`}
+function monument(g,i,j,se){box(g,i,j,1,1,7,'#cfc6b2',{topColor:'#e2dccb'});const [cx,cy]=centre(i,j);
+  el('rect',{x:cx-3,y:cy-26,width:6,height:14,rx:2,fill:'#bdb4a0',stroke:'#8e8676'},g);el('circle',{cx,cy:cy-31,r:7.5,fill:se.colour||'#ff9ad5',stroke:'#fff8e6','stroke-width':1.5},g);
+  el('text',{x:cx,y:cy-30.5,'text-anchor':'middle','dominant-baseline':'central','font-size':9},g).textContent=se.emoji}
+function landmarks(v,se){const want=[],used={};
+  for(const x of (v&&v.built)||[]){const place=placeFor(x.place),k=used[place]||0;used[place]=k+1;if(k<RESERVE)want.push([`lm:${x.key}:${place}:${k}`,place,k,x,'built'])}
+  const b=v&&v.building;if(b&&b.percent<100){const place=placeFor(b.place),k=used[place]||0;if(k<RESERVE)want.push([`site:${b.key}:${place}:${k}:${b.percent}`,place,k,b,'site'])}
+  if(se&&(se.decor||[]).includes('monument'))want.push([`mon:${se.key}`,'commons',RESERVE,se,'monument']);
+  const keep=new Set(want.map(w=>w[0]));
+  for(const id in marks)if(!keep.has(id)||!marks[id].isConnected){marks[id].remove();delete marks[id]}
+  for(const [id,place,k,x,kind] of want){if(marks[id])continue;const dg=drawn[place];if(!dg||!dg.slots||dg.slots.length<=k)continue;const [i,j]=dg.slots[dg.slots.length-1-k];
+    const g=el('g',{class:first||kind==='site'?'':'rise','data-depth':i+j},dg.g);marks[id]=g;
+    if(kind==='built')landmark(g,i,j,x);else if(kind==='site')site(g,i,j,x);else monument(g,i,j,x);
+    [...dg.g.children].sort((p,q)=>(+p.dataset.depth||0)-(+q.dataset.depth||0)).forEach(e=>dg.g.appendChild(e));litSig='';
+    if(!first&&kind==='built')toast(`${x.emoji} ${x.name} is built! The colony voted for it.`,place);
+    if(!first&&kind==='monument')toast(`${x.emoji} A season monument rises in the Commons!`,'commons')}}
+function bunting(g,x1,y1,x2,y2,cols){const n=Math.max(4,Math.round(Math.hypot(x2-x1,y2-y1)/11)),sag=9,P=t=>[x1+(x2-x1)*t,y1+(y2-y1)*t+Math.sin(Math.PI*t)*sag];
+  el('path',{d:`M${x1} ${y1} Q${(x1+x2)/2} ${(y1+y2)/2+sag*2} ${x2} ${y2}`,fill:'none',stroke:'#efe6d2','stroke-width':.8},g);
+  for(let k=0;k<n;k++){const [xa,ya]=P(k/n),[xb,yb]=P((k+.62)/n);el('polygon',{class:'flag',points:pts([[xa,ya],[xb,yb],[(xa+xb)/2,(ya+yb)/2+6.5]]),fill:cols[k%cols.length]},g)}}
+function decorate2(se){const decor=(se&&se.decor)||[],colour=(se&&se.colour)||'#ff9ad5',sig=decor.join(',')+'|'+colour+'|'+voteFest;if(sig===decorSig)return;decorSig=sig;
+  const g=document.getElementById('civic');g.innerHTML='';const [cr,cc]=CELLS.commons,[a,b]=cellTiles(cr,cc),[x1,y1]=centre(a+3,b+3);
+  const cols=voteFest?['#ffd35a','#ff5a8a','#70ddff','#7ee3b0']:[colour,'#fff8e6'];
+  if(decor.includes('banners')||voteFest)for(const k of ['research_block','industrial_ward','market_concourse','park']){const [r,c]=CELLS[k],[a2,b2]=cellTiles(r,c),[x2,y2]=centre(a2+3,b2+3);
+    bunting(g,x1,y1-36,x1+(x2-x1)*.62,y1+(y2-y1)*.62-30,cols)}
+  if(decor.includes('lanterns'))for(const k in LOOK){const [x,y]=labelXY(k);for(const dx of [-46,46]){el('line',{x1:x+dx,y1:y+14,x2:x+dx,y2:y-12,stroke:'#4a3a2e','stroke-width':1.3},g);
+    el('rect',{x:x+dx-2.8,y:y-18,width:5.6,height:7,rx:2,fill:'#c2302a',stroke:'#7a1a1a','stroke-width':.6},g);el('rect',{class:'win lamp',x:x+dx-1.4,y:y-16.5,width:2.8,height:4,fill:'#ffd98a',opacity:0,'data-v':'0.05'},g)}}
+  litSig=''}
+function civic(d){chalBanner(d);const f=d.vote&&d.vote.festival,chip=document.getElementById('fest');chip.textContent=f?`${f.emoji} ${f.name}`:'';
+  const key=f?f.key:'';if(key!==voteFest){if(!first&&f)toast(`${f.emoji} ${f.name} today! The colony voted for it.`,'commons');voteFest=key;crowdSig=''}
+  landmarks(d.vote,d.season);decorate2(d.season)}
+
 // ---- new citizens: a welcome banner, the camera finds their Seedling, and it says hello
 let lastJoin=null;const newcomers={};   // name -> until when they are shown first in their district
 const isNew=s=>(newcomers[(s.name||'').toLowerCase()]||0)>Date.now();
@@ -927,7 +1026,7 @@ function greet(who,tries=0){const s=latest.find(x=>x.name.toLowerCase()===who.to
 let capIndex=0,capTick=0;const said={};
 function caption(){const cap=document.getElementById('cap'),pool=latest.filter(s=>(s.lines&&s.lines.length)||s.thought);if(!pool.length){cap.classList.add('hide');return}
   const s=pool[capIndex++%pool.length],lines=(s.lines&&s.lines.length)?s.lines:[s.thought],idx=said[s.id]||0,line=lines[idx%lines.length],place=(LOOK[s.place]||LOOK.commons);
-  cap.classList.add('hide');setTimeout(()=>{cap.innerHTML=`<span class="mood">${esc(s.mood_emoji||'🙂')}</span><div class="text"><div class="top"><span class="who">${esc(s.name)}</span> · <span class="what">${esc(place[0])} ${esc(s.activity)}</span></div>${line?`<div class="said">“${esc(line)}”</div>`:''}</div>`;cap.classList.remove('hide');tidyLabels()},450);
+  cap.classList.add('hide');setTimeout(()=>{cap.innerHTML=`<span class="mood">${esc(s.mood_emoji||'🙂')}</span><div class="text"><div class="top"><span class="who">${s.badge?esc(s.badge)+' ':''}${esc(s.name)}</span> · <span class="what">${esc(place[0])} ${esc(s.activity)}</span></div>${line?`<div class="said">“${esc(line)}”</div>`:''}</div>`;cap.classList.remove('hide');tidyLabels()},450);
   said[s.id]=idx+1;const t=live[s.id];speaking=s.id;
   if(Date.now()>=lockUntil){capTick++;const closeUp=CARD?capTick%4!==0:capTick%2===1;   // a small card stays close up, with a look at the whole town every fourth turn
     if(t&&!t.path.length&&closeUp)look(t.x,t.y-24,CARD?2.4:1.9);else look()}
@@ -942,12 +1041,12 @@ poll(d=>{try{
   const tier=d.tier_index||0;if(!first&&lastTier>=0&&tier>lastTier)toast(`🏙️ New Eridian is now a ${d.tier_name||d.tier}!`);
   if(tier!==lastTier){streets(d,tier);lastTier=tier}for(const k in CELLS)district(k,(d.districts||{})[k]||{},tier);labelsFor(d);tidyLabels();
   sky(hour,weatherKey);night=darkness>.3;effects(d.phase);glitches(weatherKey==='sensor_noise');shuttles(weatherKey==='busy_spaceport'&&darkness<.6);
-  latest=d.seedlings||[];lastData=d;liveTown(d);statPanel(d);fitHome();welcomeNew(d);seedlings(latest);if(first){first=false;caption()}
+  latest=d.seedlings||[];lastData=d;civic(d);liveTown(d);statPanel(d);fitHome();welcomeNew(d);seedlings(latest);if(first){first=false;caption()}
   document.getElementById('tier').textContent=`${d.tier_name||d.tier||'Outpost'} · ${d.population||0} citizens`;
   const hol=document.getElementById('hol');if(festival&&HOLIDAYS[festival.name]){const n=festival.days_to_holiday;hol.style.setProperty('--hol',HOLIDAYS[festival.name][1][0]);
     const GREET={'Christmas':'Merry Christmas!','Memorial Day':'Memorial Day','Thanksgiving':'Happy Thanksgiving!'};hol.textContent=`${festival.emoji} `+(n===0?(GREET[festival.name]||`Happy ${festival.name}!`):n>0?`${festival.name} in ${n} day${n===1?'':'s'}`:`${festival.name} festival`)}else hol.textContent='';
   const busy=latest.filter(s=>/^Working|^Queue|^Gathering/.test(s.activity)).length;
-  const hh=Math.floor(((hour%24)+24)%24),mm=Math.floor((hour%1)*60);document.getElementById('info').textContent=`${d.phase_emoji||''} Day ${d.day} · ${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')} ${d.phase} · ${WEATHER_ICON[weatherKey]||''} ${d.condition||''}`+(festival||CARD?'':` · ${busy} working`);
+  const hh=Math.floor(((hour%24)+24)%24),mm=Math.floor((hour%1)*60);document.getElementById('info').textContent=`${d.phase_emoji||''} Day ${d.day} · ${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')} ${d.phase} · ${WEATHER_ICON[weatherKey]||''} ${d.condition||''}`+(festival||voteFest||CARD?'':` · ${busy} working`);
 }catch(e){console.error(e)}},4000);
 </script>""")
 
@@ -1040,6 +1139,16 @@ const SLIDES=[
    <div class="row"><span class="grow big">${e.progress}/${e.goal} responses</span><span class="num">${Math.floor(t/60)}:${String(t%60).padStart(2,'0')} left</span></div>${bar(e.percent)}
    <div class="sub">Primary: <b>${esc(e.primary)}</b> work · Support: <b>${esc(e.support)}</b> (2 = +1)</div>
    ${(e.leaders||[]).length?`<div class="list">${e.leaders.slice(0,3).map((l,i)=>`<div class="row"><span>${['🥇','🥈','🥉'][i]}</span><span class="grow">${esc(l.name)}</span><span class="num">${l.primary} + ${l.support}</span></div>`).join('')}</div>`:'<div class="sub">No responders yet. Jump in!</div>'}`}],
+ ['challenge','⚡ Stream challenge',d=>d.challenge,d=>{const c=d.challenge,t=Math.max(0,c.seconds_left|0),done=c.state!=='active';return `<h2 class="${c.state==='won'?'':'red'}">${esc(c.emoji)} ${esc(c.title)}${c.state==='won'?' · complete!':c.state==='lost'?' · time up':''}</h2>
+   <div class="sub">${esc(c.text)}</div><div class="row"><span class="grow big">${c.progress}/${c.goal}</span><span class="num">${done?c.participants+' helped':Math.floor(t/60)+':'+String(t%60).padStart(2,'0')+' left'}</span></div>${bar(c.percent)}
+   ${done?'':`<div class="row"><code>${esc(c.how)}</code><span class="sub grow">in chat to help</span></div>`}
+   ${(c.top||[]).length?`<div class="list">${c.top.map((x,i)=>`<div class="row"><span>${['🥇','🥈','🥉'][i]}</span><span class="grow">${esc(x.name)}</span><span class="num">${x.amount}</span></div>`).join('')}</div>`:'<div class="sub">Nobody yet. Be the first!</div>'}`}],
+ ['vote','🗳️ Colony vote',d=>d.vote&&(d.vote.options||[]).length,d=>{const v=d.vote,tot=Math.max(1,v.total);return `<h2>What next for New Eridian?</h2>
+   <div class="list">${v.options.map(o=>`<div><div class="row"><code>!vote ${o.n}</code><span class="grow big">${esc(o.emoji)} ${esc(o.name)}</span><span class="num">${o.votes}</span></div>${bar(o.votes/tot*100)}</div>`).join('')}</div>
+   <div class="sub">Closes in ${esc(v.closes_in)}${v.festival?` · today: ${esc(v.festival.emoji)} <b>${esc(v.festival.name)}</b>`:''}${v.next_project?` · next build: <b>${esc(v.next_project)}</b>`:''}</div>`}],
+ ['season','🏁 Season',d=>d.season,d=>{const se=d.season;return `<h2>${esc(se.emoji)} ${esc(se.name)}</h2><div class="sub">Season ${se.number} · chapter ${se.chapter}/${se.chapters} · ${se.days_left} days left</div>
+   <div class="sub">📖 ${esc(se.story)}</div><div class="row"><span class="grow">🤝 Community ${n(se.total)}${se.total>=se.goal?' · every milestone reached':'/'+n(se.goal)}</span><span class="num">${se.total>=se.goal?'✓':Math.round(se.percent)+'%'}</span></div>${bar(se.percent)}
+   ${(se.top||[]).length?`<div class="list">${se.top.slice(0,3).map((x,i)=>`<div class="row"><span>${['🥇','🥈','🥉'][i]}</span><span class="grow">${esc(x.name)}</span><span class="num">${n(x.points)}</span></div>`).join('')}</div>`:'<div class="sub">Type <code>!season</code> to see your points.</div>'}`}],
  ['projects','🏗️ Project & story',d=>d.project&&d.project.name,d=>{const p=d.project,s=d.story||{},tr=s.tracks||[],tot=tr.reduce((a,x)=>a+(x.value||0),0);return `
    <div class="row"><span class="grow big">🏗️ ${esc(p.name)}</span><span class="num">${p.progress}/${p.goal}</span></div>${bar(p.percent)}<div class="sub">Helps: ${esc((p.skills||[]).join(' · '))}</div>
    <div class="row"><span class="grow big">📖 ${esc(s.name||'')}</span><span class="num">${Math.round(s.percent||0)}%</span></div>${bar(s.percent)}
@@ -1071,6 +1180,12 @@ const STRIP={
  event:d=>{const e=d.event,t=Math.max(0,e.seconds_remaining|0);return `<div class="srow"><div class="scol" style="flex:1.2"><h2 class="red ell">${esc(e.emoji)} ${esc(e.name)}</h2><div class="sub ell">Primary <b>${esc(e.primary)}</b> · Support <b>${esc(e.support)}</b></div></div>
    <div class="scol" style="flex:1"><div class="row"><span class="grow">${e.progress}/${e.goal}</span><span class="num">${Math.floor(t/60)}:${String(t%60).padStart(2,'0')}</span></div>${bar(e.percent)}</div>
    ${(e.leaders||[]).slice(0,3).map((l,i)=>T(['🥇','🥈','🥉'][i],esc(l.name),`<span class="num">${l.primary} + ${l.support}</span>`)).join('')}</div>`},
+ challenge:d=>{const c=d.challenge,t=Math.max(0,c.seconds_left|0),done=c.state!=='active';return `<div class="srow"><div class="scol" style="flex:1.3"><h2 class="${c.state==='won'?'':'red'} ell">${esc(c.emoji)} ${esc(c.title)}${c.state==='won'?' · complete!':c.state==='lost'?' · time up':''}</h2><div class="sub ell">${esc(c.text)}</div></div>
+   <div class="scol" style="flex:1"><div class="row"><span class="grow">${c.progress}/${c.goal}</span><span class="num">${done?c.participants+' helped':Math.floor(t/60)+':'+String(t%60).padStart(2,'0')}</span></div>${bar(c.percent)}</div>
+   ${done?'':T('Help in chat',`<code>${esc(c.how)}</code>`)}${(c.top||[]).slice(0,2).map((x,i)=>T(['🥇','🥈'][i],esc(x.name),`<span class="num">${x.amount}</span>`)).join('')}</div>`},
+ vote:d=>{const v=d.vote,tot=Math.max(1,v.total);return `<div class="srow"><div class="scol" style="flex:.9"><h2 class="ell">🗳️ Colony vote</h2><div class="sub ell">Closes in ${esc(v.closes_in)}</div></div>${v.options.map(o=>T(`!vote ${o.n}`,`${esc(o.emoji)} ${esc(o.name)}`,`<div class="row"><span class="grow">${bar(o.votes/tot*100)}</span><span class="num">${o.votes}</span></div>`)).join('')}</div>`},
+ season:d=>{const se=d.season;return `<div class="srow"><div class="scol" style="flex:1.3"><h2 class="ell">${esc(se.emoji)} ${esc(se.name)}</h2><div class="sub ell">Chapter ${se.chapter}/${se.chapters} · ${se.days_left} days left</div></div>
+   <div class="scol" style="flex:1"><div class="row"><span class="grow">🤝 ${n(se.total)}${se.total>=se.goal?' · all milestones':'/'+n(se.goal)}</span><span class="num">${se.total>=se.goal?'✓':Math.round(se.percent)+'%'}</span></div>${bar(se.percent)}</div>${(se.top||[]).slice(0,3).map((x,i)=>T(['🥇','🥈','🥉'][i],esc(x.name),`<span class="num">${n(x.points)}</span>`)).join('')}</div>`},
  projects:d=>{const p=d.project,s=d.story||{};return `<div class="srow"><div class="scol" style="flex:1"><div class="row"><b class="grow ell">🏗️ ${esc(p.name)}</b><span class="num">${p.progress}/${p.goal}</span></div>${bar(p.percent)}<div class="sub ell">Helps: ${esc((p.skills||[]).join(' · '))}</div></div>
    <div class="scol" style="flex:1"><div class="row"><b class="grow ell">📖 ${esc(s.name||'')}</b><span class="num">${Math.round(s.percent||0)}%</span></div>${bar(s.percent)}<div class="sub ell">${(s.tracks||[]).map(x=>esc(x.name)).join(' · ')}</div></div></div>`},
  market:d=>{const m=d.market;return `<div class="srow">${T('🔥 Top demand',esc(m.primary.name),`<span class="num hot">${m.primary.price} SC</span>`)}${m.secondary?T('↑ Also wanted',esc(m.secondary.name),`<span class="num">${m.secondary.price} SC</span>`):''}
@@ -1099,20 +1214,56 @@ function fit(){const body=document.getElementById('body'),sl=body.querySelector(
 const QUIET=['quiet','🌱 New Eridian',d=>true,d=>`<h2>All quiet on Avesta</h2><div class="sub">${esc(d.phase_emoji||'')} Day ${d.day} · ${esc(d.phase||'')} · ${esc(d.condition||'')}</div><div class="sub">Nothing to show on this slide right now. Type <code>!start</code> in chat to join New Eridian.</div>`];
 const ACTIVE=SLIDES.filter(s=>!PICK.length||PICK.includes(s[0]));
 let data=null,index=-1,eventTurn=false;
+const hotKey=d=>d.event&&ACTIVE.some(s=>s[0]==='event')?'event':d.challenge&&d.challenge.state==='active'&&ACTIVE.some(s=>s[0]==='challenge')?'challenge':null;
 function next(){if(!data)return;let tries=0,slide;
   if(!ACTIVE.some(s=>s[2](data)))return show(QUIET);
-  // A live event takes every other slide until it ends.
-  if(data.event&&!eventTurn&&ACTIVE.some(s=>s[0]==='event')){slide=ACTIVE.find(s=>s[0]==='event');eventTurn=true}
-  else{eventTurn=false;do{index=(index+1)%ACTIVE.length;slide=ACTIVE[index];tries++}while((slide[0]==='event'&&data.event)||(!slide[2](data)&&tries<=ACTIVE.length))}
+  // A live event or stream challenge takes every other slide until it ends.
+  const hot=hotKey(data);
+  if(hot&&!eventTurn){slide=ACTIVE.find(s=>s[0]===hot);eventTurn=true}
+  else{eventTurn=false;do{index=(index+1)%ACTIVE.length;slide=ACTIVE[index];tries++}while((hot&&slide[0]===hot)||(!slide[2](data)&&tries<=ACTIVE.length))}
   show(slide)}
 function show(slide){
   const body=document.getElementById('body'),old=body.querySelector('.slide'),html=(LAYOUT==='strip'&&STRIP[slide[0]]?STRIP[slide[0]]:slide[3])(data),title=document.getElementById('title');
   const put=()=>{title.textContent=slide[1];title.classList.remove('swap');void title.offsetWidth;title.classList.add('swap');
     body.innerHTML=`<div class="slide" style="display:flex;flex-direction:column;gap:.45em;width:100%;max-height:100%">${html}</div>`;fit()};
   if(old){old.classList.add('out');setTimeout(put,330)}else put();
-  const shown=ACTIVE.filter(s=>s[2](data));if(!shown.includes(slide))shown.push(slide);document.getElementById('dots').innerHTML=shown.map(s=>`<i class="${s===slide?'on':''}${s[0]==='event'?' live':''}"></i>`).join('');
+  const shown=ACTIVE.filter(s=>s[2](data));if(!shown.includes(slide))shown.push(slide);document.getElementById('dots').innerHTML=shown.map(s=>`<i class="${s===slide?'on':''}${s[0]==='event'||s[0]==='challenge'?' live':''}"></i>`).join('');
   const t=document.getElementById('timer');t.animate([{transform:'scaleX(0)'},{transform:'scaleX(1)'}],{duration:EVERY,easing:'linear'})}
 poll(d=>{const first=!data;data=d;if(first){next();setInterval(next,EVERY)}},4000);
+</script>""")
+
+PAGES['challenge'] = (r"""
+/* The stream challenge as a goal bar: slides in when a challenge starts, counts down, celebrates or
+   shrugs at the end, then slides away. Transparent when nothing is running. Sized from the source height. */
+body{padding:0;font-size:clamp(11px,24vh,40px)}
+.cb{position:fixed;inset:.25em;display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:.7em;padding:.35em .9em .35em .5em;border-radius:.8em;
+  background:radial-gradient(circle at 6% 50%,rgba(255,116,132,.28),transparent 45%),linear-gradient(145deg,rgba(40,10,26,.96),rgba(24,15,54,.95));border:.08em solid #ff7484;
+  box-shadow:0 .3em 1.2em rgba(0,0,0,.5),0 0 1em rgba(255,116,132,.35);opacity:0;transform:translateY(30%) scale(.97);transition:opacity .5s,transform .6s var(--ease-pop)}
+.cb.show{opacity:1;transform:none}.cb.won{border-color:#7ee3b0;background:radial-gradient(circle at 6% 50%,rgba(126,227,176,.3),transparent 45%),linear-gradient(145deg,rgba(8,30,28,.96),rgba(24,15,54,.95))}
+.cb.lost{filter:saturate(.5)}
+.cb .ic{font-size:1.9em;line-height:1;animation:bob 1.6s ease-in-out infinite alternate}@keyframes bob{to{transform:translateY(-.08em) rotate(-4deg)}}
+.cb .mid{min-width:0;display:flex;flex-direction:column;gap:.18em}
+.cb .t{display:flex;align-items:baseline;gap:.45em;min-width:0}.cb .t b{font:700 .95em var(--font-display);color:#fff;white-space:nowrap}.cb .t span{font-size:.55em;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cb .meter{position:relative;height:.5em;border-radius:99px;background:rgba(255,255,255,.12);overflow:hidden}.cb .meter i{position:absolute;inset:0 auto 0 0;border-radius:99px;background:linear-gradient(90deg,#ff7484,#ffd27a);transition:width .8s var(--ease)}
+.cb.won .meter i{background:linear-gradient(90deg,#7ee3b0,#70ddff)}
+.cb .n{display:flex;gap:.8em;font-size:.5em;font-weight:800;color:var(--muted);white-space:nowrap;overflow:hidden}.cb .n b{color:#ffd27a}.cb .n code{color:var(--green2);font-family:ui-monospace,monospace}
+.cb .clock{text-align:right;font:700 1em var(--font-display);color:#fff;font-variant-numeric:tabular-nums;white-space:nowrap}.cb .clock small{display:block;font:800 .38em var(--font-body);letter-spacing:.16em;color:#ff9aa6}
+.cb.won .clock small{color:var(--green2)}
+""", r"""
+<div class="cb" id="cb"><div class="ic" id="ic">⚡</div><div class="mid"><div class="t"><b id="tt"></b><span id="tx"></span></div><div class="meter"><i id="bar" style="width:0"></i></div><div class="n" id="nn"></div></div><div class="clock"><span id="ck"></span><small id="st">LIVE</small></div></div>
+<script>
+const DEMO={id:1,emoji:'🌪️',title:'Dust Storm',text:'Everyone repair the walls before the storm hits',how:'!repair or any crafting',progress:14,goal:24,percent:58,seconds_left:272,state:'active',participants:6,top:[{name:'Kamex',amount:5}]};
+let cur=null,at=0;
+function draw(){const box=document.getElementById('cb');if(!cur){box.classList.remove('show');return}const c=cur;
+  box.className='cb show'+(c.state==='won'?' won':c.state==='lost'?' lost':'');document.getElementById('ic').textContent=c.emoji;document.getElementById('tt').textContent=c.title;
+  document.getElementById('tx').textContent=c.state==='won'?'Complete! Rewards paid to every helper':c.state==='lost'?'Time ran out. Thanks for helping!':c.text;
+  document.getElementById('bar').style.width=Math.min(100,c.percent||0)+'%';const top=(c.top||[])[0];
+  document.getElementById('nn').innerHTML=`<span><b>${c.progress}</b> / ${c.goal}</span>`+(c.state==='active'?`<span>type <code>${esc(c.how)}</code></span>`:`<span>${c.participants} helped</span>`)+(top?`<span>🥇 ${esc(top.name)} ${top.amount}</span>`:'');
+  document.getElementById('st').textContent=c.state==='active'?'● LIVE':c.state==='won'?'COMPLETE':'TIME UP';tickClock()}
+function tickClock(){if(!cur)return;const left=Math.max(0,(cur.seconds_left||0)-Math.floor((Date.now()-at)/1000));document.getElementById('ck').textContent=cur.state==='active'?`${Math.floor(left/60)}:${String(left%60).padStart(2,'0')}`:cur.state==='won'?'🎉':'⌛'}
+setInterval(tickClock,1000);
+if(Q.get('test')){cur=DEMO;at=Date.now();draw()}
+else poll(d=>{cur=d.challenge||null;at=Date.now();draw()},3000);
 </script>""")
 
 def page(panel, channel):
@@ -1124,10 +1275,11 @@ def page(panel, channel):
 
 # Every OBS source, with a sensible Browser Source size.
 SOURCES = [
-    ('hub', 'Hub (rotating)', 'Everything in one panel: society, stats, today, the live event, project and story, market, leaders, working now, Seedlings, news and how to join. Rotates every 12 seconds; a live event shows every other slide. Adapts to any source shape: a side column (340×176 compact, 340×440 tall) or a band under the game (1440×120 strip).', 640, 360, '&seconds=12 · &slides=society,event,news · &layout=compact|tall|strip|wide to force a layout'),
-    ('map', 'Avesta map', 'New Eridian as a living town: buildings go up (with scaffolding and a crane) as the society grows, Seedlings walk the streets and talk in speech bubbles, the camera drifts in on whoever is speaking, the sky and weather follow Avesta, and the town decorates itself for holidays. Keep it at least a quarter of the screen, or use it as a card in a side column (340×250 or taller), where the caption sits below the town.', 960, 540, '&layout=card forces the column card · &quality=high (glows, water, flags) or low (lighter for slower PCs) · &stats=1 adds the society stat panel · &camera=0 fixed wide shot · &names=1 · &per=6 · &seconds=7 · preview: &hour=18 &holiday=christmas &weather=dust_winds'),
+    ('hub', 'Hub (rotating)', 'Everything in one panel: society, stats, today, the live event, the stream challenge, the colony vote, the season, project and story, market, leaders, working now, Seedlings, news and how to join. Rotates every 12 seconds; a live event or stream challenge shows every other slide. Adapts to any source shape: a side column (340×176 compact, 340×440 tall) or a band under the game (1440×120 strip).', 640, 360, '&seconds=12 · &slides=society,event,news · &layout=compact|tall|strip|wide to force a layout'),
+    ('map', 'Avesta map', 'New Eridian as a living town: buildings go up (with scaffolding and a crane) as the society grows, Seedlings walk the streets and talk in speech bubbles, the camera drifts in on whoever is speaking, the sky and weather follow Avesta, the town decorates itself for holidays, voted festivals and season milestones, projects the colony votes for are built as landmarks, and a stream challenge shows as a goal bar. Keep it at least a quarter of the screen, or use it as a card in a side column (340×250 or taller), where the caption sits below the town.', 960, 540, '&layout=card forces the column card · &quality=high (glows, water, flags) or low (lighter for slower PCs) · &stats=1 adds the society stat panel · &camera=0 fixed wide shot · &names=1 · &per=6 · &seconds=7 · preview: &hour=18 &holiday=christmas &weather=dust_winds'),
     ('ticker', 'News ticker', 'A TV-style lower third: every item has a coloured section tag (Event, Weather, News, Society, Today, Market, Holiday, Project, Report, Join) and the Avesta clock sits on the right.', 1920, 56, '&speed=80 · works at any height'),
     ('alerts', 'Live alerts', 'Animated pop-up for joins, level ups, achievements, events and milestones. Transparent when idle.', 700, 220, '&test=1 shows demo alerts · &sound=1 plays a chime · &seconds=7 · &hide=queue,join'),
+    ('challenge', 'Stream challenge bar', 'The live stream challenge as a goal bar: it slides in when a challenge starts ("Dust storm! Everyone repair the walls"), counts down with a shared progress bar and the top helper, celebrates the result, then slides away. Transparent when nothing is running. Challenges only happen while the stream is live.', 900, 110, '&test=1 shows a demo challenge'),
     ('leaders', 'Leaders', 'Top contributors, the most active citizens today and live event leaders.', 620, 330, ''),
     ('working', 'Working now', 'Everyone with a queue running, with live progress bars.', 460, 330, ''),
     ('join', 'How to play', 'Rotating chat commands so new viewers can join. Set DISCORD_INVITE_URL to show your invite.', 520, 220, '&seconds=7'),
@@ -1146,11 +1298,13 @@ SOURCES = [
 # Options offered as controls on the setup page. Each becomes a URL parameter only when it differs from the default.
 #   kind: select (choices), number (min, max, step), check (on = value added when ticked, off = value added when unticked),
 #   multi (choices joined with commas; nothing ticked = all). 'preview' options are for trying a look before going live.
-_HUB_SLIDES = [('society', 'Society'), ('stats', 'Stats'), ('today', 'Today'), ('event', 'Live event'), ('projects', 'Project & story'), ('market', 'Market'),
+_HUB_SLIDES = [('society', 'Society'), ('stats', 'Stats'), ('today', 'Today'), ('event', 'Live event'), ('challenge', 'Stream challenge'), ('vote', 'Colony vote'),
+               ('season', 'Season'), ('projects', 'Project & story'), ('market', 'Market'),
                ('leaders', 'Leaders'), ('working', 'Working now'), ('seedlings', 'Seedlings'), ('news', 'News'), ('join', 'How to join')]
-_ALERT_KINDS = [('join', 'New citizen'), ('level', 'Level up'), ('achievement', 'Achievement'), ('queue', 'Queue done'), ('event_start', 'Event start'),
-                ('event_win', 'Event won'), ('event_fail', 'Event over'), ('event_cancel', 'Event cancelled'), ('tier', 'Society tier'), ('project', 'Project'),
-                ('story', 'Story'), ('directive', 'Directive')]
+_ALERT_KINDS = [('join', 'New citizen'), ('level', 'Level up'), ('achievement', 'Achievement'), ('trophy', 'Trophy'), ('queue', 'Queue done'), ('event_start', 'Event start'),
+                ('event_win', 'Event won'), ('event_fail', 'Event over'), ('event_cancel', 'Event cancelled'), ('challenge_start', 'Stream challenge'),
+                ('challenge_win', 'Challenge won'), ('challenge_fail', 'Challenge over'), ('vote', 'Colony vote'), ('season', 'Season'), ('tier', 'Society tier'),
+                ('project', 'Project'), ('story', 'Story'), ('directive', 'Directive')]
 _HOLIDAY_PICK = [('', 'Live (automatic)'), ('newyear', 'New Year'), ('valentine', "Valentine's Day"), ('memorial', 'Memorial Day'), ('father', "Father's Day"),
                  ('independence', 'Independence Day'), ('labor', 'Labor Day'), ('halloween', 'Halloween'), ('thanksgiving', 'Thanksgiving'), ('christmas', 'Christmas')]
 _WEATHER_PICK = [('', 'Live (automatic)'), ('clear_skies', 'Clear skies'), ('good_growing', 'Rain (good growing)'), ('spore_drift', 'Siro spores'), ('dust_winds', 'Dust winds'),
@@ -1164,11 +1318,13 @@ OPTIONS = {
             dict(p='camera', label='Camera close-ups', kind='check', default=True, off='0'),
             dict(p='names', label='Names under Seedlings', kind='check', default=False, on='1'),
             dict(p='stats', label='Society stats panel', kind='check', default=False, on='1'),
+            dict(p='challenge', label='Stream challenge goal bar', kind='check', default=True, off='0'),
             dict(p='per', label='Seedlings per district', kind='number', default=0, min=1, max=10, step=1, blank='Auto'),
             dict(p='seconds', label='Seconds per caption', kind='number', default=7, min=3, max=60, step=1),
             dict(p='hour', label='Preview: time of day (0–24)', kind='number', default='', min=0, max=23.9, step=.5, blank='Live', preview=True),
             dict(p='weather', label='Preview: weather', kind='select', choices=_WEATHER_PICK, preview=True),
             dict(p='holiday', label='Preview: holiday', kind='select', choices=_HOLIDAY_PICK, preview=True)],
+    'challenge': [dict(p='test', label='Preview: demo challenge', kind='check', default=False, on='1', preview=True)],
     'ticker': [dict(p='speed', label='Scroll speed (px/s)', kind='number', default=80, min=20, max=400, step=10)],
     'alerts': [dict(p='seconds', label='Seconds on screen', kind='number', default=7, min=3, max=60, step=1),
                dict(p='sound', label='Chime sound', kind='check', default=False, on='1'),

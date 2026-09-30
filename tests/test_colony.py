@@ -28,6 +28,8 @@ def reset(monkeypatch):
     m.migrate_schema()
     # First-steps rewards would shift the exact SC and item totals most tests check; tests/test_onboarding.py turns it on.
     monkeypatch.setattr(m.onboarding,"ENABLED",False)
+    # Votes, seasons, trophies and stream challenges pay SC too; tests/test_community.py turns them on.
+    monkeypatch.setattr(m.community,"ENABLED",False)
 
 def seed(uid='u',provider='twitch',name='Kamex'):
     with m.SessionLocal() as db:

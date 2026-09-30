@@ -1463,6 +1463,7 @@ def world_rule_bundle(db,p,s,action,skill,provider="discord"):
     sb,snotes=status_modifier(db,p);total+=sb;parts.extend(snotes)
     mb,mnotes=autonomy.mood_modifier(sys.modules[__name__],db,p,clock);total+=mb;parts.extend(mnotes)
     ab,anotes=aftermath_modifier(db,p.channel_id,skill);total+=ab;parts.extend(anotes)
+    cb,cnotes=community.success_modifier(sys.modules[__name__],db,p,skill);total+=cb;parts.extend(cnotes)
     shared=colony_state(db,p.channel_id);colony_tick(shared,s,now())
     pressure=colony_pressures(shared,s,pw.siro_exposure)
     for label,value in pressure.items():
@@ -2328,7 +2329,8 @@ def achievements(channel:str,uid:str,name:str="Citizen",provider:str="twitch"):
     with SessionLocal() as db:
         _,p=player(db,channel,provider,uid,name);achieve(db,p)
         rows=db.execute(select(Achievement).where(Achievement.channel_id==channel,Achievement.canonical_uid==p.twitch_uid)).scalars().all()
-        names=[r.code.replace("_"," ").title() for r in rows]
+        trophy_count=sum(1 for r in rows if r.code.startswith("trophy:"))
+        names=[r.code.replace("_"," ").title() for r in rows if not r.code.startswith("trophy:")]
         order_count=len(db.execute(select(ProductionOrderCompletion).where(ProductionOrderCompletion.channel_id==channel,ProductionOrderCompletion.canonical_uid==p.twitch_uid)).scalars().all())
         crafted={r.recipe for r in db.execute(select(CraftLedger).where(CraftLedger.channel_id==channel,CraftLedger.canonical_uid==p.twitch_uid)).scalars().all()}
         parts_done=parts_crafted(crafted)
@@ -2336,7 +2338,8 @@ def achievements(channel:str,uid:str,name:str="Citizen",provider:str="twitch"):
         discord=(f"🏆 {p.display_name} — Achievements & Milestones\n\nUNLOCKED\n"+
                  ("\n".join(f"• {x}" for x in names) if names else "• None yet")+
                  "\n\nACTIVE PROGRESS\n"+"\n".join(f"• {x}" for x in progress)+
-                 "\n\nMilestone titles unlock at 1, 10, and 30 completed Production Orders. Crafting every component in the catalog list above and producing a Masterwork have their own achievements.")
+                 "\n\nMilestone titles unlock at 1, 10, and 30 completed Production Orders. Crafting every component in the catalog list above and producing a Masterwork have their own achievements."
+                 +(f"\n\n🏅 Trophies: {trophy_count} earned. /trophies shows every collection and trophy." if trophy_count else "\n\n🏅 Collections and trophies: /trophies"))
         return platform_response(provider,discord,"🏆 "+(", ".join(names) if names else "No achievements yet."))
 
 def habitat_upgrade_plan(p,tier,provider):
@@ -3480,6 +3483,7 @@ def overlay_state_fresh(channel:str):
         from . import stream_overlay
         stream_overlay.watch(sys.modules[__name__],db,DISCORD_WORLD_ID,tier[0],project_data,story_data,directive_data)
         stream_extra=stream_overlay.extra(sys.modules[__name__],db,source_ids,DISCORD_WORLD_ID)
+        stream_extra.update(community.overlay_data(sys.modules[__name__],db,stream_extra.get("seedlings",[])))
         db.commit()
         return {
             **stream_extra,
@@ -5550,6 +5554,13 @@ Two support successes = +1 progress.
 DAILY ENGAGEMENT
 Successful work in three different aptitudes completes optional Daily Variety for +6 SC/+4 Morale. The Daily Bulletin also shows a shared Society Directive; each citizen earns at most +3 SC from participation, and completion adds +8 to one society stat. Event success creates +3% related aftermath for 60 minutes; partial/full failures create -1%/-2%. Aftermath never stacks.
 
+COMMUNITY
+/vote — Every Avesta day the colony votes on the next society project or a festival. The first vote on a ballot pays 3 SC. A voted project starts when the current one is finished and stays on the stream map as a landmark; a voted festival gives +5% to its work for the next day.
+/challenge — Stream challenges happen only while the stream is live: 5–10 minutes, one shared goal, rewards for everyone who helps and a bonus for the top helper.
+/season — Five-week seasons with a weekly story. Points come from Contribution, aptitude XP, challenges, votes and trophies. Bronze, Silver and Gold unlock a title, a hat for your Seedling and a golden title; the top three win champion titles. Only season points reset.
+/trophies — Collections and trophies (every ore, craft categories, festival foods, curios, colony and stream milestones). Pin a badge that shows next to your name on the stream map.
+Every Sunday the bot posts a weekly recap: top contributors, biggest hauls, society progress and the funniest Seedling moments.
+
 BEST USE: /guide goal:event during emergencies and /guide goal:society between events.""",
 "other":"""🍲 PERSONAL ACTIONS
 
@@ -5566,6 +5577,8 @@ Use /me for personal information, /progress for personal progression, and /world
 /eventstart — Starts one selected event immediately. Existing automatic-event timing is safely reset. Moderator permission required.
 /eventstop — Cancels the active event with no failure penalty. This is cancellation, not success. Moderator permission required.
 /modlog — Shows recent event-control records, including the moderator and action. Moderator permission required.
+
+/mod — Stream challenge start/stop, Stream is live on/off/automatic, and Weekly recap preview/post now.
 
 Eligible moderators need Administrator, Manage Server, Manage Messages, or a role listed in DISCORD_MOD_ROLE_IDS.""",
 "terms":"""📖 NEW ERIDIAN TERMS
@@ -5667,7 +5680,9 @@ DISCORD_PRIVATE_COMMANDS = {
     "seed", "guide", "start", "me", "progress", "inventory", "job",
     "home", "business", "make", "seedindustries", "link", "specialize", "modlog",
     "world", "linklookup", "ducks", "training", "catalog", "gather", "workshop",
-    "status", "settings", "mod", "menu", "guidepanels", "menupanel", "inbox", "queuedetails", "find", "undo", "seedling", "seedlingstep"
+    "status", "settings", "mod", "menu", "guidepanels", "menupanel", "inbox", "queuedetails", "find", "undo", "seedling", "seedlingstep",
+    "vote", "season", "challenge", "trophies",
+    "challengestart", "challengestop", "liveon", "liveoff", "liveauto", "recappreview", "recappost"
 }
 
 def discord_message_status(content):
@@ -6132,6 +6147,7 @@ def discord_legacy_route(command,options):
     if command=="mod":
         action=str(options.get("action") or "modlog")
         if action=="eventstart":return "eventstart",({"event":options["event"]} if options.get("event") else {})
+        if action=="challengestart":return "challengestart",({"challenge":options["challenge"]} if options.get("challenge") else {})
         if action=="linklookup":return "linklookup",({"player":options["player"]} if options.get("player") else {})
         return action,{}
     if command=="world" and options.get("section") in WORLD_ROUTES:
@@ -6908,6 +6924,8 @@ def _discord_call_internal(command: str, uid: str, name: str, options: dict, int
         return action("eat",channel,uid,name,msg="food:"+str(options["food"]),provider="discord").body.decode()
     if command=="recover":
         return recover_needs(channel,uid,name,"discord").body.decode()
+    if command in community.DISCORD|community.MOD:
+        return community.discord(__import__("sys").modules[__name__],command,uid,name,options)
     if command=="menu":
         return game_menu.home_text(__import__("sys").modules[__name__],uid,name)
     if command=="menupanel":
@@ -7214,7 +7232,7 @@ async def discord_interactions(request: Request, background_tasks: BackgroundTas
     if command not in (DISCORD_PUBLIC_COMMANDS | DISCORD_PRIVATE_COMMANDS):
         return _discord_json_message("Unknown New Eridian command.", ephemeral=True)
 
-    if command in {"eventstart","eventstop","modlog","guidepanels","menupanel"} and not _discord_is_moderator(payload):
+    if command in {"eventstart","eventstop","modlog","guidepanels","menupanel"}|community.MOD and not _discord_is_moderator(payload):
         return _discord_json_message("⛔ Moderator access is required for event controls.", ephemeral=True, message_type="moderator")
 
     if command == "linklookup" and not _discord_is_owner(payload):
@@ -7356,6 +7374,8 @@ from . import autonomy
 autonomy.install(sys.modules[__name__])
 from . import onboarding
 onboarding.install(sys.modules[__name__])
+from . import community, votes, seasons, trophies, live_events, recap
+community.install(sys.modules[__name__])
 presentation.SKILL_NAMES=tuple(SKILL_LABELS.values())
 # Every module above is loaded now: create any table a module added since the first create_all (existing tables are left alone).
 Base.metadata.create_all(engine)

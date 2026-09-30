@@ -1,5 +1,119 @@
 # Release notes
 
+## Colony votes, stream challenges, seasons, trophies and a weekly recap
+
+### 🗳️ Colony votes
+- **A new ballot every Avesta day** with three choices: two society projects and one festival.
+  - Vote from Twitch (`!vote 1`, `!vote 2`, `!vote 3`, or a name), Discord (`/vote`), or `/menu` → 🎪 Community → Cast your vote.
+  - You can change your vote until the day ends. Your first vote on a ballot pays +3 SC and +5 season points.
+- **When the day ends, the winner happens:**
+  - **Projects.** A project winner becomes the next society project. It starts immediately if the current project is finished; otherwise it starts the moment the current one completes. Before this, a finished project never changed.
+  - **Landmarks.** A finished project stays on the stream map as a landmark in its district (🏥 clinic in the Homes, 🌿 greenhouse in the Farms, 🎳 hall in the Commons, and so on). The project being built shows as scaffolding with a crane and a % sign.
+  - **Festivals.** A festival winner (Harvest Fair, Starlight Night, Market Fair, Maker Expo, Festival of Rocks, Wellness Day) runs the whole next day. It gives +5% success on its aptitudes, a party and bunting in the Commons, and a badge in the map header.
+  - **Ties and empty ballots.** A tie goes to the choice that reached the top count first. With no votes, the colony picks at random.
+- **Credit for builders.** Everyone who helped build a project is credited, and it counts toward the Builder and Project Veteran trophies.
+
+### ⚡ Stream challenges (only while live)
+- **12 short challenges.** Each lasts 5–10 minutes and has one shared goal, sized to how many people are chatting:
+  - 🌪️ Dust Storm, 🌾 Harvest Rush, ⛏️ Ore Seam, 🪵 Lumber Drive, ☣️ Siro Surge, 🚚 Supply Convoy
+  - 🍲 Feast Prep, 🦆 Lost Duck, 🪙 Market Rush, ⚡ Power Surge, 🏥 Clinic Rush, ☄️ Meteor Shower
+- **What counts.** Every command that does the right kind of work adds to the goal, e.g. repairs for the Dust Storm or gathered crops for the Harvest Rush. Seedlings acting on their own do not count.
+- **Chat replies.** Your contribution is shown in chat, e.g. "🪵 7/12 (+1)".
+- **Work bonus.** While a work challenge runs, its aptitudes get +5% success.
+- **Rewards on a win.** Everyone who helped gets:
+  - +10 SC, plus 2 SC per point they added (up to +20);
+  - +2 Contribution;
+  - the challenge's materials;
+  - season points.
+
+  The top helper gets +15 SC as MVP, and the society gets a stat boost.
+- **Rewards on a loss.** Helpers still get a small thank-you (+4 SC).
+- **When the stream counts as live:**
+  - a moderator switched it on (`!live on`, or `/mod` → Stream is live);
+  - or the Twitch API says so (optional: `TWITCH_CLIENT_ID`, `TWITCH_CLIENT_SECRET`, `TWITCH_CHANNEL_LOGIN`);
+  - or two or more people used Twitch commands in the last 15 minutes.
+
+  `!live off` stops challenges. While live, a challenge starts about every 25 minutes (`LIVE_EVENT_GAP_MINUTES`). Moderators can also start or stop one with `!chstart [name]`, `!chstop`, or the `/mod` actions.
+- **On stream:**
+  - a goal bar on the map (top-left; a compact one-line bar in a side column);
+  - a Hub slide that takes every other turn while a challenge runs;
+  - a ticker item and alerts;
+  - a new **Stream challenge bar** Browser Source (`/obs/challenge`, 900×110) that slides in, counts down and celebrates.
+
+### 🏁 Seasons
+- **Five-week seasons** (`SEASON_DAYS`, default 35), each with a theme and a story told one chapter a week:
+  - 🌅 First Light
+  - ⚙️ Iron and Dust
+  - 🔮 Siro Mysteries
+  - 🚀 Starport
+  - ❄️ Deep Frost
+  - 🎉 Founders' Jubilee
+- **Season points** come from everything players already do:
+  - 3 per Contribution;
+  - 1 per aptitude XP (up to 30 per command);
+  - stream challenges, votes and trophies.
+
+  A Seedling working on its own earns its player half.
+- **Rewards unlock as soon as they are earned:**
+  - 🥉 Bronze (150): the season title, e.g. "Dawnbringer".
+  - 🥈 Silver (500): the season hat for your Seedling on the stream map (flower crown, horned dust helm, wizard hat, astronaut helmet, frost beanie, party hat).
+  - 🥇 Gold (1,200): a golden title, +50 SC and a trophy.
+- **Community milestones** (2,500 / 7,500 / 15,000 points together):
+  - season bunting over the town, then lanterns on every street, then a monument in the Commons;
+  - each pays +10 SC to everyone who scored.
+- **End of season:**
+  - 🥇 gets "Season N Champion", a 👑 crown and 150 SC;
+  - 🥈 and 🥉 get "Season N Finalist", a 🌿 laurel and 100 or 75 SC;
+  - results are archived (shown on the profile as "Past seasons");
+  - **only season points reset**. Stats, items, titles and hats all stay.
+- **Commands:** `!season` (plus `top`, `rewards`, `story`), `!hat <name>` or `!hat job`; `/season`; `/menu` → Community.
+- **On stream:** a Season slide on the Hub and a ticker line.
+
+### 🏅 Collections and trophies
+- **48 trophies in six groups:**
+  - **Collections:** every ore, every natural material, 10 or 50 different items, 10 or 25 different foods eaten, each curio set, all ten curios.
+  - **Crafting:** master each of the 15 craft categories (12 different recipes), and five of them for Grand Artisan.
+  - **Festivals:** craft every festival food of a holiday (9 holidays).
+  - **Colony:** vote once or 15 times, help finish 1 or 3 projects, finish First Steps, reach Lv 3 in every aptitude, a Seedling with 50 good days.
+  - **Stream:** take part in 1, 10 or 25 stream challenges (the last gives a halo hat), win 5.
+  - **Seasons:** reach Gold, finish in the top three.
+- **Rewards.** Each trophy pays SC and +25 season points; the big ones also give a title (Ore Hunter, Wildlander, Gourmet, Curator, Grand Artisan, Town Councillor, Project Veteran, All-Rounder, Stream Legend).
+- **Where they show:**
+  - a trophy alert on stream with its badge;
+  - the badges on the profile;
+  - one pinned badge (`!badge <name>`, `/trophies badge:`) next to your name on the stream map and in the map caption.
+- **Progress is counted from what you have and do.** The game now remembers every item a citizen has found and every food they have eaten.
+- **Commands:** `!trophies`, `!badge`; `/trophies` (with a group to see it in full); `/menu` → Community. Trophies no longer appear in the old achievements list, which now points to `/trophies`.
+
+### 📰 Weekly recap
+- **Every Sunday from 18:00 UTC** (`RECAP_HOUR`), the bot posts one embed to `RECAP_CHANNEL_ID` (or `DISCORD_GAME_CHANNEL_ID`) covering:
+  - top contributors (season points, Contribution and actions);
+  - biggest hauls, and the single biggest Seedling haul;
+  - the society tier with a progress bar and how every stat moved since last week;
+  - vote winners and finished projects;
+  - stream challenges won and the most helpful people;
+  - trophies earned;
+  - the season chapter and podium;
+  - three funny Seedling moments from the diaries;
+  - new citizens.
+- **Once a week.** It posts once per week, and a restart never posts it twice.
+- **Moderator controls:** preview it or post it now with `/mod` → Weekly recap. `GET /api/v1/recap` shows it as text; `!recap` shows this week's top three in chat.
+
+### Setup
+- **Discord.** There are four new slash commands (`/vote`, `/season`, `/challenge`, `/trophies`) and new `/mod` actions. Commands are re-registered by the container start command as usual.
+- **Twitch.** The StreamElements lines are in `integrations/twitch/community_commands_ready.txt` (the moderator lines need your `ADMIN_KEY`).
+- **Database.** The new tables are created automatically:
+  - `colony_ballots_v1`, `colony_ballot_votes_v1`, `colony_plan_v1`, `colony_project_help_v1`;
+  - `live_state_v1`, `live_challenges_v1`, `live_challenge_entries_v1`;
+  - `seasons_v1`, `season_scores_v1`, `season_results_v1`, `week_scores_v1`, `wardrobe_v1`;
+  - `trophy_found_v1`, `trophy_showcase_v1`, `weekly_recaps_v1`.
+- **Optional environment variables:**
+  - `RECAP_CHANNEL_ID`, `RECAP_HOUR`
+  - `SEASON_DAYS`
+  - `LIVE_EVENT_GAP_MINUTES`, `LIVE_EVENT_FIRST_MINUTES`, `LIVE_AUTO_CHATTERS`, `LIVE_EVENTS_AUTO`
+  - `TWITCH_CLIENT_SECRET`, `TWITCH_CHANNEL_LOGIN`
+- **Map fix.** A speech bubble near the edge of the map no longer spills out of the frame.
+
 ## First steps, a welcome kit, and new citizens greeted on stream
 
 - **First steps (replaces "First Days").** Six small goals teach the game:
