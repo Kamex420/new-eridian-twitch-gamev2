@@ -279,7 +279,7 @@ def _routes(m):
             return PlainTextResponse(text)
 
     def mod_ok(key, level):
-        return m.valid_admin_key(key) and level >= 500
+        return m.valid_mod_key(key) and level >= 500
 
     @app.get('/api/v1/admin/live')
     @tx

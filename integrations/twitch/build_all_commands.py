@@ -1,8 +1,9 @@
-"""Builds ALL_COMMANDS.txt: every StreamElements command the game needs, in paste order.
+"""Builds ALL_COMMANDS.txt: every StreamElements command the game needs, for the StreamElements dashboard.
 
 Run from the repository root:  python integrations/twitch/build_all_commands.py
 Every command that acts as a player carries k=YOUR_API_KEY (the TWITCH_API_KEY set on Railway);
-moderator commands carry key=YOUR_ADMIN_KEY and come last.
+moderator commands carry key=YOUR_MOD_KEY (MOD_KEY) and come last. The commands are entered in the
+dashboard, never typed in Twitch chat, because chat is public and the keys would be seen by everyone.
 """
 from pathlib import Path
 
@@ -10,7 +11,7 @@ DOMAIN = 'https://new-eridian-twitch-game-production.up.railway.app'
 PLAYER = 'channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&k=YOUR_API_KEY'
 REST = '${1:}'
 ARG = lambda name: f'&{name}=$(queryescape {REST})'
-MOD = 'channel=$(channel.provider_id)&level=$(sender.level)&key=YOUR_ADMIN_KEY'
+MOD = 'channel=$(channel.provider_id)&level=$(sender.level)&key=YOUR_MOD_KEY'
 
 
 def api(path, extra='', who=PLAYER):
@@ -102,18 +103,35 @@ ADMIN = [('!sirostart', 'admin/event/siro/on', ''), ('!siroend', 'admin/event/si
          ('!chstop', 'admin/challenge', '&action=stop')]
 
 
+LEVELS = {100: 'Everyone', 500: 'Moderator'}
+
+
 def block(command, response, level, cd, usercd):
-    return f'!command add {command} {response}\n!command options {command} -level {level} -cd {cd} -usercd {usercd}'
+    return (f'{command}\nResponse: {response}\n'
+            f'User level: {LEVELS.get(level, level)} | Global cooldown: {cd}s | User cooldown: {usercd}s')
+
+
+HEADER = [
+    '# New Eridian: every StreamElements command the game needs.',
+    '#',
+    '# ADD THESE IN THE STREAMELEMENTS DASHBOARD. NEVER TYPE THEM IN TWITCH CHAT.',
+    '# Twitch chat is public and copied by chat-log websites. A command typed in chat shows its key to every viewer:',
+    '# with TWITCH_API_KEY anyone can play as any viewer, and with a moderator key anyone can run events and skip days.',
+    '#',
+    '# streamelements.com -> Chatbot -> Chat commands -> Custom commands -> Add new command. For each entry below:',
+    '#   Command name: the !name line.  Response: everything after "Response: ".  User level and cooldowns: as listed.',
+    '# Replace YOUR_API_KEY with the TWITCH_API_KEY set on Railway, and YOUR_MOD_KEY (moderator commands, at the end)',
+    '# with the MOD_KEY set on Railway. ADMIN_KEY never goes into StreamElements: it is only for the merge tools.',
+    '# A command that already exists: open it in the dashboard and replace its Response instead.',
+    '#',
+    '# Pasted a key in chat before? Treat it as public. Set new TWITCH_API_KEY, MOD_KEY and ADMIN_KEY values on Railway,',
+    '# then update each command here with the new keys.',
+    '',
+]
 
 
 def build():
-    out = ['# New Eridian: every StreamElements command the game needs, in paste order.',
-           '# Paste one line at a time in Twitch chat as the broadcaster or a moderator, a couple of seconds apart.',
-           '# A command that already exists answers "already exists": use "!command edit" instead of "!command add" for those.',
-           '#',
-           '# BEFORE PASTING: replace YOUR_API_KEY in every line with the TWITCH_API_KEY you set on Railway.',
-           '# The moderator commands at the very end also need YOUR_ADMIN_KEY replaced with your ADMIN_KEY.',
-           '# Never type either key in chat on its own.', '']
+    out = list(HEADER)
     for title, rows in SECTIONS:
         out += ['', f'# ==== {title} ====', '']
         out += [block(*row) + '\n' for row in rows]
@@ -122,7 +140,7 @@ def build():
     for command, path, arg in DISCORD_ONLY:
         extra = ('&mode=catalog' if path == 'seed-supplies' else '') + (ARG(arg) if arg else '')
         out.append(block(command, api(path, extra), 100, 0, 10) + '\n')
-    out += ['', '# ==== MODERATOR COMMANDS: paste these last. Replace YOUR_ADMIN_KEY with your ADMIN_KEY. ====',
+    out += ['', '# ==== MODERATOR COMMANDS: add these last, with user level Moderator. Replace YOUR_MOD_KEY with your MOD_KEY. ====',
             '# !eventstart <siro|food|mining|delivery|market|water|machine|spaceport> · !eventstop ends whatever event is running',
             '# !live on|off|auto · !chstart [dust_storm|harvest_rush|ore_seam|lumber_drive|...] · !chstop', '']
     for command, path, extra in ADMIN:

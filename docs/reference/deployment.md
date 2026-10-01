@@ -10,7 +10,7 @@
 | Persistence | `DATABASE_URL`; default local SQLite for development |
 | Queue worker | FastAPI startup/shutdown lifecycle; no separate worker service |
 | Registrar catalog | `app/command_catalog.py`; 49 command definitions |
-| Twitch definitions | `integrations/twitch/commands.csv` and `chat_commands.txt` |
+| Twitch definitions | `integrations/twitch/ALL_COMMANDS.txt` (entered in the StreamElements dashboard) and `commands.csv` |
 
 The Docker startup attempts command registration before starting Uvicorn. A registration failure is logged and does not prevent the HTTP service from starting. The registrar's dry-run mode emits the current catalog without modifying Discord or initializing the game database.
 
@@ -18,7 +18,36 @@ The Docker startup attempts command registration before starting Uvicorn. A regi
 
 `DISCORD_APPLICATION_ID`, `DISCORD_BOT_TOKEN` and `DISCORD_GUILD_ID` identify the server command-registration target. `DISCORD_PUBLIC_KEY` verifies interactions. `DISCORD_WORLD_ID` associates Discord players with their saved world; Twitch command definitions carry the corresponding channel/world parameter. Changing that association can make existing progress appear to be missing even though its database rows remain intact.
 
-`DISCORD_OWNER_USER_IDS` and `DISCORD_MOD_ROLE_IDS` control existing privileged functions. `ADMIN_KEY` protects existing administrative endpoints. These values are environment configuration, not repository content. The game title defaults to New Eridian v2 and the society name to New Eridian.
+Set `DISCORD_WORLD_ID` to the Twitch channel's numeric ID (what StreamElements sends as `$(channel.provider_id)`). If they differ, Twitch and Discord are two separate worlds and `!link` codes cannot be claimed; `/health` then shows a warning naming the value to use.
+
+`DISCORD_OWNER_USER_IDS` and `DISCORD_MOD_ROLE_IDS` control existing privileged functions. These values are environment configuration, not repository content. The game title defaults to New Eridian v2 and the society name to New Eridian.
+
+## Keys
+
+| Variable | Used by | Where it goes |
+| --- | --- | --- |
+| `TWITCH_API_KEY` | Every StreamElements command that acts as a player (`k=`) | Railway and the StreamElements dashboard |
+| `MOD_KEY` | StreamElements moderator commands: events, next day, live, challenges, recap, modlog (`key=`) | Railway and the StreamElements dashboard |
+| `ADMIN_KEY` | Admin tools only: `/api/v1/admin/duplicates`, `/api/v1/admin/merge`, the routine step | Railway only; never in StreamElements |
+
+Enter the commands in the StreamElements dashboard (Chatbot → Chat commands → Custom commands), never by typing `!command add` in Twitch chat: chat is public and copied by chat-log sites, so a key typed there is public. If a key has been pasted in chat, set new values on Railway and update the commands. `ADMIN_KEY` still works for moderator commands added before `MOD_KEY` existed. Request logs replace `k=` and `key=` values with `***`.
+
+Without `TWITCH_API_KEY` anyone can call the game API as any Twitch player; the startup log and `/health` warn about it.
+
+## Optional settings
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `GAME_CHANNELS` | empty | Extra comma-separated worlds that keyless reads (society, events, overlay) may name before anyone has played there. Otherwise a world exists once a player command creates it. |
+| `BLOCKED_WORDS` | empty | Comma-separated words no business name may contain (case, spaces and symbols ignored). Business names already keep only letters, numbers, spaces and `' & . -`. |
+| `ACTION_LOG_DAYS` | 14 | The hourly cleanup deletes action-log rows older than this. The game reads 24 hours back. |
+| `JOURNAL_DAYS` | 90 | Journal entries older than this are deleted, keeping each citizen's newest 20. |
+| `DB_POOL_SIZE`, `DB_MAX_OVERFLOW`, `DB_POOL_TIMEOUT` | 20, 30, 15 | PostgreSQL connection pool. Keep size + overflow below the server's `max_connections`. |
+| `OVERLAY_CACHE_SECONDS` | 5 | How long one overlay computation is shared by every OBS source. |
+
+Use Railway's private database URL (`postgres.railway.internal`), not the public proxy (`*.proxy.rlwy.net`): a command makes about a hundred small queries, and each one is a network round trip. `/health` warns when the public proxy is in use.
+
+`/health` lists setup warnings with `?key=<MOD_KEY or ADMIN_KEY>`; without a key it only counts them.
 
 The complete environment reads remain in application source. This reference records the deployment-critical subset rather than inventing new defaults.[^1]
 
@@ -54,8 +83,14 @@ Deferral operates only after the request reaches the running app. Startup failur
 Plain `postgres://` and `postgresql://` URLs select `postgresql+psycopg`, matching
 the installed driver. PostgreSQL connections have a 10-second connection and
 lock timeout and a 30-second statement timeout. SQLite waits up to 30 seconds
-for a writer. Command and queue transactions share a world lock. These bounds
-surface contention as a retryable error rather than an indefinite wait.
+for a writer. Command and queue transactions share one game-wide lock (a single
+PostgreSQL advisory lock key, the same boundary SQLite's `BEGIN IMMEDIATE` gives):
+votes, seasons, challenges, the market day and the overlay write the main world
+whichever channel a request names. These bounds surface contention as a
+retryable error rather than an indefinite wait.
+
+An hourly cleanup deletes old action-log rows, Discord command receipts, expired
+link codes and old journal entries in small batches outside the game lock.
 
 `/health` probes the database and returns HTTP 503 for database failure or a
 stopped worker. Queue views report undelivered stop alerts. The outbox still

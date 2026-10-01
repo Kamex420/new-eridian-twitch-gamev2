@@ -1,5 +1,5 @@
 """Persistent, bounded work queues. Each attempt and its counter commit together."""
-import asyncio, logging, json, hashlib
+import asyncio, logging, json, hashlib, os
 from contextlib import contextmanager
 from contextvars import ContextVar
 from datetime import timedelta
@@ -44,11 +44,16 @@ class QueueHealth(Base):
     failures = Column(Integer, nullable=False, default=0)
 
 
-def lock_world(conn, channel):
-    # A transaction-scoped lock also protects shared society balances on Postgres.
-    # SQLite's BEGIN IMMEDIATE provides the corresponding single-writer boundary.
-    if channel and conn.dialect.name == 'postgresql':
-        key = int.from_bytes(hashlib.blake2b(channel.encode(), digest_size=8).digest(), 'big', signed=True)
+def lock_world(conn, channel=None):
+    """One transaction-scoped lock for the whole game on Postgres, whichever channel a request names.
+
+    Votes, seasons, the stream challenge, the market day and the overlay all write the main world
+    (DISCORD_WORLD_ID) even when a request names another channel, so a lock per channel let two transactions
+    change the same rows at once (an expired event could pay out twice). SQLite's BEGIN IMMEDIATE is the
+    same single-writer boundary. `channel` is kept for callers; it no longer picks the lock."""
+    if conn.dialect.name == 'postgresql':
+        world = os.getenv('DISCORD_WORLD_ID', 'new-eridian')
+        key = int.from_bytes(hashlib.blake2b(world.encode(), digest_size=8).digest(), 'big', signed=True)
         conn.execute(text('SELECT pg_advisory_xact_lock(:key)'), {'key': key})
 
 

@@ -52,16 +52,22 @@ def canonical_costs(costs):
         key=canonical(key);merged[key]=merged.get(key,0)+qty
     return merged
 
+# Item rows that still need converting: an old key, or a catalog item stored in a player column.
+MIGRATING=frozenset(ALIASES)|frozenset(FIELD_ITEMS)
+
 def migrate_player(m,db,p):
     """Caller owns commit. Lock account before merging; zero source atomically.
 
     Re-running, restarting, or linking a migrated account cannot award twice.
     No negative balances are manufactured or silently discarded.
+    Every request runs this, so a citizen with nothing to convert costs one read and no lock.
     """
     db.flush()
+    owned=lambda:list(db.execute(m.select(m.ExtraItem).where(m.ExtraItem.channel_id==p.channel_id,m.ExtraItem.canonical_uid==p.twitch_uid)).scalars())
+    if not any(r.item in MIGRATING and r.qty for r in owned()):return
     db.execute(m.select(m.Player.id).where(m.Player.id==p.id).with_for_update()).scalar_one()
     db.refresh(p)
-    rows=list(db.execute(m.select(m.ExtraItem).where(m.ExtraItem.channel_id==p.channel_id,m.ExtraItem.canonical_uid==p.twitch_uid)).scalars())
+    rows=owned()     # read again under the lock
     by_key={r.item:r for r in rows}
     for old,new in ALIASES.items():
         row=by_key.get(old)

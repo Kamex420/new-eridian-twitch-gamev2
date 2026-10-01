@@ -14,7 +14,7 @@ from fastapi import FastAPI, HTTPException, Request, BackgroundTasks
 from starlette.concurrency import run_in_threadpool
 from . import discord_deferred, message_layout, discord_execution, ui
 from fastapi.responses import PlainTextResponse, HTMLResponse, JSONResponse
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, Boolean, UniqueConstraint, select, inspect, text as sql_text
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, Boolean, UniqueConstraint, select, inspect, func, text as sql_text
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 from nacl.signing import VerifyKey
@@ -24,8 +24,29 @@ GAME_NAME=os.getenv("GAME_NAME","New Eridian")
 GAME_TITLE=os.getenv("GAME_TITLE","New Eridian v2")
 ADMIN_KEY=os.getenv("ADMIN_KEY","change-me")
 
+MOD_KEY=os.getenv("MOD_KEY","").strip()
+
 def valid_admin_key(value):
     return bool(ADMIN_KEY and ADMIN_KEY!='change-me' and secrets.compare_digest(str(value).encode(),ADMIN_KEY.encode()))
+
+def valid_mod_key(value):
+    """StreamElements moderator commands (events, next day, live, challenges, recap, modlog) carry MOD_KEY, so
+    ADMIN_KEY (character merges) never has to be stored in the chat bot. ADMIN_KEY still works for older commands."""
+    return bool(MOD_KEY and secrets.compare_digest(str(value).encode(),MOD_KEY.encode())) or valid_admin_key(value)
+
+import logging
+_SECRET_QUERY=re.compile(r'([?&](?:k|key)=)[^&\s"]*')
+
+class _RedactKeys(logging.Filter):
+    """Request logs never show the game key (k=) or the admin/moderator key (key=) from StreamElements URLs."""
+    def filter(self,record):
+        if isinstance(record.args,tuple) and record.args:
+            record.args=tuple(_SECRET_QUERY.sub(r'\1***',a) if isinstance(a,str) else a for a in record.args)
+        elif isinstance(record.msg,str):
+            record.msg=_SECRET_QUERY.sub(r'\1***',record.msg)
+        return True
+
+logging.getLogger("uvicorn.access").addFilter(_RedactKeys())
 
 DISCORD_PUBLIC_KEY=os.getenv("DISCORD_PUBLIC_KEY","")
 DISCORD_GAME_CHANNEL_ID=os.getenv("DISCORD_GAME_CHANNEL_ID","")
@@ -647,10 +668,17 @@ def demand_day():
     return _demand_day[1]
 
 def demand_price(key,day):
-    """Listed sale price, +60% or +30% (always at least +1 SC) while the item is in demand that day."""
-    base=(SEED_INDUSTRIES.get(key) or {}).get('sell',0)
+    """Listed sale price, +60% or +30% (always at least +1 SC) while the item is in demand that day.
+
+    Never as much as Seed Industries charges for the item, so buying it and selling it straight back always loses SC
+    (otherwise a demand day would pay for every buy/sell round trip, with Commerce practice on top)."""
+    listing=SEED_INDUSTRIES.get(key) or {}
+    base=listing.get('sell',0)
     mult=market_multiplier(DISCORD_WORLD_ID,day,key)
-    return base if not base or mult==1 else max(base+1,math.ceil(base*mult))
+    if not base or mult==1:return base
+    boosted=max(base+1,math.ceil(base*mult))
+    buy=listing.get('buy',0)
+    return max(base,min(boosted,buy-1)) if buy else boosted
 
 def sale_price(key):
     """What Seed Industries pays for one today."""
@@ -778,7 +806,11 @@ def gain_skill(p,skill,amount=1):
     if skill in {"fabrication","infrastructure"}:p.industry_xp+=amount
     new=lvl(getattr(p,field))
     if db is not None and new>old:
-        announce(db,p,f"LEVEL UP: {p.display_name} — {SKILL_LABELS[skill]} aptitude Lv. {old} → Lv. {new}",now())
+        message=f"LEVEL UP: {p.display_name} — {SKILL_LABELS[skill]} aptitude Lv. {old} → Lv. {new}"
+        # Selling, undoing the sale and selling again would announce (and put on stream) the same level up again.
+        if not db.execute(select(JournalEntry.id).where(JournalEntry.channel_id==p.channel_id,JournalEntry.canonical_uid==p.twitch_uid,
+                                                        JournalEntry.entry==message[:220])).first():
+            announce(db,p,message,now())
     return amount
 
 def specialization_for(db,p,skill):
@@ -823,7 +855,8 @@ def gain_business_xp(b,amount):
     db=object_session(b)
     if db is not None and b.level>old:
         p=db.execute(select(Player).where(Player.channel_id==b.channel_id,Player.twitch_uid==b.canonical_uid)).scalar_one_or_none()
-        if p:announce(db,p,f"LEVEL UP: {b.name} occupation business Lv. {old} → Lv. {b.level}",now())
+        # The business's own name stays out of the announcement: level ups reach the stream overlay.
+        if p:announce(db,p,f"LEVEL UP: {p.display_name}'s business Lv. {old} → Lv. {b.level}",now())
 def success_chance(db,p,skill,base=.68,cap=.86):
     """Intrinsic chance before situational modifiers; deliberately capped."""
     spec_bonus=.03 if specialization_for(db,p,skill) else 0
@@ -1167,10 +1200,15 @@ def find_player_name(db,channel,target):
     if wanted.startswith('citizen:') and wanted[8:].isdigit():
         row=db.execute(select(Player).where(Player.channel_id==channel,Player.id==int(wanted[8:]))).scalar_one_or_none()
         return (row,None) if row else (None,"That citizen is no longer available. Select a player again.")
-    matches=[p for p in db.execute(select(Player).where(Player.channel_id==channel)).scalars().all() if p.display_name.casefold()==wanted.casefold()]
+    # The database narrows by lower-case name first (the whole player list was loaded twice per lookup); casefold
+    # keeps the exact matching rules. SQLite's lower() only knows ASCII, so a miss falls back to the full list.
+    lowered=func.lower(Player.display_name)
+    candidates=db.execute(select(Player).where(Player.channel_id==channel,lowered.startswith(wanted.lower(),autoescape=True))).scalars().all() if wanted.isascii() else []
+    if not candidates:candidates=db.execute(select(Player).where(Player.channel_id==channel)).scalars().all()
+    matches=[p for p in candidates if p.display_name.casefold()==wanted.casefold()]
     if not matches:
         # unique prefix fallback makes Twitch names easier without risky fuzzy matching
-        prefix=[p for p in db.execute(select(Player).where(Player.channel_id==channel)).scalars().all() if p.display_name.casefold().startswith(wanted.casefold())]
+        prefix=[p for p in candidates if p.display_name.casefold().startswith(wanted.casefold())]
         if len(prefix)==1:return prefix[0],None
         if len(prefix)>1:return None,"That name matches multiple players. Type more of the name."
         return None,f"No New Eridian player named '{wanted}' was found. They need to use /start or !start first."
@@ -2052,18 +2090,37 @@ def achieve(db,p):
             db.commit();notes.append("🏆 "+label)
     return (" "+" | ".join(notes)) if notes else ""
 
+RUNTIME_WARNINGS=set()   # problems noticed while serving requests (e.g. a Twitch channel that is not DISCORD_WORLD_ID)
+
+def config_warnings():
+    """Setup problems worth fixing, shown by /health and logged at startup."""
+    found=[]
+    if not os.getenv("TWITCH_API_KEY","").strip():
+        found.append("TWITCH_API_KEY is not set: anyone can call the game API as any Twitch player. Set it on Railway and put it in the StreamElements commands (k=...).")
+    hosted=any(os.getenv(k) for k in ("RAILWAY_ENVIRONMENT","RAILWAY_PROJECT_ID","RENDER","RENDER_SERVICE_ID"))
+    if hosted and engine.dialect.name=="sqlite":
+        found.append("DATABASE_URL is not set: saves are in a SQLite file inside the container and are wiped on every redeploy. Attach a Postgres database.")
+    host=engine.url.host or ""
+    if engine.dialect.name=="postgresql" and (".proxy.rlwy.net" in host or host.endswith(".proxy.railway.app")):
+        found.append("DATABASE_URL uses Railway's public proxy. A command makes about a hundred small queries, each a round trip over the internet: use the private URL (postgres.railway.internal) instead.")
+    return found+sorted(RUNTIME_WARNINGS)
+
+for _warning in config_warnings():logging.getLogger("uvicorn.error").warning("SETUP WARNING: %s",_warning)
+
 @app.get("/health")
-def health():
+def health(key:str=""):
     try:
         with engine.connect() as conn:conn.execute(sql_text('SELECT 1'))
         workers={}
-        for name in ('queue_worker','notification_worker','discord_notification_worker'):
+        for name in ('queue_worker','notification_worker','discord_notification_worker','autonomy_worker'):
             worker=getattr(app.state,name,None)
             workers[name]='running' if worker is not None and not worker.done() else 'not started' if worker is None else 'stopped'
         if 'stopped' in workers.values():raise RuntimeError('worker stopped')
     except Exception:
         raise HTTPException(status_code=503,detail='Game service is temporarily unavailable') from None
-    return {"ok":True,"game":GAME_TITLE,"society":GAME_NAME,"version":"7.0.0","workers":workers,"discord_queue_sender":getattr(getattr(app.state,"discord_queue",None),"state","not started")}
+    return {"ok":True,"game":GAME_TITLE,"society":GAME_NAME,"version":"7.0.0","workers":workers,"discord_queue_sender":getattr(getattr(app.state,"discord_queue",None),"state","not started"),
+            # Details only with a moderator or admin key: they say how the game is set up.
+            **({"warnings":config_warnings()} if valid_mod_key(key) else {"warnings_count":len(config_warnings()),"warnings_detail":"add ?key=MOD_KEY"})}
 
 @app.get("/api/v1/start")
 @game_transaction
@@ -2401,6 +2458,21 @@ def business(channel:str,uid:str,name:str="Citizen",provider:str="twitch"):
             twitch="🏢 No business yet. A business costs 75 SC. Use !businessstart <name>."
         return platform_response(provider,discord,twitch)
 
+_BUSINESS_NAME_DROP=re.compile(r"[^\w '&.\-]")
+
+def blocked_words():
+    """BLOCKED_WORDS on Railway: comma-separated words no business name may contain (spaces and symbols ignored)."""
+    return [w for w in (re.sub(r"[\W_]","",x.casefold()) for x in os.getenv("BLOCKED_WORDS","").split(",")) if w]
+
+def safe_business_name(raw):
+    """Letters, numbers, spaces and ' & . - only (no links, mentions, markdown or emoji), at most 30 characters.
+    None when nothing readable is left or it contains a word from BLOCKED_WORDS."""
+    text=" ".join(_BUSINESS_NAME_DROP.sub("",str(raw or "")).replace("_"," ").split())[:30].strip()
+    if not any(ch.isalnum() for ch in text):return None
+    squashed=re.sub(r"[\W_]","",text.casefold())
+    if any(word in squashed for word in blocked_words()):return None
+    return text
+
 @app.get("/api/v1/business/start")
 @game_transaction
 def business_start(channel:str,uid:str,name:str="Citizen",business_name:str="New Venture",provider:str="twitch"):
@@ -2408,7 +2480,9 @@ def business_start(channel:str,uid:str,name:str="Citizen",business_name:str="New
         _,p=player(db,channel,provider,uid,name)
         if db.execute(select(Business).where(Business.channel_id==channel,Business.canonical_uid==p.twitch_uid)).scalar_one_or_none():return out("🏢 You already own a business.")
         if p.sc<75:return out("🏢 Starting a business costs 75 SC.")
-        p.sc-=75;b=Business(channel_id=channel,canonical_uid=p.twitch_uid,name=clean(business_name));db.add(b);db.commit();return out(f"🏢 {b.name} registered. (-75 SC)")
+        safe=safe_business_name(business_name)
+        if safe is None:return out("🏢 Choose another business name: letters, numbers and spaces (no links, mentions or symbols). Nothing spent.")
+        p.sc-=75;b=Business(channel_id=channel,canonical_uid=p.twitch_uid,name=safe);db.add(b);db.commit();return out(f"🏢 {b.name} registered. (-75 SC)")
 
 def normalize_craft_category(value):
     """Workbench category key ('' = overview); unknown values return ''."""
@@ -3151,7 +3225,12 @@ def mentor(channel:str,uid:str,name:str="Citizen",target:str="",provider:str="tw
         if error:return out("🧑‍🏫 "+error)
         if target_p.twitch_uid==p.twitch_uid:return out("🧑‍🏫 Mentoring yourself is called reading your own notes.")
         fields=[(key,skill_xp(target_p,key)) for key in SKILL_LABELS]
-        skill=min(fields,key=lambda x:x[1])[0];mentored_gain=gain_skill(target_p,skill,2);p.contribution+=2;pw.mentor_day=clock["day"];db.commit()
+        skill=min(fields,key=lambda x:x[1])[0]
+        # A mentor has to be better at the skill than the learner, so a fresh second account cannot hand its main
+        # free XP every day.
+        if lvl(skill_xp(p,skill))<=lvl(skill_xp(target_p,skill)):
+            return out(f"🧑‍🏫 To mentor {target_p.display_name} in {SKILL_LABELS[skill]} you need a higher level than theirs (you Lv.{lvl(skill_xp(p,skill))}, them Lv.{lvl(skill_xp(target_p,skill))}). Nothing changed.")
+        mentored_gain=gain_skill(target_p,skill,2);p.contribution+=2;pw.mentor_day=clock["day"];db.commit()
         journal_add(db,p,f"Mentored {target_p.display_name} in {SKILL_LABELS[skill]}.")
         return out(f"🧑‍🏫 {p.display_name} mentors {target_p.display_name}. {target_p.display_name} gains +{mentored_gain} {SKILL_LABELS[skill]} competency XP; mentor gains +2 Contribution.")
 
@@ -3179,6 +3258,12 @@ def link_claim(channel:str,discord_uid:str,name:str="Citizen",code:str=""):
     with SessionLocal() as db:
         record_account_name(db,channel,"discord",discord_uid,name)
         r=db.execute(select(LinkCode).where(LinkCode.channel_id==channel,LinkCode.code==code.upper())).scalar_one_or_none()
+        if not r:
+            elsewhere=db.execute(select(LinkCode.channel_id).where(LinkCode.code==code.upper())).scalar_one_or_none()
+            if elsewhere:
+                # The code was made in another world: Twitch's channel ID is not DISCORD_WORLD_ID, so linking can never work.
+                RUNTIME_WARNINGS.add(f"A !link code from channel {elsewhere} was used on Discord, whose world is {channel}: set DISCORD_WORLD_ID={elsewhere} on Railway so Twitch and Discord share one world.")
+                return out("⛔ That code is from a different New Eridian world, so it cannot link here. Ask a moderator to check the game's /health page (DISCORD_WORLD_ID).")
         if not r or as_utc(r.expires_at)<now():return out("⛔ Invalid or expired code.")
         discord_link=db.execute(select(AccountLink).where(AccountLink.channel_id==channel,AccountLink.discord_uid==discord_uid)).scalar_one_or_none()
         twitch_link=db.execute(select(AccountLink).where(AccountLink.channel_id==channel,AccountLink.twitch_uid==r.canonical_uid)).scalar_one_or_none()
@@ -3246,7 +3331,7 @@ def leaderboard(channel:str,provider:str="twitch",uid:str="",name:str="Citizen")
             rank=next((i for i,p in enumerate(all_players,1) if p.twitch_uid==viewer.twitch_uid),len(all_players));personal=f"\n\n{viewer.display_name}, you are ranked #{rank} with {viewer.contribution} Contribution."
         return PlainTextResponse("🏆 New Eridian Contributors\n\n"+"\n".join(lines)+personal) if provider=="discord" else out("🏆 "+" | ".join(lines[:5]))
 
-OVERLAY_CACHE_SECONDS=float(os.getenv("OVERLAY_CACHE_SECONDS","2"))
+OVERLAY_CACHE_SECONDS=float(os.getenv("OVERLAY_CACHE_SECONDS","5"))   # the OBS pages poll every 3-5 seconds
 _overlay_cache={};_overlay_lock=__import__("threading").Lock()
 
 @app.get("/api/v1/overlay")
@@ -3259,11 +3344,14 @@ def overlay_state(channel:str):
     Discord buttons down)."""
     cached=_overlay_cache.get(channel)
     if cached and time.monotonic()-cached[0]<OVERLAY_CACHE_SECONDS:return cached[1]
+    from . import world_guard
+    # A channel with no world shows the main world (and shares its cache entry) instead of a cache slot of its own.
+    if channel!=DISCORD_WORLD_ID and not world_guard.known(sys.modules[__name__],channel):channel=DISCORD_WORLD_ID
     with _overlay_lock:
         cached=_overlay_cache.get(channel)
         if cached and time.monotonic()-cached[0]<OVERLAY_CACHE_SECONDS:return cached[1]
         data=overlay_state_fresh(channel)
-        if len(_overlay_cache)>50:_overlay_cache.clear()
+        while len(_overlay_cache)>=50:_overlay_cache.pop(min(_overlay_cache,key=lambda k:_overlay_cache[k][0]))   # drop the oldest
         _overlay_cache[channel]=(time.monotonic(),data)
         return data
 
@@ -4893,8 +4981,8 @@ def standalone_obs_panel(panel:str,channel:str="new-eridian"):
     if panel not in valid:
         raise HTTPException(status_code=404,detail="Unknown OBS panel")
 
-    panel_json=json.dumps(panel)
-    channel_json=json.dumps(channel)
+    panel_json=stream_overlay.script_json(panel)
+    channel_json=stream_overlay.script_json(channel)
 
     html=r"""<!doctype html>
 <html lang="en">
@@ -5090,7 +5178,7 @@ def admin_merge(keep:str,merge:str,channel:str=DISCORD_WORLD_ID,key:str="",confi
 @app.get("/api/v1/admin/event/{event}/{state}")
 @game_transaction
 def admin_event(event:str,state:str,channel:str,level:int=0,key:str=""):
-    if not valid_admin_key(key):
+    if not valid_mod_key(key):
         return out("⛔ Invalid game-admin key.")
     if level<500:
         return out("⛔ Moderator access required.")
@@ -5106,7 +5194,7 @@ def admin_event(event:str,state:str,channel:str,level:int=0,key:str=""):
 @app.get("/api/v1/admin/day/next")
 @game_transaction
 def next_day(channel:str,level:int=0,key:str=""):
-    if not valid_admin_key(key) or level<500:
+    if not valid_mod_key(key) or level<500:
         return out("⛔ Moderator access required.")
     with SessionLocal() as db:
         s=society(db,channel);clock=db.execute(select(WorldClock).where(WorldClock.channel_id==channel)).scalar_one_or_none()
@@ -5657,7 +5745,7 @@ def twitch_seed(topic:str="overview",page:str="1"):
 @app.get("/api/v1/admin/modlog")
 @game_transaction
 def twitch_modlog(channel:str,level:int=0,key:str="",page:str="1"):
-    if not valid_admin_key(key) or level<500:
+    if not valid_mod_key(key) or level<500:
         return out("⛔ Moderator access and a configured game-admin key required.")
     with SessionLocal() as db:
         rows=db.execute(select(ModeratorAudit).where(ModeratorAudit.channel_id==channel).order_by(ModeratorAudit.created_at.desc()).limit(10)).scalars().all()
@@ -6400,17 +6488,19 @@ def _discord_player_autocomplete(payload,query=""):
     with SessionLocal() as db:
         identity=db.execute(select(Identity).where(Identity.channel_id==DISCORD_WORLD_ID,Identity.provider=='discord',Identity.provider_uid==uid)).scalar_one_or_none()
         own_uid=identity.canonical_uid if identity else 'discord:'+uid
+        # Only the columns the menu needs; duplicates are counted once instead of comparing every pair per keystroke.
         rows=db.execute(
-            select(Player)
+            select(Player.id,Player.twitch_uid,Player.display_name)
             .where(Player.channel_id==DISCORD_WORLD_ID)
             .order_by(Player.display_name)
-        ).scalars().all()
+        ).all()
+        from collections import Counter
+        names=Counter(r.display_name.casefold() for r in rows)
         data=[]
         for p in rows:
             if uid and p.twitch_uid==own_uid:continue
             if (payload.get('data') or {}).get('name')=='social':
-                duplicate=sum(other.display_name.casefold()==p.display_name.casefold() for other in rows)>1
-                label=f"{p.display_name} · citizen #{p.id}" if duplicate else p.display_name
+                label=f"{p.display_name} · citizen #{p.id}" if names[p.display_name.casefold()]>1 else p.display_name
                 data.append((label,f'citizen:{p.id}'))
             else:data.append((p.display_name,p.display_name))
         return _discord_autocomplete_choices(data,query)
@@ -7301,8 +7391,12 @@ def routine_step(channel:str,uid:str,name:str="Citizen",provider:str="twitch",ke
 item_identity.configure(sys.modules[__name__])
 seed_content.production_balance.configure_market(sys.modules[__name__])
 with SessionLocal() as _identity_db:
-    for _identity_player in _identity_db.execute(select(Player)).scalars():
-        item_identity.migrate_player(sys.modules[__name__],_identity_db,_identity_player)
+    # Only citizens who still hold old item rows (every citizen used to be visited on every start, ~3 queries each).
+    _pending=_identity_db.execute(select(ExtraItem.channel_id,ExtraItem.canonical_uid).where(
+        ExtraItem.item.in_(item_identity.MIGRATING),ExtraItem.qty!=0).distinct()).all()
+    for _channel,_uid in _pending:
+        _identity_player=_identity_db.execute(select(Player).where(Player.channel_id==_channel,Player.twitch_uid==_uid)).scalar_one_or_none()
+        if _identity_player is not None:item_identity.migrate_player(sys.modules[__name__],_identity_db,_identity_player)
     _identity_db.commit()
 
 
@@ -7394,6 +7488,8 @@ onboarding.install(sys.modules[__name__])
 from . import community, votes, seasons, trophies, live_events, recap, activity_feed, twitch_lite
 community.install(sys.modules[__name__])
 twitch_lite.install(sys.modules[__name__])
+from . import maintenance
+maintenance.install(sys.modules[__name__])
 presentation.SKILL_NAMES=tuple(SKILL_LABELS.values())
 # Every module above is loaded now: create any table a module added since the first create_all (existing tables are left alone).
 Base.metadata.create_all(engine)
@@ -7529,6 +7625,7 @@ def find_anything(query:str='',provider:str='twitch'):
 
 
 @app.get('/api/v1/again')
+@game_transaction
 def again(channel:str,uid:str,name:str='Citizen',provider:str='twitch'):
     """Repeat your last Twitch action (a task, craft, gather, food or item)."""
     module=sys.modules[__name__]
@@ -7544,6 +7641,7 @@ def again(channel:str,uid:str,name:str='Citizen',provider:str='twitch'):
 
 
 @app.get('/api/v1/craftmax')
+@game_transaction
 def craft_max(channel:str,uid:str,name:str='Citizen',recipe:str='',provider:str='twitch'):
     """Queue as many batches (or gathering attempts) as your items and needs allow, up to 10."""
     module=sys.modules[__name__]
@@ -7634,6 +7732,7 @@ def routine_start(channel:str,uid:str,name:str='Citizen',n:str='',provider:str='
 
 
 @app.get('/api/v1/uses')
+@game_transaction
 def item_uses(channel:str,uid:str,name:str='Citizen',item:str='',provider:str='twitch'):
     """Recipes that use an item, ready ones first."""
     module=sys.modules[__name__]

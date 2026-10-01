@@ -119,9 +119,16 @@ def twitchify(text):
 
 
 def install(m):
+    from starlette.concurrency import run_in_threadpool
+    from . import world_guard
+
     @m.app.middleware('http')
     async def lite(request, call_next):
         problem = key_problem(request.url.path, request.query_params)
+        if not problem:
+            problem, lookup = world_guard.quick_problem(m, request.url.path, request.query_params)
+            if lookup:      # only an unseen channel costs a database lookup, off the event loop
+                problem = await run_in_threadpool(world_guard.lookup_problem, m, request.query_params)
         if problem:
             return PlainTextResponse(problem)     # plain 200 so StreamElements shows the message instead of an error code
         found = blocked(request.url.path, request.query_params)

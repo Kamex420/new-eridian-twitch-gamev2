@@ -151,6 +151,8 @@ def test_mentor_notifies_target():
         p=db.query(m.Player).filter_by(twitch_uid='v').one()
         from app.competencies import FIELDS
         for field in FIELDS.values():setattr(p,field,4)
+        mentor=db.query(m.Player).filter_by(twitch_uid='u').one()
+        for field in FIELDS.values():setattr(mentor,field,100)      # a mentor outranks the learner
         db.commit()
     r=m.mentor('test','u','Mentor','Learner','twitch')
     assert 'LEVEL UP' in r.body.decode()

@@ -1,5 +1,7 @@
 # Validation record
 
+The hardening update passed **1,097 tests** on Python 3.11 and 3.12, including `tests/test_hardening.py` (keys and log redaction, the market price cap, the channel guard and overlay cache, overlay script escaping, Seedling fairness, indexes and cleanup, setup warnings, business names, mentoring, level-up announcements and name lookups) and `tests/test_postgres.py`, run against a local PostgreSQL 16 server: concurrent commands without errors, a transaction naming another channel waiting for the game lock (the check fails with the previous per-channel lock), the channel guard, the new indexes and the cleanup's SQL. Live Railway, StreamElements and Discord delivery were not exercised.
+
 The news-and-growth update extends `tests/test_autonomy.py`: work gathers real materials and is reported as clean news, goal materials come first, needs are tended before the work limit, a paused queue is recovered, names and reasons are cleaned, and the map grows with the society tier and stats.
 
 The living-Seedlings update adds `tests/test_autonomy.py`: schedule presets and custom phases, moods from needs, weather and failures and their success modifier, stepping aside while the player is active, working the job while away without counting as activity, needs first, free/social/sleep blocks, queues, the worker pass and autonomy off, autonomous actions kept out of `!again`, the capped diary and welcome-back lines, Twitch and Discord commands, the shared `!routine` route, the overlay map and narrator, and account merges.
@@ -46,7 +48,7 @@ The registrar dry run emits 49 command definitions. Python compilation and white
 
 ## Limits
 
-Tests used temporary SQLite databases. The source-only subprocess check verifies the Dockerfile's Python import boundary, not a built container image. A Docker image build, live PostgreSQL concurrency, Railway deployment and live Discord/Twitch delivery were not exercised. Notification HTTP calls were mocked; tests did not send real messages. A local test pass therefore establishes repository consistency, not a claim that production was deployed or validated.
+Tests used temporary SQLite databases, except `tests/test_postgres.py`, which needs `TEST_POSTGRES_URL` (CI provides a PostgreSQL service). The source-only subprocess check verifies the Dockerfile's Python import boundary, not a built container image. A Docker image build, Railway deployment and live Discord/Twitch delivery were not exercised. Notification HTTP calls were mocked; tests did not send real messages. A local test pass therefore establishes repository consistency, not a claim that production was deployed or validated.
 
 The catalog and migration fixtures are preserved evidence. The current option contract is stored separately in `tests/contracts/discord_options.json`; historical fixtures are not rewritten to match new behavior.
 

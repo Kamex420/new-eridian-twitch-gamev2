@@ -14,9 +14,10 @@ Players gather and mine materials, manufacture items at matching workstations, i
 | `tests/` | Gameplay, migration, queue and interface regression tests |
 | `tests/fixtures/` | Historical contracts and save schema; evidence rather than runtime configuration |
 | `tests/contracts/` | Current Discord option contract |
-| `integrations/twitch/` | StreamElements command definitions |
+| `integrations/twitch/` | StreamElements command definitions (`ALL_COMMANDS.txt`, entered in the StreamElements dashboard, never in chat) |
 | `docs/` | Architecture, behavioral references and release evidence |
 | Root configuration | Python dependencies, container build, deployment descriptors and test configuration |
+| `.github/workflows/` | CI: the full test suite, plus the PostgreSQL check, on every push |
 
 ## Technical notes
 
@@ -25,7 +26,7 @@ Players gather and mine materials, manufacture items at matching workstations, i
 - [Gameplay](docs/gameplay.md) records mining, crafting and needs behavior.
 - [Release notes](docs/releases.md) describe the combined feature update and repository cleanup.
 - [Validation](docs/testing/validation.md) records coverage and verification limits.
-- [Deployment reference](docs/reference/deployment.md) documents entry points and configuration semantics.
+- [Deployment reference](docs/reference/deployment.md) documents entry points, keys (`TWITCH_API_KEY`, `MOD_KEY`, `ADMIN_KEY`) and configuration semantics.
 - [Market and workstations](docs/reference/market-and-workstations.md) records current prices and access fees.
 
 

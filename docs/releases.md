@@ -1,5 +1,46 @@
 # Release notes
 
+## Hardening: keys, the market, locking, overlays, Seedlings and database growth
+
+**Do this after deploying.**
+1. On Railway, set new values for `TWITCH_API_KEY` and `ADMIN_KEY`, and add `MOD_KEY`. The old setup typed both keys into public Twitch chat, so treat the old ones as known.
+2. Re-enter the StreamElements commands from `integrations/twitch/ALL_COMMANDS.txt` **in the StreamElements dashboard** (Chatbot → Chat commands → Custom commands), never with `!command add` in chat. Player commands take `TWITCH_API_KEY`; the moderator commands at the end take `MOD_KEY`. `ADMIN_KEY` stays on Railway.
+3. Check `/health?key=<MOD_KEY>` for setup warnings (missing Twitch key, SQLite on Railway, the public database proxy, or a Twitch channel that is not `DISCORD_WORLD_ID`).
+
+**Keys.**
+- `ALL_COMMANDS.txt` is now laid out for the dashboard (name, response, user level, cooldowns) and warns against chat. The six superseded paste-in-chat files are gone.
+- `MOD_KEY` runs the moderator commands (events, next day, live, challenges, recap, modlog). `ADMIN_KEY` still works for them, and is the only key for the merge tools.
+- Request logs show `k=***` and `key=***` instead of the keys.
+- Startup logs and `/health` warn when `TWITCH_API_KEY` is not set.
+
+**Market.** A demand-day sale price never reaches what Seed Industries charges for the item. Before, buying Hematite or Chalcopyrite at 6 SC and selling it back at 7 paid on every round trip (plus Commerce XP), and the rare ores paid up to 4 SC each.
+
+**One game lock.** PostgreSQL now uses a single advisory lock for the whole game, the same boundary SQLite already had. Votes, seasons, challenges, the market day and the overlay write the main world whichever channel a request names; with a lock per channel, an overlay refresh and a command could, for example, end the same expired event twice.
+
+**Worlds and the overlay.**
+- Reads without a player (society, events, tick, settlement, recap) must name a world that exists, unless they carry the game key. Before, any made-up channel created a society, a world and settlement rows.
+- The overlay shows the main world for an unknown channel, and its cache drops its oldest entry instead of emptying when full (cycling channel names forced a fresh computation on every poll).
+- Channel names longer than 64 characters are refused instead of failing in PostgreSQL.
+- `/obs/<panel>?channel=` no longer lets `</script>` in the channel name inject a script into the page.
+
+**Seedlings.** The worker serves the longest-waiting Seedlings first. With more than 200 active players, the rest never got a turn (in a 400-player simulation, 192 never acted).
+
+**Database growth.** An hourly cleanup deletes action-log rows older than 14 days (`ACTION_LOG_DAYS`), Discord receipts older than 2 days, link codes expired a day ago, and journal entries older than 90 days (`JOURNAL_DAYS`) beyond each citizen's newest 20. New indexes cover the overlay's 24-hour leaders, the journal and the cleanup.
+
+**Speed.** The PostgreSQL pool is 20 + 30 overflow (`DB_POOL_SIZE`, `DB_MAX_OVERFLOW`, `DB_POOL_TIMEOUT`) instead of 5 + 10. The overlay computation is shared for 5 seconds instead of 2. The item migration check no longer locks and reloads the citizen on every command when there is nothing to convert, and only citizens with old item rows are visited at startup. `!status` stops after the first few ready recipes. The Discord player menu and name lookups no longer load and compare every player on each keystroke.
+
+**Setup checks.** A `!link` code from another world explains that `DISCORD_WORLD_ID` must equal the Twitch channel ID. `/health` also reports the Seedling worker.
+
+**Business names** keep only letters, numbers, spaces and `' & . -` (no links, mentions, markdown or emoji). Optional `BLOCKED_WORDS` refuses names containing listed words, ignoring spacing tricks. Business level ups on the stream overlay no longer show the business name.
+
+**Smaller changes.**
+- A mentor must have a higher level than the learner in the skill being taught, so a fresh second account cannot give its main free XP daily.
+- Selling, undoing and selling again no longer repeats the level-up announcement.
+- `!again`, `!craftmax` and `!uses` run inside the game transaction like other commands.
+- `docs/reference/deployment.mb` is now `deployment.md` (the README link works), with the keys and new settings documented.
+
+**Tests.** `tests/test_hardening.py` covers every change above. `tests/test_postgres.py` runs the game against PostgreSQL when `TEST_POSTGRES_URL` names a throwaway database: concurrent commands, the single lock, the channel guard, indexes and the cleanup. `.github/workflows/tests.yml` runs the whole suite with a PostgreSQL service on every push.
+
 ## Fix: the "Cast your vote" button counts your pick
 
 In `/menu` → Community, choosing an option from **Cast your vote** replied "Choice must be a whole number from 1 to 3" and no vote was counted. Dropdowns send their value as text, and the check only accepted numbers. Number options now accept digits sent as text, so the vote counts straight away. Any other dropdown with a number option is fixed too.

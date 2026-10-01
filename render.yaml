@@ -8,5 +8,9 @@ services:
         sync: false
       - key: ADMIN_KEY
         generateValue: true
+      - key: MOD_KEY
+        generateValue: true
+      - key: TWITCH_API_KEY
+        generateValue: true
       - key: GAME_NAME
         value: New Eridian

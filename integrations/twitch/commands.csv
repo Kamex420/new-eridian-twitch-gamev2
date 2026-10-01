@@ -68,14 +68,14 @@
 !diary,$(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/diary?channel=$(channel.provider_id)&uid=$(sender.twitchid)&k=YOUR_API_KEY&name=$(queryescape $(sender))),100,0,5
 !schedule,$(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/schedule?channel=$(channel.provider_id)&uid=$(sender.twitchid)&k=YOUR_API_KEY&name=$(queryescape $(sender))&preset=$(queryescape ${1:})),100,0,5
 !autonomy,$(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/autonomy?channel=$(channel.provider_id)&uid=$(sender.twitchid)&k=YOUR_API_KEY&name=$(queryescape $(sender))&state=$(queryescape $(1))),100,0,5
-!sirostart,$(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/admin/event/siro/on?channel=$(channel.provider_id)&level=$(sender.level)&key=YOUR_ADMIN_KEY),500,5,5
-!siroend,$(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/admin/event/siro/off?channel=$(channel.provider_id)&level=$(sender.level)&key=YOUR_ADMIN_KEY),500,5,5
-!foodcrisis,$(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/admin/event/food/on?channel=$(channel.provider_id)&level=$(sender.level)&key=YOUR_ADMIN_KEY),500,5,5
-!foodclear,$(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/admin/event/food/off?channel=$(channel.provider_id)&level=$(sender.level)&key=YOUR_ADMIN_KEY),500,5,5
-!miningboom,$(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/admin/event/mining/on?channel=$(channel.provider_id)&level=$(sender.level)&key=YOUR_ADMIN_KEY),500,5,5
-!miningclear,$(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/admin/event/mining/off?channel=$(channel.provider_id)&level=$(sender.level)&key=YOUR_ADMIN_KEY),500,5,5
-!deliverysurge,$(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/admin/event/delivery/on?channel=$(channel.provider_id)&level=$(sender.level)&key=YOUR_ADMIN_KEY),500,5,5
-!deliveryclear,$(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/admin/event/delivery/off?channel=$(channel.provider_id)&level=$(sender.level)&key=YOUR_ADMIN_KEY),500,5,5
-!marketboom,$(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/admin/event/market/on?channel=$(channel.provider_id)&level=$(sender.level)&key=YOUR_ADMIN_KEY),500,5,5
-!marketclear,$(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/admin/event/market/off?channel=$(channel.provider_id)&level=$(sender.level)&key=YOUR_ADMIN_KEY),500,5,5
-!nextday,$(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/admin/day/next?channel=$(channel.provider_id)&level=$(sender.level)&key=YOUR_ADMIN_KEY),500,5,5
+!sirostart,$(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/admin/event/siro/on?channel=$(channel.provider_id)&level=$(sender.level)&key=YOUR_MOD_KEY),500,5,5
+!siroend,$(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/admin/event/siro/off?channel=$(channel.provider_id)&level=$(sender.level)&key=YOUR_MOD_KEY),500,5,5
+!foodcrisis,$(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/admin/event/food/on?channel=$(channel.provider_id)&level=$(sender.level)&key=YOUR_MOD_KEY),500,5,5
+!foodclear,$(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/admin/event/food/off?channel=$(channel.provider_id)&level=$(sender.level)&key=YOUR_MOD_KEY),500,5,5
+!miningboom,$(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/admin/event/mining/on?channel=$(channel.provider_id)&level=$(sender.level)&key=YOUR_MOD_KEY),500,5,5
+!miningclear,$(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/admin/event/mining/off?channel=$(channel.provider_id)&level=$(sender.level)&key=YOUR_MOD_KEY),500,5,5
+!deliverysurge,$(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/admin/event/delivery/on?channel=$(channel.provider_id)&level=$(sender.level)&key=YOUR_MOD_KEY),500,5,5
+!deliveryclear,$(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/admin/event/delivery/off?channel=$(channel.provider_id)&level=$(sender.level)&key=YOUR_MOD_KEY),500,5,5
+!marketboom,$(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/admin/event/market/on?channel=$(channel.provider_id)&level=$(sender.level)&key=YOUR_MOD_KEY),500,5,5
+!marketclear,$(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/admin/event/market/off?channel=$(channel.provider_id)&level=$(sender.level)&key=YOUR_MOD_KEY),500,5,5
+!nextday,$(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/admin/day/next?channel=$(channel.provider_id)&level=$(sender.level)&key=YOUR_MOD_KEY),500,5,5

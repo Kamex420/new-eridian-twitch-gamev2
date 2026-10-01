@@ -11,6 +11,7 @@ functions, so stations, tiers, skills, needs, cooldowns and rewards are the
 same whether a player uses a slash option, a Workbench button, Twitch or a queue.
 """
 import math
+from itertools import islice
 from dataclasses import dataclass, field
 from . import seed_content as s, crafting_progression as cp, production_balance
 
@@ -388,8 +389,8 @@ def tier_line(ctx):
 
 
 def start_here(ctx, limit=3):
-    ready = [e for e in index(ctx.m) if ctx.status(e).code == 'ready' and e.inputs]
-    return ready[:limit]
+    # Stops at the first `limit` ready recipes instead of checking all of them (this runs on every !status).
+    return list(islice((e for e in index(ctx.m) if ctx.status(e).code == 'ready' and e.inputs), limit))
 
 
 def gather_first(ctx, limit=3):

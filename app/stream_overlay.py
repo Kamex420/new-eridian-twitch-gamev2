@@ -1258,11 +1258,16 @@ if(Q.get('test')){cur=DEMO;at=Date.now();draw()}
 else poll(d=>{cur=d.challenge||null;at=Date.now();draw()},3000);
 </script>""")
 
+def script_json(value):
+    """JSON that is safe inside a <script> element: '</script>' in a channel name can no longer end the script early."""
+    return json.dumps(value).replace('<', '\\u003c').replace('>', '\\u003e').replace('&', '\\u0026')
+
+
 def page(panel, channel):
     css, body = PAGES[panel]
     return ('<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
             f'<title>New Eridian · {panel}</title>{FONTS_LINK}<style>{THEME_CSS}{BASE_CSS}{css}</style></head><body class="panel-{panel}">'
-            f'<script>const CHANNEL={json.dumps(channel)};{SHARED_JS}</script>{body}</body></html>')
+            f'<script>const CHANNEL={script_json(channel)};{SHARED_JS}</script>{body}</body></html>')
 
 
 # Every OBS source, with a sensible Browser Source size.

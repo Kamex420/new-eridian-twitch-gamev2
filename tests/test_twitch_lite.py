@@ -84,8 +84,9 @@ def test_the_command_list_is_complete_and_every_player_command_carries_the_key()
     import re
     from pathlib import Path
     text = (Path(__file__).resolve().parents[1] / 'integrations/twitch/ALL_COMMANDS.txt').read_text(encoding='utf-8')
-    adds = re.findall(r'^!command add (!\S+) (.*)$', text, re.M)
+    adds = re.findall(r'^(!\S+)\nResponse: (.*)$', text, re.M)
     names = [n for n, _ in adds]
+    assert '!command add' not in text      # entered in the StreamElements dashboard, never typed in public chat
     assert len(names) == len(set(names))
     for must in ('!start', '!gather', '!mine', '!farm', '!eat', '!relax', '!status', '!seedling', '!vote', '!challenge', '!live', '!chstart'):
         assert must in names
@@ -93,7 +94,7 @@ def test_the_command_list_is_complete_and_every_player_command_carries_the_key()
         if 'uid=' in response:
             assert '&k=YOUR_API_KEY' in response, name
         if '/admin/' in response:
-            assert 'key=YOUR_ADMIN_KEY' in response and names.index(name) > names.index('!customize'), name   # moderator commands last
+            assert 'key=YOUR_MOD_KEY' in response and names.index(name) > names.index('!customize'), name   # moderator commands last
 
 
 def test_mine_on_twitch_mines_once_right_away_with_short_ore_names():

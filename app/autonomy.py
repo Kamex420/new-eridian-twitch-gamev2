@@ -660,9 +660,12 @@ def tick(m):
                 found = row(db, channel, uid, create=True)
                 found.next_at = now + timedelta(seconds=random.randint(30, AUTONOMY_MINUTES * 60))
             elif found.enabled and (found.next_at is None or m.as_utc(found.next_at) <= now):
-                due.append((channel, uid))
+                due.append((m.as_utc(found.next_at) if found.next_at else now - timedelta(days=365), channel, uid))
         db.commit()
-    for channel, uid in due[:BATCH]:
+    # Longest-waiting first: in database order the same first Seedlings were due again every pass, and with more
+    # than BATCH x AUTONOMY_MINUTES active players the rest never got a turn.
+    due.sort(key=lambda d: d[0])
+    for _, channel, uid in due[:BATCH]:
         try:
             live_one(m, channel, uid)
         except Exception:
