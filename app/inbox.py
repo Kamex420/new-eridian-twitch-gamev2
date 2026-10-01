@@ -18,6 +18,7 @@ import requests
 from datetime import timedelta
 from sqlalchemy import Column, String, Integer, Text, DateTime, select, update, delete
 from .db import Base
+from . import layout_v2
 
 POPUP_MODES = {'important': 'Queue results, pauses and warnings', 'all': 'Everything, including tips and milestones',
                'off': 'Nothing pops up; check Notifications in /menu'}
@@ -155,6 +156,7 @@ def deliver(m, payload, discord_uid):
         embed = popup_embed(shown, more)
         embed['description'] = m.discord_command_copy(embed['description'])[:4000]
         body = {'embeds': [embed], 'flags': 64, 'allowed_mentions': {'parse': []}}
+        body = layout_v2.new_message(body)      # Discord's newer layout, like every other reply
         try:
             response = requests.post(f'https://discord.com/api/v10/webhooks/{app_id}/{token}', json=body, timeout=8)
         except requests.RequestException:

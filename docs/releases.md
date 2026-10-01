@@ -1,5 +1,18 @@
 # Release notes
 
+## Discord's newer layout for every reply
+
+Replies are now sent in Discord's newer message layout (Components V2) instead of embeds, so they are easier to read.
+- **One card per reply.** The colour strip stays. The title is a heading, and each section sits under a divider line.
+- **Lists stand out.** In lists such as the Item Menu and Workbench pages, each item's name is bold and its details sit in a quote under it. Legends, how-to-use lines and notes after the list are small grey text.
+- **Buttons stay with the card.** Menus and buttons sit inside the card, under its text.
+- **Where it applies.** Slash command replies, button and menu answers, Details pages and private popups. Queue alerts, the activity feed, the weekly recap, the guide panels and the pinned game panel are unchanged for now.
+- **Older messages.** A message sent before this update keeps its old look when its buttons are pressed, because Discord cannot switch a message between layouts. Running the command again gives the new look.
+- **Switching it off.** `DISCORD_COMPONENTS_V2=false` sends new replies as embeds again. Messages already in the newer layout keep it.
+- **Safety net.** If Discord refuses a reply in the newer layout, it is sent the old way instead (or, for a message already in the newer layout, without its buttons), so nobody is left on "thinking…".
+
+`app/layout_v2.py` rebuilds each card where replies leave for Discord: interaction answers, deferred edits and popup follow-ups. Game text and buttons are unchanged. `tests/test_layout_v2.py` checks every slash command's real reply against Discord's limits (40 components, 4,000 characters, unique button IDs), the list formatting, edits of old and new messages, the switch and the fallback.
+
 ## One world for Twitch and Discord: the world merge
 
 When `DISCORD_WORLD_ID` is not the Twitch channel's ID, Twitch and Discord run as two separate worlds: no shared characters, and `!link` codes made on Twitch can never be claimed on Discord. `/health` now points to a one-time merge instead of telling you to change the setting (changing it alone hides every Discord character).

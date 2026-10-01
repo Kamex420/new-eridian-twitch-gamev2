@@ -40,7 +40,7 @@ def test_delivery_retry_does_not_repeat_command(monkeypatch):
     monkeypatch.setattr(d.requests,'patch',patch);monkeypatch.setattr(d.time,'sleep',lambda _:None)
     d.finish(m,{'application_id':'app','token':'fake','channel_id':'123'},'queue','456','Player',{})
     assert len(calls)==1 and len(attempts)==2
-    assert 'flags' not in attempts[0]['json']
+    assert not attempts[0]['json'].get('flags',0)&64   # an edit never carries the private flag
 
 
 def test_game_error_gets_an_error_reply(monkeypatch):

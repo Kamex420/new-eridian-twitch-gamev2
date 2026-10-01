@@ -4,7 +4,7 @@ from types import SimpleNamespace
 from test_colony import m, reset
 from test_task_queue import enqueue, advance
 from test_workbench_ui import citizen, press, controls, W
-from app import inbox, ui, task_queue as q, queue_notifications as n
+from app import inbox, ui, layout_v2, task_queue as q, queue_notifications as n
 
 
 def uid():
@@ -40,15 +40,29 @@ def test_popups_respect_the_player_setting(monkeypatch):
     payload = {'application_id': 'a', 'token': 't'}
     assert inbox.deliver(m, payload, '111')
     body = posts[-1][1]
-    assert body['flags'] == 64 and 'Something important' in body['embeds'][0]['description']
-    assert 'A tip' not in body['embeds'][0]['description']          # 'important' hides tips
+    assert body['flags'] & 64 and 'Something important' in layout_v2.text_of(body)   # private
+    assert 'A tip' not in layout_v2.text_of(body)                      # 'important' hides tips
     assert not inbox.deliver(m, payload, '111')                        # already shown
     m.settings(W, '111', 'Kam', provider='discord', popups='all')
-    assert inbox.deliver(m, payload, '111') and 'A tip' in posts[-1][1]['embeds'][0]['description']
+    assert inbox.deliver(m, payload, '111') and 'A tip' in layout_v2.text_of(posts[-1][1])
     with m.SessionLocal() as db:
         inbox.add(m, db, W, uid(), 'warning', 'Later'); db.commit()
     m.settings(W, '111', 'Kam', provider='discord', popups='off')
     assert not inbox.deliver(m, payload, '111')
+
+
+def test_popups_use_the_new_layout_unless_it_is_off(monkeypatch):
+    citizen()
+    posts = []
+    monkeypatch.setattr(inbox.requests, 'post', lambda url, json, timeout: posts.append(json) or SimpleNamespace(status_code=200))
+    payload = {'application_id': 'a', 'token': 't'}
+    for enabled in (True, False):
+        monkeypatch.setattr(layout_v2, 'ENABLED', enabled)
+        with m.SessionLocal() as db:
+            inbox.add(m, db, W, uid(), 'warning', f'Notice {enabled}'); db.commit()
+        assert inbox.deliver(m, payload, '111')
+        assert layout_v2.is_v2(posts[-1]) is enabled and ('embeds' in posts[-1]) is (not enabled)
+        assert f'Notice {enabled}' in layout_v2.text_of(posts[-1])
 
 
 def test_starting_a_short_queue_warns_when_it_is_needed():

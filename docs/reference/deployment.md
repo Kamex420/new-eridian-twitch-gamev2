@@ -30,6 +30,8 @@ Set `DISCORD_WORLD_ID` to the Twitch channel's numeric ID (what StreamElements s
 - The game uses the target as its main world at once and remembers it across restarts (`world_aliases_v1`), so set `DISCORD_WORLD_ID` to the target on Railway at any time afterwards; `/health` reminds you until it matches.
 - A second merge of the same world, or a target that already has its own seasons or stream challenges, is refused with an explanation.
 
+`DISCORD_COMPONENTS_V2` (default `true`) sends command replies, button answers, Details pages and private popups in Discord's newer layout (Components V2). Set it to `false` to send new replies as classic embeds again; messages already sent in the newer layout keep it when their buttons are pressed, because Discord cannot switch a message back. Queue alerts, the activity feed, the weekly recap, the guide panels and the pinned game panel are still sent as before.
+
 `DISCORD_OWNER_USER_IDS` and `DISCORD_MOD_ROLE_IDS` control existing privileged functions. These values are environment configuration, not repository content. The game title defaults to New Eridian v2 and the society name to New Eridian.
 
 ## Keys

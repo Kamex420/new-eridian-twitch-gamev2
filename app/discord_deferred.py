@@ -10,9 +10,21 @@ import requests
 
 
 def edit_original(application_id,token,data):
+    """Replace "thinking…" (or a button's message) with the reply, in the layout it needs.
+
+    The reply goes out in Discord's newer layout when layout_v2 says so. If Discord
+    refuses it, the old layout is sent instead, unless the message is already in the
+    new layout (it cannot go back), in which case the reply is sent without buttons.
+    """
+    from . import layout_v2,ui
     url=f'https://discord.com/api/v10/webhooks/{application_id}/{token}/messages/@original'
-    data={k:v for k,v in data.items() if k!='flags'}
-    for attempt in range(3):
+    payload=ui.INTERACTION.get()
+    old={k:v for k,v in data.items() if k!='flags'}
+    new=layout_v2.edit(data,payload)
+    fallbacks=[] if new is None else [layout_v2.without_buttons(new) if layout_v2.locked(payload) else old]
+    data=new or old
+    attempt=0
+    while attempt<3:
         try:
             response=requests.patch(url,json=data,timeout=8)
             if 200<=response.status_code<300:return True
@@ -22,13 +34,17 @@ def edit_original(application_id,token,data):
             elif response.status_code>=500:delay=1
             else:
                 logging.getLogger(__name__).error('Discord deferred response rejected (HTTP %s): %s',response.status_code,response.text[:300])
-                if response.status_code==400 and data.get('components'):
+                if response.status_code==400 and fallbacks:
+                    data=fallbacks.pop(0)
+                    continue
+                if response.status_code==400 and data.get('components') and not layout_v2.is_v2(data):
                     # Never leave the player on "thinking…": send the result without buttons.
                     data={k:v for k,v in data.items() if k!='components'}
                     continue
                 return False
         except requests.RequestException:delay=1
-        if attempt<2:time.sleep(delay)
+        attempt+=1
+        if attempt<3:time.sleep(delay)
     logging.getLogger(__name__).error('Discord deferred response delivery failed; gameplay was not retried')
     return False
 

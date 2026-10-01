@@ -12,7 +12,7 @@ import os, random, secrets, string, math, re, hashlib, json, time, urllib.reques
 from datetime import datetime, timezone, timedelta
 from fastapi import FastAPI, HTTPException, Request, BackgroundTasks
 from starlette.concurrency import run_in_threadpool
-from . import discord_deferred, message_layout, discord_execution, ui
+from . import discord_deferred, message_layout, discord_execution, ui, layout_v2
 from fastapi.responses import PlainTextResponse, HTMLResponse, JSONResponse
 from sqlalchemy import create_engine, Column, Integer, String, DateTime, Boolean, UniqueConstraint, select, inspect, func, text as sql_text
 from sqlalchemy.orm import declarative_base, sessionmaker
@@ -7299,25 +7299,26 @@ async def discord_interactions(request: Request, background_tasks: BackgroundTas
     if payload.get("type") == 3:
         if not _discord_allowed_channel(payload):
             return {"type":4,"data":{"content":"Use the designated game channel.","flags":64}}
+        # Answers leave in the layout their message needs (layout_v2: Discord's newer layout).
         if ui.handles((payload.get("data") or {}).get("custom_id")):
-            return await run_in_threadpool(ui.handle_component,sys.modules[__name__],payload,background_tasks.add_task)
-        return await run_in_threadpool(message_layout.open_page,sys.modules[__name__],payload)
+            return layout_v2.respond(await run_in_threadpool(ui.handle_component,sys.modules[__name__],payload,background_tasks.add_task),payload)
+        return layout_v2.respond(await run_in_threadpool(message_layout.open_page,sys.modules[__name__],payload),payload)
 
     # A submitted pop-up form (search, link code, business name, custom amount).
     if payload.get("type") == 5:
         if not _discord_allowed_channel(payload):
             return {"type":4,"data":{"content":"Use the designated game channel.","flags":64}}
-        return await run_in_threadpool(ui.handle_modal,sys.modules[__name__],payload,background_tasks.add_task)
+        return layout_v2.respond(await run_in_threadpool(ui.handle_modal,sys.modules[__name__],payload,background_tasks.add_task),payload)
 
     # Application command.
     if payload.get("type") != 2:
-        return _discord_json_message("Unsupported Discord interaction.", ephemeral=True)
+        return layout_v2.respond(_discord_json_message("Unsupported Discord interaction.", ephemeral=True),payload)
 
     if not _discord_allowed_channel(payload):
-        return _discord_json_message(
+        return layout_v2.respond(_discord_json_message(
             "🌱 New Eridian commands are only available in the designated game channel.",
             ephemeral=True
-        )
+        ),payload)
 
     command = ((payload.get("data") or {}).get("name") or "").lower()
     uid, name = _discord_user(payload)
@@ -7326,25 +7327,25 @@ async def discord_interactions(request: Request, background_tasks: BackgroundTas
     interaction_id = str(payload.get("id") or "")
 
     if not uid:
-        return _discord_json_message("Could not identify your Discord account.", ephemeral=True)
+        return layout_v2.respond(_discord_json_message("Could not identify your Discord account.", ephemeral=True),payload)
 
     if command not in (DISCORD_PUBLIC_COMMANDS | DISCORD_PRIVATE_COMMANDS):
-        return _discord_json_message("Unknown New Eridian command.", ephemeral=True)
+        return layout_v2.respond(_discord_json_message("Unknown New Eridian command.", ephemeral=True),payload)
 
     if command in {"eventstart","eventstop","modlog","guidepanels","menupanel"}|community.MOD and not _discord_is_moderator(payload):
-        return _discord_json_message("⛔ Moderator access is required for event controls.", ephemeral=True, message_type="moderator")
+        return layout_v2.respond(_discord_json_message("⛔ Moderator access is required for event controls.", ephemeral=True, message_type="moderator"),payload)
 
     if command == "linklookup" and not _discord_is_owner(payload):
-        return _discord_json_message(
+        return layout_v2.respond(_discord_json_message(
             f"⛔ Owner access is required for linked-account lookup. "
             f"Detected Discord ID: {uid} | Owner IDs loaded: {len(DISCORD_OWNER_USER_IDS)}. "
             f"Make sure Railway DISCORD_OWNER_USER_IDS contains this exact numeric ID, then redeploy.",
             ephemeral=True,
             message_type="moderator"
-        )
+        ),payload)
 
     if not payload.get('application_id') or not payload.get('token'):
-        return _discord_json_message('Discord response details were missing. Please run the command again.',ephemeral=True)
+        return layout_v2.respond(_discord_json_message('Discord response details were missing. Please run the command again.',ephemeral=True),payload)
     background_tasks.add_task(discord_deferred.finish,sys.modules[__name__],payload,command,uid,name,options)
     private=discord_execution.private_response(sys.modules[__name__],command,options)
     return {'type':5,'data':{'flags':64} if private else {}}
