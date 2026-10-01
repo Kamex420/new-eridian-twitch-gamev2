@@ -29,7 +29,7 @@ DISCORD_ONLY = {
     '/api/v1/routine': ('Routines', '/queue'), '/api/v1/again': ('Repeat last action', '/menu → Recent'),
     '/api/v1/seedindustries': ('Trading', '/seedindustries'), '/api/v1/sell': ('Selling', '/seedindustries'),
     '/api/v1/sellall': ('Selling', '/seedindustries'), '/api/v1/clearout': ('Selling', '/seedindustries'),
-    '/api/v1/autosell': ('Auto-selling', '/menu → Bag'), '/api/v1/undo': ('Selling', '/seedindustries'),
+    '/api/v1/autosell': ('Auto-selling', '/menu → Bag & Trade → Bag'), '/api/v1/undo': ('Selling', '/seedindustries'),
     '/api/v1/marketboard': ('Market prices', '/market'),
     '/api/v1/business': ('Businesses', '/business'), '/api/v1/business/start': ('Businesses', '/business'),
     '/api/v1/home': ('Homes', '/home'), '/api/v1/home/upgrade': ('Homes', '/home'),

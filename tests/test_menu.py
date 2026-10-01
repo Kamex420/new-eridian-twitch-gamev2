@@ -90,9 +90,9 @@ def test_menu_slash_command_and_reply_buttons():
     citizen()
     text = m._discord_call_internal('menu', '111', 'Kam', {}, 'i')
     panel = ui.slash_panel(m, 'menu', '111', 'Kam', {}, text)
-    assert {'Life & Recovery', 'Work', 'Craft', 'Help'} <= {c.get('label') for c in controls(panel)}
+    assert {'Life', 'Work', 'Craft', 'Bag & Trade', 'Colony', 'You', 'Help'} <= {c.get('label') for c in controls(panel)}
     row = menu.after_command(m, 'relax', {}, '111')
-    assert [c['label'] for c in row['components']] == ['Again', 'Life & Recovery', 'Menu']
+    assert [c['label'] for c in row['components']] == ['Again', 'Life', 'Menu']
     assert [c['label'] for c in menu.after_command(m, 'inventory', {}, '111')['components']] == ['Bag', 'Menu']
 
 

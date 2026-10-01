@@ -1,6 +1,6 @@
 """Seedling looks and personality: make your Seedling yours.
 
-Players choose, on Discord (/customize, or /menu → My Seedling → Looks & personality):
+Players choose, on Discord (/customize, or /menu → You → My Seedling → Looks & personality):
 
   skin tone      twelve tones, from porcelain to deep, plus four Avesta colours (moss, sky, lavender, coral)
   hair           style (short, long, curly, bun, spiky, mohawk, pigtails, braid, bald) and colour
@@ -154,7 +154,7 @@ def view_text(m, db, p, provider='discord', changed=(), problems=()):
     if found is not None and found.attitude:
         a = ATTITUDE[found.attitude]
         lines += ['', f'💬 {a[0]}: {a[1]}. It sounds like: *"{voice("I brought in some Lumber.", found.attitude, "", random.Random(1))}"*']
-    lines += ['', 'Change any of it with /customize, or /menu → My Seedling → Looks & personality. "random" puts one back.']
+    lines += ['', 'Change any of it with /customize, or /menu → You → My Seedling → Looks & personality. "random" puts one back.']
     return '\n'.join(lines)
 
 

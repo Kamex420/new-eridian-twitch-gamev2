@@ -2883,7 +2883,7 @@ def marketboard(channel:str,provider:str="twitch"):
             base=SEED_INDUSTRIES[k]['sell'];now_=demand_price(k,clock["day"])
             return f"{tag} {resource_name(k)}: {now_} SC each (usually {base})"
         text=(f"🏪 MARKET — AVESTA DAY {clock['day']}\nSeed Industries pays extra today for:\n{row(a,'🔥')}\n{row(b,'↑')}\n"
-              "Sell anything else at its usual price with /seedindustries action:Sell, or /menu → Trade.")
+              "Sell anything else at its usual price with /seedindustries action:Sell, or /menu → Bag & Trade.")
         return platform_response(provider,text,f"🏪 Day {clock['day']} demand: 🔥 {row(a,'').strip()} | ↑ {row(b,'').strip()} | !sellall <item> sells at today's price")
 
 @app.get("/api/v1/sell")
@@ -6961,7 +6961,7 @@ def item_command_menu(command,uid,name):
                 if equipment and not equipment_count(db,p,equipment):
                     lines.append(f"Get {resource_name(equipment)}: {material_source(equipment,'discord')}")
             if command=="market":
-                lines.append("Selling: /seedindustries action:Sell (or /menu → Trade → Sell some / Sell all of…). /market action:view shows which two materials are in demand today.")
+                lines.append("Selling: /seedindustries action:Sell (or /menu → Bag & Trade → Sell some / Sell all of…). /market action:view shows which two materials are in demand today.")
         elif command=="social":
             owned=owned_life_items(db,p)
             lines += [f"• Recreation Set ×{sum(r.qty for r in owned['recreation_set'])} — /social action:group_games consumes 1, highest quality first.",

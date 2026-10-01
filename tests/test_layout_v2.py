@@ -206,20 +206,23 @@ def test_every_menu_area_and_choice_list_fits_with_buttons_beside_items():
             answer = moderator(ui.cid('111', 'mk', key))
             assert assert_valid(v2.convert(answer['data'])), key
     home = v2.convert(moderator(ui.cid('111', 'mn', 'home'))['data'])
-    beside = {s['components'][0]['content'].split('**')[1] for s in sections(home)}
-    assert {'Life & Recovery', 'Work', 'Craft', 'Bag', 'Trade'} <= beside
-    assert {'Status', 'Settings'} <= {c['label'] for c in v2.controls(home)}      # quick buttons stay in a row
-    assert 'Settings** —' not in v2.text_of(home)                                  # ...without their line
+    beside = [s['accessory']['label'] for s in sections(home)]
+    assert beside[1:7] == ['Work', 'Craft', 'Life', 'Bag & Trade', 'Colony', 'You']               # six areas, after the next step
+    assert sections(home)[0]['components'][0]['content'].startswith('➡️ **Next step** —')
+    assert {'Status', 'Notifications', 'Help'} <= {c['label'] for c in v2.controls(home)}   # quick buttons stay in a row
+    assert 'Status** —' not in v2.text_of(home)                                    # ...without their line
 
 
 def test_menu_buttons_beside_lines():
     citizen()
     life = v2.convert(press(ui.cid('111', 'mn', 'life'))['data'])
-    found = {s['components'][0]['content'].split('**')[1]: s['accessory'] for s in sections(life)}
-    assert found['Relax']['label'] == 'Relax' and found['Relax']['custom_id'].startswith('ne|111|t|')   # actions keep their word
-    assert found['Needs']['label'] == 'Open' and found['Needs']['style'] == 2                         # views say Open
+    found = {s['accessory']['label']: s for s in sections(life)}
+    assert found['Relax']['accessory']['custom_id'].startswith('ne|111|t|') and found['Relax']['accessory']['style'] == 3   # actions: green
+    assert found['Relax']['components'][0]['content'] == '🛋️ +25 Energy, +20 Comfort'                 # the button names it; the line says what it does
+    assert found['Needs']['accessory']['style'] == 2                                                  # views: grey
+    assert sections(v2.convert(press(ui.cid('111', 'mn', 'home'))['data']))[1]['accessory']['style'] == 1        # areas: blue
     farming = v2.convert(press(ui.cid('111', 'mn', 'farming'))['data'])
-    assert 'Tend fields** — gives 1 Pumpkin + 1 Pumpkin Seeds' in v2.text_of(farming)                 # every button has a line
+    assert '🌱 Gives 1 Pumpkin + 1 Pumpkin Seeds' in v2.text_of(farming)                              # every button has a line
     assert len(sections(farming)) == 3
 
 
@@ -252,7 +255,7 @@ def test_workbench_pages_open_each_recipe_from_beside_it():
     page = v2.convert(press(ui.cid('111', 'wc', 'parts', 1, ''))['data'])
     assert assert_valid(page)
     found = sections(page)
-    assert len(found) == 8 and all(s['accessory']['label'] == 'Open' and '|wr|' in s['accessory']['custom_id'] for s in found)
+    assert len(found) == 8 and all(s['accessory']['label'] in {'View', 'Craft'} and '|wr|' in s['accessory']['custom_id'] for s in found)
     assert not [c for c in v2.controls(page) if c.get('custom_id', '').startswith('ne|111|sr|')]      # the recipe dropdown is replaced
     opened = press(found[0]['accessory']['custom_id'])
     assert opened['type'] == 7 and 'OUTPUT PER BATCH' in v2.text_of(opened['data']).upper()
@@ -391,7 +394,8 @@ def test_the_pinned_panel_is_posted_with_a_button_beside_each_line(monkeypatch):
     body = sent[0]
     assert assert_valid(body) and not body['flags'] & v2.EPHEMERAL
     found = sections(body)
-    assert len(found) == 10 and all(s['accessory']['label'] == 'Open' and s['accessory']['custom_id'].startswith('ne|*|') for s in found)
+    assert len(found) == 10 and all(s['accessory']['custom_id'].startswith('ne|*|') for s in found)
+    assert [s['accessory']['label'] for s in found][:3] == ['Menu', 'Status', 'Work']                 # each button names where it goes
 
 
 def test_text_of_reads_both_layouts():

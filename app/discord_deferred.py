@@ -139,6 +139,8 @@ def answer_later(m,payload):
                 answer=ui.handle_component(m,payload,schedule)
             else:
                 answer=message_layout.open_page(m,payload)
+                if isinstance(answer.get('data'),dict):        # Details pages end with 🏠 Menu too
+                    ui.with_menu(answer['data'],ui._user(payload)[0] or None)
         except Exception:
             logging.getLogger(__name__).exception('Button answer failed: %s',custom_id[:60])
             later.clear()

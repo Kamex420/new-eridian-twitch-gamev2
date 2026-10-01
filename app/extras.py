@@ -299,56 +299,176 @@ def clear_goal(db, p):
         found.goal = ''
 
 
-def next_step(m, db, p, provider='discord'):
-    """(description, action) for the goal's next step; action is a menu/ticket action dict or None."""
+# The /training skill that raises a recipe's skill, by main skill (seed_content.SKILLS).
+TRAINING_HUB = {'cultivation': 'farming', 'extraction': 'harvesting', 'infrastructure': 'engineering', 'environmental': 'processing',
+                'fabrication': 'crafting', 'cooking': 'cooking', 'medicine': 'medicine', 'emergency': 'emergency'}
+STEPS_SHOWN = 9          # each fits with its button beside it on one Discord card
+
+
+def _step(mark, name, detail='', action=None, view=None, label='', cost=0):
+    """One walkthrough step. `action`: a one-time ticket that does it. `view`: the custom_id parts of the
+    screen where it is done (spends nothing). `label`: the button's word. `cost`: SC it spends."""
+    return {'mark': mark, 'name': name, 'detail': detail, 'action': action, 'view': view, 'label': label, 'cost': cost}
+
+
+def _train(skill_label, level, current, hub):
+    return _step('🔒', f'Reach {skill_label} Lv {level}', f'you are Lv {current} · each training task gives practice',
+                 view=('mp', 'trainskill', '=' + hub) if hub else ('mv', 'training'), label='Train')
+
+
+def _locks(m, ctx, e):
+    """Steps that open a locked recipe: a festival, a personal tier, a skill level, the colony's tier or a workstation."""
+    from . import seasonal, crafting_progression as cp
+    steps = []
+    if not seasonal.festival_open(e.id):
+        holiday = seasonal.FESTIVAL_RECIPES[e.id]
+        start, _ = seasonal.festival_window(holiday)
+        steps.append(_step('🔒', f'Wait for the {holiday} festival', f'{e.name} can only be crafted then · opens {start.isoformat()}',
+                           view=('mv', 'wd_holidays'), label='Festivals'))
+    base_tier = s.base_tier(e.id) if e.kind == 'seed' else cp.STATIONS[e.tags[0]]['tier']
+    if ctx.tier < base_tier:
+        need = cp.TIERS[base_tier - 1][2]
+        steps.append(_step('🔒', f'Reach personal Tier {base_tier}', f'craft {need - ctx.batches} more batches of anything made from ingredients · '
+                           f'{ctx.batches}/{need}', view=('wc', 'ready', 1, ''), label='Craft'))
+    if e.kind == 'seed' and ctx.level(e.skill_key) < e.level:
+        main = s.SKILLS.get(e.skill_key, ('fabrication', None))[0]
+        steps.append(_train(e.skill, e.level, ctx.level(e.skill_key), TRAINING_HUB.get(main, '')))
+    if e.kind == 'seed' and any(k in cp.RARE for k in s.RECIPES[e.id]['outputs']) and ctx.harvesting < cp.RARE_LEVEL:
+        steps.append(_train('Harvesting', cp.RARE_LEVEL, ctx.harvesting, 'harvesting'))
+    if e.kind == 'legacy':
+        need = m.RECIPE_TIERS.get(e.id)
+        if need and ctx.society_tier < need:
+            steps.append(_step('🔒', f'New Eridian reaches {m.SOCIETY_TIERS[need][0]}', 'the whole colony unlocks this together',
+                               view=('mv', 'wd_society_progress'), label='Help'))
+    if not steps and not ctx.usable_tags(e):
+        tag = ctx.unlock_option(e)
+        if tag:
+            cfg = cp.STATIONS[tag]
+            steps.append(_step('🔑', f"Unlock {cfg['name']}", f"{cfg['cost']} SC once, or own its machine · needed for {e.name}",
+                               action={'do': 'unlock', 'station': tag, 'recipe': e.id, 'back': [e.category, 1, '']}, label='Unlock',
+                               cost=cfg['cost']))
+    return steps
+
+
+def _collect(m, ctx, key, qty, ores):
+    """Steps that bring in a raw material the goal still needs."""
+    from . import crafting_progression as cp
+    name = m.resource_name(key)
+    if key in s.GATHER:
+        if key in cp.RARE and ctx.harvesting < cp.RARE_LEVEL:
+            return [_train('Harvesting', cp.RARE_LEVEL, ctx.harvesting, 'harvesting'),
+                    _step('❌', f'Mine {name}', f'need {qty} · after Harvesting Lv {cp.RARE_LEVEL}', view=('mp', 'mine', '=' + key), label='Mine')]
+        attempts = min(10, m.qol._gather_attempts(key, qty))
+        verb = 'Mine' if key in ores else 'Gather'
+        return [_step('✅', f'{verb} {name} ×{attempts}', f'need {qty} · runs as a queue',
+                      action={'do': 'queue', 'task': ('mine:' if key in ores else 'gather:') + key, 'count': attempts}, label=verb)]
+    if key == m.item_identity.ALIASES.get('crops'):
+        return [_step('✅', f'Harvest {name}', f'need {qty} · 3 per harvest', action={'do': 'cmd', 'leaf': 'w_farm_harvest'}, label='Harvest')]
+    if key == 'cargo':
+        return [_step('✅', 'Prepare Cargo', f'need {qty} · 1 per success', action={'do': 'cmd', 'leaf': 'w_cargo'}, label='Work')]
+    for task, cfg in m.SEED_TASKS.items():
+        if key in cfg['output']:
+            level = m.lvl(m.skill_xp(ctx.p, cfg['skill']))
+            if level < cfg['unlock']:
+                return [_train(m.SKILL_LABELS[cfg['skill']], cfg['unlock'], level, cfg['hub'])]
+            return [_step('✅', f"{cfg.get('label') or task.replace('_', ' ').title()} for {name}", f'need {qty} · a training task',
+                          action={'do': 'train', 'skill': cfg['hub'], 'task': task}, label='Start')]
+    price = (m.SEED_INDUSTRIES.get(key) or {}).get('buy', 0)
+    if price:
+        return [_step('✅', f'Buy {name} ×{qty}', f'{price * qty} SC from Seed Industries',
+                      action={'do': 'buyitem', 'item': key, 'amount': qty}, label='Buy', cost=price * qty)]
+    found = wb.entry(m, key)
+    if found is not None:
+        return [_step('❌', f'Craft {name} ×{qty}', 'see its recipe', view=('wr', found.id, found.category, 1, ''), label='Recipe')]
+    return [_step('❌', f'Get {name} ×{qty}', m.material_source(key).split(';')[0])]
+
+
+def walkthrough(m, db, p, provider='discord'):
+    """(goal recipe, every step still needed to craft it, in order). Each step has a button: do it, or go where it is done.
+
+    Order: materials to collect, then each part to craft (after whatever unlocks it), then the goal
+    (after whatever unlocks it). A step that spends more SC than you will have shows how to earn it.
+    """
     e = goal_entry(m, db, p)
     if e is None:
-        return '', None
+        return None, []
     ctx = wb.Context(m, db, p, provider)
-    if ctx.status(e).code == 'ready':
-        return f'Craft {e.name} — everything is ready', {'do': 'craft', 'recipe': e.id, 'back': [e.category, 1, '']}
+    if ctx.status(e).code == 'owned':
+        return e, [_step('✅', f'You already own {e.name}', 'bonus equipment is limited to one of each · clear the goal and pick another',
+                         view=('gc',), label='Clear')]
     crafts, raw = plan(ctx, e)
     ores = m.task_queue.ores()
+    steps = []
     for key, qty in raw.items():
-        if key in s.GATHER:
-            attempts = min(10, m.qol._gather_attempts(key, qty))
-            task = ('mine:' if key in ores else 'gather:') + key
-            return f'{"Mine" if key in ores else "Gather"} {m.resource_name(key)} ×{attempts} (need {qty})', {'do': 'queue', 'task': task, 'count': attempts}
+        steps += _collect(m, ctx, key, qty, ores)
     for sub, count in crafts:
-        status = ctx.status(sub)
-        if status.code == 'ready':
-            return f'Craft {sub.name} ×{min(10, count)}', {'do': 'queue', 'task': 'make:' + sub.id, 'count': min(10, count)}
-    for key, qty in raw.items():
-        price = (m.SEED_INDUSTRIES.get(key) or {}).get('buy', 0)
-        if price:
-            return f'Buy {m.resource_name(key)} ×{qty} for {price * qty} SC', {'do': 'buyitem', 'item': key, 'amount': qty}
-    blocked = next(((sub, ctx.status(sub)) for sub, _ in crafts if ctx.status(sub).code in {'locked', 'station'}), None)
-    if blocked:
-        return f'{blocked[0].name}: {blocked[1].short}', None
-    return 'Nothing can be fetched automatically yet', None
+        steps += _locks(m, ctx, sub)
+        if ctx.status(sub).code == 'ready':
+            steps.append(_step('✅', f'Craft {sub.name} ×{count}', 'all its ingredients are ready · runs as a queue',
+                               action={'do': 'queue', 'task': 'make:' + sub.id, 'count': min(10, count)}, label='Craft'))
+        else:
+            steps.append(_step('❌', f'Craft {sub.name} ×{count}', 'a part for your goal · after the steps above',
+                               view=('wr', sub.id, sub.category, 1, ''), label='Recipe'))
+    steps += _locks(m, ctx, e)
+    if ctx.status(e).code == 'ready':
+        steps.append(_step('✅', f'Craft {e.name}', 'the goal · everything is ready',
+                           action={'do': 'craft', 'recipe': e.id, 'back': [e.category, 1, '']}, label='Craft'))
+    else:
+        steps.append(_step('❌', f'Craft {e.name}', 'the goal · after the steps above', view=('wr', e.id, e.category, 1, ''), label='Recipe'))
+    # One step per button: a skill or station named twice is one step (the higher level).
+    unique, seen = [], {}
+    for st in steps:
+        target = st['view'] or st['name']
+        if target in seen:
+            first = seen[target]
+            if st['name'] != first['name'] and st['name'].rsplit(' ', 1)[-1].isdigit() and first['name'].rsplit(' ', 1)[-1].isdigit():
+                if int(st['name'].rsplit(' ', 1)[-1]) > int(first['name'].rsplit(' ', 1)[-1]):
+                    first.update(name=st['name'], detail=st['detail'])
+            continue
+        seen[target] = st
+        unique.append(st)
+    # SC: spending steps you cannot afford yet show how to earn the rest.
+    left = p.sc
+    for st in unique:
+        if not st['cost']:
+            continue
+        if st['cost'] > left:
+            st.update(detail=f"{st['detail']} · you need {st['cost'] - max(0, left)} more SC", action=None,
+                      view=('mp', 'guidegoal', '=seed_coin'), label='Earn SC')
+        left -= st['cost']
+    return e, unique
+
+
+def next_step(m, db, p, provider='discord'):
+    """(description, action) for the goal's next step; action is a ticket action dict, or None when the
+    step is done somewhere else (training, the colony, earning SC: see walkthrough)."""
+    _, steps = walkthrough(m, db, p, provider)
+    if not steps:
+        return '', None
+    first = steps[0]
+    return first['name'] + (f" ({first['detail'].split(' · ')[0]})" if first['detail'] else ''), first['action']
 
 
 def goal_text(m, db, p, provider='discord'):
-    e = goal_entry(m, db, p)
-    prefix = '/' if provider == 'discord' else '!'
+    e, steps = walkthrough(m, db, p, provider)
     if e is None:
         how = 'Open a recipe and press 🎯 Set goal.' if provider == 'discord' else '!target <recipe name> sets one.'
-        return f'🎯 No goal yet. {how} The goal tracks every ingredient still needed, all the way down.'
+        return f'🎯 No goal yet. {how} The goal then walks you through every step, with a button for each.'
     ctx = wb.Context(m, db, p, provider)
-    crafts, raw = plan(ctx, e)
-    step, _ = next_step(m, db, p, provider)
     total = len(e.inputs) or 1
     covered = sum(1 for k, n in e.inputs.items() if ctx.have(k) >= n)
     if provider != 'discord':
-        items = ', '.join(f'{m.resource_name(k)} ×{q}' for k, q in list(raw.items())[:4])
-        return f'🎯 Goal {e.name} {covered}/{total} ingredients | Next: {step}' + (f' | Still need: {items}' if items else '') + ' | !target clear'
-    lines = [f'🎯 GOAL — {e.name.upper()}', f'{"█" * covered}{"░" * (total - covered)} {covered}/{total} ingredients ready · {ctx.status(e).emoji} {ctx.status(e).short}',
-             '', 'NEXT STEP', step]
-    if raw:
-        lines += ['', 'STILL TO COLLECT'] + [f'• {m.resource_name(k)} ×{q} — {m.material_source(k).split(" or ")[0].split(";")[0]}' for k, q in raw.items()]
-    if crafts:
-        lines += ['', 'TO CRAFT ON THE WAY'] + [f'{ctx.status(sub).emoji} {sub.name} ×{count}' for sub, count in crafts]
-    lines += ['', f'{ctx.status(e).emoji} Then craft {e.name}.']
+        step, _ = next_step(m, db, p, provider)
+        later = ' → '.join(st['name'] for st in steps[1:4])
+        return f'🎯 Goal {e.name} {covered}/{total} ingredients | Next: {step}' + (f' | Then: {later}' if later else '') + ' | !target clear'
+    status = ctx.status(e)
+    lines = [f'🎯 GOAL — {e.name.upper()}', f'{"█" * covered}{"░" * (total - covered)} {covered}/{total} ingredients ready · {status.emoji} {status.short}',
+             '', f'STEPS · {len(steps)} TO GO' if len(steps) != 1 else 'LAST STEP']
+    for i, st in enumerate(steps[:STEPS_SHOWN], 1):
+        lines.append(f"`{i}` {st['mark']} {st['name']}" + (f" — {'next · ' if i == 1 else ''}{st['detail']}" if st['detail'] else ''))
+    if len(steps) > STEPS_SHOWN:
+        lines.append(f'…and {len(steps) - STEPS_SHOWN} more after these.')
+    lines += ['', 'Each button does that step once, or opens where it is done. After a step, the result has a 🎯 Goal button back here.']
     return '\n'.join(lines)
 
 
@@ -430,7 +550,7 @@ def save_routine(m, db, p):
         return f'You already have {MAX_ROUTINES} routines. Delete one first. Nothing saved.'
     name = ' → '.join(step_label(m, st) for st in steps)[:100]
     db.add(Routine(channel_id=p.channel_id, canonical_uid=p.twitch_uid, name=name, steps=json.dumps(steps), created_at=m.now()))
-    return f'💾 Routine saved: {name}. Start it any time from /menu → Queue → Plan & routines.'
+    return f'💾 Routine saved: {name}. Start it any time from /menu → Work → Queue → Plan & routines.'
 
 
 def delete_routine(db, p, routine_id):

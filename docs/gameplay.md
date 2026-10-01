@@ -130,6 +130,12 @@ Specialist quality gear (for example the Mining Pick, Repair Kit or Comfort Pack
 
 In Discord's newer layout (the default, see `app/layout_v2.py`), list items carry their own button beside them instead: menu areas, choice lists, Workbench categories and recipe pages (8 recipes per page), and a skill's tasks (Start does the task once). A button beside a choice works exactly like picking it from the dropdown. Discord allows 40 parts per message, so on long lists only the first items get a button beside them and the rest keep their buttons in a row below.
 
+`/menu` has six areas: Work (gathering, mining, work tasks, training and the Queue), Craft (the goal, the Workbench and Workshops), Life, Bag & Trade, Colony (the world and community together) and You (profile, Seedling, Settings, Account). Status, Notifications, Recent and Help sit in a row below. Home opens with one next step and its button: recover blocked needs, the next first step, the goal's next step, or choose a goal. Each button names the place or action it leads to (areas blue, actions green, views grey), each menu screen shows where it sits (🏠 Menu › ⛏️ Work › 🌾 Farming), and every screen ends with 🏠 Menu.
+
+The goal (`/menu` → Craft → Goal, or 🎯 Set goal on any recipe) lists every step still needed, in order, with a button for each: gather or mine (as a queue), buy, craft the parts, unlock the workstation, train a skill level, reach a personal tier, help the colony reach its tier, or wait for a festival. A step that costs more SC than you have offers the SC guide instead. Every result reached from the goal has a 🎯 Goal button back to it (`app/extras.py` `walkthrough`).
+
+Every button press and form is acknowledged before any game work and answered right after (`discord_deferred.ack` and `answer_later`), so Discord never shows "This interaction failed" while the database is slow.
+
 
 ## Quality-of-life tools
 

@@ -103,8 +103,8 @@ def test_goal_tracks_next_step_in_view_status_and_twitch():
     citizen(lumber=0)
     view = press(ui.cid('111', 'gs', CAMPFIRE.id))
     body = text_of(view['data'])
-    assert 'Goal set' in body and 'Next Step' in body
-    assert any(label.startswith('Fetch next') for label in labels(view['data']))
+    assert 'Goal set' in body and 'Gather Lumber' in body and 'Craft Campfire' in body          # every step, in order
+    assert 'Gather' in labels(view['data'])                                                       # each with its button
     assert '🎯 GOAL' in m.status_view(W, '111', 'Kam', 'discord').body.decode()
     seed()
     chat = m.target('test', 'u', 'Kamex', 'campfire', 'twitch').body.decode()

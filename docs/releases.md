@@ -1,5 +1,14 @@
 # Release notes
 
+## Menus that lead the way
+
+The menus are simpler, and the goal now walks you through everything it needs.
+- **Your goal walks you through it.** The Goal view lists every step still needed, in order, with a button beside each one: Gather or Mine (runs a queue), Buy, Craft the parts, **Unlock** the workstation it needs, **Train** for a skill level, **Craft** toward a personal tier, **Help** the colony reach its tier, or see when a festival opens. If a step costs more SC than you have, its button shows how to earn SC. After any step, the result has a 🎯 Goal button back to the walkthrough.
+- **Home starts with your next step.** The top of `/menu` shows one next step and its button: get blocked needs back up, the next of your first steps, your goal's next step, or choose a goal.
+- **Six areas instead of eighteen.** Work (the Queue moved here), Craft, Life, Bag & Trade (the Bag moved here), Colony (World and Community together) and You (profile, Seedling, Settings and Account; hats and badges moved to Choices). Status, Notifications, Recent and Help sit in a row below.
+- **Buttons say what they do.** No more rows of "Open": each button names its place or action (Work, Relax, Status, Browse, View, Craft, Train, Unlock), and the line beside it says what it does. Areas are blue, actions green and views grey.
+- **The same navigation everywhere.** Each menu screen shows where you are (🏠 Menu › ⛏️ Work › 🌾 Farming) above its title, and every screen ends with 🏠 Menu in the same place, including Workbench, queue, status and Details pages.
+
 ## Buttons never time out
 
 Pressing a button or sending a form no longer shows Discord's "This interaction failed".

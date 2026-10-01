@@ -220,6 +220,14 @@ def message(m, text, components, command='make', items=None, replaces=()):
     return with_items(data, items, replaces)
 
 
+def with_crumb(data, crumb):
+    """Show where a screen sits in the menu ('🏠 Menu › ⛏️ Work') in small text above its title."""
+    embeds = data.get('embeds') or []
+    if crumb and embeds and isinstance(embeds[0], dict) and not embeds[0].get('author'):
+        embeds[0]['author'] = {'name': crumb[:256]}
+    return data
+
+
 def with_items(data, items, replaces=()):
     """Name the list items that get their button beside them in Discord's newer layout.
 
@@ -269,7 +277,7 @@ def home_components(m, ctx, owner):
 def home_items(ctx, owner):
     """Ready now, Favourites and every category, each with an Open button beside it."""
     keys = [('Ready now', 'ready'), ('Favourites', 'favorites')] + [(label, key) for key, _, label, _ in wb.CATEGORIES]
-    return [{'match': f'**{label}**', 'button': button('Open', cid(owner, 'wc', key, 1, ''))} for label, key in keys], [cid(owner, 'sc')]
+    return [{'match': f'**{label}**', 'button': button('Browse', cid(owner, 'wc', key, 1, ''))} for label, key in keys], [cid(owner, 'sc')]
 
 
 def category_items(ctx, owner, category, page, station=''):
@@ -277,7 +285,8 @@ def category_items(ctx, owner, category, page, station=''):
     rows = wb.in_view(ctx, category, station)
     page, pages, start, end = wb.page_bounds(len(rows), page)
     st = _code(station)
-    items = [{'match': f'**{e.name}**', 'button': button('Open', cid(owner, 'wr', e.id, category, page, st), style=3 if ctx.status(e).code == 'ready' else 2)}
+    items = [{'match': f'**{e.name}**', 'button': button('Craft' if ctx.status(e).code == 'ready' else 'View', cid(owner, 'wr', e.id, category, page, st),
+                                                         style=3 if ctx.status(e).code == 'ready' else 2)}
              for e in rows[start:end]]
     return items, [cid(owner, 'sr', category, page, st)]
 
@@ -590,7 +599,9 @@ def slash_panel(m, command, uid, name, options, result):
             from . import menu
             ctx = menu.context(m, uid, db, p)
             rows = menu.area_components(m, uid, 'home', ctx)
-            return message(m, result, rows, command, menu.area_items(m, 'home', ctx, rows))
+            items = menu.area_items(m, 'home', ctx, rows)
+            rows, items = menu.with_next(m, db, p, uid, ctx, rows, items)
+            return dict(message(m, result, rows, command, items), _home=True)
         if command == 'find':
             return message(m, result, find_components(m, uid, str(options.get('query') or '')), command)
         if command in {'seedling', 'seedlingstep'}:
@@ -616,10 +627,26 @@ def _user(payload):
     return str(user.get('id') or ''), name
 
 
+def with_menu(data, owner=None):
+    """Every screen ends with 🏠 Menu (last, in the same place), so no screen is a dead end."""
+    rows = [r for r in data.get('components') or [] if r and r.get('components')]
+    ids = [str(c.get('custom_id') or '') for r in rows for c in r['components']]
+    owner = next((i.split('|')[1] for i in ids if i.startswith('ne|')), owner)
+    if not rows or owner is None or data.get('_home') or any(i.endswith('|mn|home') for i in ids):
+        return data
+    home = button('Menu', cid(owner, 'mn', 'home'), emoji='🏠')
+    if all(c.get('type') == 2 for c in rows[-1]['components']) and len(rows[-1]['components']) < 5:
+        rows[-1] = dict(rows[-1], components=rows[-1]['components'] + [home])
+    elif len(rows) < 5:
+        rows.append(row(home))
+    data['components'] = rows
+    return data
+
+
 def _reply(data, payload, notice=False):
     """Update the panel in place when it is private; otherwise answer privately."""
     ephemeral = int((payload.get('message') or {}).get('flags', 0)) & 64
-    data = tidy(dict(data))
+    data = with_menu(tidy(dict(data)))
     if ephemeral and not notice:
         return {'type': 7, 'data': data}
     data['flags'] = 64
@@ -729,8 +756,9 @@ def _navigate(m, payload, uid, name, owner, verb, args, values):
         p = _player(m, db, uid, name)
         ctx = wb.Context(m, db, p)
         db.commit()
+        from .menu import crumb
         if verb == 'wh':
-            return _reply(workbench_message(m, ctx, owner, wb.home_text(ctx)), payload)
+            return _reply(with_crumb(workbench_message(m, ctx, owner, wb.home_text(ctx)), crumb('craft', 'Workbench')), payload)
         if verb in {'wc', 'sc', 'ss'}:
             if verb == 'sc':
                 category, page, station = (values[0] if values else ''), 1, ''
@@ -746,7 +774,8 @@ def _navigate(m, payload, uid, name, owner, verb, args, values):
             more.remember_place(db, p, category, page, _code(station))
             db.commit()
             text = wb.category_text(ctx, category, page, station)
-            return _reply(workbench_message(m, ctx, owner, text, category, page, station), payload)
+            return _reply(with_crumb(workbench_message(m, ctx, owner, text, category, page, station),
+                                     crumb('craft', 'Workbench › ' + wb.VIEW_INFO[category][1] if isinstance(wb.VIEW_INFO.get(category), tuple) else 'Workbench')), payload)
         if verb in {'wr', 'sr'}:
             if verb == 'sr':
                 recipe = values[0] if values else ''
@@ -758,7 +787,7 @@ def _navigate(m, payload, uid, name, owner, verb, args, values):
             if e is None:
                 return _notice('That recipe is no longer available. Open /make again.')
             text = wb.preview_text(ctx, e)
-            return _reply(message(m, text, recipe_components(m, ctx, owner, e, category, page, station)), payload)
+            return _reply(with_crumb(message(m, text, recipe_components(m, ctx, owner, e, category, page, station)), crumb('craft', 'Workbench › ' + e.name)), payload)
         if verb in {'qp', 'sq'}:
             task = args[0]
             count = int(values[0]) if verb == 'sq' and values else int(args[1] if len(args) > 1 else 1)
@@ -821,7 +850,10 @@ def run_ticket(m, uid, name, action, payload=None):
     kind = action.get('do')
     with ticket_batch(m):
         with m.task_queue.atomic(m, channel):
-            return _run(m, uid, name, action, kind, channel)
+            data = _run(m, uid, name, action, kind, channel)
+    if not isinstance(data, dict):
+        return data
+    return with_menu(with_goal_button(data, uid) if action.get('goal') else data)
 
 
 def _run(m, uid, name, action, kind, channel):
@@ -980,17 +1012,18 @@ def public_panel(m):
     from . import menu
     text = ('🌱 NEW ERIDIAN — PLAY WITH BUTTONS\n'
             'Press any button to open your own private menu. Nobody else sees it, and nothing is spent until you press an action.\n\n'
-            '🏠 **Menu** — every part of the game\n📊 **Status** — needs, queue and what to do next\n'
-            '❤️ **Life** — relax, sleep, eat, recover\n⛏️ **Work** — mine, gather and jobs\n🛠️ **Craft** — the Workbench\n'
-            '⏱️ **Queue** — your automatic tasks\n🎒 **Bag** — use, eat, sell\n🪙 **Trade** — buy, sell, orders, business\n'
+            '🏠 **Menu** — every part of the game, starting with your next step\n📊 **Status** — needs, queue and what to do next\n'
+            '⛏️ **Work** — gather, mine, train and run queues\n🛠️ **Craft** — your goal walks you through it; every recipe\n'
+            '❤️ **Life** — relax, sleep, eat, recover\n🪙 **Bag & Trade** — what you own, buying and selling\n'
+            '🎪 **Colony** — events, the vote, the season and trophies\n👤 **You** — your citizen, Seedling and settings\n'
             '🔎 **Find** — search anything\n🔗 **Account** — start or link Twitch')
     rows = [row(button('Menu', cid(PUBLIC, 'mn', 'home'), style=1, emoji='🏠'), button('Status', cid(PUBLIC, 'st'), style=1, emoji='📊'),
-                button('Life', cid(PUBLIC, 'mn', 'life'), emoji='❤️'), button('Work', cid(PUBLIC, 'mn', 'work'), emoji='⛏️'),
-                button('Craft', cid(PUBLIC, 'mn', 'craft'), emoji='🛠️')),
-            row(button('Queue', cid(PUBLIC, 'qv'), emoji='⏱️'), button('Bag', cid(PUBLIC, 'mn', 'bag'), emoji='🎒'),
-                button('Trade', cid(PUBLIC, 'mn', 'trade'), emoji='🪙'), button('Find', cid(PUBLIC, 'mo', 'find'), emoji='🔎'),
+                button('Work', cid(PUBLIC, 'mn', 'work'), emoji='⛏️'), button('Craft', cid(PUBLIC, 'mn', 'craft'), emoji='🛠️'),
+                button('Life', cid(PUBLIC, 'mn', 'life'), emoji='❤️')),
+            row(button('Bag & Trade', cid(PUBLIC, 'mn', 'trade'), emoji='🪙'), button('Colony', cid(PUBLIC, 'mn', 'community'), emoji='🎪'),
+                button('You', cid(PUBLIC, 'mn', 'me'), emoji='👤'), button('Find', cid(PUBLIC, 'mo', 'find'), emoji='🔎'),
                 button('Account', cid(PUBLIC, 'mn', 'account'), emoji='🔗'))]
-    items = [{'match': f"**{b['label']}**", 'button': {k: v for k, v in dict(b, label='Open').items() if k != 'emoji'}}
+    items = [{'match': f"**{b['label']}**", 'button': {k: v for k, v in b.items() if k != 'emoji'}}
              for r in rows for b in r['components']]
     return message(m, text, rows, 'menu', items)
 
@@ -1021,6 +1054,56 @@ EXTRA_TICKETS = {'plan', 'sellstep', 'saveroutine', 'routine', 'undo', 'buyitem'
 def _menu_row(owner, back=None):
     buttons = [button('Back: ' + back[1], cid(owner, 'mn', back[0]), emoji='◀️')] if back else []
     return row(*buttons, button('Menu', cid(owner, 'mn', 'home'), emoji='🏠'))
+
+
+def step_button(m, owner, step, first=False):
+    """A goal step's button: a one-time ticket that does it (green), or the screen where it is done."""
+    label = step['label'] or 'Open'
+    if step['action'] is not None:
+        return button(label, cid(owner, 't', issue(m, owner, dict(step['action'], goal=True))), style=3)
+    if step['view']:
+        return button(label, cid(owner, *step['view']), style=1 if first else 2)
+    return None
+
+
+def goal_message(m, db, p, owner, note=''):
+    """The goal walkthrough: every step still needed, each with its button (beside it in the newer layout)."""
+    from . import extras as more
+    text = more.goal_text(m, db, p)
+    if note:
+        head, _, rest = text.partition('\n')
+        text = head + '\n' + note + rest
+    e, steps = more.walkthrough(m, db, p)
+    if e is None:
+        return message(m, text, goal_components(m, db, p, owner), 'goal')
+    buttons, items = [], []
+    for i, st in enumerate(steps[:more.STEPS_SHOWN]):
+        b = step_button(m, owner, st, first=i == 0)
+        if b is not None:
+            buttons.append(b)
+            items.append({'match': st['name'], 'button': b})
+    recipe = ('wr', e.id, e.category, 1, '')
+    tools = [button('Refresh', cid(owner, 'gv'), emoji='🔄'), button('Clear goal', cid(owner, 'gc'), style=4, emoji='✖️')]
+    if not any(st['view'] == recipe for st in steps[:more.STEPS_SHOWN]):
+        tools.insert(0, button('Goal recipe', cid(owner, *recipe), emoji='📋'))
+    rows = [row(*buttons[i:i + 5]) for i in range(0, min(len(buttons), 10), 5)] + [row(*tools), _menu_row(owner, ('craft', 'Craft'))]
+    from .menu import crumb
+    return with_crumb(message(m, text, rows, 'goal', items), crumb('craft', '🎯 Goal'))
+
+
+def with_goal_button(data, owner):
+    """Add 🎯 Goal to a result reached from the goal walkthrough, so the next step is one press away."""
+    goal = cid(owner, 'gv')
+    rows = [r for r in data.get('components') or [] if r and r.get('components')]
+    if any(c.get('custom_id') == goal for r in rows for c in r['components']):
+        return data
+    back = button('Goal', goal, style=1, emoji='🎯')
+    if rows and len(rows[-1]['components']) < 5 and all(c.get('type') == 2 for c in rows[-1]['components']):
+        rows[-1] = dict(rows[-1], components=[back] + rows[-1]['components'])
+    elif len(rows) < 5:
+        rows.append(row(back))
+    data['components'] = rows
+    return data
 
 
 def goal_components(m, db, p, owner):
@@ -1141,8 +1224,7 @@ def extra_view(m, db, p, owner, verb, args, values, name):
             more.clear_goal(db, p)
             note = '🎯 Goal cleared.\n\n'
         db.flush()
-        text = more.goal_text(m, db, p)
-        return message(m, (text if not note else text.split('\n', 1)[0] + '\n' + note + text.split('\n', 1)[-1]), goal_components(m, db, p, owner), 'goal')
+        return goal_message(m, db, p, owner, note)
     if verb in {'pv', 'pc', 'rd'}:
         note = ''
         if verb == 'pc':
@@ -1197,7 +1279,7 @@ def extra_ticket(m, uid, name, action, kind, channel):
                 lines.append(m.seed_industries(channel, uid, name, 'buy', action['item'], min(25, amount), 'discord').body.decode())
                 amount -= 25
             db.expire_all()
-            return message(m, '\n'.join(lines) + '\n\n' + more.goal_text(m, db, p), goal_components(m, db, p, uid), 'goal')
+            return goal_message(m, db, p, uid, '\n'.join(lines) + '\n\n')
     if kind == 'routine':
         text = more.start_routine(m, channel, uid, name, 'discord', action['id'])
         with m.SessionLocal() as db:

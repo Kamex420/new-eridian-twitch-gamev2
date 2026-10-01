@@ -44,7 +44,7 @@ DETAIL = re.compile(r'^(?:╰\s*|\*\*[^*\n]{1,30}:\*\*\s)')
 # A 'Label: value' line after presentation bolded its label.
 LABELLED = re.compile(r'^\*\*[^*\n]{1,30}:\*\*')
 # How-to-use lines about the controls under the card.
-HELP = re.compile(r'(?:menu|button|dropdown)s? below|Browsing spends nothing|^Select \w+ to ', re.I)
+HELP = re.compile(r'(?:menu|button|dropdown)s? below|Browsing spends nothing|^Select \w+ to |^Each button ', re.I)
 BLANK = '\u200b'      # zero-width space: Discord's placeholder for an empty embed field
 
 
@@ -268,7 +268,10 @@ def _children(plan, footer, rows, divided, k, replaces):
             if button is not None:
                 if key is not None:
                     used.add(key)
-                part.append({'type': SECTION, 'components': [{'type': TEXT, 'content': s['text'].strip()}], 'accessory': button})
+                text = s['text'].strip()
+                if s['item'].get('text'):              # the button carries the name; the line says what it does
+                    text = '\n'.join([str(s['item']['text'])] + text.split('\n')[1:])
+                part.append({'type': SECTION, 'components': [{'type': TEXT, 'content': text}], 'accessory': button})
             elif s['kind'] == 'compact' and beside:
                 continue
             elif part and part[-1]['type'] == TEXT:

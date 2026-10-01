@@ -24,38 +24,36 @@ from . import ui, workbench as wb
 # Areas: key -> (emoji, title, one-line description, children). Children are
 # area keys or leaf keys; the order is the button order.
 AREAS = {
-    'home': ('🏠', 'New Eridian', 'Pick an area. Menus and views spend nothing; action buttons do their task once.',
-             ['status', 'seedling', 'inbox', 'recent', 'find', 'life', 'work', 'craft', 'queue', 'bag', 'trade', 'world', 'community', 'me', 'settings', 'help',
-              'account', 'mod']),
+    'home': ('🏠', 'New Eridian', 'Pick an area. Menus and views spend nothing; green buttons do their task once.',
+             ['work', 'craft', 'life', 'trade', 'community', 'me', 'status', 'inbox', 'recent', 'help', 'mod']),
     'recent': ('🔁', 'Recent actions', 'Your last ten actions. Tap one to do it again.', []),
-    'life': ('❤️', 'Life & Recovery', 'Keep Energy, Nutrition, Social and Comfort up so work never stops.',
-             ['relax', 'sleep', 'eat', 'eatfull', 'recover', 'games', 'walk', 'hobby', 'meal', 'social', 'needs', 'cooldowns']),
-    'social': ('🤝', 'Social', 'Spend time with other citizens.', ['friend', 'recreation', 'me_relationships']),
-    'work': ('⛏️', 'Work', 'Gather and mine for materials, or do your trade. Each success gives items and practice.',
-             ['gather', 'mine', 'w_rare', 'farming', 'science', 'logistics', 'frontier', 'repair', 'gearrepair', 'training', 'trainskill']),
+    'work': ('⛏️', 'Work', 'Gather and mine materials, do your trade, train your skills and run queues.',
+             ['gather', 'mine', 'w_rare', 'farming', 'science', 'logistics', 'frontier', 'training', 'trainskill', 'repair', 'gearrepair', 'queue']),
     'farming': ('🌾', 'Farming', 'Tend, harvest and water the fields.', ['w_farm_tend', 'w_farm_harvest', 'w_farm_irrigate', 'w_farm_hydroponics']),
     'science': ('🔬', 'Research', 'Scans and research.', ['w_scan', 'w_research', 'w_field_analysis']),
     'logistics': ('📦', 'Logistics', 'Cargo, deliveries and the spaceport.', ['w_cargo', 'w_delivery', 'w_spaceport', 'w_expedite']),
     'frontier': ('🧭', 'Frontier', 'Scouting and surveys past the wall.', ['w_scout', 'w_survey']),
-    'craft': ('🛠️', 'Craft', 'Open the Workbench (every category), what is ready now, your favourites or your goal.',
-              ['workbench', 'ready', 'favs', 'goal', 'stations']),
+    'queue': ('⏱️', 'Queue', 'Work that runs by itself while you watch. Check it, plan it, repeat it or stop it.',
+              ['qstatus', 'qdetails', 'plan', 'repeat', 'cancel', 'clearnext']),
+    'craft': ('🛠️', 'Craft', 'Your goal walks you through every step. The Workbench has every recipe.',
+              ['goal', 'workbench', 'ready', 'favs', 'stations']),
     'stations': ('🏭', 'Workshops', 'Workstations and personal tiers. Unlock a station once, or own its machine.',
                  ['workshop', 'unlock', 'catalogcat']),
-    'queue': ('⏱️', 'Queue', 'Your automatic task queue. Check it, repeat it or stop it.',
-              ['qstatus', 'qdetails', 'plan', 'repeat', 'cancel', 'clearnext']),
-    'bag': ('🎒', 'Bag', 'Everything you own. Look through it, use it, or see what it makes. Selling is under Trade.',
+    'life': ('❤️', 'Life', 'Keep Energy, Nutrition, Social and Comfort up so work never stops.',
+             ['recover', 'relax', 'sleep', 'eat', 'eatfull', 'games', 'walk', 'hobby', 'meal', 'social', 'needs', 'cooldowns']),
+    'social': ('🤝', 'Social', 'Spend time with other citizens.', ['friend', 'recreation', 'me_relationships']),
+    'trade': ('🪙', 'Bag & Trade', 'What you own, buying and selling with Seed Industries, orders, and your home and business.',
+              ['bag', 'market', 'buy', 'sellsome', 'sell', 'clearout', 'undo', 'browse', 'starters', 'orders', 'fulfill', 'prices', 'commerce', 'analyze', 'property']),
+    'bag': ('🎒', 'Bag', 'Everything you own. Look through it, use it, or see what it makes.',
             ['inventory', 'inv_views', 'search', 'use', 'uses', 'autosell', 'catalog']),
-    'trade': ('🪙', 'Trade', 'Buy and sell with Seed Industries, production orders, market work, and your home and business.',
-              ['market', 'buy', 'sellsome', 'sell', 'clearout', 'undo', 'browse', 'starters', 'orders', 'fulfill', 'prices', 'commerce', 'analyze', 'property']),
     'property': ('🏠', 'Home & Business', 'Your Habitat and your company.', ['habitat', 'homeup', 'business', 'bstart', 'bwork', 'bcontract', 'binvest']),
-    'world': ('🌎', 'World', 'Avesta, New Eridian, events, holidays and news.',
-              ['wd_overview', 'wd_conditions', 'wd_society_progress', 'wd_event', 'wd_leaderboard', 'wd_more']),
-    'community': ('🎪', 'Community', 'Vote on what the colony does next, join the stream challenge, climb the season and collect trophies.',
-                  ['c_vote', 'c_vote_pick', 'c_challenge', 'c_season', 'c_season_more', 'c_hat', 'c_trophies', 'c_trophy_groups', 'c_badge']),
-    'me': ('👤', 'Me', 'Your citizen. Profile, skills, progress and personal choices.',
-           ['me_overview', 'me_skills', 'me_daily', 'me_achievements', 'choices', 'me_more']),
-    'choices': ('🧭', 'Choices', 'Job, district, shift, delivery partner, title, specialization and display style.',
-                ['job', 'district', 'shift', 'duck', 'title', 'specialize', 'display_compact', 'display_detailed']),
+    'community': ('🎪', 'Colony', 'Everyone together: the active event, the colony vote, the stream challenge, the season, trophies and news.',
+                  ['wd_event', 'c_challenge', 'c_vote_pick', 'c_vote', 'wd_overview', 'wd_society_progress', 'c_season', 'c_trophies',
+                   'wd_leaderboard', 'wd_conditions', 'wd_more', 'c_season_more', 'c_trophy_groups']),
+    'me': ('👤', 'You', 'Your citizen, your Seedling, your settings and your account.',
+           ['me_overview', 'me_skills', 'me_daily', 'me_achievements', 'me_more', 'choices', 'seedling', 'settings', 'account']),
+    'choices': ('🧭', 'Choices', 'Job, district, shift, delivery partner, title, hat, badge, specialization and display style.',
+                ['job', 'district', 'shift', 'duck', 'title', 'c_hat', 'c_badge', 'specialize', 'display_compact', 'display_detailed']),
     'settings': ('⚙️', 'Settings', 'How queue alerts and notifications reach you, and whether queues recover by themselves.',
                  ['alerts', 'popups', 'auto_on', 'auto_off', 'feed_on', 'feed_off']),
     'help': ('📖', 'Help', 'What to do next, a guide for any goal, search, and the handbook.', ['guide', 'guidegoal', 'find', 'h_topics']),
@@ -325,9 +323,9 @@ for _key, _hint in _HINTS.items():
     if _key in LEAVES and not LEAVES[_key]['hint']:
         LEAVES[_key]['hint'] = _hint
 # In Discord's newer layout Home shows these as a compact row; the rest get a button beside their line.
-HOME_COMPACT = {'status', 'inbox', 'recent', 'find', 'me', 'settings', 'help', 'account', 'mod'}
+HOME_COMPACT = {'status', 'inbox', 'recent', 'help', 'mod'}
 # The word on the button beside each choice in a list; otherwise Open for views and Choose for the rest.
-VERBS = {'eat': 'Eat', 'hobby': 'Practice', 'gearrepair': 'Repair', 'unlock': 'Unlock', 'use': 'Use', 'sell': 'Sell', 'buy': 'Buy',
+VERBS = {'gather': 'Gather', 'mine': 'Mine', 'trainskill': 'Train', 'guidegoal': 'Guide', 'catalogcat': 'Browse', 'eat': 'Eat', 'hobby': 'Practice', 'gearrepair': 'Repair', 'unlock': 'Unlock', 'use': 'Use', 'sell': 'Sell', 'buy': 'Buy',
          'sellsome': 'Sell', 'fulfill': 'Deliver', 'title': 'Equip', 'c_vote_pick': 'Vote', 'c_hat': 'Wear', 'c_badge': 'Pin',
          'm_eventstart': 'Start', 'm_chalstart': 'Start'}
 
@@ -352,8 +350,8 @@ for _key, _leaf in LEAVES.items():
 COMMAND_AREA.update({'seedling': 'seedling', 'seedlingstep': 'seedling', 'link': 'account', 'start': 'account', 'eventstart': 'mod', 'eventstop': 'mod', 'modlog': 'mod',
                      'linklookup': 'mod', 'guidepanels': 'mod', 'menupanel': 'mod', 'eatfull': 'life', 'undo': 'bag', 'find': 'help', 'make': 'craft', 'workshop': 'craft', 'catalog': 'craft', 'queue': 'queue', 'mine': 'work', 'gather': 'work',
                      'farm': 'work', 'scan': 'work', 'rare': 'work', 'research': 'work', 'cargo': 'work', 'delivery': 'work',
-                     'spaceport': 'work', 'explore': 'work', 'repair': 'work', 'training': 'work', 'society': 'world',
-                     'event': 'world', 'holiday': 'world', 'progress': 'me', 'seed': 'help', 'guide': 'help',
+                     'spaceport': 'work', 'explore': 'work', 'repair': 'work', 'training': 'work', 'society': 'community',
+                     'event': 'community', 'holiday': 'community', 'world': 'community', 'progress': 'me', 'seed': 'help', 'guide': 'help',
                      'eat': 'life', 'relax': 'life', 'sleep': 'life', 'games': 'life', 'walk': 'life', 'hobby': 'life',
                      'meal': 'life', 'recover': 'life', 'use': 'bag', 'inventory': 'bag', 'status': 'home', 'settings': 'settings'})
 # Slash commands whose replies offer "Again" (they perform a task and can simply be repeated).
@@ -576,9 +574,8 @@ def area_text(m, db, p, area, ctx=None):
         lines = [f'{emoji} NEW ERIDIAN — {p.display_name}',
                  f'⚡ {life.energy} · 🍲 {life.nutrition} · 💬 {life.social} · 🛋️ {life.comfort} · 🪙 {p.sc} SC',
                  m.qol.queue_summary(m, db, p, 'discord')[0].split('\n')[0], '', text, '']
-        path = m.onboarding.line(m, db, p, 'discord')
-        if path:
-            lines.insert(3, path.replace('🧭 First steps', '🧭 **First steps**') + ' · Help → What next? has the checklist')
+        step = (ctx.get('home_next', lambda: home_next(m, db, p)) if ctx is not None else home_next(m, db, p))
+        lines.insert(3, step['line'])
     for key in children:
         if key in AREAS:
             e, t, d, _ = AREAS[key]
@@ -599,7 +596,11 @@ def area_components(m, owner, area, ctx=None):
 
 
 def area_items(m, area, ctx, rows):
-    """Each button of an area beside the line that explains it (see ui.with_items)."""
+    """Each button of an area beside the line that explains it (see ui.with_items).
+
+    The button carries the name (Work, Relax, Status…), so beside it the line keeps only its
+    emoji and what it does. Areas are blue, actions green, views grey.
+    """
     keys = children_of(m, area, ctx)
     buttons = [c for r in rows[:-1] if r for c in r.get('components') or []]
     items = []
@@ -607,22 +608,90 @@ def area_items(m, area, ctx, rows):
         leaf_ = LEAVES.get(key)
         if leaf_ is not None and not leaf_['hint']:
             continue                                     # no line to put it beside
-        label = AREAS[key][1] if leaf_ is None else leaf_['label']
+        emoji, label, about = (AREAS[key][0], AREAS[key][1], AREAS[key][2]) if leaf_ is None else (leaf_['emoji'], leaf_['label'], leaf_['hint'])
         if area == 'home' and key in HOME_COMPACT:
             items.append({'match': f'**{label}**', 'compact': True})
             continue
         beside = {k: v for k, v in b.items() if k != 'emoji'}
-        if leaf_ is None or leaf_['kind'] != 'do':
-            beside.update(label='Open', style=2)
-        items.append({'match': f'**{label}**', 'button': beside})
+        beside['style'] = 1 if leaf_ is None else (beside.get('style', 3) if leaf_['kind'] == 'do' else 2)
+        items.append({'match': f'**{label}**', 'button': beside, 'text': f'{emoji} {about[:1].upper()}{about[1:]}'})
     return items
+
+
+def crumb(area, tail=''):
+    """Where a screen sits in the menu: '🏠 Menu › ⛏️ Work › 🌾 Farming'."""
+    chain = []
+    while area in AREAS and area != 'home' and area not in chain:
+        chain.append(area)
+        area = PARENT.get(area, 'home')
+    return ' › '.join(['🏠 Menu'] + [f'{AREAS[a][0]} {AREAS[a][1]}' for a in reversed(chain)] + ([tail] if tail else []))
+
+
+ONBOARDING_LEAF = {'gather': 'gather', 'eat': 'eat', 'job': 'job', 'queue': 'queue', 'seedling': 'seedling'}
+
+
+def home_next(m, db, p):
+    """The one thing to do next, for the top of Home: get needs back up, finish the first steps,
+    the goal's next step, or choose a goal. A dict with 'line' and what its button does (home_button)."""
+    life = m.life_state(db, p)
+    if m.blocked_needs(life):
+        return {'line': '➡️ **Next step** — recover your needs: work and crafting wait until they are back up', 'do': {'do': 'recover'},
+                'label': 'Recover'}
+    first = m.onboarding.row(m, db, p) if m.onboarding.ENABLED else None
+    if first is not None and not first.finished:
+        key = m.onboarding.next_step(first)
+        _, goal, _, _, sc, _ = m.onboarding.INFO[key]
+        line = f'➡️ **Next step** — {goal} · first steps {len(m.onboarding.done_of(first))}/{len(m.onboarding.STEPS)}, +{sc} SC'
+        if key == 'craft':
+            from . import crafting_progression as cp
+            e = next((x for x in wb.index(m) if x.name == 'Campfire' and cp.SURVIVAL in x.tags), None)
+            if e is not None:
+                return {'line': line, 'view': ('wr', e.id, e.category, 1, ''), 'label': 'Campfire'}
+            return {'line': line, 'view': ('wh',), 'label': 'Workbench'}
+        leaf_ = ONBOARDING_LEAF[key]
+        return {'line': line, 'key': leaf_, 'label': AREAS[leaf_][1] if leaf_ in AREAS else LEAVES[leaf_]['label']}
+    e, steps = m.extras.walkthrough(m, db, p)
+    if steps:
+        return {'line': f"➡️ **Next step** — {steps[0]['name']} · for your goal: {e.name}", 'step': steps[0]}
+    return {'line': '➡️ **Next step** — choose a goal: open any recipe and press 🎯 Set goal; the goal then walks you through every step',
+            'view': ('wc', 'ready', 1, ''), 'label': 'Find a goal'}
+
+
+def home_button(m, owner, step):
+    """The button for home_next's step (a one-time ticket when it does something)."""
+    if 'step' in step:
+        return ui.step_button(m, owner, step['step'], first=True)
+    if 'do' in step:
+        return ui.button(step['label'], ui.cid(owner, 't', ui.issue(m, owner, step['do'])), style=3)
+    if 'key' in step:
+        b = dict(_button(m, owner, step['key']))
+        b.pop('emoji', None)
+        b['label'] = step['label']
+        if b.get('style') != 3:
+            b['style'] = 1
+        return b
+    return ui.button(step['label'], ui.cid(owner, *step['view']), style=1)
 
 
 def area_message(m, db, p, owner, area, ctx=None):
     """An area's card: each button beside the line that explains it (in Discord's newer layout)."""
     ctx = ctx or context(m, owner, db, p)
     rows = area_components(m, owner, area, ctx)
-    return ui.message(m, area_text(m, db, p, area, ctx), rows, 'menu', area_items(m, area, ctx, rows))
+    text = area_text(m, db, p, area, ctx)
+    items = area_items(m, area, ctx, rows)
+    if area == 'home' and p is not None:
+        rows, items = with_next(m, db, p, owner, ctx, rows, items)
+    data = ui.message(m, text, rows, 'menu', items)
+    return ui.with_crumb(data, crumb(area)) if area != 'home' else dict(data, _home=True)
+
+
+def with_next(m, db, p, owner, ctx, rows, items):
+    """Home's next-step button: beside its line in the newer layout, the first row in the old one."""
+    step = ctx.get('home_next', lambda: home_next(m, db, p)) if ctx is not None else home_next(m, db, p)
+    b = home_button(m, owner, step)
+    if b is None:
+        return rows, items
+    return [ui.row(b)] + [r for r in rows if r], [{'match': '**Next step**', 'button': b}] + items
 
 
 def reply(m, text, command, rows):
@@ -758,7 +827,7 @@ def pick_message(m, db, p, owner, key, page=1):
     items = []
     if select is not None and not any(str(o['value']).startswith('__page:') for o in select['options']):
         then = item.get('then')
-        verb = VERBS.get(key) or ('Open' if then in {'view', 'panel', 'leaf', 'uses', 'social'} else 'Choose')
+        verb = VERBS.get(key) or ('View' if then in {'view', 'leaf', 'uses'} else 'Meet' if then == 'social' else 'Choose')
         for o in select['options']:
             b = ui.pick_button(select['custom_id'], o['value'], verb, style=3 if then == 'do' else 2)
             if b is None:
@@ -766,7 +835,8 @@ def pick_message(m, db, p, owner, key, page=1):
                 break
             head, sep, tail = o['label'].partition(' — ')
             items.append({'line': f'**{head}**' + (f' — {tail}' if sep else ''), 'button': b})
-    return ui.message(m, text, rows, 'menu', items, [select['custom_id']] if items else ())
+    data = ui.message(m, text, rows, 'menu', items, [select['custom_id']] if items else ())
+    return ui.with_crumb(data, crumb(PARENT.get(key, 'home'), item['label'].rstrip('…')))
 
 
 def options_for(key, value=None):
@@ -925,12 +995,13 @@ def show(m, db, p, owner, command, options, area, name, key=''):
     shared = ui.share_button(owner, legacy, legacy_options)
     if shared:
         bottom = ui.row(shared, *((bottom or {}).get('components') or []))
+    where = crumb(area, LEAVES[key]['label'].rstrip('…') if key in LEAVES else '')
     if panel is not None:
         rows = [r for r in panel.get('components', []) if r.get('components')]
         panel['components'] = rows[:4] + [bottom]
-        return panel
+        return ui.with_crumb(panel, where)
     data = reply(m, text, legacy, grid(m, owner, children_of(m, area, context(m, owner, db, p)), rows=3) + [bottom])
-    return ui.add_list_items(m, data, owner, legacy, legacy_options, name)
+    return ui.with_crumb(ui.add_list_items(m, data, owner, legacy, legacy_options, name), where)
 
 
 # ---------------------------------------------------------------- actions (one-time tickets)
@@ -963,7 +1034,8 @@ def run(m, uid, name, action, token=''):
     if legacy == 'seedindustries' and legacy_options.get('action') in {'sellall'} and 'sold' in text:
         rows = [ui.row(ui.button('Undo sale (60s)', ui.cid(uid, 't', ui.issue(m, uid, {'do': 'undo'})), style=4, emoji='↩️'),
                        ui.button('Sell another', ui.cid(uid, 'mk', 'sell'), emoji='🏷️'), ui.button('Auto-sell', ui.cid(uid, 'av'), emoji='🧹')), rows[-1]]
-    return reply(m, text, legacy, rows)
+    leaf_ = LEAVES.get(action.get('leaf', ''))
+    return ui.with_crumb(reply(m, text, legacy, rows), crumb(area, leaf_['label'].rstrip('…') if leaf_ else ''))
 
 
 def after_command(m, command, options, uid):
