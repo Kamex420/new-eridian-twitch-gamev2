@@ -57,7 +57,9 @@ def note_split_world(m, channel, params):
     key = os.getenv('TWITCH_API_KEY', '').strip()
     if key and params.get('uid') and secrets.compare_digest(str(params.get('k') or '').encode(), key.encode()):
         m.RUNTIME_WARNINGS.add(f'Twitch commands use channel {channel} but DISCORD_WORLD_ID is {m.DISCORD_WORLD_ID}: Twitch and Discord '
-                               f'are separate worlds and !link codes cannot be claimed. Set DISCORD_WORLD_ID={channel} on Railway.')
+                               f'are separate worlds and !link codes cannot be claimed. Merge them (do not only set DISCORD_WORLD_ID={channel}: '
+                               f'that hides every Discord character): open /api/v1/admin/world-merge?source={m.DISCORD_WORLD_ID}&target={channel}'
+                               '&key=<ADMIN_KEY> to preview, then add &confirm=1.')
 
 
 def quick_problem(m, path, params):

@@ -1,5 +1,25 @@
 # Release notes
 
+## One world for Twitch and Discord: the world merge
+
+When `DISCORD_WORLD_ID` is not the Twitch channel's ID, Twitch and Discord run as two separate worlds: no shared characters, and `!link` codes made on Twitch can never be claimed on Discord. `/health` now points to a one-time merge instead of telling you to change the setting (changing it alone hides every Discord character).
+
+**How to merge.**
+1. Open `/api/v1/admin/world-merge?source=<old DISCORD_WORLD_ID>&target=<Twitch channel ID>&key=<ADMIN_KEY>`. It shows a preview and changes nothing: how many citizens each world has, who has a character in both, and what moves.
+2. Add `&confirm=1` to run it. Do it while not streaming: commands wait while it runs.
+3. Set `DISCORD_WORLD_ID` to the Twitch channel ID on Railway. The game already uses it from step 2 on, and keeps doing so after restarts even if you forget; `/health` reminds you until the setting matches.
+
+**What it does.**
+- Every Discord citizen moves into the Twitch world. A person with a character in both worlds is merged into one with the `/link` code: SC, XP, items, skills, home, business, queues and Seedling life combined.
+- The old Discord world keeps its clock, current event, project, story, votes, seasons and stream challenge. Society stats and settlement stockpiles of both worlds are added together, as the overlay already showed them. Unpaid help on the Twitch world's own project counts toward the main project.
+- Logs, highlights, journals and event history from both worlds are kept.
+- Today's market demand, weather and directive are re-rolled once, because they are picked from the world's name.
+- After the merge, `!link` works.
+
+**Safety.** The preview runs the whole merge and rolls it back. Everything happens in one transaction under the game lock, so a failure changes nothing. A second merge of the same world is refused, and so is a target that already has its own seasons or stream challenges. The game lock's key no longer depends on the world name, so switching worlds while commands wait is safe. The admin duplicate and merge tools read the main world at call time.
+
+**Tests.** `tests/test_world_merge.py` covers the preview, the merge, the restart behaviour, refusals and a failed merge. The same scenario runs on PostgreSQL in `tests/test_postgres.py`. A stress run on PostgreSQL (a few hundred mixed Discord and Twitch commands, then the merge) kept every citizen, and left total SC, items and XP unchanged.
+
 ## Hardening: keys, the market, locking, overlays, Seedlings and database growth
 
 **Do this after deploying.**

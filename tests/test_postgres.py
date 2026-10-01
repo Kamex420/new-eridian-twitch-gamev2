@@ -92,3 +92,37 @@ def test_the_game_on_postgresql(tmp_path):
     result = subprocess.run([sys.executable, '-c', CHECK], cwd=Path(__file__).resolve().parents[1], env=env,
                             capture_output=True, text=True, timeout=600)
     assert result.returncode == 0 and 'POSTGRES OK' in result.stdout, result.stdout[-2000:] + result.stderr[-4000:]
+
+
+MERGE = r'''
+import os, sys
+sys.path.insert(0, 'tests')
+from sqlalchemy import create_engine, text
+url = os.environ['DATABASE_URL']
+with create_engine(url.replace('postgresql://', 'postgresql+psycopg://', 1)).begin() as c:
+    c.execute(text('DROP SCHEMA public CASCADE')); c.execute(text('CREATE SCHEMA public'))
+import app.main as m
+from fastapi.testclient import TestClient
+from world_merge_scenario import build, verify, snapshot
+client = TestClient(m.app)
+S, T = m.DISCORD_WORLD_ID, '27074041'
+build(m, client, S, T)
+before = snapshot(m, S, T)
+preview = client.get('/api/v1/admin/world-merge', params={'source': S, 'target': T, 'key': 'admin-secret'}).json()
+assert preview['ok'] and not preview['merged'] and preview['after']['citizens'] == 6, preview
+assert snapshot(m, S, T) == before and m.DISCORD_WORLD_ID == S
+done = client.get('/api/v1/admin/world-merge', params={'source': S, 'target': T, 'key': 'admin-secret', 'confirm': 1}).json()
+assert done['merged'], done
+verify(m, client, S, T)
+print('MERGE OK')
+'''
+
+
+def test_the_world_merge_on_postgresql():
+    name = URL.rsplit('/', 1)[-1].split('?')[0]
+    assert 'test' in name, 'TEST_POSTGRES_URL must name a throwaway database (its name must contain "test"): its tables are dropped'
+    env = os.environ | {'DATABASE_URL': URL, 'TWITCH_API_KEY': 'game-key', 'ADMIN_KEY': 'admin-secret', 'AUTO_EVENTS_ENABLED': 'false',
+                        'DISCORD_WORLD_ID': 'new-eridian', 'DISCORD_WORLD_ID_ON_START': 'new-eridian'}
+    result = subprocess.run([sys.executable, '-c', MERGE], cwd=Path(__file__).resolve().parents[1], env=env,
+                            capture_output=True, text=True, timeout=600)
+    assert result.returncode == 0 and 'MERGE OK' in result.stdout, result.stdout[-2000:] + result.stderr[-4000:]

@@ -51,6 +51,7 @@ logging.getLogger("uvicorn.access").addFilter(_RedactKeys())
 DISCORD_PUBLIC_KEY=os.getenv("DISCORD_PUBLIC_KEY","")
 DISCORD_GAME_CHANNEL_ID=os.getenv("DISCORD_GAME_CHANNEL_ID","")
 DISCORD_WORLD_ID=os.getenv("DISCORD_WORLD_ID","new-eridian")
+os.environ.setdefault("DISCORD_WORLD_ID_ON_START",DISCORD_WORLD_ID)   # what Railway set; a world merge can change the one in use
 AVESTA_DAY_SECONDS=max(3600,int(os.getenv("AVESTA_DAY_SECONDS","21600")))
 DISCORD_MOD_ROLE_IDS={x.strip() for x in os.getenv("DISCORD_MOD_ROLE_IDS","").split(",") if x.strip()}
 _OWNER_RAW=os.getenv("DISCORD_OWNER_USER_IDS","")
@@ -3262,7 +3263,9 @@ def link_claim(channel:str,discord_uid:str,name:str="Citizen",code:str=""):
             elsewhere=db.execute(select(LinkCode.channel_id).where(LinkCode.code==code.upper())).scalar_one_or_none()
             if elsewhere:
                 # The code was made in another world: Twitch's channel ID is not DISCORD_WORLD_ID, so linking can never work.
-                RUNTIME_WARNINGS.add(f"A !link code from channel {elsewhere} was used on Discord, whose world is {channel}: set DISCORD_WORLD_ID={elsewhere} on Railway so Twitch and Discord share one world.")
+                RUNTIME_WARNINGS.add(f"A !link code from channel {elsewhere} was used on Discord, whose world is {channel}: Twitch and Discord do not share one world. "
+                                     f"Merge them (do not only set DISCORD_WORLD_ID={elsewhere}: that hides every Discord character): open "
+                                     f"/api/v1/admin/world-merge?source={channel}&target={elsewhere}&key=<ADMIN_KEY> to preview, then add &confirm=1.")
                 return out("⛔ That code is from a different New Eridian world, so it cannot link here. Ask a moderator to check the game's /health page (DISCORD_WORLD_ID).")
         if not r or as_utc(r.expires_at)<now():return out("⛔ Invalid or expired code.")
         discord_link=db.execute(select(AccountLink).where(AccountLink.channel_id==channel,AccountLink.discord_uid==discord_uid)).scalar_one_or_none()
@@ -5135,9 +5138,10 @@ def _player_summary(db,channel,p):
             "created":as_utc(p.created_at).strftime("%Y-%m-%d"),"last_seen":as_utc(p.last_seen).strftime("%Y-%m-%d %H:%M")}
 
 @app.get("/api/v1/admin/duplicates")
-def admin_duplicates(channel:str=DISCORD_WORLD_ID,key:str=""):
+def admin_duplicates(channel:str="",key:str=""):
     """Characters that share a name (ignoring case and [tags]): usually a Twitch and a Discord character never linked."""
     if not valid_admin_key(key):return JSONResponse({"ok":False,"error":"Invalid game-admin key."},status_code=403)
+    channel=channel or DISCORD_WORLD_ID   # read now: a world merge can change the main world while running
     from .autonomy import clean_name
     with SessionLocal() as db:
         groups={}
@@ -5149,11 +5153,12 @@ def admin_duplicates(channel:str=DISCORD_WORLD_ID,key:str=""):
 
 @app.get("/api/v1/admin/merge")
 @game_transaction
-def admin_merge(keep:str,merge:str,channel:str=DISCORD_WORLD_ID,key:str="",confirm:int=0):
+def admin_merge(keep:str,merge:str,channel:str="",key:str="",confirm:int=0):
     """Merge one character into another with the same code as /link: stats, XP, items, skills, homes, businesses,
     achievements, queues and Seedling life are combined, and both sets of Twitch/Discord IDs point at the kept character.
     Without confirm=1 it only shows what the merged character would look like."""
     if not valid_admin_key(key):return JSONResponse({"ok":False,"error":"Invalid game-admin key."},status_code=403)
+    channel=channel or DISCORD_WORLD_ID
     if keep==merge:return JSONResponse({"ok":False,"error":"keep and merge are the same character."},status_code=400)
     with SessionLocal() as db:
         a=db.execute(select(Player).where(Player.channel_id==channel,Player.twitch_uid==keep)).scalar_one_or_none()
@@ -7488,8 +7493,9 @@ onboarding.install(sys.modules[__name__])
 from . import community, votes, seasons, trophies, live_events, recap, activity_feed, twitch_lite
 community.install(sys.modules[__name__])
 twitch_lite.install(sys.modules[__name__])
-from . import maintenance
+from . import maintenance, world_merge
 maintenance.install(sys.modules[__name__])
+world_merge.install(sys.modules[__name__])
 presentation.SKILL_NAMES=tuple(SKILL_LABELS.values())
 # Every module above is loaded now: create any table a module added since the first create_all (existing tables are left alone).
 Base.metadata.create_all(engine)

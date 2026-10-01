@@ -18,7 +18,17 @@ The Docker startup attempts command registration before starting Uvicorn. A regi
 
 `DISCORD_APPLICATION_ID`, `DISCORD_BOT_TOKEN` and `DISCORD_GUILD_ID` identify the server command-registration target. `DISCORD_PUBLIC_KEY` verifies interactions. `DISCORD_WORLD_ID` associates Discord players with their saved world; Twitch command definitions carry the corresponding channel/world parameter. Changing that association can make existing progress appear to be missing even though its database rows remain intact.
 
-Set `DISCORD_WORLD_ID` to the Twitch channel's numeric ID (what StreamElements sends as `$(channel.provider_id)`). If they differ, Twitch and Discord are two separate worlds and `!link` codes cannot be claimed; `/health` then shows a warning naming the value to use.
+Set `DISCORD_WORLD_ID` to the Twitch channel's numeric ID (what StreamElements sends as `$(channel.provider_id)`). If they differ, Twitch and Discord are two separate worlds and `!link` codes cannot be claimed; `/health` then shows a warning. If both worlds already have players, do not just change the setting (Discord characters would seem to disappear): merge the worlds first.
+
+### Merging a Discord world into the Twitch world
+
+`/api/v1/admin/world-merge?source=<old DISCORD_WORLD_ID>&target=<Twitch channel ID>&key=<ADMIN_KEY>` shows a preview and changes nothing: citizens on each side, people with a character in both worlds, and the rows that would move. Adding `&confirm=1` runs it, in one transaction under the game lock (commands wait a few seconds; run it while not streaming).
+
+- Every citizen moves to the target world. Someone with a character in both (the same Twitch account, or a Discord account linked to a Twitch character earlier) is merged into one with the same code as `/link`.
+- The source world keeps its clock, current event, project, story, votes, seasons and stream challenge; society stats and settlement stockpiles of both worlds are added together, as the overlay already showed them. Unpaid help on the target world's own project counts toward the main project.
+- Today's market demand, weather and directive are re-rolled, because they are picked from the world's name.
+- The game uses the target as its main world at once and remembers it across restarts (`world_aliases_v1`), so set `DISCORD_WORLD_ID` to the target on Railway at any time afterwards; `/health` reminds you until it matches.
+- A second merge of the same world, or a target that already has its own seasons or stream challenges, is refused with an explanation.
 
 `DISCORD_OWNER_USER_IDS` and `DISCORD_MOD_ROLE_IDS` control existing privileged functions. These values are environment configuration, not repository content. The game title defaults to New Eridian v2 and the society name to New Eridian.
 
