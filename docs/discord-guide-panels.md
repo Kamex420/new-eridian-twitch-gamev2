@@ -1,12 +1,125 @@
 # Discord how-to-play panels
 
-12 messages for the game's guide channel. Paste each block (between the `---` lines) as its own message, in order. Each one is under Discord's 2,000-character message limit.
+16 messages for the game's guide channel. Paste each block (between the `---` lines) as its own message, in order. Each one is under Discord's 2,000-character message limit.
+
+Panels 1–4 are for someone who has never played SEED or New Eridian: what the game is, the words it uses, a first ten minutes and common questions. The rest are the how-to-play reference.
 
 **Coloured version:** the same panels as Discord ANSI blocks are in [discord-guide-panels.txt](discord-guide-panels.txt). A moderator can post all of them with colours intact using `/mod action:Post guide panels here`; the source is `app/guide_panels.py`.
 
 ---
 
-## 1 · Start here!
+## 1 · New here? Read this first
+
+Never played SEED or New Eridian? Start with these four panels. The game is free, and you play it by typing in Twitch chat or here on Discord.
+
+
+**What Is This Game?**
+
+- **A relaxed colony life game:** You are a settler in New Eridian, a young town on the planet Avesta. Gather materials, learn skills, craft things, sell them and help the town grow.
+- **Play at your own pace:** A few minutes a day is plenty. There is no game over: your citizen, items and skills are kept.
+
+**It Keeps Going Without You**
+
+- **Your Seedling:** Your citizen is a little person on the stream map. When you stop playing it carries on: it works, eats, sleeps, makes friends and writes you a diary.
+
+**What Is Seed?**
+
+- **SEED by Klang Games:** A life-sim MMO about humanity's new home on Avesta. New Eridian borrows its world and its items, but has its own rules. You do not need to know SEED.
+
+**Where You Play**
+
+- **Twitch chat · the lite version:** Type !start while you watch the stream.
+- **Discord · the full game:** Type /start here. Crafting, queues and trading are only on Discord.
+
+**READ ON → /start → PLAY AT YOUR OWN PACE**
+
+
+---
+
+## 2 · Words you will see
+
+A short dictionary. All of these come up in your first hour.
+
+
+**The World**
+
+- **Avesta:** The planet. Humanity moved here from Earth.
+- **New Eridian:** Our town. Everyone who plays builds it together.
+- **Seedling:** Your citizen. It has moods and thoughts, and it keeps living while you are away.
+- **Avesta day:** Game time: Morning, Day, Evening and Night. Each day brings a new colony vote.
+
+**You**
+
+- **Needs:** Energy, Nutrition, Comfort and Social. Tasks use them up; eating and resting fill them again.
+- **Skills:** Every task gives practice in a skill. Higher levels unlock more.
+- **Job:** Your profession. Work that matches it gets a bonus.
+
+**Money & Making**
+
+- **SC · Seed Coin:** Your money. Earned by selling, filling orders and helping out.
+- **Seed Industries:** The company that sells supplies and buys what you make.
+- **Workbench:** Where you craft. Some recipes need a station or machine.
+- **Queue:** One task repeated up to 10 times while you do something else.
+- **Contribution:** Credit for helping the town grow.
+
+**LEARN THE WORDS → THE REST IS EASY**
+
+
+---
+
+## 3 · Your first 10 minutes
+
+Follow these in order. Steps 2–7 each pay SC, and finishing them all gives a bonus and the Settled In title.
+
+
+**On Discord**
+
+- **1 · /start:** Make your citizen. You get 2 Lumber and 4 Berries.
+- **2 · /job:** Pick a profession. Any is fine; you can change it later.
+- **3 · /gather → Lumber:** Your first material.
+- **4 · /make → Ready now → Campfire:** Your first craft. The welcome kit has the Lumber it needs.
+- **5 · /life → Eat → Berries:** Food keeps your Nutrition up.
+- **6 · /gather → Lumber → Queue 5:** Five gathers in a row while you read on.
+- **7 · /seedling:** Meet the one who plays while you are away.
+
+**On Twitch**
+
+- **!start  !job farmer  !gather lumber:** Make your citizen, pick a job and gather in chat.
+- **!eat  !seedling:** Eat, then meet your Seedling. Crafting and queues are on Discord.
+
+**What Next?**
+
+- `/guide` Always tells you the best next step, and why.
+
+**START → GATHER → CRAFT → EAT → QUEUE → MEET YOUR SEEDLING**
+
+
+---
+
+## 4 · Questions new players ask
+
+Short answers to what new players ask most.
+
+
+**About Playing**
+
+- **Do I have to play every day?:** No. Nothing bad happens while you are away. Needs slowly refill on their own, and your Seedling keeps living for 3 days after you last played.
+- **Can I mess something up?:** Hard to. Menus and previews never spend anything, and a sale can be undone for 60 seconds.
+- **Does it cost money?:** No. Everything is earned by playing.
+- **Do I need to watch the stream?:** No. Discord works any time. Stream challenges only run while live, and they pay extra.
+- **Can I play with friends?:** Yes. Everyone lives in the same town, votes together and works on the same projects and events.
+
+**Stuck?**
+
+- `/guide  /menu  /find` Your next step, every button, or a search for anything.
+- **Ask in chat:** Other players and the mods can help.
+
+**NO RUSH · NO WRONG WAY · HAVE FUN**
+
+
+---
+
+## 5 · Jump in
 
 New Eridian is a Twitch + Discord life game on the planet Avesta. Build your citizen, learn skills, craft useful things and help the settlement grow.
 
@@ -33,7 +146,7 @@ New Eridian is a Twitch + Discord life game on the planet Avesta. Build your cit
 
 ---
 
-## 2 · Needs & recovery
+## 6 · Needs & recovery
 
 Every task uses Energy, Nutrition and Comfort. Low needs stop work, so keep them topped up.
 
@@ -56,7 +169,7 @@ Every task uses Energy, Nutrition and Comfort. Low needs stop work, so keep them
 
 ---
 
-## 3 · Your Seedling
+## 7 · Your Seedling
 
 Your Seedling is you on the stream map. It has moods and thoughts, and it keeps living while you are away.
 
@@ -79,7 +192,7 @@ Your Seedling is you on the stream map. It has moods and thoughts, and it keeps 
 
 ---
 
-## 4 · Gathering & work
+## 8 · Gathering & work
 
 Raw materials come from gathering and mining. Every success gives items and practice in its skill.
 
@@ -106,7 +219,7 @@ Raw materials come from gathering and mining. Every success gives items and prac
 
 ---
 
-## 5 · Crafting
+## 9 · Crafting
 
 The Workbench lists every recipe from easiest to hardest, with what you have and what you still need.
 
@@ -129,7 +242,7 @@ The Workbench lists every recipe from easiest to hardest, with what you have and
 
 ---
 
-## 6 · Queues
+## 10 · Queues
 
 A queue repeats one task up to 10 times and keeps going while you are away.
 
@@ -151,7 +264,7 @@ A queue repeats one task up to 10 times and keeps going while you are away.
 
 ---
 
-## 7 · Money & trade
+## 11 · Money & trade
 
 Seed Coin (SC) is your money. Earn it by selling what you make and by filling orders.
 
@@ -174,7 +287,7 @@ Seed Coin (SC) is your money. Earn it by selling what you make and by filling or
 
 ---
 
-## 8 · Society & world
+## 12 · Society & world
 
 Everyone builds New Eridian together. Your work fills the settlement and helps it level up.
 
@@ -195,7 +308,7 @@ Everyone builds New Eridian together. Your work fills the settlement and helps i
 
 ---
 
-## 9 · Votes & stream challenges
+## 13 · Votes & stream challenges
 
 Chat and Discord decide what the colony does next, and every stream brings shared goals.
 
@@ -216,7 +329,7 @@ Chat and Discord decide what the colony does next, and every stream brings share
 
 ---
 
-## 10 · Seasons & trophies
+## 14 · Seasons & trophies
 
 Long-term goals: climb this season, collect trophies, and show them off on stream.
 
@@ -238,7 +351,7 @@ Long-term goals: climb this season, collect trophies, and show them off on strea
 
 ---
 
-## 11 · Holidays & festival foods
+## 15 · Holidays & festival foods
 
 Every holiday has a festival that opens 30 days before it and runs until 7 days after.
 
@@ -251,14 +364,15 @@ Every holiday has a festival that opens 30 days before it and runs until 7 days 
 
 **Coming Up**
 
-- **🎃 Halloween · opens October 1:** Pumpkin Bites, Moon Tart, Candy Herb Mix.
+- **🎃 Halloween · open now until November 7:** Pumpkin Bites, Moon Tart, Candy Herb Mix.
+- **🦃 Thanksgiving · opens October 27:** Harvest Feast, Gourd Roast, Gratitude Pie.
 
 **GATHER → COOK → FEAST → STOCK UP**
 
 
 ---
 
-## 12 · Command list
+## 16 · Command list
 
 Every command, grouped. /menu shows all of them as buttons.
 
