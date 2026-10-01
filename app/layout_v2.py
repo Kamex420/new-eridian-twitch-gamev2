@@ -1,20 +1,24 @@
-"""Discord's newer message layout (Components V2) for replies.
+"""Discord's newer message layout (Components V2) for every message the game sends.
 
-Game replies are still built as embeds (presentation, message_layout, ui). Just
-before a reply leaves for Discord, `respond` (interaction answers), `edit`
-(deferred replies) and `new_message` (private follow-ups) rebuild it as one
-container:
+Game replies are still built as embeds or plain text (presentation, message_layout,
+ui). Just before a message leaves for Discord, `respond` (interaction answers),
+`edit` (deferred replies) and `new_message` (follow-ups and bot posts) rebuild it
+as one container:
 
-* the old colour strip becomes the container's accent colour;
+* the old colour strip becomes the container's accent colour (plain notices get
+  the information colour);
 * the title is a heading and the intro follows it; each section sits under a divider;
 * in lists, each item's name is bold and its details sit in a quote under it;
   legends, how-to-use lines and trailing notes become small grey subtext;
-* the footer is subtext, and the buttons and menus come last.
+* list items a screen names in `_items` (see ui.message) get their button beside
+  them, as many as Discord's 40-component limit allows; the rest keep their
+  buttons in the rows below;
+* the footer is subtext, and the remaining buttons and menus come last.
 
 Discord cannot mix the two layouts in one message. A message sent in the new
 layout must be edited in it, and a message sent in the old layout keeps it, so
 an edit always follows the message it changes. DISCORD_COMPONENTS_V2=false sends
-new replies in the old layout again; replies already in the new layout keep it.
+new messages in the old layout again; messages already in the new layout keep it.
 
 Nothing here changes game state; it only rearranges text and keeps every button.
 """
@@ -24,6 +28,8 @@ import re
 FLAG = 1 << 15            # IS_COMPONENTS_V2
 EPHEMERAL = 1 << 6
 ROW, TEXT, SEPARATOR, CONTAINER = 1, 10, 14, 17
+SECTION = 9               # text with a button beside it
+NOTICE = 0x5865F2         # the information colour (presentation.COLORS['notice'])
 MAX_COMPONENTS = 40       # every nested component counts
 MAX_TEXT = 4000           # across all text displays in one message
 ENABLED = os.getenv('DISCORD_COMPONENTS_V2', 'true').strip().lower() not in {'0', 'false', 'no', 'off'}
@@ -155,31 +161,135 @@ def _parts(data):
             if text:
                 parts.append(text)
         footer = str((e.get('footer') or {}).get('text') or '').strip() or footer
-    return [p for p in parts if p.strip()], footer, accent, bool(footer)
+    fields = sum(len(e.get('fields') or []) for e in embeds)
+    return [p for p in parts if p.strip()], footer, accent, bool(footer) or fields >= 3
 
 
 def _rows(data):
     return [r for r in data.get('components') or [] if isinstance(r, dict) and r.get('type') == ROW and r.get('components')]
 
 
+def private(data):
+    """Message data without this module's private keys (_items, _replaces)."""
+    return {k: v for k, v in data.items() if not str(k).startswith('_')} if isinstance(data, dict) else data
+
+
 def _count(children):
     total = 1                                  # the container itself
     for child in children:
-        total += 1 + (len(child.get('components') or []) if child.get('type') == ROW else 0)
+        total += 1 + len(child.get('components') or []) + (1 if child.get('accessory') else 0)
     return total
 
 
-def _layout(parts, footer, rows, divided):
-    """The container's children: text blocks (with dividers on full cards), then buttons."""
-    if footer:
-        parts = parts[:-1] + [parts[-1] + '\n-# ' + footer] if parts else ['-# ' + footer]
+def _plan(parts, items):
+    """Each text part split into segments around its list items, or None when an item is not found.
+
+    Segments are dicts: kind 'text', 'item' (gets a button beside it, ranked in order)
+    or 'compact' (its line is dropped when buttons sit beside the items; its button
+    stays in the rows below). Items with 'match' are found in order in the text; items
+    with 'line' are new lines added after the first part.
+    """
+    plan, want, k, rank = [], [i for i in items if i.get('match')], 0, 0
+    for text in parts:
+        segs, buf = [], []
+        lines = text.split('\n')
+        j = 0
+        while j < len(lines):
+            line = lines[j]
+            if k < len(want) and want[k]['match'] in line and not line.startswith(('> ', '-# ')):
+                if buf:
+                    segs.append({'kind': 'text', 'text': '\n'.join(buf)})
+                    buf = []
+                body = [line]
+                j += 1
+                while j < len(lines) and lines[j].startswith('> '):
+                    body.append(lines[j])
+                    j += 1
+                item = want[k]
+                k += 1
+                if item.get('compact'):
+                    segs.append({'kind': 'compact', 'text': '\n'.join(body)})
+                else:
+                    segs.append({'kind': 'item', 'text': '\n'.join(body), 'item': item, 'rank': rank})
+                    rank += 1
+                continue
+            buf.append(line)
+            j += 1
+        if buf:
+            segs.append({'kind': 'text', 'text': '\n'.join(buf)})
+        plan.append(segs)
+    if k < len(want):
+        return None
+    for item in items:
+        if item.get('line') and not item.get('match'):
+            if not plan:
+                plan.append([])
+            plan[0].append({'kind': 'item', 'text': item['line'], 'item': item, 'rank': rank})
+            rank += 1
+    return plan
+
+
+def _repack(rows, gone):
+    """Rows without the controls in `gone`; rows of only buttons are packed five to a row again."""
+    out, loose = [], []
+    for r in rows:
+        kept = [c for c in r['components'] if c.get('custom_id') not in gone]
+        if any(c.get('type') != 2 for c in r['components']):
+            if loose:
+                out += [dict(type=ROW, components=loose[i:i + 5]) for i in range(0, len(loose), 5)]
+                loose = []
+            if kept:
+                out.append(dict(r, components=kept))
+        else:
+            loose += kept
+    out += [dict(type=ROW, components=loose[i:i + 5]) for i in range(0, len(loose), 5)]
+    return out[:5]
+
+
+def _children(plan, footer, rows, divided, k, replaces):
+    """The container's children for `plan` with buttons beside its first k items."""
+    total = sum(1 for segs in plan for s in segs if s['kind'] == 'item')
+    beside = k > 0
+    used, blocks = set(), []
+    for segs in plan:
+        part = []
+        for s in segs:
+            if s['kind'] == 'item' and s['rank'] < k:
+                button = dict(s['item']['button'])
+                used.add(button.get('custom_id'))
+                part.append({'type': SECTION, 'components': [{'type': TEXT, 'content': s['text'].strip()}], 'accessory': button})
+            elif s['kind'] == 'compact' and beside:
+                continue
+            elif part and part[-1]['type'] == TEXT:
+                part[-1]['content'] += '\n' + s['text']
+            else:
+                part.append({'type': TEXT, 'content': s['text']})
+        for c in part:
+            if c['type'] == TEXT:
+                c['content'] = re.sub(r'\n{3,}', '\n\n', c['content']).strip()
+        part = [c for c in part if c['type'] != TEXT or c['content']]
+        if part:
+            blocks.append(part)
     children = []
-    for i, text in enumerate(parts if divided else ['\n\n'.join(parts)]):
-        if i:
-            children.append({'type': SEPARATOR, 'divider': True, 'spacing': 1})
-        children.append({'type': TEXT, 'content': text})
+    for part in blocks:
+        if children:
+            if divided:
+                children.append({'type': SEPARATOR, 'divider': True, 'spacing': 1})
+            elif children[-1]['type'] == TEXT and part[0]['type'] == TEXT:
+                children[-1]['content'] += '\n\n' + part[0]['content']
+                part = part[1:]
+        children += part
+    if footer:
+        if children and children[-1]['type'] == TEXT:
+            children[-1]['content'] += '\n-# ' + footer
+        else:
+            children.append({'type': TEXT, 'content': '-# ' + footer})
+    if not children:
+        children.append({'type': TEXT, 'content': 'Done.'})
+    gone = used | (replaces if beside and k >= total else set())
+    rows = _repack(rows, gone) if gone else rows
     if rows:
-        children.append({'type': SEPARATOR, 'divider': divided, 'spacing': 1})
+        children.append({'type': SEPARATOR, 'divider': divided or beside, 'spacing': 1})
         children += rows
     return children
 
@@ -187,30 +297,43 @@ def _layout(parts, footer, rows, divided):
 def convert(data, force=False):
     """The same message in the new layout, or None when it cannot fit Discord's limits.
 
+    Items the message lists (`_items`, see ui.message) get their button beside them,
+    as many as fit; controls they make redundant (`_replaces`) go when all of them fit.
     With force (an edit of a message already in the new layout, which cannot go back),
     long text is shortened and buttons dropped instead of giving up.
     """
     if not isinstance(data, dict):
         return None
     if is_v2(data):
-        return data
+        return private(data)
     parts, footer, accent, info = _parts(data)
     if not parts and not footer:
         if not force:
             return None
         parts = ['Done.']
     rows = _rows(data)
+    items = [i for i in data.get('_items') or [] if isinstance(i, dict) and (i.get('match') or i.get('line'))
+             and (i.get('compact') or isinstance(i.get('button'), dict))]
+    replaces = {str(x) for x in data.get('_replaces') or []}
+    plain = [[{'kind': 'text', 'text': p}] for p in parts]
+    plan = _plan(parts, items) if items else None
+    total = sum(1 for segs in plan or [] for s in segs if s['kind'] == 'item')
+    added = any(i.get('line') and not i.get('match') for i in items)
+    ks = [total] if added else list(range(total, 0, -1))      # new lines are all or nothing
+    splits = (True, False) if info and len(parts) > 1 else (False,)
+    attempts = [(plan, divided, k, rows) for k in ks if plan for divided in splits]
+    attempts += [(plain, divided, 0, rows) for divided in splits]
+    if force:
+        attempts.append((plain, False, 0, []))
     children = None
-    for divided, keep_rows in ((info and len(parts) > 1, True), (False, True), (False, False)):
-        if not keep_rows and not force:
-            break
-        candidate = _layout(parts, footer, rows if keep_rows else [], divided)
+    for chosen, divided, k, keep in attempts:
+        candidate = _children(chosen, footer, keep, divided, k, replaces)
         if _count(candidate) <= MAX_COMPONENTS:
             children = candidate
             break
     if children is None:
         return None
-    texts = [c for c in children if c['type'] == TEXT]
+    texts = [c for c in children if c['type'] == TEXT] + [t for c in children if c['type'] == SECTION for t in c['components']]
     excess = sum(len(c['content']) for c in texts) - MAX_TEXT
     if excess > 0:
         if not force:
@@ -224,9 +347,11 @@ def convert(data, force=False):
             c['content'] = c['content'][:len(c['content']) - cut].rstrip() + '…'
             excess -= cut - 1
     container = {'type': CONTAINER, 'components': children}
+    if accent is None and not data.get('embeds'):
+        accent = NOTICE                         # a plain notice gets the information colour
     if accent is not None:
         container['accent_color'] = max(0, min(0xFFFFFF, accent))
-    out = {k: v for k, v in data.items() if k not in {'content', 'embeds', 'components', 'flags'}}
+    out = {k: v for k, v in private(data).items() if k not in {'content', 'embeds', 'components', 'flags'}}
     out['components'] = [container]
     out['flags'] = FLAG | (int(data.get('flags') or 0) & EPHEMERAL)
     return out
@@ -241,19 +366,20 @@ def respond(response, payload=None):
     data = response['data']
     if response['type'] == 7:
         if not is_v2((payload or {}).get('message')):
-            return response                     # a message in the old layout keeps it
+            return dict(response, data=private(data))       # a message in the old layout keeps it
         new = convert(data, force=True)
         new['flags'] = FLAG                     # an edit cannot change who sees the message
         return dict(response, data=new)
-    new = new_message(data)
-    return response if new is data else dict(response, data=new)
+    return dict(response, data=new_message(data))
 
 
 def new_message(data):
-    """A new message in the new layout when it is on. Plain one-line notices stay plain text."""
-    if not ENABLED or not isinstance(data, dict) or not data.get('embeds'):
+    """A new message: in the new layout when it is on (one-line notices too), else as it was."""
+    if not isinstance(data, dict):
         return data
-    return convert(data) or data
+    if not ENABLED or not (data.get('embeds') or str(data.get('content') or '').strip()):
+        return private(data)
+    return convert(data) or private(data)
 
 
 def edit(data, payload=None):
@@ -271,11 +397,41 @@ def edit(data, payload=None):
         new = convert(data, force=True)
     else:
         new = new_message(data)
-        if new is data:
+        if not is_v2(new):
             return None
     new = dict(new)
     new['flags'] = FLAG                         # Discord needs the flag on the edit itself
     return new
+
+
+def with_line(data, line):
+    """A new-layout message with `line` (a ping, a note) as its first line."""
+    for c in data.get('components') or []:
+        if c.get('type') == CONTAINER:
+            kids = c['components']
+            if kids and kids[0].get('type') == TEXT:
+                kids[0] = dict(kids[0], content=line + '\n' + kids[0]['content'])
+            else:
+                kids.insert(0, {'type': TEXT, 'content': line})
+            break
+    return data
+
+
+def card(blocks, accent=NOTICE, rows=(), flags=0):
+    """A new-layout message from text blocks (one per section, divided) and optional button rows."""
+    children = []
+    for text in [b for b in blocks if str(b).strip()]:
+        if children:
+            children.append({'type': SEPARATOR, 'divider': True, 'spacing': 1})
+        children.append({'type': TEXT, 'content': str(text).strip()})
+    rows = [r for r in rows if r and r.get('components')]
+    if rows:
+        children.append({'type': SEPARATOR, 'divider': True, 'spacing': 1})
+        children += rows
+    container = {'type': CONTAINER, 'components': children or [{'type': TEXT, 'content': 'Done.'}]}
+    if accent is not None:
+        container['accent_color'] = accent
+    return {'components': [container], 'flags': FLAG | flags}
 
 
 def locked(payload=None):
@@ -284,18 +440,27 @@ def locked(payload=None):
 
 
 def without_buttons(data):
-    """The same new-layout message with its buttons and menus removed."""
+    """The same new-layout message with its buttons and menus removed (item buttons too)."""
     out = dict(data)
-    containers = []
+    tops = []
     for c in data.get('components') or []:
         if c.get('type') == CONTAINER:
-            kept = [x for x in c.get('components') or [] if x.get('type') != ROW]
+            kept = []
+            for x in c.get('components') or []:
+                if x.get('type') == ROW:
+                    continue
+                if x.get('type') == SECTION:        # an item: keep its text, drop its button
+                    x = dict(x['components'][0])
+                if x.get('type') == TEXT and kept and kept[-1].get('type') == TEXT:
+                    kept[-1] = dict(kept[-1], content=kept[-1]['content'] + '\n' + x['content'])
+                    continue
+                kept.append(x)
             while kept and kept[-1].get('type') == SEPARATOR:
                 kept.pop()
             c = dict(c, components=kept)
         if c.get('type') != ROW:
-            containers.append(c)
-    out['components'] = containers
+            tops.append(c)
+    out['components'] = tops
     return out
 
 
@@ -316,3 +481,18 @@ def text_of(data):
             walk(c.get('components'))
     walk(data.get('components'))
     return '\n'.join(x for x in out if x)
+
+
+def controls(data):
+    """Every button and menu in a message, in either layout (rows, items and nested rows)."""
+    found = []
+
+    def walk(components):
+        for c in components or []:
+            if c.get('type') in (2, 3, 5, 6, 7, 8):
+                found.append(c)
+            if isinstance(c.get('accessory'), dict) and c['accessory'].get('type') == 2:
+                found.append(c['accessory'])
+            walk(c.get('components'))
+    walk((data or {}).get('components'))
+    return found

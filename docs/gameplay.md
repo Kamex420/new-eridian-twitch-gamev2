@@ -128,6 +128,8 @@ Specialist quality gear (for example the Mining Pick, Repair Kit or Comfort Pack
 
 `/make`, `/mine`, `/gather` and `/queue` answer with dropdowns and buttons. Menus and page buttons only change the view and never spend anything. Buttons that spend (Craft, Unlock, Gather, Start queue, Cancel queue) are single-use: a second click, a Discord retry or an old message cannot repeat the action, and only the citizen who opened the panel can press them. Spending buttons expire after 24 hours; run the command again for a fresh panel. Every dropdown label follows the same pattern: status emoji, name, amount, then cost or blocker.
 
+In Discord's newer layout (the default, see `app/layout_v2.py`), list items carry their own button beside them instead: menu areas, choice lists, Workbench categories and recipe pages (8 recipes per page), and a skill's tasks (Start does the task once). A button beside a choice works exactly like picking it from the dropdown. Discord allows 40 parts per message, so on long lists only the first items get a button beside them and the rest keep their buttons in a row below.
+
 
 ## Quality-of-life tools
 

@@ -17,9 +17,15 @@ def test_posting_needs_a_token_and_sends_every_panel(monkeypatch):
     assert g.post('123', token='') == 0
     sent = []
     monkeypatch.setattr(g.time, 'sleep', lambda s: None)
-    monkeypatch.setattr(g.requests, 'post', lambda url, **kw: sent.append((url, kw['json']['content'])) or SimpleNamespace(status_code=200))
+    monkeypatch.setattr(g.requests, 'post', lambda url, **kw: sent.append((url, kw['json'])) or SimpleNamespace(status_code=200))
     assert g.post('123', token='x') == len(g.PANELS)
     assert all(url.endswith('/channels/123/messages') for url, _ in sent)
+    from app import layout_v2
+    assert all(layout_v2.is_v2(body) and body['allowed_mentions'] == {'parse': []} for _, body in sent)   # cards, like every reply
+    sent.clear()
+    monkeypatch.setattr(layout_v2, 'ENABLED', False)
+    assert g.post('123', token='x') == len(g.PANELS)
+    assert [body['content'] for _, body in sent] == g.messages()                                        # the coloured blocks
 
 
 def test_mod_command_posts_the_panels(monkeypatch):
@@ -55,3 +61,17 @@ def test_newcomer_panels_come_first_and_start_from_zero():
     for command in ('/start', '/job', '/gather', '/make', '/life', 'Queue 5', '/seedling', '/guide', '!start'):
         assert command in steps
     assert 'Settled In' in steps and '/find' in faq
+
+
+def test_every_panel_is_a_valid_card():
+    from app import layout_v2
+    for panel, body in zip(g.PANELS, g.bodies()):
+        box = body['components'][0]
+        texts = [c['content'] for c in box['components'] if c['type'] == layout_v2.TEXT]
+        assert box['type'] == layout_v2.CONTAINER and len(box['components']) + 1 <= layout_v2.MAX_COMPONENTS
+        assert sum(map(len, texts)) <= layout_v2.MAX_TEXT
+        assert texts[0].startswith('## ' + panel[0]) and panel[3] in texts[-1].replace('`', '')
+    first = layout_v2.text_of(g.bodies()[0])
+    assert '`/start`' in first and '**Twitch chat · the lite version**' in first
+    last = layout_v2.text_of(g.bodies()[-1])
+    assert '🟩 Green: success and growth' in last and '`/vote`' in last

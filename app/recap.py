@@ -207,8 +207,10 @@ def post(m, db, force=False, when=None):
     ok = False
     if token and target.isdigit():
         try:
+            from . import layout_v2
+            body = layout_v2.new_message({'embeds': [embed(title, sections)], 'allowed_mentions': {'parse': []}})
             r = requests.post(f'https://discord.com/api/v10/channels/{target}/messages', headers={'Authorization': 'Bot ' + token},
-                              json={'embeds': [embed(title, sections)], 'allowed_mentions': {'parse': []}}, timeout=10)
+                              json=body, timeout=10)
             ok = 200 <= r.status_code < 300
             if not ok:
                 logging.getLogger(__name__).warning('Weekly recap not accepted by Discord: %s', r.status_code)

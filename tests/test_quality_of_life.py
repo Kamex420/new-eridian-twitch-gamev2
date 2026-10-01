@@ -321,21 +321,30 @@ def _notice(channel_id):
                            content='TASK QUEUE — COMPLETED\nMine Coal\nAttempts completed: 1/1; remaining: 0.')
 
 
+def _http():
+    return SimpleNamespace(request=AsyncMock(return_value={'id': '1'}))
+
+
 def test_dm_delivery_sends_privately_and_falls_back_to_the_channel():
+    from app import layout_v2
     dm = MagicMock(spec=discord.DMChannel)
+    dm.id = 789
     dm.send = AsyncMock(return_value=SimpleNamespace(id=1))
     user = SimpleNamespace(create_dm=AsyncMock(return_value=dm))
-    client = SimpleNamespace(get_user=lambda _: user, get_channel=lambda _: None)
+    client = SimpleNamespace(get_user=lambda _: user, get_channel=lambda _: None, http=_http())
     asyncio.run(w.send_notice(m, client, _notice(n.DM_PREFIX + '456')))
-    assert dm.send.await_count == 1
-    assert dm.send.call_args.kwargs['content'] == 'Your queue has finished.'
+    route, = client.http.request.call_args.args
+    body = client.http.request.call_args.kwargs['json']
+    assert route.url.endswith('/channels/789/messages') and not dm.send.await_count
+    assert layout_v2.text_of(body).startswith('Your queue has finished.') and body['allowed_mentions']['users'] == []
 
     room = MagicMock(spec=discord.TextChannel)
+    room.id = 456
     room.send = AsyncMock(return_value=SimpleNamespace(id=2))
     closed = SimpleNamespace(create_dm=AsyncMock(side_effect=discord.Forbidden(SimpleNamespace(status=403, reason='x'), 'closed')))
-    client = SimpleNamespace(get_user=lambda _: closed, get_channel=lambda _: room)
+    client = SimpleNamespace(get_user=lambda _: closed, get_channel=lambda _: room, http=_http())
     asyncio.run(w.send_notice(m, client, _notice(n.DM_PREFIX + '456')))
-    assert room.send.call_args.kwargs['content'] == '<@123> Your queue has finished.'
+    assert layout_v2.text_of(client.http.request.call_args.kwargs['json']).startswith('<@123> Your queue has finished.')
 
 
 def test_alert_buttons_reach_the_discord_view():
@@ -346,11 +355,14 @@ def test_alert_buttons_reach_the_discord_view():
         notice.recipient = '123'
         db.commit()
         row = SimpleNamespace(id=notice.id, recipient='123', message_channel='456', content=notice.content)
+    from app import layout_v2
     room = MagicMock(spec=discord.TextChannel)
+    room.id = 456
     room.send = AsyncMock(return_value=SimpleNamespace(id=1))
-    asyncio.run(w.send_notice(m, SimpleNamespace(get_channel=lambda _: room), row))
-    view = room.send.call_args.kwargs['view']
-    assert {'Repeat ×1', 'Status', 'Queue'} <= {item.label for item in view.children}
+    client = SimpleNamespace(get_channel=lambda _: room, http=_http())
+    asyncio.run(w.send_notice(m, client, row))
+    body = client.http.request.call_args.kwargs['json']
+    assert {'Repeat ×1', 'Status', 'Queue'} <= {c.get('label') for c in layout_v2.controls(body)}
 
 
 # ---------------------------------------------------------------- selling and inventory

@@ -207,7 +207,7 @@ def tidy(data):
     return data
 
 
-def message(m, text, components, command='make'):
+def message(m, text, components, command='make', items=None, replaces=()):
     rows = [c for c in components if c and c.get('components')][:5]
     seen = set()
     for component_row in rows:
@@ -216,7 +216,31 @@ def message(m, text, components, command='make'):
             while component['custom_id'] in seen:
                 component['custom_id'] = (component['custom_id'] + '|~')[:100]
             seen.add(component['custom_id'])
-    return {'embeds': [embed_from_text(m, text, command)], 'components': rows, 'allowed_mentions': {'parse': []}}
+    data = {'embeds': [embed_from_text(m, text, command)], 'components': rows, 'allowed_mentions': {'parse': []}}
+    return with_items(data, items, replaces)
+
+
+def with_items(data, items, replaces=()):
+    """Name the list items that get their button beside them in Discord's newer layout.
+
+    items: dicts with 'match' (text that finds the item's line in the card) or 'line'
+    (a line to add), and the 'button' to put beside it; 'compact' items keep their
+    button in the rows below and drop their line. replaces: custom_ids of controls the
+    item buttons make redundant (a dropdown of the same items). layout_v2 reads these;
+    the old layout ignores them, and neither is ever sent to Discord.
+    """
+    if items:
+        data['_items'] = list(items)
+        data['_replaces'] = [c for c in replaces if c]
+    return data
+
+
+def pick_button(select_id, value, label, style=2):
+    """A button that stands for picking `value` from the dropdown `select_id` (see handle_component)."""
+    custom_id = f'{select_id}|={value}'
+    if '|' in str(value) or len(custom_id) > 100:
+        return None
+    return button(label, custom_id, style=style)
 
 
 # ---------------------------------------------------------------- workbench views
@@ -240,6 +264,68 @@ def category_menu(m, ctx, owner, current=''):
 
 def home_components(m, ctx, owner):
     return [category_menu(m, ctx, owner)]
+
+
+def home_items(ctx, owner):
+    """Ready now, Favourites and every category, each with an Open button beside it."""
+    keys = [('Ready now', 'ready'), ('Favourites', 'favorites')] + [(label, key) for key, _, label, _ in wb.CATEGORIES]
+    return [{'match': f'**{label}**', 'button': button('Open', cid(owner, 'wc', key, 1, ''))} for label, key in keys], [cid(owner, 'sc')]
+
+
+def category_items(ctx, owner, category, page, station=''):
+    """Each recipe on the page with an Open button (its preview) beside it, in the list's order."""
+    rows = wb.in_view(ctx, category, station)
+    page, pages, start, end = wb.page_bounds(len(rows), page)
+    st = _code(station)
+    items = [{'match': f'**{e.name}**', 'button': button('Open', cid(owner, 'wr', e.id, category, page, st), style=3 if ctx.status(e).code == 'ready' else 2)}
+             for e in rows[start:end]]
+    return items, [cid(owner, 'sr', category, page, st)]
+
+
+def training_items(m, db, p, owner, hub):
+    """Each task of one skill with a Start button beside it; the button does the task once."""
+    items = []
+    for key, cfg in m.SEED_TASKS.items():
+        if cfg['hub'] != hub:
+            continue
+        ready = m.training_choice_label(db, p, key, cfg)[:1] == '✅'
+        ticket = issue(m, owner, {'do': 'train', 'skill': hub, 'task': key})
+        items.append({'match': cfg['label'], 'button': button('Start', cid(owner, 't', ticket), style=3 if ready else 2)})
+    return items
+
+
+def list_items(m, owner, command, options, name='Citizen'):
+    """(items, replaces) for list views that are not panels, else (None, ()). See with_items."""
+    command, options = m.discord_legacy_route(command, options or {})
+    if command == 'training' and options.get('skill') and not options.get('task'):
+        hub = str(options['skill']).lower().strip()
+        if hub in m.SEED_HUBS:
+            with m.SessionLocal() as db:
+                p = _player(m, db, owner, name)
+                items = training_items(m, db, p, owner, hub)
+                db.commit()
+            return items, ()
+    return None, ()
+
+
+def add_list_items(m, data, owner, command, options, name='Citizen'):
+    """Message data with its list items named (see list_items); unchanged for other views."""
+    try:
+        items, replaces = list_items(m, owner, command, options, name)
+    except Exception:
+        import logging
+        logging.getLogger(__name__).error('List buttons could not be prepared: %s', command)
+        return data
+    return with_items(data, items, replaces) if items else data
+
+
+def workbench_message(m, ctx, owner, text, category='', page=1, station='', command='make'):
+    """The Workbench home or a category page, with a button beside each category or recipe."""
+    if category:
+        items, replaces = category_items(ctx, owner, category, page, station)
+        return message(m, text, category_components(m, ctx, owner, category, page, station), command, items, replaces)
+    items, replaces = home_items(ctx, owner)
+    return message(m, text, home_components(m, ctx, owner), command, items, replaces)
 
 
 def category_components(m, ctx, owner, category, page, station=''):
@@ -473,7 +559,7 @@ def slash_panel(m, command, uid, name, options, result):
             if recipe and e is None:
                 e = qol.fuzzy_recipe(m, db, p, recipe, category)[0]
             if e is None:
-                components = category_components(m, ctx, uid, category, page, station) if category else home_components(m, ctx, uid)
+                return workbench_message(m, ctx, uid, result, category, page, station, command)
             elif action == 'preview':
                 components = recipe_components(m, ctx, uid, e, category, page, station)
             elif action == 'queue':
@@ -502,7 +588,9 @@ def slash_panel(m, command, uid, name, options, result):
             return message(m, result, status_components(m, db, p, uid), command)
         if command == 'menu':
             from . import menu
-            return message(m, result, menu.area_components(m, uid, 'home', menu.context(m, uid, db, p)), command)
+            ctx = menu.context(m, uid, db, p)
+            rows = menu.area_components(m, uid, 'home', ctx)
+            return message(m, result, rows, command, menu.area_items(m, 'home', ctx, rows))
         if command == 'find':
             return message(m, result, find_components(m, uid, str(options.get('query') or '')), command)
         if command in {'seedling', 'seedlingstep'}:
@@ -595,6 +683,9 @@ def handle_component(m, payload, schedule=None):
     if uid != owner:
         return _notice('This menu belongs to another citizen. Open your own with the same command. Nothing was spent.')
     values = data.get('values') or []
+    if args and args[-1].startswith('='):
+        # A button beside a list item (pick_button): the same as choosing it from the dropdown.
+        values, args = [args[-1][1:]], args[:-1]
     if verb == 'sh':
         return share(m, uid, name, args)
     if verb == 'mo':
@@ -639,7 +730,7 @@ def _navigate(m, payload, uid, name, owner, verb, args, values):
         ctx = wb.Context(m, db, p)
         db.commit()
         if verb == 'wh':
-            return _reply(message(m, wb.home_text(ctx), home_components(m, ctx, owner)), payload)
+            return _reply(workbench_message(m, ctx, owner, wb.home_text(ctx)), payload)
         if verb in {'wc', 'sc', 'ss'}:
             if verb == 'sc':
                 category, page, station = (values[0] if values else ''), 1, ''
@@ -655,7 +746,7 @@ def _navigate(m, payload, uid, name, owner, verb, args, values):
             more.remember_place(db, p, category, page, _code(station))
             db.commit()
             text = wb.category_text(ctx, category, page, station)
-            return _reply(message(m, text, category_components(m, ctx, owner, category, page, station)), payload)
+            return _reply(workbench_message(m, ctx, owner, text, category, page, station), payload)
         if verb in {'wr', 'sr'}:
             if verb == 'sr':
                 recipe = values[0] if values else ''
@@ -763,6 +854,8 @@ def _run(m, uid, name, action, kind, channel):
         result = m.seed_supplies(channel, uid, name, 'gather', action['item'], 1, False, 'discord').body.decode()
     elif kind == 'unlock':
         result = m.workshop(channel, uid, name, 'unlock', action['station'], 1, 'discord').body.decode()
+    elif kind == 'train':
+        result = m.training(channel, uid, name, action['skill'], action['task'], 'discord').body.decode()
     else:
         result = 'This button is no longer supported. Nothing was spent.'
     with m.SessionLocal() as db:
@@ -786,6 +879,13 @@ def _run(m, uid, name, action, kind, channel):
             components = [row(button('Undo sale (60s)', cid(uid, 't', issue(m, uid, {'do': 'undo'})), style=4, emoji='↩️'))] + status_components(m, db, p, uid)[:1]
         elif kind == 'recover':
             components = status_components(m, db, p, uid)
+        elif kind == 'train':
+            again = issue(m, uid, {'do': 'train', 'skill': action['skill'], 'task': action['task']})
+            tasks = pick_button(cid(uid, 'mp', 'trainskill'), action['skill'], 'Tasks')
+            if tasks:
+                tasks['emoji'] = {'name': '🎯'}
+            components = [row(button('Again', cid(uid, 't', again), style=3, emoji='🔁'), tasks,
+                              button('Menu', cid(uid, 'mn', 'home'), emoji='🏠'))]
         else:
             components = queue_components(m, db, p, uid)
         db.commit()
@@ -890,7 +990,9 @@ def public_panel(m):
             row(button('Queue', cid(PUBLIC, 'qv'), emoji='⏱️'), button('Bag', cid(PUBLIC, 'mn', 'bag'), emoji='🎒'),
                 button('Trade', cid(PUBLIC, 'mn', 'trade'), emoji='🪙'), button('Find', cid(PUBLIC, 'mo', 'find'), emoji='🔎'),
                 button('Account', cid(PUBLIC, 'mn', 'account'), emoji='🔗'))]
-    return message(m, text, rows, 'menu')
+    items = [{'match': f"**{b['label']}**", 'button': {k: v for k, v in dict(b, label='Open').items() if k != 'emoji'}}
+             for r in rows for b in r['components']]
+    return message(m, text, rows, 'menu', items)
 
 
 def post_public_panel(m, channel_id, token=None):
@@ -900,10 +1002,11 @@ def post_public_panel(m, channel_id, token=None):
     token = (token or os.getenv('DISCORD_BOT_TOKEN', '')).strip()
     if not token or not str(channel_id).isdigit():
         return False
-    data = public_panel(m)
+    from . import layout_v2
+    data = layout_v2.new_message(public_panel(m))     # each button beside its line, in the newer layout
     try:
         response = requests.post(f'https://discord.com/api/v10/channels/{channel_id}/messages', headers={'Authorization': 'Bot ' + token},
-                                 json={'embeds': data['embeds'], 'components': data['components'], 'allowed_mentions': {'parse': []}}, timeout=10)
+                                 json=dict(data, allowed_mentions={'parse': []}), timeout=10)
     except requests.RequestException:
         return False
     return 200 <= response.status_code < 300

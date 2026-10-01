@@ -38,7 +38,7 @@ def normalize_category(value):
     if key in VIEW_ALIASES:
         return VIEW_ALIASES[key]
     return s.display_category(value)
-PAGE_SIZE = 10
+PAGE_SIZE = 8         # recipes per Discord page: each gets an Open button beside it within Discord's 40-component limit
 CHAT_PAGE_SIZE = 8   # Twitch pages must fit one 380-byte chat message
 STATUS_ORDER = {'ready': 0, 'missing': 1, 'station': 2, 'owned': 3, 'locked': 4}
 
@@ -423,11 +423,12 @@ def home_text(ctx):
         return text
     lines = [f'🛠️ WORKBENCH — {ctx.p.display_name if ctx.p else "Citizen"}', tier_line(ctx),
              f"Workstations unlocked: {len(ctx.access)} of {len(cp.STATIONS)} (Survival Workbench is free). /workshop unlocks more.", '',
-             f"✅ Ready now: {counts['ready'][0]} recipes · ⭐ Favourites: {counts['favorites'][1]}/{counts['favorites'][0]} ready", '',
+             f"✅ **Ready now** — {counts['ready'][0]} recipes you can craft right now",
+             f"⭐ **Favourites** — {counts['favorites'][1]} of {counts['favorites'][0]} starred recipes ready", '',
              'CATEGORIES · ready now / recipes, from the easiest tier']
     for key, emoji, label, text in CATEGORIES:
         total, ready, lowest = counts.get(key, (0, 0, 1))
-        lines.append(f'{emoji} {label} — {ready}/{total} ready · from T{lowest}')
+        lines.append(f'{emoji} **{label}** — {ready}/{total} ready · from T{lowest}')
     easy = start_here(ctx)
     lines += ['', 'START HERE']
     if easy:
@@ -437,7 +438,7 @@ def home_text(ctx):
             missing = ', '.join(f'{n - ctx.have(k)} {m.resource_name(k)}' for k, n in e.inputs.items() if ctx.have(k) < n)
             lines.append(f'❌ {e.name} at {station_label(e, ctx)} — gather {missing} with /gather or /mine, then craft it.')
         lines.append('The Survival Workbench is free. Unlock more workstations with /workshop (15 SC each at Tier 1); Seed Industries sells starter supplies.')
-    lines += ['', 'Pick a category (menu below or /make category:<name>), then a recipe. Every list runs from the easiest recipe to the most complex. '
+    lines += ['', 'Open a category (or /make category:<name>), then a recipe. Every list runs from the easiest recipe to the most complex. '
               'Previews show ingredients you have and need, the workstation, tier, skill and where to get each ingredient.']
     return '\n'.join(lines)
 
@@ -467,7 +468,7 @@ def category_text(ctx, category, page=1, station=''):
     if not rows:
         lines.append(empty_view_text(category))
     lines += ['', '✅ ready · ❌ missing ingredients · 🔑 workstation to unlock · 🔒 tier, skill or society lock',
-              'Choose a recipe in the menu below (or /make recipe:<name>) to see its full preview before crafting.']
+              'Open a recipe (or /make recipe:<name>) to see its full preview before crafting.']
     return '\n'.join(lines)
 
 

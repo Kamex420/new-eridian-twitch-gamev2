@@ -300,6 +300,37 @@ leaf('h_topics', 'Handbook', '📚', 'pick', 'seed', pick='leaves:h_start,h_char
 leaf('alerts', 'Queue alerts', '🔔', 'pick', 'settings', pick='alerts', then='do', option='alerts', hint='how you hear that a queue paused or finished')
 leaf('popups', 'Notifications', '📬', 'pick', 'settings', pick='popups', then='do', option='popups', hint='what pops up for you after commands')
 
+# Every button gets a line that explains it, so the newer layout can put the button beside it.
+_HINTS = {
+    'w_farm_tend': 'gives 1 Pumpkin + 1 Pumpkin Seeds', 'w_farm_harvest': 'gives 3 Pumpkins + 1 Pumpkin Seeds',
+    'w_farm_irrigate': 'gives 3 Pumpkins + 1 Murky Water', 'w_farm_hydroponics': 'gives 4 Pumpkins + 1 Raw Algae; needs a Small Water Filter',
+    'w_scan': 'an environmental scan', 'w_rare': 'search for rare ores (Harvesting level 3)', 'w_research': 'gives 1 Stone',
+    'w_field_analysis': 'gives 2 Stone + 1 Herbs; needs a Siro Sampler', 'w_cargo': 'prepare Cargo for deliveries',
+    'w_delivery': 'deliver Cargo (used on success)', 'w_spaceport': 'gives 1 Cargo + 1 Lumber',
+    'w_expedite': 'gives 2 Cargo + 2 Lumber; uses 1 Power Cell', 'w_scout': 'gives 1 Stone + 1 Berries',
+    'w_survey': 'gives 2 Stone + 1 Clay + 1 Coal; needs a Resource Scanner',
+    'bwork': 'gives 1 Cargo', 'bcontract': 'gives 2 Cargo + 1 Lumber', 'binvest': 'put SC into your company',
+    'wd_overview': 'the day, weather, project and news', 'wd_conditions': 'weather and time of day, and the work they favour',
+    'wd_society': 'the settlement and its stats', 'wd_society_progress': 'what the town needs for its next tier',
+    'wd_leaderboard': 'who has helped the town most', 'wd_event': 'the active event and how to help', 'wd_event_history': 'past events',
+    'wd_holidays': 'festivals now and next', 'wd_project': 'the society project', 'wd_story': 'the colony story so far',
+    'wd_bulletin': 'news from the settlement', 'wd_rumor': 'what people are whispering', 'wd_market': "today's prices and demand",
+    'me_overview': 'your citizen at a glance', 'me_skills': 'every skill and its level', 'me_daily': "today's contract",
+    'me_achievements': 'milestones you have reached', 'me_collection': 'what you have collected', 'me_bonuses': 'boosts active now',
+    'me_traits': "your citizen's traits", 'me_relationships': 'friends and how close you are', 'me_journal': 'your recent story',
+    'me_tutorial': 'the tutorial steps', 'me_titles': 'titles you have unlocked',
+    'display_compact': 'shorter results', 'display_detailed': 'full results with every detail', 'h_moderator': 'how the moderator tools work',
+}
+for _key, _hint in _HINTS.items():
+    if _key in LEAVES and not LEAVES[_key]['hint']:
+        LEAVES[_key]['hint'] = _hint
+# In Discord's newer layout Home shows these as a compact row; the rest get a button beside their line.
+HOME_COMPACT = {'status', 'inbox', 'recent', 'find', 'me', 'settings', 'help', 'account', 'mod'}
+# The word on the button beside each choice in a list; otherwise Open for views and Choose for the rest.
+VERBS = {'eat': 'Eat', 'hobby': 'Practice', 'gearrepair': 'Repair', 'unlock': 'Unlock', 'use': 'Use', 'sell': 'Sell', 'buy': 'Buy',
+         'sellsome': 'Sell', 'fulfill': 'Deliver', 'title': 'Equip', 'c_vote_pick': 'Vote', 'c_hat': 'Wear', 'c_badge': 'Pin',
+         'm_eventstart': 'Start', 'm_chalstart': 'Start'}
+
 PARENT = {}
 for _area, (_, _, _, _children) in AREAS.items():
     for _child in _children:
@@ -567,6 +598,33 @@ def area_components(m, owner, area, ctx=None):
     return rows + [nav(owner, area)]
 
 
+def area_items(m, area, ctx, rows):
+    """Each button of an area beside the line that explains it (see ui.with_items)."""
+    keys = children_of(m, area, ctx)
+    buttons = [c for r in rows[:-1] if r for c in r.get('components') or []]
+    items = []
+    for key, b in zip(keys, buttons):
+        leaf_ = LEAVES.get(key)
+        if leaf_ is not None and not leaf_['hint']:
+            continue                                     # no line to put it beside
+        label = AREAS[key][1] if leaf_ is None else leaf_['label']
+        if area == 'home' and key in HOME_COMPACT:
+            items.append({'match': f'**{label}**', 'compact': True})
+            continue
+        beside = {k: v for k, v in b.items() if k != 'emoji'}
+        if leaf_ is None or leaf_['kind'] != 'do':
+            beside.update(label='Open', style=2)
+        items.append({'match': f'**{label}**', 'button': beside})
+    return items
+
+
+def area_message(m, db, p, owner, area, ctx=None):
+    """An area's card: each button beside the line that explains it (in Discord's newer layout)."""
+    ctx = ctx or context(m, owner, db, p)
+    rows = area_components(m, owner, area, ctx)
+    return ui.message(m, area_text(m, db, p, area, ctx), rows, 'menu', area_items(m, area, ctx, rows))
+
+
 def reply(m, text, command, rows):
     """A result card (with Details pages when long) followed by menu rows; five rows at most."""
     data = m._discord_json_message(text, message_type=command)['data']
@@ -692,6 +750,25 @@ def pick_view(m, db, p, owner, key, page=1):
                                ui.button('Menu', ui.cid(owner, 'mn', 'home'), emoji='🏠'))]
 
 
+def pick_message(m, db, p, owner, key, page=1):
+    """A choice list: in the newer layout each choice gets its own button when the list fits on one card."""
+    text, rows = pick_view(m, db, p, owner, key, page)
+    item = LEAVES[key]
+    select = next((r['components'][0] for r in rows if r and r.get('components') and r['components'][0].get('type') == 3), None)
+    items = []
+    if select is not None and not any(str(o['value']).startswith('__page:') for o in select['options']):
+        then = item.get('then')
+        verb = VERBS.get(key) or ('Open' if then in {'view', 'panel', 'leaf', 'uses', 'social'} else 'Choose')
+        for o in select['options']:
+            b = ui.pick_button(select['custom_id'], o['value'], verb, style=3 if then == 'do' else 2)
+            if b is None:
+                items = []
+                break
+            head, sep, tail = o['label'].partition(' — ')
+            items.append({'line': f'**{head}**' + (f' — {tail}' if sep else ''), 'button': b})
+    return ui.message(m, text, rows, 'menu', items, [select['custom_id']] if items else ())
+
+
 def options_for(key, value=None):
     item = LEAVES[key]
     options = dict(item['opts'])
@@ -710,9 +787,11 @@ def navigate(m, db, p, owner, verb, args, values, name):
             actions = m.extras.recent(db, p.channel_id, p.twitch_uid)
             text = '🔁 RECENT ACTIONS\nTap one to do it again. Each button works once; the result brings fresh buttons.\n\n' + (
                 '\n'.join(f'• {a.label} · <t:{int(m.as_utc(a.created_at).timestamp())}:R>' for a in actions) or 'Nothing yet. Actions you take appear here.')
-            return ui.message(m, text, ui.recent_components(m, db, p, owner), 'menu')
-        ctx = context(m, owner, db, p)
-        return ui.message(m, area_text(m, db, p, area, ctx), area_components(m, owner, area, ctx), 'menu')
+            rows = ui.recent_components(m, db, p, owner)
+            buttons = [c for r in rows[:-1] for c in r['components']]
+            items = [{'match': f'{a.label} · <t:', 'button': dict(b, label='Again')} for a, b in zip(actions, buttons)]
+            return ui.message(m, text, rows, 'menu', items)
+        return area_message(m, db, p, owner, area)
     key = args[0] if args else ''
     if key not in LEAVES:
         return ui.message(m, 'That button is no longer available. Here is the menu.', area_components(m, owner, 'home', context(m, owner, db, p)), 'menu')
@@ -722,11 +801,9 @@ def navigate(m, db, p, owner, verb, args, values, name):
         command, options = options_for(key)
         return show(m, db, p, owner, command, options, area, name, key)
     if verb == 'mk':
-        text, rows = pick_view(m, db, p, owner, key)
-        return ui.message(m, text, rows, 'menu')
+        return pick_message(m, db, p, owner, key)
     if verb == 'mp' and values and str(values[0]).startswith('__page:'):
-        text, rows = pick_view(m, db, p, owner, key, int(values[0].split(':', 1)[1] or 1))
-        return ui.message(m, text, rows, 'menu')
+        return pick_message(m, db, p, owner, key, int(values[0].split(':', 1)[1] or 1))
     if verb == 'ma':
         return amount_view(m, db, p, owner, key, args[1] if len(args) > 1 else '')
     if verb == 'mp':
@@ -852,7 +929,8 @@ def show(m, db, p, owner, command, options, area, name, key=''):
         rows = [r for r in panel.get('components', []) if r.get('components')]
         panel['components'] = rows[:4] + [bottom]
         return panel
-    return reply(m, text, legacy, grid(m, owner, children_of(m, area, context(m, owner, db, p)), rows=3) + [bottom])
+    data = reply(m, text, legacy, grid(m, owner, children_of(m, area, context(m, owner, db, p)), rows=3) + [bottom])
+    return ui.add_list_items(m, data, owner, legacy, legacy_options, name)
 
 
 # ---------------------------------------------------------------- actions (one-time tickets)

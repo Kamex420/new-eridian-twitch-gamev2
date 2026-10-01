@@ -15,7 +15,7 @@ from types import SimpleNamespace
 import discord
 from discord.ext import tasks
 from sqlalchemy import select, update
-from . import queue_notifications as n, qol
+from . import queue_notifications as n, qol, layout_v2
 
 log=logging.getLogger('uvicorn.error.discord_queue')
 
@@ -116,7 +116,9 @@ async def send_notice(m,client,notice):
         room=await direct_channel(client,notice.recipient)
         if room is not None:
             try:
-                await room.send(**message_args(data,mention.split('> ',1)[-1],notice,dm=True))
+                line=mention.split('> ',1)[-1]
+                if not await send_v2(client,room.id,v2_body(data,line,notice,dm=True)):
+                    await room.send(**message_args(data,line,notice,dm=True))
                 return
             except (discord.Forbidden,discord.HTTPException):pass
         if not str(channel_id).isdigit():
@@ -124,6 +126,7 @@ async def send_notice(m,client,notice):
     channel=client.get_channel(int(channel_id)) or await client.fetch_channel(int(channel_id))
     if not isinstance(channel,(discord.TextChannel,discord.Thread)):
         raise n.DeliveryError('Queue alerts require a server text channel or thread; DMs are disabled',permanent=True)
+    if await send_v2(client,channel.id,v2_body(data,mention,notice)):return
     args=message_args(data,mention,notice)
     try:await channel.send(**args)
     except discord.Forbidden:
@@ -131,6 +134,29 @@ async def send_notice(m,client,notice):
         args.pop('embeds',None);args.pop('view',None)
         args['content']=mention+'\n'+notice.content[:1800]
         await channel.send(**args)
+
+
+def v2_body(data,mention,notice,dm=False):
+    """The alert as one card in Discord's newer layout, the ping as its first line; None when that layout is off."""
+    if not layout_v2.ENABLED or not data.get('embeds'):return None
+    body=layout_v2.convert(data)
+    if body is None:return None
+    body=layout_v2.with_line(body,mention)
+    body['allowed_mentions']={'parse':[],'users':[] if dm else [str(notice.recipient)],'replied_user':False}
+    body['nonce']=notice.id[:25]
+    return body
+
+
+async def send_v2(client,channel_id,body):
+    """Post a newer-layout alert as raw JSON. False (send the old layout instead) when there is none or Discord refuses it."""
+    if body is None:return False
+    route=discord.http.Route('POST','/channels/{channel_id}/messages',channel_id=channel_id)
+    try:await client.http.request(route,json=body)
+    except discord.HTTPException as exc:
+        if exc.status!=400:raise
+        log.warning('Queue alert refused in the newer layout (HTTP 400); sending it the old way')
+        return False
+    return True
 
 
 def message_args(data,mention,notice,dm=False):

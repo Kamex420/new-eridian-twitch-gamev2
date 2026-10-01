@@ -177,8 +177,13 @@ def test_rejected_reply_is_resent_without_buttons(monkeypatch):
         calls.append(json)
         return Response(400 if 'components' in json else 200)
     monkeypatch.setattr(m.discord_deferred.requests, 'patch', patch)
-    assert m.discord_deferred.edit_original('a', 't', {'content': 'hi', 'components': [{'type': 1, 'components': []}]})
-    assert len(calls) == 2 and 'components' not in calls[1] and calls[1]['content'] == 'hi'
+    token = ui.INTERACTION.set({'type': 2})              # a slash command's reply
+    try:
+        assert m.discord_deferred.edit_original('a', 't', {'content': 'hi', 'components': [{'type': 1, 'components': []}]})
+    finally:
+        ui.INTERACTION.reset(token)
+    # Refused in the newer layout, then with buttons; sent as plain text at last.
+    assert len(calls) == 3 and 'components' not in calls[2] and calls[2]['content'] == 'hi'
 
 
 def test_tidy_removes_repeats_and_empty_rows():

@@ -480,8 +480,10 @@ def test_the_recap_has_every_section_and_posts_once_a_week(monkeypatch):
         ok, text = recap.post(m, db)
         db.commit()
         assert ok and len(sent) == 1 and '123456789012345678' in sent[0][0]
-        embed = sent[0][1]['embeds'][0]
-        assert embed['title'] == title and all(len(f['value']) <= 1024 for f in embed['fields'])
+        from app import layout_v2
+        body = sent[0][1]
+        assert layout_v2.is_v2(body) and title in layout_v2.text_of(body)              # one card in the newer layout
+        assert all(name in layout_v2.text_of(body) for name in names)
         assert recap.post(m, db)[0] is False and len(sent) == 1        # once a week
         assert recap.post(m, db, force=True)[0] and len(sent) == 2
     preview = client.get('/api/v1/recap').text

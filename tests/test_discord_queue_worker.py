@@ -7,11 +7,12 @@ import discord
 import pytest
 from test_colony import m,reset
 from test_task_queue import enqueue,advance
-from app import discord_queue_worker as w,queue_notifications as n,task_queue as q
+from app import discord_queue_worker as w,queue_notifications as n,task_queue as q,layout_v2
 
 
 def channel():
     obj=MagicMock(spec=discord.TextChannel)
+    obj.id=456
     obj.send=AsyncMock(return_value=SimpleNamespace(id=123))
     return obj
 
@@ -20,12 +21,34 @@ def notice(text='TASK QUEUE — COMPLETED\nMine Coal\nAttempts completed: 1/1; r
     return SimpleNamespace(id='a'*32,recipient='123',message_channel='456',content=text)
 
 
+def http(side_effect=None):
+    """discord.py's raw HTTP client, which sends alerts in the newer layout."""
+    return SimpleNamespace(request=AsyncMock(return_value={'id':'1'},side_effect=side_effect))
+
+
+def sent_body(client):
+    route,=client.http.request.call_args.args
+    return route,client.http.request.call_args.kwargs['json']
+
+
 def test_send_uses_real_channel_mention_and_not_a_dm():
-    room=channel();client=SimpleNamespace(get_channel=lambda _:None,fetch_channel=AsyncMock(return_value=room))
+    room=channel();client=SimpleNamespace(get_channel=lambda _:None,fetch_channel=AsyncMock(return_value=room),http=http())
     asyncio.run(w.send_notice(m,client,notice()))
     client.fetch_channel.assert_awaited_once_with(456)
+    route,body=sent_body(client)
+    assert route.method=='POST' and route.url.endswith('/channels/'+str(room.id)+'/messages') and not room.send.await_count
+    assert layout_v2.is_v2(body) and 'embeds' not in body and 'content' not in body
+    assert layout_v2.text_of(body).startswith('<@123> Your queue has finished.\n')     # the ping is the card's first line
+    assert body['allowed_mentions']=={'parse':[],'users':['123'],'replied_user':False}
+    assert body['nonce']=='a'*25
+
+
+def test_send_in_the_old_layout_when_it_is_off(monkeypatch):
+    monkeypatch.setattr(layout_v2,'ENABLED',False)
+    room=channel();client=SimpleNamespace(get_channel=lambda _:None,fetch_channel=AsyncMock(return_value=room),http=http())
+    asyncio.run(w.send_notice(m,client,notice()))
     args=room.send.call_args.kwargs
-    assert args['content']=='<@123> Your queue has finished.'
+    assert args['content']=='<@123> Your queue has finished.' and not client.http.request.await_count
     assert args['silent'] is False
     assert args['nonce']=='a'*25
     assert args['allowed_mentions'].to_dict()=={'parse':[],'users':[123]}
@@ -33,13 +56,21 @@ def test_send_uses_real_channel_mention_and_not_a_dm():
     assert isinstance(args['embeds'][0],discord.Embed)
 
 
+def test_a_refused_new_layout_alert_is_sent_the_old_way():
+    room=channel()
+    refused=discord.HTTPException(SimpleNamespace(status=400,reason='Bad Request'),'Invalid Form Body')
+    client=SimpleNamespace(get_channel=lambda _:room,http=http(side_effect=refused))
+    asyncio.run(w.send_notice(m,client,notice()))
+    assert client.http.request.await_count==1 and room.send.await_count==1
+    assert room.send.call_args.kwargs['content']=='<@123> Your queue has finished.'
+
+
 def test_pause_message_includes_reason_and_recovery():
-    room=channel();client=SimpleNamespace(get_channel=lambda _:room)
+    room=channel();client=SimpleNamespace(get_channel=lambda _:room,http=http())
     text='TASK QUEUE — PAUSED\nMine Coal\nAttempts completed: 1/2; remaining: 1.\nPAUSE REASON\nEnergy: 18/100; need 20. Use /sleep.'
     asyncio.run(w.send_notice(m,client,notice(text)))
-    args=room.send.call_args.kwargs
-    assert 'paused' in args['content']
-    assert '/life' in str(args['embeds'][0].to_dict()) and 'Sleep' in str(args['embeds'][0].to_dict())
+    words=layout_v2.text_of(sent_body(client)[1])
+    assert 'paused' in words and '/life' in words and 'Sleep' in words
 
 
 def test_dm_channel_is_rejected():
@@ -48,7 +79,8 @@ def test_dm_channel_is_rejected():
         asyncio.run(w.send_notice(m,client,notice()))
 
 
-def test_forbidden_embeds_fall_back_to_text():
+def test_forbidden_embeds_fall_back_to_text(monkeypatch):
+    monkeypatch.setattr(layout_v2,'ENABLED',False)
     room=channel();room.send.side_effect=[discord.Forbidden(SimpleNamespace(status=403,reason='Forbidden'),'No embed permission'),SimpleNamespace(id=1)]
     asyncio.run(w.send_notice(m,SimpleNamespace(get_channel=lambda _:room),notice()))
     assert room.send.await_count==2
@@ -188,20 +220,19 @@ def test_end_to_end_timer_posts_second_channel_message(monkeypatch):
     from fastapi.testclient import TestClient
     monkeypatch.setenv('DISCORD_BOT_TOKEN','fake')
     enqueue(count=1)
-    sent=threading.Event();room=channel()
-    async def send(**kwargs):sent.set();return SimpleNamespace(id=123)
-    room.send=AsyncMock(side_effect=send)
+    sent=threading.Event();room=channel();bodies=[]
+    async def request(route,json):bodies.append(json);sent.set();return {'id':'123'}
     async def close():pass
     async def login(runtime):
-        runtime.client=SimpleNamespace(get_channel=lambda _:room,close=close)
+        runtime.client=SimpleNamespace(get_channel=lambda _:room,close=close,http=SimpleNamespace(request=request))
         runtime.state='ready';return True
     monkeypatch.setattr(w.Runtime,'login',login)
     with m.SessionLocal() as db:
         destination=db.query(n.Destination).one();destination.recipient='123';destination.message_channel='456'
         db.query(q.TaskQueue).one().next_at=m.now()-timedelta(seconds=1);db.commit()
     with TestClient(m.app):assert sent.wait(8)
-    assert room.send.await_count==1
-    assert room.send.call_args.kwargs['content']=='<@123> Your queue has finished.'
+    assert len(bodies)==1 and not room.send.await_count
+    assert layout_v2.text_of(bodies[0]).startswith('<@123> Your queue has finished.')
     with m.SessionLocal() as db:
         assert db.query(n.Notice).one().state=='sent'
         assert db.query(m.Player).one().ore==101

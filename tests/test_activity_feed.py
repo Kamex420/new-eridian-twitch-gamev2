@@ -1,7 +1,8 @@
 """The channel activity feed, the Share button and the feed privacy setting."""
+from datetime import timedelta
 import pytest
 from test_colony import m, reset, client
-from app import activity_feed as af, community, ui, stream_overlay as so
+from app import activity_feed as af, community, ui, stream_overlay as so, layout_v2
 
 W = m.DISCORD_WORLD_ID
 CHANNEL = '123456789012345678'
@@ -51,23 +52,38 @@ def test_the_feed_posts_what_players_bring_in_then_extends_the_same_message(disc
     assert af.tick(m, force=True)
     method, path, body = calls[-1]
     assert (method, path) == ('POST', f'/channels/{CHANNEL}/messages')
-    text = body['embeds'][0]['description']
+    text = layout_v2.text_of(body)
+    assert layout_v2.is_v2(body)                                         # one card in the newer layout
     assert '**Ann** gathered 3 Lumber' in text and '**Bo** gathered 2 Lumber' in text and '<t:' in text
     assert body['allowed_mentions'] == {'parse': []}
-    assert [c['custom_id'] for c in body['components'][0]['components']][0] == ui.cid(ui.PUBLIC, 'mn', 'home')
+    assert [c['custom_id'] for c in layout_v2.controls(body)][0] == ui.cid(ui.PUBLIC, 'mn', 'home')
     # Nobody else talked: the same message grows.
     gather('a', 'Ann', item='stone')
     with m.SessionLocal() as db:
         so.highlight(db, W, 'trophy', 'Ann earned 💎 Ore Hunter', 'Find every ore', 'Ann', emoji='💎'); db.commit()
     assert af.tick(m, force=True)
     assert [c[0] for c in calls[-2:]] == ['GET', 'PATCH']
-    text = calls[-1][2]['embeds'][0]['description']
+    text = layout_v2.text_of(calls[-1][2])
     assert 'Ore Hunter' in text and '**Ann** gathered 3 Lumber' in text and 'Stone' in text
     # Someone posted in between: a new message starts below.
     last['id'] = 'someone-else'
     gather('b', 'Bo')
     assert af.tick(m, force=True)
-    assert [c[0] for c in calls[-2:]] == ['GET', 'POST'] and 'Lumber' in calls[-1][2]['embeds'][0]['description']
+    assert [c[0] for c in calls[-2:]] == ['GET', 'POST'] and 'Lumber' in layout_v2.text_of(calls[-1][2])
+
+
+def test_a_feed_message_from_before_a_restart_is_not_edited(discord, monkeypatch):
+    """It may be in the other layout (embeds or the newer one), and Discord cannot switch a message between them."""
+    calls, last = discord
+    client.get('/api/v1/start', params={'channel': W, 'uid': 'a', 'name': 'Ann'})
+    with m.SessionLocal() as db:
+        af.state(m, db); db.commit()
+    gather('a', 'Ann')
+    assert af.tick(m, force=True) and calls[-1][0] == 'POST'
+    monkeypatch.setattr(af, 'STARTED', af._now() + timedelta(minutes=1))     # the app restarted after that post
+    gather('a', 'Ann', item='stone')
+    assert af.tick(m, force=True)
+    assert calls[-1][0] == 'POST' and 'PATCH' not in [c[0] for c in calls]
 
 
 def test_updates_wait_their_turn_but_big_moments_go_out_at_once(discord):
@@ -83,7 +99,7 @@ def test_updates_wait_their_turn_but_big_moments_go_out_at_once(discord):
     with m.SessionLocal() as db:
         so.highlight(db, W, 'challenge_start', 'Dust Storm! Everyone repair the walls', 'Goal 20 in 8 minutes.', emoji='🌪️'); db.commit()
     assert af.tick(m)
-    assert 'Dust Storm' in calls[-1][2]['embeds'][0]['description']
+    assert 'Dust Storm' in layout_v2.text_of(calls[-1][2])
 
 
 def test_seedlings_are_summed_up_and_hidden_players_stay_out(discord):
@@ -102,7 +118,7 @@ def test_seedlings_are_summed_up_and_hidden_players_stay_out(discord):
     with m.SessionLocal() as db:
         so.highlight(db, W, 'level', 'Bo levelled up', 'Harvesting Lv. 1 → Lv. 2', 'Bo'); db.commit()
     assert af.tick(m, force=True)
-    text = calls[-1][2]['embeds'][0]['description']
+    text = layout_v2.text_of(calls[-1][2])
     assert '1 Seedling worked on their own and brought in 2 items (Ann)' in text and 'Bo' not in text
 
 

@@ -1,17 +1,18 @@
 # Release notes
 
-## Discord's newer layout for every reply
+## Discord's newer layout for every message
 
-Replies are now sent in Discord's newer message layout (Components V2) instead of embeds, so they are easier to read.
-- **One card per reply.** The colour strip stays. The title is a heading, and each section sits under a divider line.
-- **Lists stand out.** In lists such as the Item Menu and Workbench pages, each item's name is bold and its details sit in a quote under it. Legends, how-to-use lines and notes after the list are small grey text.
-- **Buttons stay with the card.** Menus and buttons sit inside the card, under its text.
-- **Where it applies.** Slash command replies, button and menu answers, Details pages and private popups. Queue alerts, the activity feed, the weekly recap, the guide panels and the pinned game panel are unchanged for now.
-- **Older messages.** A message sent before this update keeps its old look when its buttons are pressed, because Discord cannot switch a message between layouts. Running the command again gives the new look.
-- **Switching it off.** `DISCORD_COMPONENTS_V2=false` sends new replies as embeds again. Messages already in the newer layout keep it.
-- **Safety net.** If Discord refuses a reply in the newer layout, it is sent the old way instead (or, for a message already in the newer layout, without its buttons), so nobody is left on "thinking…".
+Every message the game sends on Discord now uses Discord's newer message layout (Components V2) instead of embeds, so it is easier to read and everything looks the same.
+- **One card per message.** The colour strip stays. The title is a heading, and each section sits under a divider line.
+- **A button beside each item.** Menus (every area of `/menu`), choice lists (foods, hobbies, the colony vote, settings…), Workbench categories and recipe pages, and a skill's tasks in the Item Menu show each item with its own button beside it: Open, an action such as Relax or Vote, or Start for a task. Discord allows 40 parts per message and a button beside an item takes three, so lists of up to about ten items get a button beside every item; on longer lists (the main menu, the Workbench categories) the first items do, and the rest keep their buttons in a row below.
+- **Lists stand out.** Each item's name is bold and its details sit in a quote under it. Legends, how-to-use lines and notes after a list are small grey text.
+- **Everything in the same style.** Slash command replies, button and menu answers, Details pages, private popups, one-line notices, queue alerts (the ping is the card's first line), the activity feed, the weekly recap, the pinned game panel and the guide panels.
+- **Showing less.** The Item Menu no longer repeats where every material comes from (that is in `/catalog` and every recipe preview). Workbench pages list 8 recipes, so each fits with its button. Every menu button now has a line saying what it does (farming, research and logistics tasks, world and profile views).
+- **Safety net.** Button and form answers are acknowledged at once and sent right after, like slash command replies, so if Discord refuses the newer layout the answer is sent the old way instead (or, for a message already in the newer layout, without its buttons). Queue alerts fall back the same way.
+- **Older messages.** A message sent before this update keeps its old look when its buttons are pressed, because Discord cannot switch a message between layouts. Running the command again gives the new look. The activity feed starts a new message after a restart for the same reason.
+- **Switching it off.** `DISCORD_COMPONENTS_V2=false` sends new messages as embeds again (the guide panels as their coloured text). Messages already in the newer layout keep it.
 
-`app/layout_v2.py` rebuilds each card where replies leave for Discord: interaction answers, deferred edits and popup follow-ups. Game text and buttons are unchanged. `tests/test_layout_v2.py` checks every slash command's real reply against Discord's limits (40 components, 4,000 characters, unique button IDs), the list formatting, edits of old and new messages, the switch and the fallback.
+`app/layout_v2.py` rebuilds each message where it leaves for Discord; screens name the items that get a button beside them (`ui.with_items`). `tests/test_layout_v2.py` checks every slash command's reply, every menu area and every choice list against Discord's limits (40 components, 4,000 characters, unique button IDs), plus the buttons beside items, the fallbacks and the switch.
 
 ## Guide panels for brand-new players
 

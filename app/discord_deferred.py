@@ -4,9 +4,14 @@ The initial HTTP response is Discord type 5. A synchronous background task runs
 in Starlette's thread pool and edits that original private response. Retrying
 message delivery never repeats the game command. Tokens remain request-local.
 """
+import contextvars
 import logging
 import time
 import requests
+
+# True while edit_original fills a new deferred message (an answer acknowledged with type 5)
+# rather than changing the message a button sits on.
+NEW_MESSAGE = contextvars.ContextVar('ne_new_message', default=False)
 
 
 def edit_original(application_id,token,data):
@@ -18,8 +23,8 @@ def edit_original(application_id,token,data):
     """
     from . import layout_v2,ui
     url=f'https://discord.com/api/v10/webhooks/{application_id}/{token}/messages/@original'
-    payload=ui.INTERACTION.get()
-    old={k:v for k,v in data.items() if k!='flags'}
+    payload=None if NEW_MESSAGE.get() else ui.INTERACTION.get()
+    old=layout_v2.private({k:v for k,v in data.items() if k!='flags'})
     new=layout_v2.edit(data,payload)
     fallbacks=[] if new is None else [layout_v2.without_buttons(new) if layout_v2.locked(payload) else old]
     data=new or old
@@ -70,6 +75,8 @@ def finish(m,payload,command,uid,name,options):
             try:
                 # Workbench, mining, gathering and queue replies carry dropdowns and buttons.
                 data=m.ui.slash_panel(m,command,uid,name,options,result) or m._discord_json_message(result,message_type=command)['data']
+                # Lists such as a skill's tasks get a button beside each item in the newer layout.
+                data=m.ui.add_list_items(m,data,uid,command,options,name)
                 # Every reply offers the next step as buttons: Again, its menu area, and Menu.
                 if command!='menu':
                     try:
@@ -89,3 +96,28 @@ def finish(m,payload,command,uid,name,options):
         m.inbox.deliver(m,payload,uid)
     except Exception:
         logging.getLogger(__name__).error('Private notifications could not be delivered: %s',command)
+
+
+def defer(response,payload,later):
+    """Acknowledge a button or form answer at once and send it right after, like a slash reply.
+
+    Sent this way, an answer Discord refuses in the newer layout falls back to the old one
+    (see edit_original) instead of failing the press. `later(fn, *args)` runs fn after the
+    acknowledgement. Other responses (pop-up forms, deferrals) are returned unchanged.
+    """
+    if not isinstance(response,dict) or response.get('type') not in (4,7) or not payload.get('application_id') or not payload.get('token'):
+        return response
+    later(send_answer,payload,response)
+    if response['type']==7:return {'type':6}
+    private=int((response.get('data') or {}).get('flags') or 0)&64
+    return {'type':5,'data':{'flags':64} if private else {}}
+
+
+def send_answer(payload,response):
+    from . import ui
+    ui.INTERACTION.set(payload)
+    token=NEW_MESSAGE.set(response.get('type')==4)
+    try:
+        edit_original(str(payload['application_id']),str(payload['token']),ui.tidy(dict(response.get('data') or {})))
+    finally:
+        NEW_MESSAGE.reset(token)

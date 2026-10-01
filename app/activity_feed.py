@@ -23,6 +23,7 @@ import os
 from datetime import datetime, timedelta, timezone
 from sqlalchemy import Column, String, Integer, Text, DateTime, select, update, delete
 from .db import Base
+from . import layout_v2
 
 FEED_SECONDS = max(20, int(os.getenv('FEED_SECONDS', '60')))
 MAX_LINES = 15           # lines in one feed message before a new one starts
@@ -201,12 +202,13 @@ def payload(m, lines):
     while len(body) > 4000:
         lines = lines[1:]
         body = '\n'.join(lines)
-    return {'embeds': [{'title': '📣 New Eridian · live', 'description': body, 'color': COLOUR,
+    data = {'embeds': [{'title': '📣 New Eridian · live', 'description': body, 'color': COLOUR,
                         'footer': {'text': 'Press My menu to play (only you see your menu) · Twitch: type !start'}}],
             'components': [ui.row(ui.button('My menu', ui.cid(ui.PUBLIC, 'mn', 'home'), style=1, emoji='🏠'),
                                   ui.button('Status', ui.cid(ui.PUBLIC, 'st'), emoji='📊'),
                                   ui.button('Community', ui.cid(ui.PUBLIC, 'mn', 'community'), emoji='🎪'))],
             'allowed_mentions': {'parse': []}}
+    return layout_v2.new_message(data)      # Discord's newer layout when it is on
 
 
 def tick(m, force=False):
@@ -252,10 +254,16 @@ def tick(m, force=False):
     return ok
 
 
+# Messages posted before this process started may be in the other layout (embeds or Discord's newer one),
+# and Discord cannot switch a message between them, so the feed only edits messages it posted since starting.
+STARTED = datetime.now(timezone.utc)
+
+
 def deliver(m, token, channel, message_id, message_at, old, new):
     """Edit the last feed message while it is still the newest in the channel; otherwise post a new one."""
     try:
-        if message_id and message_at and _now() - _utc(message_at) < timedelta(minutes=KEEP_MINUTES) and len(old) + len(new) <= MAX_LINES:
+        if message_id and message_at and _utc(message_at) >= STARTED and _now() - _utc(message_at) < timedelta(minutes=KEEP_MINUTES) \
+                and len(old) + len(new) <= MAX_LINES:
             info = _api('GET', f'/channels/{channel}', token)
             if info.status_code == 200 and str(info.json().get('last_message_id') or '') == message_id:
                 lines = old + new

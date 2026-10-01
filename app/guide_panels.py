@@ -5,8 +5,10 @@ a bold white introduction, cyan section headings, orange command lines with a
 plain description under each, and a green flow line at the end. The command list
 ends with what the colour strip on every game reply means. The colours are
 ANSI escape codes, which cannot be typed in Discord and are often lost when
-copied, so moderators post the panels with `/mod action:Post guide panels`.
-`docs/discord-guide-panels.txt` holds the same text for manual pasting.
+copied. `/mod action:Post guide panels` posts each panel as a card in Discord's
+newer layout like every other game message (`card`), or as these coloured
+blocks when that layout is switched off. `docs/discord-guide-panels.txt` holds
+the coloured blocks for manual pasting.
 
 The panels are for players: what to do and where to find it, not every number.
 The first NEWCOMER_PANELS are for someone who has never played SEED or New Eridian:
@@ -14,6 +16,7 @@ what the game is, the words it uses, a first ten minutes and common questions.
 """
 import logging
 import os
+import re
 import textwrap
 import time
 import requests
@@ -280,17 +283,57 @@ def messages():
     return [render(panel) for panel in PANELS]
 
 
+# ---------------------------------------------------------------- Discord's newer layout
+
+LEGEND_SQUARES = {'GREEN': '🟩', 'YELLOW': '🟨', 'BLUE': '🟦', 'RED': '🟥', 'MAGENTA': '🟪', 'GRAY': '⬜'}
+
+
+def _commands(text):
+    """Commands as inline code, like every other game message: 'Type /start here' -> 'Type `/start` here'."""
+    return re.sub(r'(?<![\w/`])([/!][a-z]\w*)', r'`\1`', text)
+
+
+def _label(command):
+    """'/life → Relax' -> '`/life` → Relax'; a label without commands is bold."""
+    if re.search(r'(?<![\w/`])[/!][a-z]', command):
+        return _commands(command)
+    return f'**{command}**'
+
+
+def card(panel):
+    """One panel as a card like every other game message: heading, sections under dividers, the flow line last."""
+    from . import layout_v2
+    title, intro, sections, flow, *legend = panel
+    blocks = [f'## {title}\n{_commands(intro)}']
+    for heading, rows in sections:
+        lines = [f'**{heading}**'] + [f'{_label(command)} — {_commands(description)}' for command, description in (rows() if callable(rows) else rows)]
+        blocks.append('\n'.join(lines))
+    tail = [f'**{_commands(flow)}**']
+    if legend:
+        tail += ['', '**Colour meaning** (the strip on every game reply)']
+        tail += [f'{LEGEND_SQUARES.get(name, "▫️")} {name.capitalize()}: {meaning}' for name, _, meaning in legend[0]]
+    blocks.append('\n'.join(tail))
+    return layout_v2.card(blocks)
+
+
+def bodies():
+    """What `post` sends: cards in the newer layout when it is on, else the coloured text blocks."""
+    from . import layout_v2
+    if layout_v2.ENABLED:
+        return [dict(card(panel), allowed_mentions={'parse': []}) for panel in PANELS]
+    return [{'content': text, 'allowed_mentions': {'parse': []}} for text in messages()]
+
+
 def post(channel_id, token=None):
     """Post every panel to a Discord channel as the bot. Returns how many were sent."""
     token = (token or os.getenv('DISCORD_BOT_TOKEN', '')).strip()
     if not token or not str(channel_id).isdigit():
         return 0
     sent = 0
-    for text in messages():
+    for body in bodies():
         for _ in range(3):
             response = requests.post(f'https://discord.com/api/v10/channels/{channel_id}/messages',
-                                     headers={'Authorization': 'Bot ' + token},
-                                     json={'content': text, 'allowed_mentions': {'parse': []}}, timeout=10)
+                                     headers={'Authorization': 'Bot ' + token}, json=body, timeout=10)
             if response.status_code == 429:
                 try:
                     time.sleep(min(5.0, float(response.json().get('retry_after', 1))))

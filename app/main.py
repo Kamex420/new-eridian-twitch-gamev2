@@ -6816,7 +6816,7 @@ def training(channel:str,uid:str,name:str='Citizen',skill:str='',task:str='',pro
         key=SEED_HUBS[hub];level=lvl(skill_xp(p,key))
         rows=db.execute(select(SkillBranch).where(SkillBranch.channel_id==channel,SkillBranch.canonical_uid==p.twitch_uid)).scalars().all();branch_xp={r.branch:r.xp for r in rows}
         lines=[f"🎒 ITEM MENU — {SKILL_LABELS[key]}",f"Main skill: level {level} · {skill_xp(p,key)} XP",
-               f"Each attempt costs {need_cost_text(STANDARD_ENERGY)} and starts a 5-second cooldown. Materials are used only on success; failures keep them.",
+               f"Each try costs {need_cost_text(STANDARD_ENERGY)} and has a 5-second cooldown. Materials are only used on success.",
                "✅ ready · ❌ missing items · 🔒 level, tier or workstation lock"]
         ctx=workbench.Context(sys.modules[__name__],db,p,provider)
         for action_key,cfg in SEED_TASKS.items():
@@ -6845,9 +6845,10 @@ def training(channel:str,uid:str,name:str='Citizen',skill:str='',task:str='',pro
                          f"\n  Uses: {cost}{where}\n  Gives: {result or 'practice'}")
         jobs=[label for label,sk,_ in NEW_JOBS.values() if sk==key]
         if key=='cultivation':jobs=['Farmer']
-        lines.append('Matching jobs: '+', '.join(jobs)+'. Use /job. Main skill levels improve success; branch levels add up to 5 percentage points to matching task success. Lv.10 specialization adds its existing bonuses.')
-        lines.append('Sources: Lumber, Murky Water, Stone, Herbs and Flaxa → Harvesting or /gather; ores → /mine; Pumpkins → Farming or /farm; every manufactured item (Iron Nails, Wood Planks, Fabric, Painkillers…) → /make. Tasks marked with a recipe use that Workbench recipe, its station and its skill.')
-        lines.append('Select Task to perform work. Browsing spends nothing.')
+        # Kept short: where each material comes from is in /catalog and every recipe preview.
+        lines.append('Matching jobs: '+', '.join(jobs)+' (/job). Branch levels add up to +5% success on their tasks.')
+        lines.append('Press Start beside a task to do it once. Browsing spends nothing.' if provider=='discord'
+                     else 'Do a task with !training <skill> <task>. Browsing spends nothing.')
         text='\n'.join(lines)
         return PlainTextResponse(text) if provider=='discord' else out(text.replace('\n',' | '))
 
@@ -7269,6 +7270,13 @@ def _discord_call_internal(command: str, uid: str, name: str, options: dict, int
         provider="discord"
     ).body.decode("utf-8")
 
+def _discord_answer(answer,payload,background_tasks):
+    """A button or form answer: acknowledged at once and sent right after (before any popups), in the layout
+    its message needs, with the old layout as a fallback (discord_deferred.defer, layout_v2)."""
+    from starlette.background import BackgroundTask
+    def first(fn,*args):background_tasks.tasks.insert(0,BackgroundTask(fn,*args))
+    return layout_v2.respond(discord_deferred.defer(answer,payload,first),payload)
+
 @app.post("/discord/interactions")
 async def discord_interactions(request: Request, background_tasks: BackgroundTasks):
     if not DISCORD_PUBLIC_KEY:
@@ -7298,17 +7306,18 @@ async def discord_interactions(request: Request, background_tasks: BackgroundTas
 
     if payload.get("type") == 3:
         if not _discord_allowed_channel(payload):
-            return {"type":4,"data":{"content":"Use the designated game channel.","flags":64}}
-        # Answers leave in the layout their message needs (layout_v2: Discord's newer layout).
+            return layout_v2.respond({"type":4,"data":{"content":"Use the designated game channel.","flags":64}},payload)
         if ui.handles((payload.get("data") or {}).get("custom_id")):
-            return layout_v2.respond(await run_in_threadpool(ui.handle_component,sys.modules[__name__],payload,background_tasks.add_task),payload)
-        return layout_v2.respond(await run_in_threadpool(message_layout.open_page,sys.modules[__name__],payload),payload)
+            answer=await run_in_threadpool(ui.handle_component,sys.modules[__name__],payload,background_tasks.add_task)
+        else:
+            answer=await run_in_threadpool(message_layout.open_page,sys.modules[__name__],payload)
+        return _discord_answer(answer,payload,background_tasks)
 
     # A submitted pop-up form (search, link code, business name, custom amount).
     if payload.get("type") == 5:
         if not _discord_allowed_channel(payload):
-            return {"type":4,"data":{"content":"Use the designated game channel.","flags":64}}
-        return layout_v2.respond(await run_in_threadpool(ui.handle_modal,sys.modules[__name__],payload,background_tasks.add_task),payload)
+            return layout_v2.respond({"type":4,"data":{"content":"Use the designated game channel.","flags":64}},payload)
+        return _discord_answer(await run_in_threadpool(ui.handle_modal,sys.modules[__name__],payload,background_tasks.add_task),payload,background_tasks)
 
     # Application command.
     if payload.get("type") != 2:

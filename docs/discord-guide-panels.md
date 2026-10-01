@@ -4,7 +4,7 @@
 
 Panels 1–4 are for someone who has never played SEED or New Eridian: what the game is, the words it uses, a first ten minutes and common questions. The rest are the how-to-play reference.
 
-**Coloured version:** the same panels as Discord ANSI blocks are in [discord-guide-panels.txt](discord-guide-panels.txt). A moderator can post all of them with colours intact using `/mod action:Post guide panels here`; the source is `app/guide_panels.py`.
+**Coloured version:** the same panels as Discord ANSI blocks are in [discord-guide-panels.txt](discord-guide-panels.txt). A moderator can post all of them using `/mod action:Post guide panels here`: the bot posts each one as a card in Discord's newer layout, like every other game message (or as the coloured blocks when that layout is switched off). The source is `app/guide_panels.py`.
 
 ---
 
