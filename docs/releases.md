@@ -1,5 +1,13 @@
 # Release notes
 
+## Buttons never time out
+
+Pressing a button or sending a form no longer shows Discord's "This interaction failed".
+- Discord gives a press 3 seconds to be acknowledged. The game used to work out the whole answer first, which could take longer on a busy or distant database. Now every press is acknowledged at once and the answer follows right after.
+- On your private panel, the panel changes in place as before. A press on a shared message (the pinned game panel, a channel alert) answers privately under "thinking…", so a shared message never changes for everyone.
+- Buttons that open a form still open it straight away.
+- If something goes wrong, you get a private note that nothing was spent, instead of a press that silently does nothing.
+
 ## Discord's newer layout for every message
 
 Every message the game sends on Discord now uses Discord's newer message layout (Components V2) instead of embeds, so it is easier to read and everything looks the same.

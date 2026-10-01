@@ -7307,6 +7307,10 @@ async def discord_interactions(request: Request, background_tasks: BackgroundTas
     if payload.get("type") == 3:
         if not _discord_allowed_channel(payload):
             return layout_v2.respond({"type":4,"data":{"content":"Use the designated game channel.","flags":64}},payload)
+        if discord_deferred.can_answer_later(payload):
+            # Acknowledge at once and do the work right after: a press never times out.
+            background_tasks.add_task(discord_deferred.answer_later,sys.modules[__name__],payload)
+            return discord_deferred.ack(payload)
         if ui.handles((payload.get("data") or {}).get("custom_id")):
             answer=await run_in_threadpool(ui.handle_component,sys.modules[__name__],payload,background_tasks.add_task)
         else:
@@ -7317,6 +7321,9 @@ async def discord_interactions(request: Request, background_tasks: BackgroundTas
     if payload.get("type") == 5:
         if not _discord_allowed_channel(payload):
             return layout_v2.respond({"type":4,"data":{"content":"Use the designated game channel.","flags":64}},payload)
+        if discord_deferred.can_answer_later(payload):
+            background_tasks.add_task(discord_deferred.answer_later,sys.modules[__name__],payload)
+            return discord_deferred.ack(payload)
         return _discord_answer(await run_in_threadpool(ui.handle_modal,sys.modules[__name__],payload,background_tasks.add_task),payload,background_tasks)
 
     # Application command.

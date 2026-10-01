@@ -98,6 +98,99 @@ def finish(m,payload,command,uid,name,options):
         logging.getLogger(__name__).error('Private notifications could not be delivered: %s',command)
 
 
+def opens_form(payload):
+    """True for a press that opens a pop-up form: Discord only shows a form as the first answer."""
+    from . import ui
+    custom_id=str((payload.get('data') or {}).get('custom_id') or '')
+    return payload.get('type')==3 and ui.handles(custom_id) and custom_id.split('|')[2:3]==['mo']
+
+
+def can_answer_later(payload):
+    return bool(payload.get('application_id') and payload.get('token')) and not opens_form(payload)
+
+
+def ack(payload):
+    """Discord's answer to a press or form before any game work, so no press can time out
+    ("This interaction failed" after 3 seconds). A private panel changes in place (type 6);
+    a press on a shared message is answered privately under "thinking…" (type 5)."""
+    if int((payload.get('message') or {}).get('flags') or 0)&64:
+        return {'type':6}
+    return {'type':5,'data':{'flags':64}}
+
+
+def answer_later(m,payload):
+    """Work out the answer to an acknowledged press or form (see ack) and deliver it.
+
+    Work a button schedules (an action, private notifications) runs after the answer,
+    in order. A failure is reported privately; game state rolls back as usual.
+    """
+    from . import ui,message_layout
+    in_place=ack(payload)['type']==6
+    later=[]
+    schedule=lambda fn,*args:later.append((fn,args))
+    custom_id=str((payload.get('data') or {}).get('custom_id') or '')
+    token=NEW_MESSAGE.set(not in_place)        # under "thinking…" every answer is a new message
+    try:
+        ui.INTERACTION.set(payload)
+        try:
+            if payload.get('type')==5:
+                answer=ui.handle_modal(m,payload,schedule)
+            elif ui.handles(custom_id):
+                answer=ui.handle_component(m,payload,schedule)
+            else:
+                answer=message_layout.open_page(m,payload)
+        except Exception:
+            logging.getLogger(__name__).exception('Button answer failed: %s',custom_id[:60])
+            later.clear()
+            answer={'type':4,'data':{'content':'That button could not be completed and nothing was spent. Open /menu again for fresh buttons.',
+                                     'flags':64,'allowed_mentions':{'parse':[]}}}
+        deliver(payload,answer,in_place)
+        for fn,args in later:
+            try:fn(*args)
+            except Exception:logging.getLogger(__name__).exception('Button follow-up work failed: %s',getattr(fn,'__name__',fn))
+    finally:
+        NEW_MESSAGE.reset(token)
+
+
+def deliver(payload,answer,in_place):
+    from . import ui
+    kind=answer.get('type') if isinstance(answer,dict) else None
+    app,tok=str(payload['application_id']),str(payload['token'])
+    if kind==9:
+        # Only a press can open a form (opens_form); never leave the player waiting.
+        answer,kind={'type':4,'data':{'content':'Press the button again to open the form.','flags':64}},4
+    if kind not in (4,7):
+        return                                  # an action answers by itself (finish_ticket)
+    data=ui.tidy(dict(answer.get('data') or {}))
+    if kind==4 and in_place:
+        follow_up(app,tok,data)                 # a new message below the panel (private if flagged)
+    else:
+        edit_original(app,tok,data)             # the panel itself, or the "thinking…" message
+
+
+def follow_up(application_id,token,data):
+    """Send a new message after the acknowledgement, in the newer layout with the old one as a fallback."""
+    from . import layout_v2
+    url=f'https://discord.com/api/v10/webhooks/{application_id}/{token}'
+    old=layout_v2.private(data)
+    new=layout_v2.new_message(data)
+    bodies=[new,old] if layout_v2.is_v2(new) else [old]
+    for body in bodies:
+        for attempt in range(3):
+            try:
+                response=requests.post(url,json=body,timeout=8)
+            except requests.RequestException:
+                time.sleep(1);continue
+            if 200<=response.status_code<300:return True
+            if response.status_code==429 or response.status_code>=500:
+                try:delay=max(0.1,min(10,float(response.json().get('retry_after',1))))
+                except (ValueError,TypeError,AttributeError):delay=1
+                time.sleep(delay);continue
+            logging.getLogger(__name__).error('Discord follow-up rejected (HTTP %s): %s',response.status_code,response.text[:300])
+            break
+    return False
+
+
 def defer(response,payload,later):
     """Acknowledge a button or form answer at once and send it right after, like a slash reply.
 
