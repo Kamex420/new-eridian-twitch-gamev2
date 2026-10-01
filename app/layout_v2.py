@@ -230,19 +230,26 @@ def _plan(parts, items):
 
 
 def _repack(rows, gone):
-    """Rows without the controls in `gone`; rows of only buttons are packed five to a row again."""
-    out, loose = [], []
+    """Rows without the controls in `gone`. A run of button rows that lost buttons is packed five to
+    a row again; runs that lost nothing and rows with a dropdown keep their place and shape."""
+    out, run = [], []
+
+    def flush():
+        if any(len(kept) < len(r['components']) for r, kept in run):
+            loose = [c for _, kept in run for c in kept]
+            out.extend(dict(type=ROW, components=loose[i:i + 5]) for i in range(0, len(loose), 5))
+        else:
+            out.extend(r for r, _ in run)
+        run.clear()
     for r in rows:
         kept = [c for c in r['components'] if c.get('custom_id') not in gone]
         if any(c.get('type') != 2 for c in r['components']):
-            if loose:
-                out += [dict(type=ROW, components=loose[i:i + 5]) for i in range(0, len(loose), 5)]
-                loose = []
+            flush()
             if kept:
                 out.append(dict(r, components=kept))
         else:
-            loose += kept
-    out += [dict(type=ROW, components=loose[i:i + 5]) for i in range(0, len(loose), 5)]
+            run.append((r, kept))
+    flush()
     return out[:5]
 
 
