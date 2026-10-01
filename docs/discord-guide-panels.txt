@@ -1,5 +1,11 @@
 New Eridian — Discord guide panels
-Paste each block below (from ```ansi
+Paste each block below (from ```ansi to the closing ```) as its own message.
+The colours use invisible control characters. If they disappear when you paste, post the panels
+with /mod action:Post guide panels here instead; the bot posts all 16 with colours intact.
+Panels 1-4 are for players who have never played SEED or New Eridian.
+The Holidays panel's COMING UP part is worked out when the bot posts it; the copy below is from when this file was written.
+
+```ansi
 [1;32m╭─────────────────────────────────╮
 [1;32m│    New here? Read this first    │
 [1;32m╰─────────────────────────────────╯
