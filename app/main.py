@@ -6652,6 +6652,7 @@ def _discord_validate_options(command,options):
         if value is None or value=='':continue
         field=schema[key]
         if field.get('type')==4:
+            if isinstance(value,str) and value.strip().isdigit():value=options[key]=int(value.strip())   # menu dropdowns send text
             if isinstance(value,bool) or not isinstance(value,int) or not field.get('min_value',1)<=value<=field.get('max_value',25):
                 return options,f"⚠️ {key.title()} must be a whole number from {field.get('min_value',1)} to {field.get('max_value',25)}. Nothing spent."
         if field.get('choices'):

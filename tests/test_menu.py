@@ -94,3 +94,15 @@ def test_menu_slash_command_and_reply_buttons():
     row = menu.after_command(m, 'relax', {}, '111')
     assert [c['label'] for c in row['components']] == ['Again', 'Life & Recovery', 'Menu']
     assert [c['label'] for c in menu.after_command(m, 'inventory', {}, '111')['components']] == ['Bag', 'Menu']
+
+
+def test_cast_your_vote_counts_the_option_picked(monkeypatch):
+    monkeypatch.setattr(m.community, 'ENABLED', True)
+    citizen()
+    pick = press(find(open_area('community'), 'Cast your vote')['custom_id'])['data']
+    select = pick['components'][0]['components'][0]
+    assert [o['value'] for o in select['options']] == ['1', '2', '3']
+    result = json.dumps(press(select['custom_id'], values=['2'])['data'], ensure_ascii=False)
+    assert 'Vote counted' in result and 'whole number' not in result
+    with m.SessionLocal() as db:
+        assert db.query(m.votes.Cast).one().choice == 2

@@ -1,5 +1,9 @@
 # Release notes
 
+## Fix: the "Cast your vote" button counts your pick
+
+In `/menu` → Community, choosing an option from **Cast your vote** replied "Choice must be a whole number from 1 to 3" and no vote was counted. Dropdowns send their value as text, and the check only accepted numbers. Number options now accept digits sent as text, so the vote counts straight away. Any other dropdown with a number option is fixed too.
+
 ## Colony votes now have real outcomes
 
 **When a project wins the vote,** it is built next, right after the current project finishes. Finishing it:
