@@ -24,48 +24,64 @@ def beside(data):
     return {s['accessory']['label']: s for s in sections(v2.convert(data))}
 
 
-def test_a_goal_that_needs_a_workstation_has_an_unlock_button_and_comes_back():
+def test_a_goal_that_needs_a_workstation_walks_through_making_its_machine():
     citizen(lumber=0)
-    player_sc(500)
     e = first('station')
     view = press(ui.cid('111', 'gs', e.id))['data']
     assert assert_valid(v2.convert(view))
-    steps = beside(view)
-    unlock = steps['Unlock']['accessory']
-    assert unlock['custom_id'].startswith('ne|111|t|') and unlock['style'] == 3          # does it once, green
-    assert 'Unlock' in steps['Unlock']['components'][0]['content'] and 'SC once' in steps['Unlock']['components'][0]['content']
-    done = ui.run_ticket(m, '111', 'Kam', ui.claim(m, '111', unlock['custom_id'].split('|')[3])[0])
-    assert 'unlocked permanently' in v2.text_of(done)
-    ids = [c.get('custom_id') for c in v2.controls(done)]
-    assert ui.cid('111', 'gv') in ids and ui.cid('111', 'mn', 'home') in ids          # back to the goal, and the menu
     with m.SessionLocal() as db:
         p = db.query(m.Player).one()
-        assert not any(st['name'].startswith('Unlock') for st in extras.walkthrough(m, db, p)[1])
+        key, machine = extras._machine(m, wb.Context(m, db, p), e)
+        steps = extras.walkthrough(m, db, p)[1]
+    names = [st['name'] for st in steps]
+    assert f'Craft {machine.name}' in names and not any(n.startswith('Unlock') for n in names)    # made, not bought
+    assert 'the machine for' in steps[names.index(f'Craft {machine.name}')]['detail']
+    assert names.index(f'Craft {machine.name}') < names.index(f'Craft {e.name}')                   # the machine before the goal
+    assert 'made in the steps below' in v2.text_of(view)
+    # Once you own the machine, its step is gone and the goal can use the workstation.
+    with m.SessionLocal() as db:
+        p = db.query(m.Player).one()
+        m.material_change(db, p, key, 1)
+        db.commit()
+        names = [st['name'] for st in extras.walkthrough(m, db, p)[1]]
+    assert f'Craft {machine.name}' not in names
 
 
-def test_a_step_you_cannot_afford_shows_how_to_earn_sc():
+def test_a_step_done_from_the_goal_comes_back_to_it():
     citizen(lumber=0)
-    player_sc(3)
-    e = first('station')
-    view = press(ui.cid('111', 'gs', e.id))['data']
-    earn = beside(view)['Earn SC']
-    assert earn['accessory']['custom_id'] == ui.cid('111', 'mp', 'guidegoal', '=seed_coin')
-    assert 'you need' in earn['components'][0]['content']
-    guide = press(earn['accessory']['custom_id'])
-    assert guide['type'] == 7 and 'Guide' in v2.text_of(guide['data'])
+    view = press(ui.cid('111', 'gs', first('station').id))['data']
+    gather = next(s['accessory'] for s in sections(v2.convert(view)) if s['accessory']['label'] in {'Gather', 'Mine'})
+    done = ui.run_ticket(m, '111', 'Kam', ui.claim(m, '111', gather['custom_id'].split('|')[3])[0])
+    ids = [c.get('custom_id') for c in v2.controls(done)]
+    assert ui.cid('111', 'gv') in ids and ui.cid('111', 'mn', 'home') in ids          # back to the goal, and the menu
+
+
+def test_no_goal_asks_you_to_unlock_a_workstation():
+    citizen(lumber=0)
+    with m.SessionLocal() as db:
+        p = db.query(m.Player).one()
+        ctx = wb.Context(m, db, p)
+        locked = [e for e in wb.index(m) if ctx.status(e).code == 'station'][:25]
+    for e in locked:
+        press(ui.cid('111', 'gs', e.id))
+        with m.SessionLocal() as db:
+            p = db.query(m.Player).one()
+            assert not [st for st in extras.walkthrough(m, db, p)[1] if st['label'] in {'Unlock', 'Earn SC'}], e.name
 
 
 def test_skill_and_tier_locks_lead_to_training_and_crafting():
     citizen(lumber=0)
     e = first(test=lambda ctx, e: e.kind == 'seed' and ctx.level(e.skill_key) < e.level)
-    view = press(ui.cid('111', 'gs', e.id))['data']
-    steps = beside(view)
-    train = steps['Train']['accessory']['custom_id']
-    assert '|mp|trainskill|=' in train
-    tasks = press(train)
+    press(ui.cid('111', 'gs', e.id))
+    with m.SessionLocal() as db:
+        p = db.query(m.Player).one()
+        steps = extras.walkthrough(m, db, p)[1]
+    train = next(st for st in steps if st['label'] == 'Train')
+    assert train['view'][:2] == ('mp', 'trainskill') and train['name'].startswith('Reach ')
+    tasks = press(ui.cid('111', *train['view']))
     assert tasks['type'] == 7 and any(c.get('label') == 'Start' for c in v2.controls(v2.convert(tasks['data'])))
-    if 'Craft' in steps:                                                                 # a tier lock: craft anything ready
-        assert steps['Craft']['accessory']['custom_id'] in {ui.cid('111', 'wc', 'ready', 1, '')} or '|t|' in steps['Craft']['accessory']['custom_id']
+    tier = [st for st in steps if st['name'].startswith('Reach personal Tier')]
+    assert all(st['view'] == ('wc', 'ready', 1, '') for st in tier)                       # a tier: craft anything ready
 
 
 def test_training_hubs_are_real_training_skills():

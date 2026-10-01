@@ -303,6 +303,7 @@ def clear_goal(db, p):
 TRAINING_HUB = {'cultivation': 'farming', 'extraction': 'harvesting', 'infrastructure': 'engineering', 'environmental': 'processing',
                 'fabrication': 'crafting', 'cooking': 'cooking', 'medicine': 'medicine', 'emergency': 'emergency'}
 STEPS_SHOWN = 9          # each fits with its button beside it on one Discord card
+DEPTH = 40               # full_plan nesting; machines stop loops (each is planned once) and the catalog has no ingredient loops
 
 
 def _step(mark, name, detail='', action=None, view=None, label='', cost=0):
@@ -316,8 +317,83 @@ def _train(skill_label, level, current, hub):
                  view=('mp', 'trainskill', '=' + hub) if hub else ('mv', 'training'), label='Train')
 
 
-def _locks(m, ctx, e):
-    """Steps that open a locked recipe: a festival, a personal tier, a skill level, the colony's tier or a workstation."""
+def _machine(m, ctx, e):
+    """(machine item, its recipe) to craft so `e` can be made: owning the machine opens its workstation.
+
+    Among the machines for the stations `e` can use, prefer one you can craft now, then the lowest
+    station tier, then the fewest ingredients. (None, None) when no machine can be crafted.
+    """
+    from . import crafting_progression as cp
+    best = None
+    for tag in e.tags:
+        for key in s.MACHINE_RECIPES:
+            if tag not in s.machine_tags(key):
+                continue
+            route = s.ACQUISITION.get(key)
+            recipe = wb.entry(m, route) if route else None
+            if recipe is None or recipe.id == e.id:
+                continue
+            score = (ctx.status(recipe).code == 'locked', cp.STATIONS[tag]['tier'], sum(recipe.inputs.values()), recipe.name)
+            if best is None or score < best[0]:
+                best = (score, key, recipe)
+    return (best[1], best[2]) if best else (None, None)
+
+
+def full_plan(ctx, e):
+    """Everything to make for one `e`, including the machines it needs (unlike plan, which only expands ingredients).
+
+    A recipe whose workstation you cannot use gets that station's machine crafted first, with
+    everything the machine needs, all the way down. Returns (crafts in dependency order as
+    (recipe, batches, the recipe a machine is for or None), raw shortfalls {key: qty}, the
+    station tags open once the planned machines are made). The goal itself is the last craft.
+    """
+    m = ctx.m
+    avail, raw, crafts = {}, defaultdict(int), []
+    opened = set(ctx.access)
+
+    def have(key):
+        return avail.setdefault(key, ctx.have(key))
+
+    def make(entry, batches, depth, purpose=None):
+        if depth < DEPTH and not any(t in opened for t in entry.tags):
+            key, machine = _machine(m, ctx, entry)
+            if machine is not None:
+                opened.update(s.machine_tags(key))
+                make(machine, 1, depth + 1, entry)
+        for key, n in entry.inputs.items():
+            require(key, n * batches, depth + 1)
+        crafts.append((entry, batches, purpose))
+
+    def require(key, qty, depth):
+        use = min(have(key), qty)
+        avail[key] -= use
+        short = qty - use
+        if short <= 0:
+            return
+        route = s.ACQUISITION.get(key)
+        sub = wb.entry(m, route) if route else None
+        if sub is not None and sub.inputs and key not in s.GATHER and depth < DEPTH:
+            per = max(1, ctx.batch_size(sub))
+            count = math.ceil(short / per)
+            make(sub, count, depth)
+            avail[key] = avail.get(key, 0) + count * per - short
+        else:
+            raw[key] += short
+
+    make(e, 1, 0)
+    merged = {}
+    for entry, batches, purpose in crafts:
+        if entry.id in merged:
+            merged[entry.id][1] += batches
+        else:
+            merged[entry.id] = [entry, batches, purpose]
+    return [tuple(x) for x in merged.values()], dict(raw), opened
+
+
+def _locks(m, ctx, e, opened=None):
+    """Steps that open a locked recipe: a festival, a personal tier, a skill level or the colony's tier.
+    A workstation is opened by crafting its machine (full_plan); only when no machine can be crafted
+    does this offer to unlock the station for SC instead."""
     from . import seasonal, crafting_progression as cp
     steps = []
     if not seasonal.festival_open(e.id):
@@ -340,7 +416,7 @@ def _locks(m, ctx, e):
         if need and ctx.society_tier < need:
             steps.append(_step('🔒', f'New Eridian reaches {m.SOCIETY_TIERS[need][0]}', 'the whole colony unlocks this together',
                                view=('mv', 'wd_society_progress'), label='Help'))
-    if not steps and not ctx.usable_tags(e):
+    if not steps and not ctx.usable_tags(e) and not any(t in (opened or ()) for t in e.tags):
         tag = ctx.unlock_option(e)
         if tag:
             cfg = cp.STATIONS[tag]
@@ -377,17 +453,20 @@ def _collect(m, ctx, key, qty, ores):
     if price:
         return [_step('✅', f'Buy {name} ×{qty}', f'{price * qty} SC from Seed Industries',
                       action={'do': 'buyitem', 'item': key, 'amount': qty}, label='Buy', cost=price * qty)]
-    found = wb.entry(m, key)
+    route = s.ACQUISITION.get(key)
+    found = wb.entry(m, route) if route else wb.entry(m, key)
     if found is not None:
         return [_step('❌', f'Craft {name} ×{qty}', 'see its recipe', view=('wr', found.id, found.category, 1, ''), label='Recipe')]
     return [_step('❌', f'Get {name} ×{qty}', m.material_source(key).split(';')[0])]
 
 
 def walkthrough(m, db, p, provider='discord'):
-    """(goal recipe, every step still needed to craft it, in order). Each step has a button: do it, or go where it is done.
+    """(goal recipe, every step still needed to make it, in order). Each step has a button: do it, or go where it is done.
 
-    Order: materials to collect, then each part to craft (after whatever unlocks it), then the goal
-    (after whatever unlocks it). A step that spends more SC than you will have shows how to earn it.
+    Everything is made, not bought: materials to collect first, then every part and every machine
+    a workstation needs, each after its own ingredients (full_plan), then the goal. Level, tier,
+    colony and festival locks sit just before the craft they hold up. A step that spends more SC
+    than you will have shows how to earn it.
     """
     e = goal_entry(m, db, p)
     if e is None:
@@ -396,20 +475,25 @@ def walkthrough(m, db, p, provider='discord'):
     if ctx.status(e).code == 'owned':
         return e, [_step('✅', f'You already own {e.name}', 'bonus equipment is limited to one of each · clear the goal and pick another',
                          view=('gc',), label='Clear')]
-    crafts, raw = plan(ctx, e)
+    crafts, raw, opened = full_plan(ctx, e)
+    crafts = [c for c in crafts if c[0].id != e.id]           # the goal comes last, below
     ores = m.task_queue.ores()
     steps = []
     for key, qty in raw.items():
         steps += _collect(m, ctx, key, qty, ores)
-    for sub, count in crafts:
-        steps += _locks(m, ctx, sub)
+    for sub, count, machine_for in crafts:
+        steps += _locks(m, ctx, sub, opened)
+        times = f' ×{count}' if count > 1 or machine_for is None else ''
+        why = (f'the machine for {machine_for.name}: owning it opens its workstation' if machine_for is not None
+               else 'a part for your goal')
         if ctx.status(sub).code == 'ready':
-            steps.append(_step('✅', f'Craft {sub.name} ×{count}', 'all its ingredients are ready · runs as a queue',
-                               action={'do': 'queue', 'task': 'make:' + sub.id, 'count': min(10, count)}, label='Craft'))
+            action = ({'do': 'craft', 'recipe': sub.id, 'back': [sub.category, 1, '']} if machine_for is not None
+                      else {'do': 'queue', 'task': 'make:' + sub.id, 'count': min(10, count)})
+            steps.append(_step('✅', f'Craft {sub.name}{times}', why + ' · everything for it is ready', action=action, label='Craft'))
         else:
-            steps.append(_step('❌', f'Craft {sub.name} ×{count}', 'a part for your goal · after the steps above',
+            steps.append(_step('❌', f'Craft {sub.name}{times}', why + ' · after the steps above',
                                view=('wr', sub.id, sub.category, 1, ''), label='Recipe'))
-    steps += _locks(m, ctx, e)
+    steps += _locks(m, ctx, e, opened)
     if ctx.status(e).code == 'ready':
         steps.append(_step('✅', f'Craft {e.name}', 'the goal · everything is ready',
                            action={'do': 'craft', 'recipe': e.id, 'back': [e.category, 1, '']}, label='Craft'))
@@ -462,7 +546,12 @@ def goal_text(m, db, p, provider='discord'):
         later = ' → '.join(st['name'] for st in steps[1:4])
         return f'🎯 Goal {e.name} {covered}/{total} ingredients | Next: {step}' + (f' | Then: {later}' if later else '') + ' | !target clear'
     status = ctx.status(e)
-    lines = [f'🎯 GOAL — {e.name.upper()}', f'{"█" * covered}{"░" * (total - covered)} {covered}/{total} ingredients ready · {status.emoji} {status.short}',
+    state = f'{status.emoji} {status.short}'
+    if status.code == 'station':
+        _, machine = _machine(m, ctx, e)
+        if machine is not None:
+            state = f'🔑 needs a {machine.name}: made in the steps below'
+    lines = [f'🎯 GOAL — {e.name.upper()}', f'{"█" * covered}{"░" * (total - covered)} {covered}/{total} ingredients ready · {state}',
              '', f'STEPS · {len(steps)} TO GO' if len(steps) != 1 else 'LAST STEP']
     for i, st in enumerate(steps[:STEPS_SHOWN], 1):
         lines.append(f"`{i}` {st['mark']} {st['name']}" + (f" — {'next · ' if i == 1 else ''}{st['detail']}" if st['detail'] else ''))

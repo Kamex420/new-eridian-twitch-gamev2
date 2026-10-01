@@ -1,9 +1,13 @@
 # Release notes
 
+## Goals make everything themselves
+
+The goal no longer tells you to pay SC to unlock a workstation. When something on the way needs a workstation you cannot use yet, the goal walks you through crafting that station's machine (owning it opens the workstation), with every material and part the machine needs, all the way down. The steps run in the order you do them: collect the materials, craft each machine and part after its own ingredients, then craft the goal. The goal's header says which machine it needs. Unlocking for SC stays available in Workshops for anyone who prefers it.
+
 ## Menus that lead the way
 
 The menus are simpler, and the goal now walks you through everything it needs.
-- **Your goal walks you through it.** The Goal view lists every step still needed, in order, with a button beside each one: Gather or Mine (runs a queue), Buy, Craft the parts, **Unlock** the workstation it needs, **Train** for a skill level, **Craft** toward a personal tier, **Help** the colony reach its tier, or see when a festival opens. If a step costs more SC than you have, its button shows how to earn SC. After any step, the result has a 🎯 Goal button back to the walkthrough.
+- **Your goal walks you through it.** The Goal view lists every step still needed, in order, with a button beside each one: Gather or Mine (runs a queue), Buy, Craft the parts, **Train** for a skill level, **Craft** toward a personal tier, **Help** the colony reach its tier, or see when a festival opens. If a step costs more SC than you have, its button shows how to earn SC. After any step, the result has a 🎯 Goal button back to the walkthrough.
 - **Home starts with your next step.** The top of `/menu` shows one next step and its button: get blocked needs back up, the next of your first steps, your goal's next step, or choose a goal.
 - **Six areas instead of eighteen.** Work (the Queue moved here), Craft, Life, Bag & Trade (the Bag moved here), Colony (World and Community together) and You (profile, Seedling, Settings and Account; hats and badges moved to Choices). Status, Notifications, Recent and Help sit in a row below.
 - **Buttons say what they do.** No more rows of "Open": each button names its place or action (Work, Relax, Status, Browse, View, Craft, Train, Unlock), and the line beside it says what it does. Areas are blue, actions green and views grey.
