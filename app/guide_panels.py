@@ -9,6 +9,8 @@ copied, so moderators post the panels with `/mod action:Post guide panels`.
 `docs/discord-guide-panels.txt` holds the same text for manual pasting.
 
 The panels are for players: what to do and where to find it, not every number.
+The first NEWCOMER_PANELS are for someone who has never played SEED or New Eridian:
+what the game is, the words it uses, a first ten minutes and common questions.
 """
 import logging
 import os
@@ -43,8 +45,71 @@ LEGEND = [('GREEN', ESC + '[1;32m', 'success and growth'), ('YELLOW', ESC + '[1;
 
 # (title, intro, [(heading, rows), ...], flow line[, legend]). rows is a list of (command, description),
 # or a function returning one (called when the panels are posted, so dates stay current).
-PANELS = [
-    ('Start here!',
+# The newcomer panels come first: someone who has never played SEED or New Eridian reads them top to bottom.
+NEWCOMER_PANELS = [
+    ('New here? Read this first',
+     'Never played SEED or New Eridian? Start with these four panels. The game is free, and you play it by typing in Twitch chat or here on Discord.',
+     [('WHAT IS THIS GAME?', [
+         ('A relaxed colony life game', 'You are a settler in New Eridian, a young town on the planet Avesta. Gather materials, learn skills, craft things, sell them and help the town grow.'),
+         ('Play at your own pace', 'A few minutes a day is plenty. There is no game over: your citizen, items and skills are kept.')]),
+      ('IT KEEPS GOING WITHOUT YOU', [
+          ('Your Seedling', 'Your citizen is a little person on the stream map. When you stop playing it carries on: it works, eats, sleeps, makes friends and writes you a diary.')]),
+      ('WHAT IS SEED?', [
+          ('SEED by Klang Games', "A life-sim MMO about humanity's new home on Avesta. New Eridian borrows its world and its items, but has its own rules. You do not need to know SEED.")]),
+      ('WHERE YOU PLAY', [
+          ('Twitch chat · the lite version', 'Type !start while you watch the stream.'),
+          ('Discord · the full game', 'Type /start here. Crafting, queues and trading are only on Discord.')])],
+     'READ ON → /start → PLAY AT YOUR OWN PACE'),
+    ('Words you will see',
+     'A short dictionary. All of these come up in your first hour.',
+     [('THE WORLD', [
+         ('Avesta', 'The planet. Humanity moved here from Earth.'),
+         ('New Eridian', 'Our town. Everyone who plays builds it together.'),
+         ('Seedling', 'Your citizen. It has moods and thoughts, and it keeps living while you are away.'),
+         ('Avesta day', 'Game time: Morning, Day, Evening and Night. Each day brings a new colony vote.')]),
+      ('YOU', [
+          ('Needs', 'Energy, Nutrition, Comfort and Social. Tasks use them up; eating and resting fill them again.'),
+          ('Skills', 'Every task gives practice in a skill. Higher levels unlock more.'),
+          ('Job', 'Your profession. Work that matches it gets a bonus.')]),
+      ('MONEY & MAKING', [
+          ('SC · Seed Coin', 'Your money. Earned by selling, filling orders and helping out.'),
+          ('Seed Industries', 'The company that sells supplies and buys what you make.'),
+          ('Workbench', 'Where you craft. Some recipes need a station or machine.'),
+          ('Queue', 'One task repeated up to 10 times while you do something else.'),
+          ('Contribution', 'Credit for helping the town grow.')])],
+     'LEARN THE WORDS → THE REST IS EASY'),
+    ('Your first 10 minutes',
+     'Follow these in order. Steps 2–7 each pay SC, and finishing them all gives a bonus and the Settled In title.',
+     [('ON DISCORD', [
+         ('1 · /start', 'Make your citizen. You get 2 Lumber and 4 Berries.'),
+         ('2 · /job', 'Pick a profession. Any is fine; you can change it later.'),
+         ('3 · /gather → Lumber', 'Your first material.'),
+         ('4 · /make → Ready now → Campfire', 'Your first craft. The welcome kit has the Lumber it needs.'),
+         ('5 · /life → Eat → Berries', 'Food keeps your Nutrition up.'),
+         ('6 · /gather → Lumber → Queue 5', 'Five gathers in a row while you read on.'),
+         ('7 · /seedling', 'Meet the one who plays while you are away.')]),
+      ('ON TWITCH', [
+          ('!start  !job farmer  !gather lumber', 'Make your citizen, pick a job and gather in chat.'),
+          ('!eat  !seedling', 'Eat, then meet your Seedling. Crafting and queues are on Discord.')]),
+      ('WHAT NEXT?', [
+          ('/guide', 'Always tells you the best next step, and why.')])],
+     'START → GATHER → CRAFT → EAT → QUEUE → MEET YOUR SEEDLING'),
+    ('Questions new players ask',
+     'Short answers to what new players ask most.',
+     [('ABOUT PLAYING', [
+         ('Do I have to play every day?', 'No. Nothing bad happens while you are away. Needs slowly refill on their own, and your Seedling keeps living for 3 days after you last played.'),
+         ('Can I mess something up?', 'Hard to. Menus and previews never spend anything, and a sale can be undone for 60 seconds.'),
+         ('Does it cost money?', 'No. Everything is earned by playing.'),
+         ('Do I need to watch the stream?', 'No. Discord works any time. Stream challenges only run while live, and they pay extra.'),
+         ('Can I play with friends?', 'Yes. Everyone lives in the same town, votes together and works on the same projects and events.')]),
+      ('STUCK?', [
+          ('/guide  /menu  /find', 'Your next step, every button, or a search for anything.'),
+          ('Ask in chat', 'Other players and the mods can help.')])],
+     'NO RUSH · NO WRONG WAY · HAVE FUN'),
+]
+
+PANELS = NEWCOMER_PANELS + [
+    ('Jump in',
      'New Eridian is a Twitch + Discord life game on the planet Avesta. Build your citizen, learn skills, craft useful things and help the settlement grow.',
      [('JUMP IN', [
          ('/start', 'Create your citizen. You get a welcome kit and your Seedling moves into town.'),

@@ -13,6 +13,16 @@ Replies are now sent in Discord's newer message layout (Components V2) instead o
 
 `app/layout_v2.py` rebuilds each card where replies leave for Discord: interaction answers, deferred edits and popup follow-ups. Game text and buttons are unchanged. `tests/test_layout_v2.py` checks every slash command's real reply against Discord's limits (40 components, 4,000 characters, unique button IDs), the list formatting, edits of old and new messages, the switch and the fallback.
 
+## Guide panels for brand-new players
+
+Four new panels come first in the guide channel, for someone who has never played SEED or New Eridian:
+- **New here? Read this first.** What kind of game this is, that the Seedling keeps living while you are away, what SEED is (and that you do not need to know it), and Twitch (lite) versus Discord (full game).
+- **Words you will see.** Avesta, New Eridian, Seedling, Avesta day, needs, skills, job, SC, Seed Industries, Workbench, queue and Contribution.
+- **Your first 10 minutes.** A numbered walkthrough that completes every First Step: /start, /job, gather Lumber, craft a Campfire from the welcome kit, eat Berries, Queue 5, meet your Seedling. Twitch players get the same start in chat.
+- **Questions new players ask.** Playing every day, mistakes, cost, watching the stream, friends, and where to get help.
+
+The old first panel, "Start here!", is now **Jump in**, so there is only one place to start. `/mod` → Post guide panels here posts all 16. `docs/discord-guide-panels.md` and `.txt` are regenerated, and `tests/test_guide_panels.py` checks the new panels come first, fit one message each, and match the welcome kit.
+
 ## One world for Twitch and Discord: the world merge
 
 When `DISCORD_WORLD_ID` is not the Twitch channel's ID, Twitch and Discord run as two separate worlds: no shared characters, and `!link` codes made on Twitch can never be claimed on Discord. `/health` now points to a one-time merge instead of telling you to change the setting (changing it alone hides every Discord character).

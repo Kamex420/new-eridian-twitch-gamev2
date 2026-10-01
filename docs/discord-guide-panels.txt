@@ -1,12 +1,145 @@
 New Eridian — Discord guide panels
-Paste each block below (from ```ansi to the closing ```) as its own message.
-The colours use invisible control characters. If they disappear when you paste, post the panels
-with /mod action:Post guide panels here instead; the bot posts all 12 with colours intact.
-The Holidays panel's COMING UP part is worked out when the bot posts it; the copy below is from when this file was written.
+Paste each block below (from ```ansi
+[1;32m╭─────────────────────────────────╮
+[1;32m│    New here? Read this first    │
+[1;32m╰─────────────────────────────────╯
+[1;37mNever played SEED or New Eridian? Start with these four
+[1;37mpanels. The game is free, and you play it by typing in
+[1;37mTwitch chat or here on Discord.
+[1;36mWHAT IS THIS GAME?
+[0;33mA relaxed colony life game
+[0mYou are a settler in New Eridian, a young town on the
+[0mplanet Avesta. Gather materials, learn skills, craft
+[0mthings, sell them and help the town grow.
+[0;33mPlay at your own pace
+[0mA few minutes a day is plenty. There is no game over: your
+[0mcitizen, items and skills are kept.
+[1;36mIT KEEPS GOING WITHOUT YOU
+[0;33mYour Seedling
+[0mYour citizen is a little person on the stream map. When
+[0myou stop playing it carries on: it works, eats, sleeps,
+[0mmakes friends and writes you a diary.
+[1;36mWHAT IS SEED?
+[0;33mSEED by Klang Games
+[0mA life-sim MMO about humanity's new home on Avesta. New
+[0mEridian borrows its world and its items, but has its own
+[0mrules. You do not need to know SEED.
+[1;36mWHERE YOU PLAY
+[0;33mTwitch chat · the lite version
+[0mType !start while you watch the stream.
+[0;33mDiscord · the full game
+[0mType /start here. Crafting, queues and trading are only on
+[0mDiscord.
+[1;32mREAD ON → /start → PLAY AT YOUR OWN PACE
+```
+
+```ansi
+[1;32m╭──────────────────────────╮
+[1;32m│    Words you will see    │
+[1;32m╰──────────────────────────╯
+[1;37mA short dictionary. All of these come up in your first
+[1;37mhour.
+[1;36mTHE WORLD
+[0;33mAvesta
+[0mThe planet. Humanity moved here from Earth.
+[0;33mNew Eridian
+[0mOur town. Everyone who plays builds it together.
+[0;33mSeedling
+[0mYour citizen. It has moods and thoughts, and it keeps
+[0mliving while you are away.
+[0;33mAvesta day
+[0mGame time: Morning, Day, Evening and Night. Each day
+[0mbrings a new colony vote.
+[1;36mYOU
+[0;33mNeeds
+[0mEnergy, Nutrition, Comfort and Social. Tasks use them up;
+[0meating and resting fill them again.
+[0;33mSkills
+[0mEvery task gives practice in a skill. Higher levels unlock
+[0mmore.
+[0;33mJob
+[0mYour profession. Work that matches it gets a bonus.
+[1;36mMONEY & MAKING
+[0;33mSC · Seed Coin
+[0mYour money. Earned by selling, filling orders and helping
+[0mout.
+[0;33mSeed Industries
+[0mThe company that sells supplies and buys what you make.
+[0;33mWorkbench
+[0mWhere you craft. Some recipes need a station or machine.
+[0;33mQueue
+[0mOne task repeated up to 10 times while you do something
+[0melse.
+[0;33mContribution
+[0mCredit for helping the town grow.
+[1;32mLEARN THE WORDS → THE REST IS EASY
+```
+
+```ansi
+[1;32m╭─────────────────────────────╮
+[1;32m│    Your first 10 minutes    │
+[1;32m╰─────────────────────────────╯
+[1;37mFollow these in order. Steps 2–7 each pay SC, and
+[1;37mfinishing them all gives a bonus and the Settled In title.
+[1;36mON DISCORD
+[0;33m1 · /start
+[0mMake your citizen. You get 2 Lumber and 4 Berries.
+[0;33m2 · /job
+[0mPick a profession. Any is fine; you can change it later.
+[0;33m3 · /gather → Lumber
+[0mYour first material.
+[0;33m4 · /make → Ready now → Campfire
+[0mYour first craft. The welcome kit has the Lumber it needs.
+[0;33m5 · /life → Eat → Berries
+[0mFood keeps your Nutrition up.
+[0;33m6 · /gather → Lumber → Queue 5
+[0mFive gathers in a row while you read on.
+[0;33m7 · /seedling
+[0mMeet the one who plays while you are away.
+[1;36mON TWITCH
+[0;33m!start  !job farmer  !gather lumber
+[0mMake your citizen, pick a job and gather in chat.
+[0;33m!eat  !seedling
+[0mEat, then meet your Seedling. Crafting and queues are on
+[0mDiscord.
+[1;36mWHAT NEXT?
+[0;33m/guide
+[0mAlways tells you the best next step, and why.
+[1;32mSTART → GATHER → CRAFT → EAT → QUEUE → MEET YOUR SEEDLING
+```
+
+```ansi
+[1;32m╭─────────────────────────────────╮
+[1;32m│    Questions new players ask    │
+[1;32m╰─────────────────────────────────╯
+[1;37mShort answers to what new players ask most.
+[1;36mABOUT PLAYING
+[0;33mDo I have to play every day?
+[0mNo. Nothing bad happens while you are away. Needs slowly
+[0mrefill on their own, and your Seedling keeps living for 3
+[0mdays after you last played.
+[0;33mCan I mess something up?
+[0mHard to. Menus and previews never spend anything, and a
+[0msale can be undone for 60 seconds.
+[0;33mDoes it cost money?
+[0mNo. Everything is earned by playing.
+[0;33mDo I need to watch the stream?
+[0mNo. Discord works any time. Stream challenges only run
+[0mwhile live, and they pay extra.
+[0;33mCan I play with friends?
+[0mYes. Everyone lives in the same town, votes together and
+[0mworks on the same projects and events.
+[1;36mSTUCK?
+[0;33m/guide  /menu  /find
+[0mYour next step, every button, or a search for anything.
+[0;33mAsk in chat
+[0mOther players and the mods can help.
+[1;32mNO RUSH · NO WRONG WAY · HAVE FUN
+```
 
 ```ansi
 [1;32m╭────────────────────────╮
-[1;32m│      Start here!       │
+[1;32m│        Jump in         │
 [1;32m╰────────────────────────╯
 [1;37mNew Eridian is a Twitch + Discord life game on the planet
 [1;37mAvesta. Build your citizen, learn skills, craft useful
@@ -297,8 +430,10 @@ The Holidays panel's COMING UP part is worked out when the bot posts it; the cop
 [0mThey stack, sell and keep all year. Stock up before it
 [0mends.
 [1;36mCOMING UP
-[0;33m🎃 Halloween · opens October 1
+[0;33m🎃 Halloween · open now until November 7
 [0mPumpkin Bites, Moon Tart, Candy Herb Mix.
+[0;33m🦃 Thanksgiving · opens October 27
+[0mHarvest Feast, Gourd Roast, Gratitude Pie.
 [1;32mGATHER → COOK → FEAST → STOCK UP
 ```
 

@@ -6,7 +6,7 @@ from app import guide_panels as g
 
 def test_every_ansi_panel_fits_one_message():
     panels = g.messages()
-    assert len(panels) == len(g.PANELS) == 12
+    assert len(panels) == len(g.PANELS) == 16
     for text in panels:
         assert text.startswith('```ansi\n') and text.endswith('\n```') and len(text) <= 2000
         assert g.TITLE + '╭' in text and g.HEADING in text and g.COMMAND in text and g.FLOW in text
@@ -39,3 +39,19 @@ def test_the_holiday_panel_names_the_next_festival_when_posted():
     from app import seasonal
     text = next(t for t in g.messages() if 'Holidays & festival foods' in t)
     assert seasonal.next_holiday_window()['name'] in text
+
+
+def test_newcomer_panels_come_first_and_start_from_zero():
+    titles = [panel[0] for panel in g.PANELS]
+    assert titles[:4] == ['New here? Read this first', 'Words you will see', 'Your first 10 minutes', 'Questions new players ask']
+    assert g.PANELS[:len(g.NEWCOMER_PANELS)] == g.NEWCOMER_PANELS
+    first, words, steps, faq = g.messages()[:4]
+    assert 'SEED by Klang Games' in first and 'You do not need to know SEED' in first and '!start' in first and '/start' in first
+    for term in ('Avesta', 'Seedling', 'SC · Seed Coin', 'Seed Industries', 'Contribution', 'Queue'):
+        assert term in words
+    # The welcome kit and the Campfire recipe the walkthrough relies on.
+    from app import onboarding
+    assert onboarding.WELCOME_KIT == {'Lumber': 2, 'Berries': 4} and '2 Lumber and 4 Berries' in steps
+    for command in ('/start', '/job', '/gather', '/make', '/life', 'Queue 5', '/seedling', '/guide', '!start'):
+        assert command in steps
+    assert 'Settled In' in steps and '/find' in faq
