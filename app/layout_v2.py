@@ -261,9 +261,13 @@ def _children(plan, footer, rows, divided, k, replaces):
     for segs in plan:
         part = []
         for s in segs:
-            if s['kind'] == 'item' and s['rank'] < k:
-                button = dict(s['item']['button'])
-                used.add(button.get('custom_id'))
+            button = dict(s['item']['button']) if s['kind'] == 'item' and s['rank'] < k else None
+            key = (button or {}).get('custom_id')
+            if button is not None and key in used:
+                button = None                  # Discord refuses a message that repeats a custom_id
+            if button is not None:
+                if key is not None:
+                    used.add(key)
                 part.append({'type': SECTION, 'components': [{'type': TEXT, 'content': s['text'].strip()}], 'accessory': button})
             elif s['kind'] == 'compact' and beside:
                 continue

@@ -176,6 +176,20 @@ def test_a_long_list_puts_as_many_buttons_beside_items_as_fit():
     assert rest == [f'ne|1|i{i}' for i in range(len(beside), 20)]                           # the rest keep their buttons
 
 
+def test_a_button_is_never_repeated_and_link_buttons_stay_put():
+    link = {'type': 2, 'style': 5, 'label': 'Guide', 'url': 'https://example.com/guide'}
+    data = ui.with_items({'embeds': [{'title': 'List', 'description': '✅ **Alpha** — first\n✅ **Beta** — second\n✅ **Gamma** — third'}],
+                          'components': [{'type': 1, 'components': [link]}]},
+                         [{'match': '**Alpha**', 'button': ui.button('Open', 'ne|1|same')},
+                          {'match': '**Beta**', 'button': ui.button('Open', 'ne|1|same')},       # a repeat: shown as text
+                          {'match': '**Gamma**', 'button': dict(link, label='Read')}])           # a link beside an item
+    out = v2.convert(data)
+    assert assert_valid(out)
+    assert [s['accessory'].get('custom_id') for s in sections(out)] == ['ne|1|same', None]
+    assert '**Beta**' in v2.text_of(out)
+    assert [c.get('url') for c in v2.controls(out)].count(link['url']) == 2       # the row's link button is kept
+
+
 def test_every_menu_area_and_choice_list_fits_with_buttons_beside_items():
     citizen()
     with m.SessionLocal() as db:
