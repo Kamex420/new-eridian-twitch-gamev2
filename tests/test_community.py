@@ -119,6 +119,73 @@ def test_a_voted_festival_runs_the_next_day_with_a_bonus():
         assert votes.festival_today(m, db) == ''          # one day only
 
 
+def test_a_finished_building_pays_every_helper_boosts_the_society_and_gives_a_lasting_perk():
+    call('/api/v1/start')
+    call('/api/v1/start', uid='u2', name='Astra')
+    with m.SessionLocal() as db:
+        current = m.current_project(db, W, m.world_clock(db, W)['day'])
+        key = current.project_key
+        skill = sorted(m.project_cfg(key)[3])[0]
+        a, b = db.query(m.Player).filter_by(channel_id=W).order_by(m.Player.id).all()
+        before_sc, before_dev = (a.sc, b.sc), m.society(db, W).development
+        assert community.success_modifier(m, db, a, skill)[0] == 0
+        m.project_contribute(db, b, skill, 2)
+        current.progress = current.goal - 1; db.commit()
+        assert 'Built! 2 helpers paid' in m.project_contribute(db, a, skill, 1)
+        db.commit()
+        assert a.sc - before_sc[0] >= votes.HELPER_SC + 1 and b.sc - before_sc[1] >= votes.HELPER_SC + 2   # the finisher also gets the usual reward
+        assert m.society(db, W).development == before_dev + votes.BUILT_STATS['development']
+        assert votes.projects_helped(db, a) == 1 and votes.projects_helped(db, b) == 1
+        assert votes.buildings(m, db, W) == {key: 1}
+        bonus, notes = votes.building_bonus(m, db, a, skill)
+        assert bonus == votes.PERK and m.project_cfg(key)[1] in notes[0]
+        assert community.success_modifier(m, db, a, skill)[0] >= votes.PERK
+        # Building it again and again stacks up to the cap; finishing twice never pays twice.
+        built = json.loads(votes.plan(m, db).built)
+        assert len(built) == 1
+        assert votes.complete(m, db, current) == 0
+        plan = votes.plan(m, db)
+        plan.built = json.dumps(built * 5); db.commit()
+        assert votes.building_bonus(m, db, a, skill)[0] == votes.PERK_CAP
+    assert any('is built!' in t for t in highlights('project'))
+    with m.SessionLocal() as db:
+        p = db.query(m.Player).filter_by(channel_id=W).first()
+        text = votes.view(m, db, p)
+        assert 'Built so far' in text and 'How it works' in text
+
+
+def test_a_festival_gives_everyone_one_gift_and_restarts_an_idle_building_site():
+    call('/api/v1/start')
+    with m.SessionLocal() as db:
+        options = json.loads(votes.ballot(m, db).options)
+        current = m.current_project(db, W, m.world_clock(db, W)['day'])
+        current.progress = current.goal                       # the site is finished and nothing is queued
+        finished = current.project_key
+        db.commit()
+    pick = next(i for i, o in enumerate(options, 1) if o.startswith('festival:'))
+    best = next(i for i, o in enumerate(options, 1) if o.startswith('project:'))
+    call('/api/v1/vote', choice=str(pick))
+    call('/api/v1/vote', uid='u2', name='Astra', choice=str(best))
+    next_day()
+    with m.SessionLocal() as db:
+        votes.sync(m, db); db.commit()
+        fest = votes.festival_today(m, db)
+        now = m.current_project(db, W, m.world_clock(db, W)['day'])
+        assert now.project_key == options[best - 1].split(':')[1] and now.progress == 0
+        assert finished in votes.buildings(m, db, W)
+        p = db.query(m.Player).filter_by(channel_id=W, twitch_uid='u1').one()
+        sc = p.sc
+        gift = votes.festival_gift(m, db, p)
+        assert votes.FESTIVALS[fest][1] in gift and p.sc == sc + votes.FESTIVAL_GIFTS[fest][0]
+        assert votes.festival_gift(m, db, p) == ''              # once a day
+        db.commit()
+        assert 'won' in votes.last_result(m, db)
+        assert 'Last vote' in votes.view(m, db, p, provider='twitch') or len(votes.view(m, db, p, provider='twitch').encode()) <= 200
+    ready()
+    reply = call('/api/v1/relax', uid='u2', name='Astra')
+    assert 'gift' in reply, reply
+
+
 def test_nobody_voting_still_picks_and_ties_go_to_the_first_to_the_top():
     call('/api/v1/start')
     call('/api/v1/vote', uid='a', name='A', choice='3')

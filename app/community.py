@@ -90,6 +90,11 @@ def after_command(m, db, p, fn_name, params, before, after):
             activity_feed.record(m, db, p, fn_name, params, before, after, acting)
         except Exception:
             log.exception('Activity feed entry not recorded')
+        if not acting:
+            gift = votes.festival_gift(m, db, p)
+            if gift:
+                discord.append('🎉 ' + gift)
+                chat.append(gift)
         note = seasons.from_command(m, db, p, before, after, acting)
         if note:
             discord.append(note)
@@ -134,7 +139,11 @@ def success_modifier(m, db, p, skill):
             b, n = 0, []
         total += b
         notes += n
-    return total, notes
+    try:
+        b, n = votes.building_bonus(m, db, p, skill)
+    except Exception:
+        b, n = 0, []
+    return total + b, notes + n
 
 
 def overlay_data(m, db, seedlings):

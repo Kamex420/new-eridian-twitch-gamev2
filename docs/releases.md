@@ -1,5 +1,28 @@
 # Release notes
 
+## Colony votes now have real outcomes
+
+**When a project wins the vote,** it is built next, right after the current project finishes. Finishing it:
+- turns it into a landmark on the map;
+- pays everyone who helped: 5 SC plus 1 SC per point given (up to 30 SC), plus 10 season points plus 1 per point given;
+- gives the society +10 Development and +5 Reputation;
+- adds a **lasting perk**: +2% success for everyone on the skills the building covers. Building the same thing again adds another +2%, up to +6% in total.
+
+Each build is recorded once, so nobody is paid twice.
+
+**When a festival wins,** it runs the next Avesta day:
+- work in its skills gets +5%;
+- everyone's first action that day comes with a gift: SC, plus festival goods (Berries, Herbs, Clay or Stone).
+
+If the building site is idle when a festival wins, construction restarts with the project that got the most votes on that ballot, so it never stalls.
+
+**Seeing it.** `/vote` on Discord shows:
+- the last vote's result;
+- every building finished so far, with its perk;
+- a one-line "How it works".
+
+`!vote` on Twitch adds the last result when it fits in the chat line.
+
 ## A game key for Twitch commands, and one complete command list
 
 - **Game key.** With `TWITCH_API_KEY` set on Railway, every request that acts as a player must carry it (`k=` in the StreamElements command). Without the key, nobody can:
