@@ -1,5 +1,12 @@
 # Release notes
 
+## Goals walk you through skill levels too
+
+A goal that needs a skill level now shows how to get it, step by step, instead of only pointing at the training list.
+- **The training task that practises the skill**, with how many tries it takes (for example "Do Chemistry ×8: practises Chemistry to Lv 2, makes Antiseptics at the Medical Fabricator").
+- **Everything that task needs first**: its own skill level (the same way, one level down, such as Water Treatment for Processing Lv 3), the machine for its workstation with everything the machine needs, and its ingredients, gathered or crafted, never bought.
+- **The training list says what each task makes and where.** Chemistry, for example, makes Antiseptics at the Medical Fabricator, so it no longer looks like it needs a Chemistry Station. A missing workstation reads "craft its machine, or unlock it in /workshop".
+
 ## Fan project notice
 
 The game now says plainly that it is a free, unofficial fan project made by Kamex, not affiliated with Klang Games (the makers of SEED), with nothing to buy.

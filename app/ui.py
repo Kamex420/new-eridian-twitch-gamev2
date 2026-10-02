@@ -1077,10 +1077,11 @@ def goal_message(m, db, p, owner, note=''):
     e, steps = more.walkthrough(m, db, p)
     if e is None:
         return message(m, text, goal_components(m, db, p, owner), 'goal')
-    buttons, items = [], []
+    buttons, items, used = [], [], set()
     for i, st in enumerate(steps[:more.STEPS_SHOWN]):
         b = step_button(m, owner, st, first=i == 0)
-        if b is not None:
+        if b is not None and b['custom_id'] not in used:      # two steps that open the same list share one button
+            used.add(b['custom_id'])
             buttons.append(b)
             items.append({'match': st['name'], 'button': b})
     recipe = ('wr', e.id, e.category, 1, '')

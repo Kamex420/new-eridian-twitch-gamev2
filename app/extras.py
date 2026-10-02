@@ -390,11 +390,13 @@ def full_plan(ctx, e):
     return [tuple(x) for x in merged.values()], dict(raw), opened
 
 
-def _locks(m, ctx, e, opened=None):
+def _locks(m, ctx, e, opened=None, ores=(), depth=0):
     """Steps that open a locked recipe: a festival, a personal tier, a skill level or the colony's tier.
-    A workstation is opened by crafting its machine (full_plan); only when no machine can be crafted
-    does this offer to unlock the station for SC instead."""
+    A skill level is reached with the training task that practises it (_practice). A workstation is
+    opened by crafting its machine (full_plan); only when no machine can be crafted does this offer to
+    unlock the station for SC instead."""
     from . import seasonal, crafting_progression as cp
+    opened = opened if opened is not None else set(ctx.access)
     steps = []
     if not seasonal.festival_open(e.id):
         holiday = seasonal.FESTIVAL_RECIPES[e.id]
@@ -407,10 +409,10 @@ def _locks(m, ctx, e, opened=None):
         steps.append(_step('🔒', f'Reach personal Tier {base_tier}', f'craft {need - ctx.batches} more batches of anything made from ingredients · '
                            f'{ctx.batches}/{need}', view=('wc', 'ready', 1, ''), label='Craft'))
     if e.kind == 'seed' and ctx.level(e.skill_key) < e.level:
-        main = s.SKILLS.get(e.skill_key, ('fabrication', None))[0]
-        steps.append(_train(e.skill, e.level, ctx.level(e.skill_key), TRAINING_HUB.get(main, '')))
+        main, branch = s.SKILLS.get(e.skill_key, ('fabrication', None))
+        steps += _practice(m, ctx, main, branch, e.level, e.skill, opened, ores, depth)
     if e.kind == 'seed' and any(k in cp.RARE for k in s.RECIPES[e.id]['outputs']) and ctx.harvesting < cp.RARE_LEVEL:
-        steps.append(_train('Harvesting', cp.RARE_LEVEL, ctx.harvesting, 'harvesting'))
+        steps += _practice(m, ctx, 'extraction', None, cp.RARE_LEVEL, 'Harvesting', opened, ores, depth)
     if e.kind == 'legacy':
         need = m.RECIPE_TIERS.get(e.id)
         if need and ctx.society_tier < need:
@@ -423,6 +425,112 @@ def _locks(m, ctx, e, opened=None):
             steps.append(_step('🔑', f"Unlock {cfg['name']}", f"{cfg['cost']} SC once, or own its machine · needed for {e.name}",
                                action={'do': 'unlock', 'station': tag, 'recipe': e.id, 'back': [e.category, 1, '']}, label='Unlock',
                                cost=cfg['cost']))
+    return steps
+
+
+def _xp_for(m, level):
+    """The practice a level needs (skill levels share one curve)."""
+    xp = 0
+    while m.lvl(xp) < level and xp < 100000:
+        xp += 1
+    return xp
+
+
+def _xp_now(m, ctx, main, branch):
+    if branch:
+        return ctx.db.execute(select(m.SkillBranch.xp).where(m.SkillBranch.channel_id == ctx.p.channel_id,
+                                                             m.SkillBranch.canonical_uid == ctx.p.twitch_uid,
+                                                             m.SkillBranch.branch == branch)).scalar() or 0
+    return m.skill_xp(ctx.p, main)
+
+
+def _task_station(m, key, cfg):
+    """(the recipe a training task runs or None, the workstation tags it needs)."""
+    from . import crafting_progression as cp
+    recipe = wb.entry(m, m.MERGED_TRAINING[key]) if key in m.MERGED_TRAINING else None
+    if recipe is not None:
+        return recipe, list(recipe.tags)
+    tag = cp.TRAINING_STATIONS.get(cfg.get('branch'))
+    return None, [tag] if tag else []
+
+
+def _practice(m, ctx, main, branch, level, label, opened, ores, depth=0):
+    """Steps to reach `level` in a skill (`main`, or its `branch`): the easiest training task that practises
+    it, after whatever that task needs first: its own skill level (the same way, one level down), the
+    machine for its workstation (with everything the machine needs), and its ingredients."""
+    from types import SimpleNamespace
+    from . import crafting_progression as cp
+    have = _xp_now(m, ctx, main, branch)
+    need = _xp_for(m, level) - have
+    if need <= 0:
+        return []
+    tasks = [(k, c) for k, c in m.SEED_TASKS.items() if (c.get('branch') == branch if branch else c['skill'] == main)]
+    if not tasks or depth > 2:
+        return [_train(label, level, m.lvl(have), TRAINING_HUB.get(main, ''))]
+
+    def effort(item):
+        # Unlocked now, then the lowest level, then no workstation (or one already open, the lowest tier),
+        # then ingredients that are simply gathered, then the fewest of them.
+        k, c = item
+        _, tags = _task_station(m, k, c)
+        return (m.lvl(m.skill_xp(ctx.p, c['skill'])) < c['unlock'], c['unlock'], bool(tags) and not any(t in opened for t in tags),
+                bool(tags), min((cp.STATIONS[t]['tier'] for t in tags), default=0), any(x not in s.GATHER for x in c['cost']),
+                sum(c['cost'].values()), c['label'])
+    key, cfg = min(tasks, key=effort)
+    steps = []
+    skill_level = m.lvl(m.skill_xp(ctx.p, cfg['skill']))
+    if skill_level < cfg['unlock']:
+        steps += _practice(m, ctx, cfg['skill'], None, cfg['unlock'], m.SKILL_LABELS.get(cfg['skill'], cfg['skill']), opened, ores, depth + 1)
+    recipe, tags = _task_station(m, key, cfg)
+    where = ''
+    if tags:
+        where = f" at the {cp.STATIONS[tags[0]]['name']}"
+        if not any(t in opened for t in tags):
+            machine_key, machine = _machine(m, ctx, recipe or SimpleNamespace(tags=tags, id=''))
+            if machine is not None:
+                crafts, raw, more = full_plan(ctx, machine)
+                opened |= more | set(s.machine_tags(machine_key))
+                purpose = SimpleNamespace(name=f'the {cfg["label"]} task')
+                crafts = [(c, n, purpose if c.id == machine.id else why) for c, n, why in crafts]
+                steps += _craft_steps(m, ctx, crafts, raw, opened, ores, depth + 1)
+    attempts = min(10, math.ceil(need / m.qol.MINING_SUCCESS_GUESS))
+    # The task's ingredients for those attempts, made like everything else (gathered, or crafted with
+    # whatever their recipes need), never bought.
+    wanted = SimpleNamespace(id='', name=cfg['label'], tags=[cp.SURVIVAL], inputs={k: n * attempts for k, n in cfg['cost'].items()})
+    crafts, raw, more = full_plan(ctx, wanted)
+    opened |= more
+    steps += _craft_steps(m, ctx, [c for c in crafts if c[0] is not wanted], raw, opened, ores, depth + 1)
+    made = recipe.name if recipe is not None else ', '.join(m.resource_name(k) for k in cfg['output'])
+    detail = f'practises {label} to Lv {level} ({need} more practice)' + (f' · makes {made}{where}' if made else where.replace(' at the', ' · at the'))
+    ready = (skill_level >= cfg['unlock'] and (not tags or any(t in ctx.access for t in tags))
+             and all(ctx.have(item) >= n for item, n in cfg['cost'].items()))
+    if ready:
+        steps.append(_step('✅', f"Do {cfg['label']} ×{attempts}", detail + ' · runs as a queue',
+                           action={'do': 'queue', 'task': 'work:' + key, 'count': attempts}, label='Start'))
+    else:
+        steps.append(_step('❌', f"Do {cfg['label']} ×{attempts}", detail + ' · after the steps above',
+                           view=('mp', 'trainskill', '=' + cfg['hub']), label='Train'))
+    return steps
+
+
+def _craft_steps(m, ctx, crafts, raw, opened, ores, depth=0):
+    """A plan (see full_plan) as steps: collect the raw materials, then each machine and part after
+    whatever unlocks it."""
+    steps = []
+    for key, qty in raw.items():
+        steps += _collect(m, ctx, key, qty, ores)
+    for sub, count, machine_for in crafts:
+        steps += _locks(m, ctx, sub, opened, ores, depth)
+        times = f' ×{count}' if count > 1 or machine_for is None else ''
+        why = (f'the machine for {machine_for.name}: owning it opens its workstation' if machine_for is not None
+               else 'a part for your goal')
+        if ctx.status(sub).code == 'ready':
+            action = ({'do': 'craft', 'recipe': sub.id, 'back': [sub.category, 1, '']} if machine_for is not None
+                      else {'do': 'queue', 'task': 'make:' + sub.id, 'count': min(10, count)})
+            steps.append(_step('✅', f'Craft {sub.name}{times}', why + ' · everything for it is ready', action=action, label='Craft'))
+        else:
+            steps.append(_step('❌', f'Craft {sub.name}{times}', why + ' · after the steps above',
+                               view=('wr', sub.id, sub.category, 1, ''), label='Recipe'))
     return steps
 
 
@@ -478,22 +586,8 @@ def walkthrough(m, db, p, provider='discord'):
     crafts, raw, opened = full_plan(ctx, e)
     crafts = [c for c in crafts if c[0].id != e.id]           # the goal comes last, below
     ores = m.task_queue.ores()
-    steps = []
-    for key, qty in raw.items():
-        steps += _collect(m, ctx, key, qty, ores)
-    for sub, count, machine_for in crafts:
-        steps += _locks(m, ctx, sub, opened)
-        times = f' ×{count}' if count > 1 or machine_for is None else ''
-        why = (f'the machine for {machine_for.name}: owning it opens its workstation' if machine_for is not None
-               else 'a part for your goal')
-        if ctx.status(sub).code == 'ready':
-            action = ({'do': 'craft', 'recipe': sub.id, 'back': [sub.category, 1, '']} if machine_for is not None
-                      else {'do': 'queue', 'task': 'make:' + sub.id, 'count': min(10, count)})
-            steps.append(_step('✅', f'Craft {sub.name}{times}', why + ' · everything for it is ready', action=action, label='Craft'))
-        else:
-            steps.append(_step('❌', f'Craft {sub.name}{times}', why + ' · after the steps above',
-                               view=('wr', sub.id, sub.category, 1, ''), label='Recipe'))
-    steps += _locks(m, ctx, e, opened)
+    steps = _craft_steps(m, ctx, crafts, raw, opened, ores)
+    steps += _locks(m, ctx, e, opened, ores)
     if ctx.status(e).code == 'ready':
         steps.append(_step('✅', f'Craft {e.name}', 'the goal · everything is ready',
                            action={'do': 'craft', 'recipe': e.id, 'back': [e.category, 1, '']}, label='Craft'))
@@ -502,13 +596,19 @@ def walkthrough(m, db, p, provider='discord'):
     # One step per button: a skill or station named twice is one step (the higher level).
     unique, seen = [], {}
     for st in steps:
-        target = st['view'] or st['name']
+        name = st['name']
+        if name.startswith('Reach ') and ' Lv ' in name:
+            target, size = name.rsplit(' Lv ', 1)[0], int(name.rsplit(' ', 1)[-1])
+        elif name.startswith('Do ') and ' ×' in name:
+            target, size = name.rsplit(' ×', 1)[0], int(name.rsplit('×', 1)[-1])
+        else:
+            target, size = (st['view'] or name), 0
         if target in seen:
             first = seen[target]
-            if st['name'] != first['name'] and st['name'].rsplit(' ', 1)[-1].isdigit() and first['name'].rsplit(' ', 1)[-1].isdigit():
-                if int(st['name'].rsplit(' ', 1)[-1]) > int(first['name'].rsplit(' ', 1)[-1]):
-                    first.update(name=st['name'], detail=st['detail'])
+            if size > first['size']:
+                first.update(name=name, detail=st['detail'], action=st['action'], view=st['view'], size=size)
             continue
+        st['size'] = size
         seen[target] = st
         unique.append(st)
     # SC: spending steps you cannot afford yet show how to earn the rest.

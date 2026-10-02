@@ -6831,22 +6831,24 @@ def training(channel:str,uid:str,name:str='Citizen',skill:str='',task:str='',pro
             locks=[]
             if level<cfg['unlock']:locks.append(f"needs {SKILL_LABELS[key]} Lv{cfg['unlock']}")
             cost='; '.join(f"{resource_name(k)} {material_amount(db,p,k)}/{v}" for k,v in cfg['cost'].items()) or 'no items needed'
-            where=""
+            where="";makes=""
             if action_key in MERGED_TRAINING:
                 e=workbench.entry(sys.modules[__name__],MERGED_TRAINING[action_key]);st=ctx.status(e)
                 where=f" · recipe: {e.name} at {workbench.station_label(e,ctx)} (T{e.tier}, {e.skill} Lv{e.level})"
-                if st.code in {'locked','station'}:locks.append(st.short);status='🔒'
+                makes=f"makes {e.name} at the {workbench.station_label(e,ctx)} · "   # the task's name alone does not say it
+                if st.code=='station':locks.append(f"needs the {workbench.station_label(e,ctx)} (craft its machine, or unlock it in /workshop)");status='🔒'
+                elif st.code=='locked':locks.append(st.short);status='🔒'
             else:
                 tag=crafting_progression.TRAINING_STATIONS.get(cfg['branch'])
                 if tag:
-                    info=crafting_progression.STATIONS[tag];where=f" · station: {info['name']} (T{info['tier']})"
+                    info=crafting_progression.STATIONS[tag];where=f" · station: {info['name']} (T{info['tier']})";makes=f"at the {info['name']} · "
                     if tag not in ctx.access or info['tier']>ctx.tier:locks.append(f"unlock {info['name']}" if info['tier']<=ctx.tier else f"Tier {info['tier']}");status='🔒'
             batch_outputs=seed_content.production_balance.current_outputs(sys.modules[__name__],db,p,MERGED_TRAINING[action_key]) if action_key in MERGED_TRAINING else cfg['output']
             outputs=', '.join(f"{v} {resource_name(k)}" for k,v in batch_outputs.items())
             benefits=', '.join(f"shared {k} +{v}" for k,v in cfg['shared'].items())
             benefits+=(', ' if benefits and cfg['society'] else '')+', '.join(f"society {k} +{v}" for k,v in cfg['society'].items())
             result="; ".join(x for x in (outputs,benefits,cfg['effect']) if x)
-            lines.append(f"{status} {cfg['label']} — branch Lv {lvl(xp)} ({xp} XP)"+(f" · {'; '.join(locks)}" if locks else "")+
+            lines.append(f"{status} {cfg['label']} — {makes}branch Lv {lvl(xp)} ({xp} XP)"+(f" · {'; '.join(locks)}" if locks else "")+
                          f"\n  Uses: {cost}{where}\n  Gives: {result or 'practice'}")
         jobs=[label for label,sk,_ in NEW_JOBS.values() if sk==key]
         if key=='cultivation':jobs=['Farmer']

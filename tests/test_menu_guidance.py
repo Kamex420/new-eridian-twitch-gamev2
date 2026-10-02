@@ -126,3 +126,21 @@ def test_the_game_says_it_is_a_free_fan_project_by_kamex():
     assert 'h_about' in menu.AREAS['help'][3]
     assert 'Kamex' in m.twitch_seed('about').body.decode() and twitch_help.TOPICS['about'] == notice.TWITCH
     assert 'Kamex' in v2.text_of(ui.public_panel(m))
+
+
+def test_a_skill_level_is_walked_through_its_training_task_and_what_that_task_needs():
+    """Chemistry Lv 2 without a Chemistry Station: Processing Lv 3 first, then a Medical Fabricator,
+    then the Chemistry training task (it makes Antiseptics there)."""
+    citizen(lumber=0)
+    nitric = next(e for e in wb.index(m) if e.name == 'Nitric Acid')
+    press(ui.cid('111', 'gs', nitric.id))
+    with m.SessionLocal() as db:
+        p = db.query(m.Player).one()
+        names = [st['name'] for st in extras.walkthrough(m, db, p)[1]]
+    chem = next(i for i, n in enumerate(names) if n.startswith('Do Chemistry'))
+    processing = next(i for i, n in enumerate(names) if n.startswith('Do ') and i < chem)
+    fabricator = names.index('Craft Medical Fabricator')
+    assert processing < fabricator < chem < names.index('Craft Nitric Acid')
+    assert not [n for n in names if n.startswith(('Buy ', 'Unlock '))]                     # made, never bought or unlocked
+    text = m.training(W, '111', 'Kam', 'processing', '', 'discord').body.decode()
+    assert 'Chemistry — makes Antiseptics at the Medical Fabricator' in text                # the list says what the task makes
