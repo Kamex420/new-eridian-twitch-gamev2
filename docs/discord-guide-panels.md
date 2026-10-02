@@ -184,7 +184,7 @@ Your Seedling is you on the stream map. It has moods and thoughts, and it keeps 
 
 **Good To Know**
 
-- **Autonomy:** After 10 minutes without a command it works, eats, sleeps and meets friends on its own. It never crafts, buys or sells.
+- **Autonomy:** After 10 minutes without a command it works, eats, sleeps and meets friends on its own. At work it thinks it through: your goal first, then it takes turns collecting and training its skills, and its diary says why. It never crafts recipes, buys or sells.
 - **Mood:** A happy Seedling works a little better; a miserable one a little worse.
 - **Autonomy off:** /seedling → Autonomy: Off makes it wait for you.
 

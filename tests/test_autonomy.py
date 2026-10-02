@@ -367,3 +367,83 @@ def test_welcome_back_adds_up_exactly_what_the_seedling_collected():
     assert f'Collected {sum(gained.values())} items' in text
     for k, n in gained.items():
         assert f'{n} × {m.resource_name(k)}' in text
+
+
+# ---------------------------------------------------------------- thinking a Work turn through
+
+def back_from_collecting(job, uid=UID):
+    """A Seedling whose last step was collecting, so this Work turn is a practice turn."""
+    with m.SessionLocal() as db:
+        p = db.query(m.Player).filter_by(twitch_uid=uid).one()
+        p.job = job
+        a.row(db, p.channel_id, uid, create=True).activity = 'Gathering Stone'
+        db.commit()
+
+
+def test_a_seedling_takes_turns_collecting_and_training_and_says_why():
+    seed()
+    client.get('/api/v1/job', params={'channel': 'test', 'uid': UID, 'name': 'Kamex', 'job': 'miner'})
+    away()
+    first = a.live_one(m, 'test', UID, force=True)
+    assert life_row().activity.startswith('Gathering') and '“As a Miner, I bring in' in first      # the material it has least of
+    away()
+    second = a.live_one(m, 'test', UID, force=True)
+    found = life_row()
+    assert found.activity.startswith('Training: ') and found.place == 'frontier_edge'               # Harvesting practice
+    assert found.plan.startswith('Practising ') and f'“{found.plan}”' in second
+    with m.SessionLocal() as db:
+        assert db.query(a.SeedlingDiary).order_by(a.SeedlingDiary.id.desc()).first().desk == 'TRAINING'
+        assert '🧠 Thinking: Practising' in a.view_text(m, db, db.query(m.Player).one())
+    away()
+    assert life_row().activity.startswith('Training') and a.live_one(m, 'test', UID, force=True)
+    assert life_row().activity.startswith('Gathering')                                             # and back to collecting
+
+
+def test_practice_uses_plenty_of_its_own_materials_and_never_what_the_goal_is_saving():
+    seed()
+    back_from_collecting('processor')
+    water = m.seed_content.find_item('Murky Water (1000ml)')
+    with m.SessionLocal() as db:
+        p = db.query(m.Player).one()
+        found = a.row(db, 'test', UID)
+        step = a.work_plan(m, db, p, found)          # no water: fetch it for Water Treatment
+        assert step['kind'] == 'gather' and step['item'] == water
+        assert step['why'].startswith('Water Treatment needs Murky Water (1000ml) and I have 0 of 2.')
+        m.material_change(db, p, water, 5)
+        step = a.work_plan(m, db, p, found)
+        assert step['task'] == 'train_water_treatment' and step['why'].startswith('Practising Water Treatment')
+        mind = a.Mind(m, db, p)
+        mind.saving = {'Murky Water (1000ml)'}
+        assert a.practice_plan(m, db, p, mind, trade_only=True) is None
+
+
+def test_a_missing_material_is_made_with_another_training_task_or_gathered_for_it():
+    from test_colony import ready_for
+    ready_for('train_stone_processing')            # the Masonry workstation is open; 1 Stone in the bag
+    with m.SessionLocal() as db:
+        p = db.query(m.Player).one()
+        p.job = 'artisan'
+        mind = a.Mind(m, db, p)
+        step = a.supply_plan(m, db, p, mind)        # Masonry needs Stone Blocks; Stone Processing needs 2 Stone first
+        assert step['kind'] == 'gather' and m.resource_name(step['item']) == 'Stone'
+        assert step['why'] == ('Masonry needs Stone Block and I have 0 of 4. Stone Processing makes it, but needs Stone. '
+                               'Collecting Stone first.')
+        m.material_change(db, p, step['item'], 3)
+        step = a.supply_plan(m, db, p, a.Mind(m, db, p))
+        assert step['task'] == 'train_stone_processing' and step['why'].endswith('Making it with Stone Processing first.')
+
+
+def test_with_a_goal_it_collects_and_trains_for_it_in_turn():
+    seed()
+    from app import workbench as wb, extras
+    nitric = next(e for e in wb.index(m) if e.name == 'Nitric Acid')
+    with m.SessionLocal() as db:
+        p = db.query(m.Player).one()
+        extras.set_goal(m, db, p, nitric.id)
+        db.commit()
+        found = a.row(db, 'test', UID, create=True)
+        collect = a.work_plan(m, db, p, found)
+        assert collect['kind'] == 'gather' and collect['goal'] and collect['why'].startswith('My goal is Nitric Acid, and it still needs ')
+        found.activity = 'Gathering Lumber'
+        train = a.work_plan(m, db, p, found)                  # a practice turn: the goal's own training
+        assert train['kind'] == 'train' and train['goal'] and 'the way there includes' in train['why']

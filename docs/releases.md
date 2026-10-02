@@ -1,5 +1,15 @@
 # Release notes
 
+## Seedlings think their work through
+
+Autonomous Seedlings now weigh their options at work and say why they chose what they did.
+- **Your goal comes first.** If the goal's next step is something a Seedling can do by itself (gathering or mining a material, a training task, harvesting or cargo work), it does that.
+- **It takes turns collecting and training.** After a collecting trip it practises a skill: its own trade's training first, its weakest branch first, tasks that make something. It only uses materials it has plenty of (at least twice what the task takes), and never ones your goal needs.
+- **It fetches what its training is short of.** If Pottery needs Clay, it goes to get Clay. If Masonry needs Stone Blocks, it cuts them with Stone Processing first, and if that needs Stone, it gathers the Stone.
+- **It collects more kinds of things.** Every job has a longer list of materials, and the Seedling picks the one it has least of. Now and then it goes after a natural material it has never brought back.
+- **You can see its reasoning.** `/seedling` shows "🧠 Thinking: …", the diary quotes it ("“Water Treatment needs Murky Water and I have 0 of 2. Collecting Murky Water first.”"), and Seedlings say it on the stream map. Training trips are reported by the TRAINING desk.
+- It still never crafts recipes, buys or sells.
+
 ## Every task practises a skill, with lucky finds
 
 - **Every task gives XP now.** Gear repair gives Engineering and Maintenance & Repair practice, building with `/use` gives Engineering practice, and supplying the clinic gives Medicine practice. Everything else already did.

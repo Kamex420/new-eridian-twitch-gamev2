@@ -227,8 +227,10 @@ The Holidays panel's COMING UP part is worked out when the bot posts it; the cop
 [1;36mGOOD TO KNOW
 [0;33mAutonomy
 [0mAfter 10 minutes without a command it works, eats, sleeps
-[0mand meets friends on its own. It never crafts, buys or
-[0msells.
+[0mand meets friends on its own. At work it thinks it
+[0mthrough: your goal first, then it takes turns collecting
+[0mand training its skills, and its diary says why. It never
+[0mcrafts recipes, buys or sells.
 [0;33mMood
 [0mA happy Seedling works a little better; a miserable one a
 [0mlittle worse.

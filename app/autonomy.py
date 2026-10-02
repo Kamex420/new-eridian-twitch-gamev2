@@ -3,10 +3,19 @@
 Each citizen's Seedling follows a schedule across the four Avesta phases
 (Morning, Day, Evening, Night). Every block is Work, Free time, Social or Sleep.
 While the player is not playing, a background loop lets the Seedling act about
-once every AUTONOMY_MINUTES: it works its job, eats when hungry, sleeps when
-tired, practises a hobby, or meets a friend in the Commons. Every choice goes
-through the ordinary game commands, so the same costs, cooldowns, gates and
-rewards apply as when the player presses the button themselves.
+once every AUTONOMY_MINUTES: it works, eats when hungry, sleeps when tired,
+practises a hobby, or meets a friend in the Commons. Every choice goes through
+the ordinary game commands, so the same costs, cooldowns, gates and rewards
+apply as when the player presses the button themselves.
+
+A Work turn is thought through (work_plan), and the reason is kept (plan) and
+quoted in the diary: the goal's next step it can do itself comes first; then it
+alternates collecting with practice. Practice is the best training task it can
+do now (its trade's skills, its weakest branch, tasks that make something,
+only from materials it has plenty of and never ones the goal is saving), or
+else fetching what such a task is short of, by gathering it or by making it
+with another training task. Collecting is its job's materials, the one it has
+least of first, its job task, and now and then a material it has none of.
 
 Moods come from needs, the weather, company and how the day is going. They
 nudge success chances a little (Inspired +3% … Miserable −4%) and give the
@@ -15,8 +24,8 @@ written to a diary, which the player reads when they come back and which the
 stream narrator and the Avesta map overlay show live.
 
 The Seedling steps aside whenever the player is active (any command in the last
-AWAY_MINUTES) or has a queue running, and it never crafts, sells, buys or uses
-festival food. Players can switch autonomy off at any time.
+AWAY_MINUTES) or has a queue running, and it never crafts recipes, sells, buys
+or uses festival food. Players can switch autonomy off at any time.
 """
 import contextvars
 import hashlib
@@ -57,17 +66,23 @@ PLACES = {
 # What each job works at: gathering real materials, or its job task. The Seedling rotates
 # through these; when the player has a goal, materials the goal still needs come first.
 JOB_WORK = {
-    'farmer': ('Pumpkin', 'Corn', 'Tomato', 'Berries', 'act:farm'), 'cultivator': ('Pumpkin', 'Corn', 'Tomato', 'Berries', 'act:farm'),
-    'cook': ('Berries', 'Herbs', 'Mushroom', 'Corn', 'Nuts'), 'harvester': ('Lumber', 'Berries', 'Flaxa', 'Herbs'),
-    'miner': ('Hematite Ore', 'Coal', 'Stone', 'Chalcopyrite Ore', 'Bauxite Ore'), 'explorer': ('Lumber', 'Stone', 'Nuts', 'act:explore', 'Mushroom'),
-    'technician': ('Lumber', 'Stone', 'Clay', 'act:repair'), 'engineer': ('Stone', 'Clay', 'Lumber', 'act:repair'),
-    'artisan': ('Clay', 'Lumber', 'Flaxa', 'Stone'), 'processor': ('Murky Water (1000ml)', 'Raw Algae', 'act:water'),
-    'researcher': ('Herbs', 'act:research', 'Tube Fungus', 'act:scan'), 'medic': ('Herbs', 'Golden Cap', 'act:scan'),
+    'farmer': ('Pumpkin', 'Corn', 'Tomato', 'act:farm', 'Berries', 'Pumpkin Seeds', 'Herbs'),
+    'cultivator': ('Pumpkin', 'Corn', 'Tomato', 'act:farm', 'Berries', 'Pumpkin Seeds', 'Herbs'),
+    'cook': ('Berries', 'Herbs', 'Mushroom', 'Corn', 'Nuts', 'Tomato', 'Raw Algae'),
+    'harvester': ('Lumber', 'Berries', 'Flaxa', 'Herbs', 'Stone', 'Clay', 'Murky Water (1000ml)'),
+    'miner': ('Hematite Ore', 'Coal', 'Stone', 'Chalcopyrite Ore', 'Clay'),
+    'explorer': ('Lumber', 'Stone', 'Nuts', 'act:explore', 'Mushroom', 'Smelly Fungus', 'Fragile Fungus'),
+    'technician': ('Lumber', 'Stone', 'Clay', 'act:repair', 'Coal'), 'engineer': ('Stone', 'Clay', 'Lumber', 'act:repair', 'Coal'),
+    'artisan': ('Clay', 'Lumber', 'Flaxa', 'Stone', 'Murky Water (1000ml)'),
+    'processor': ('Murky Water (1000ml)', 'Raw Algae', 'act:water', 'Clay'),
+    'researcher': ('Herbs', 'act:research', 'Tube Fungus', 'act:scan', 'Web Fungus'), 'medic': ('Herbs', 'Golden Cap', 'act:scan', 'Flaxa'),
     'pharmacist': ('Herbs', 'Golden Cap', 'Web Fungus', 'act:research'), 'firefighter': ('Murky Water (1000ml)', 'Stone', 'act:repair'),
     'safety_officer': ('Murky Water (1000ml)', 'Stone', 'act:repair'), 'courier': ('act:cargo', 'act:delivery', 'Lumber', 'act:spaceport'),
     'merchant': ('act:market', 'Berries', 'act:market', 'Lumber'),
 }
-NO_JOB_WORK = ('Berries', 'Lumber', 'Stone', 'Herbs')
+NO_JOB_WORK = ('Berries', 'Lumber', 'Stone', 'Herbs', 'Clay', 'Flaxa')
+PLENTY = 2           # practice only uses materials the Seedling has at least twice what the task takes
+CURIOUS = .15        # chance a collecting turn goes after a natural material it has none of
 JOB_HOBBY = {'farmer': 'gardening', 'cultivator': 'gardening', 'miner': 'rockwatching', 'technician': 'mechanics', 'engineer': 'mechanics',
              'researcher': 'research', 'courier': 'collecting', 'explorer': 'exploration', 'merchant': 'trading', 'cook': 'cooking',
              'harvester': 'gardening', 'processor': 'scanning', 'artisan': 'collecting', 'medic': 'research', 'pharmacist': 'research'}
@@ -76,7 +91,8 @@ HOBBY_PLACE = {'gardening': 'agricultural_district', 'exploration': 'frontier_ed
                'trading': 'market_concourse', 'scanning': 'research_block'}
 # Job tasks: (news desk, place, what they did).
 TASKS = {
-    'farm': ('FARMING', 'agricultural_district', 'tended the fields'), 'water': ('UTILITIES', 'agricultural_district', 'ran the water treatment checks'),
+    'farm': ('FARMING', 'agricultural_district', 'tended the fields'), 'harvest': ('FARMING', 'agricultural_district', 'brought in the harvest'),
+    'water': ('UTILITIES', 'agricultural_district', 'ran the water treatment checks'),
     'repair': ('INFRASTRUCTURE', 'industrial_ward', 'carried out repairs on the settlement'), 'research': ('RESEARCH', 'research_block', 'logged a research session'),
     'scan': ('RESEARCH', 'research_block', 'completed a Siro scan'), 'cargo': ('LOGISTICS', 'spaceport_quarter', 'packed cargo for shipment'),
     'delivery': ('LOGISTICS', 'spaceport_quarter', 'sent a delivery duck across New Eridian'), 'spaceport': ('LOGISTICS', 'spaceport_quarter', 'worked the spaceport docks'),
@@ -84,12 +100,17 @@ TASKS = {
 }
 PLACE_OF_BRANCH = {'ore_mining': 'frontier_edge', 'stone_quarrying': 'frontier_edge', 'wood_harvesting': 'frontier_edge',
                    'botanical_harvesting': 'agricultural_district', 'water_collection': 'agricultural_district'}
+# Where each skill's training tasks happen on the map.
+PLACE_OF_SKILL = {'cultivation': 'agricultural_district', 'extraction': 'frontier_edge', 'infrastructure': 'industrial_ward',
+                  'environmental': 'industrial_ward', 'fabrication': 'industrial_ward', 'cooking': 'residential_ring',
+                  'medicine': 'research_block', 'emergency': 'commons', 'research': 'research_block', 'logistics': 'spaceport_quarter',
+                  'frontier': 'frontier_edge', 'commerce': 'market_concourse'}
 # Needs are looked after before they get low enough to stop work.
 LOW = {'nutrition': 45, 'energy': 35, 'comfort': 30, 'social': 30}
 WHEN = {'Morning': 'this morning', 'Day': 'today', 'Evening': 'this evening', 'Night': 'tonight'}
-EMOJI = {'gather': '🧺', 'mine': '⛏️', 'eat': '🍲', 'sleep': '🛏️', 'relax': '🛋️', 'games': '🎲', 'hangout': '🤝', 'hi': '👋', 'hobby': '🎨',
+EMOJI = {'harvest': '🌾', 'gather': '🧺', 'mine': '⛏️', 'eat': '🍲', 'sleep': '🛏️', 'relax': '🛋️', 'games': '🎲', 'hangout': '🤝', 'hi': '👋', 'hobby': '🎨',
          'walk': '🌿', 'recover': '🩹', 'queue': '⏱️', 'rest': '😴', 'farm': '🌱', 'water': '💧', 'repair': '🔧', 'research': '🔬', 'scan': '📡',
-         'cargo': '📦', 'delivery': '🦆', 'spaceport': '🚀', 'explore': '🧭', 'market': '🪙'}
+         'cargo': '📦', 'delivery': '🦆', 'spaceport': '🚀', 'explore': '🧭', 'market': '🪙', 'train': '🎓'}
 # District growth on the map: the society stat each district grows with, and the society tier that settles it.
 GROWTH = {'commons': (None, 0), 'residential_ring': ('population', 0), 'agricultural_district': ('food', 0), 'frontier_edge': ('development', 0),
           'industrial_ward': ('materials', 1), 'market_concourse': ('treasury', 1), 'research_block': ('knowledge', 2), 'spaceport_quarter': ('reputation', 3)}
@@ -135,6 +156,8 @@ SAY_DOING = {
     'Saying hi': ['Hey there! How is the shift going?', 'Good to see a friendly face.', 'Long time no see!'],
     'Hobby': ['A little {hobby} clears the head.', 'Getting better at {hobby} every day.', 'Nobody bother me, it is {hobby} time.'],
     'Working': ['On the clock. Back soon.', 'Somebody has to keep this place running.', 'Nearly done with this shift.'],
+    'Training': ['Practice makes perfect. Mostly.', 'One more round of {task}.', 'Getting better at {task}, slowly.',
+                 'Rocky says every expert started as a beginner.', 'Hands busy, head learning.'],
     'Waiting': ['Waiting on things out of my hands.', 'Hurry up and wait, colony life.'],
 }
 SAY_PLACE = {
@@ -192,6 +215,7 @@ class SeedlingLife(Base):
     cycle = Column(Integer, nullable=False, default=0)
     next_at = Column(DateTime(timezone=True), nullable=True)
     updated_at = Column(DateTime(timezone=True), nullable=True)
+    plan = Column(String(200), nullable=False, default='')      # why it chose its current step, in its own words
 
 
 class SeedlingDiary(Base):
@@ -230,6 +254,7 @@ HAUL_KEEP = 400      # steps remembered per Seedling for totals (about four days
 def install(m):
     SeedlingLife.__table__.create(m.engine, checkfirst=True)
     SeedlingDiary.__table__.create(m.engine, checkfirst=True)
+    add_columns(m.engine)
     try:
         import asyncio
         from discord.ext import tasks
@@ -250,6 +275,15 @@ def install(m):
         timer.stop()
     m.app.add_event_handler('startup', start)
     m.app.add_event_handler('shutdown', stop)
+
+
+def add_columns(engine):
+    """Columns added after the table first shipped: additive, existing Seedlings keep everything."""
+    from sqlalchemy import inspect, text
+    with engine.begin() as conn:
+        have = {c['name'] for c in inspect(conn).get_columns(SeedlingLife.__tablename__)}
+        if 'plan' not in have:
+            conn.execute(text(f"ALTER TABLE {SeedlingLife.__tablename__} ADD COLUMN plan VARCHAR(200) NOT NULL DEFAULT ''"))
 
 
 def row(db, channel, uid, create=False):
@@ -400,26 +434,27 @@ def needs_plan(m, db, p, life, block):
     """Look after the lowest need first, before it gets low enough to stop work. None when all are fine."""
     low = sorted((getattr(life, k) / LOW[k], k) for k in LOW if getattr(life, k) < LOW[k])
     for _, need in low:
+        why = f"My {need.title()} is down to {getattr(life, need)}. Looking after it before it stops my work."
         if need == 'nutrition' and ready(m, db, p, 'eat'):
-            return {'kind': 'eat', 'need': need, 'call': ('eat_full', {})}
+            return {'kind': 'eat', 'need': need, 'call': ('eat_full', {}), 'why': why}
         if need == 'energy':
             if ready(m, db, p, 'sleep'):
-                return {'kind': 'sleep', 'need': need, 'call': ('action', {'action': 'sleep'})}
+                return {'kind': 'sleep', 'need': need, 'call': ('action', {'action': 'sleep'}), 'why': why}
             if ready(m, db, p, 'relax'):
-                return {'kind': 'relax', 'need': need, 'call': ('relax', {})}
+                return {'kind': 'relax', 'need': need, 'call': ('relax', {}), 'why': why}
         if need == 'comfort':
             if ready(m, db, p, 'relax'):
-                return {'kind': 'relax', 'need': need, 'call': ('relax', {})}
+                return {'kind': 'relax', 'need': need, 'call': ('relax', {}), 'why': why}
             if life.comfort < 20 and ready(m, db, p, 'sleep'):
-                return {'kind': 'sleep', 'need': need, 'call': ('action', {'action': 'sleep'})}
+                return {'kind': 'sleep', 'need': need, 'call': ('action', {'action': 'sleep'}), 'why': why}
         if need == 'social':
             friendly = social_plan(m, db, p)
             if friendly is not None:
-                return dict(friendly, need=need)
+                return dict(friendly, need=need, why=f"I have not talked to anyone in a while (Social {life.social}). Going to see {clean_name(friendly['friend'])}.")
             if ready(m, db, p, 'games'):
-                return {'kind': 'games', 'need': need, 'call': ('games', {})}
+                return {'kind': 'games', 'need': need, 'call': ('games', {}), 'why': why}
     if low and needs.blocked_needs(life):
-        return {'kind': 'recover', 'need': low[0][1], 'call': ('recover_needs', {})}
+        return {'kind': 'recover', 'need': low[0][1], 'call': ('recover_needs', {}), 'why': f"My {low[0][1].title()} is too low to work. Recovering first."}
     return None
 
 
@@ -429,60 +464,260 @@ def gather_key(m, name):
     return key if key in s.GATHER and key not in cp.RARE else None
 
 
-def goal_material(m, db, p):
-    """A natural material the player's goal still needs, if any."""
+# ---------------------------------------------------------------- thinking a Work turn through
+
+class Mind:
+    """What the Seedling knows while it decides: its bag, branch levels, trade and what the goal is saving."""
+
+    def __init__(self, m, db, p):
+        self.m, self.db, self.p = m, db, p
+        self.stock = {}
+        self.levels = {r.branch: m.lvl(r.xp) for r in db.scalars(select(m.SkillBranch).where(
+            m.SkillBranch.channel_id == p.channel_id, m.SkillBranch.canonical_uid == p.twitch_uid))}
+        self.goal, self.saving = None, set()
+        self.gates = {}
+
+    def have(self, key):
+        if key not in self.stock:
+            self.stock[key] = self.m.material_amount(self.db, self.p, key)
+        return self.stock[key]
+
+    def name(self, key):
+        return self.m.resource_name(key)
+
+    def trade(self, cfg):
+        from .occupations import matches
+        return matches(self.p.job, cfg['skill'])
+
+    def unlocked(self, key):
+        cfg = self.m.SEED_TASKS[key]
+        return self.m.lvl(self.m.skill_xp(self.p, cfg['skill'])) >= cfg['unlock']
+
+    def open(self, key):
+        """The task's recipe, workstation and recipe skill are open to this citizen (the checks the task itself makes)."""
+        if key not in self.gates:
+            m, db, p = self.m, self.db, self.p
+            cp, s = m.crafting_progression, m.seed_content
+            rid = m.MERGED_TRAINING.get(key)
+            if rid:
+                r = s.RECIPES[rid]
+                ok = not cp.recipe_gate(m, db, p, rid, 'discord') and \
+                    s.level_for(m, db, p, r['requirement'].get('Skill', 'SK_CRAFTING')) >= s.required_level(r)
+            else:
+                tag = cp.TRAINING_STATIONS.get(m.SEED_TASKS[key]['branch'])
+                ok = not (tag and cp.station_gate(m, db, p, [tag], cp.STATIONS[tag]['tier'], 'discord'))
+            self.gates[key] = ok
+        return self.gates[key]
+
+    def plenty(self, cfg):
+        return all(self.have(k) >= n * PLENTY for k, n in cfg['cost'].items())
+
+    def spares(self, cfg):
+        """Never spend what the goal is saving."""
+        return not any(self.name(k) in self.saving for k in cfg['cost'])
+
+    def level(self, cfg):
+        return self.levels.get(cfg['branch'], 1)
+
+
+def task_label(m, key):
+    return m.SEED_TASKS[key]['label']
+
+
+def made_by(m, cfg):
+    """What a training task makes, in words ('Wood Planks'), or ''."""
+    return ' and '.join(m.resource_name(k) for k in cfg['output'])
+
+
+def good_for(m, cfg):
+    """Why a training task is worth doing, in a few words."""
+    if cfg['cost'] and cfg['output']:
+        return f"it turns my spare {' and '.join(m.resource_name(k) for k in cfg['cost'])} into {made_by(m, cfg)}"
+    if cfg['output']:
+        return f'it makes {made_by(m, cfg)}'
+    if cfg['shared']:
+        return f"it adds {' and '.join(k.replace('_', ' ') for k in cfg['shared'])} to the shared stores"
+    if cfg['society']:
+        return f"it raises New Eridian's {' and '.join(k.title() for k in cfg['society'])}"
+    return f"it keeps my {m.SKILL_LABELS[cfg['skill']]} sharp"
+
+
+def a_or_an(word):
+    return ('an ' if word[:1].lower() in 'aeiou' else 'a ') + word
+
+
+# Job tasks as the Seedling thinks of them (TASKS says what it did, for the news).
+DOING = {'farm': 'tending the fields', 'harvest': 'bringing in the harvest', 'water': 'running the water treatment checks',
+         'repair': 'carrying out repairs on the settlement', 'research': 'logging a research session', 'scan': 'running a Siro scan',
+         'cargo': 'packing cargo for shipment', 'delivery': 'sending a delivery duck across New Eridian', 'spaceport': 'working the spaceport docks',
+         'explore': 'scouting the land past the wall', 'market': 'working the market stalls'}
+
+
+def goal_plan(m, db, p, mind):
+    """(collecting step, training step) from the goal's walkthrough: the first of each the Seedling can do by itself.
+    Collecting is gathering or mining a material, harvesting or cargo work. Either can be None."""
     try:
-        e = m.extras.goal_entry(m, db, p)
-        if e is None:
-            return None
-        from . import workbench as wb
-        _, raw = m.extras.plan(wb.Context(m, db, p), e)
-        return next((gather_key(m, m.resource_name(k)) for k in raw if gather_key(m, m.resource_name(k))), None)
+        e, steps = m.extras.walkthrough(m, db, p)
     except Exception:
-        return None
+        return None, None
+    if e is None:
+        return None, None
+    mind.goal = e.name
+    try:
+        from . import workbench as wb
+        crafts, raw = m.extras.plan(wb.Context(m, db, p), e)
+        mind.saving = {m.resource_name(k) for k in set(e.inputs) | set(raw) | {k for sub, _ in crafts for k in sub.inputs}}
+    except Exception:
+        pass
+    collect = train = None
+    for st in steps:
+        act = st.get('action') or {}
+        do, task = act.get('do'), act.get('task', '')
+        kind, _, key = task.partition(':')
+        if collect is None and do == 'queue' and kind in {'gather', 'mine'} and gather_key(m, m.resource_name(key)):
+            collect = {'kind': 'gather', 'item': key, 'goal': True,
+                       'why': f"My goal is {e.name}, and it still needs {m.resource_name(key)}. Collecting some."}
+        elif collect is None and do == 'cmd' and act.get('leaf') in {'w_farm_harvest', 'w_cargo'}:
+            job = 'harvest' if act['leaf'] == 'w_farm_harvest' else 'cargo'
+            collect = {'kind': job, 'call': ('action', {'action': job}), 'goal': True,
+                       'why': f"My goal is {e.name}, and next it needs: {st['name']}."}
+        elif train is None and (do == 'train' or (do == 'queue' and kind == 'work')):
+            key = task if do == 'train' else key
+            if key in m.SEED_TASKS and ready(m, db, p, key) and mind.unlocked(key) and mind.open(key) and \
+                    not m.craft_missing_materials(db, p, m.SEED_TASKS[key]['cost']):
+                cfg = m.SEED_TASKS[key]
+                train = {'kind': 'train', 'task': key, 'skill': cfg['skill'], 'goal': True, 'call': ('action', {'action': key}),
+                         'why': f"My goal is {e.name}, and the way there includes {cfg['label']} practice. Practising it now."}
+    return collect, train
 
 
-def work_plan(m, db, p, found):
-    wanted = goal_material(m, db, p)
-    if wanted:
-        return {'kind': 'gather', 'item': wanted, 'goal': True}
+def practice_plan(m, db, p, mind, trade_only=False, turn=0):
+    """The best training task to do now: my trade's skills first, my weakest branch first, tasks that make
+    something, only from materials I have plenty of and never what the goal is saving. Equal choices take turns."""
+    ranked, size = [], len(m.SEED_TASKS)
+    for index, (key, cfg) in enumerate(m.SEED_TASKS.items()):
+        if (trade_only and not mind.trade(cfg)) or not mind.unlocked(key) or not mind.spares(cfg) or not mind.plenty(cfg):
+            continue
+        score = (40 if mind.trade(cfg) else 0) + 3 * max(0, 8 - mind.level(cfg)) + (10 if cfg['output'] else 0)
+        ranked.append((-score, (index - turn) % size, key))
+    for _, _, key in sorted(ranked):
+        if ready(m, db, p, key) and mind.open(key):
+            cfg = m.SEED_TASKS[key]
+            why = f"Practising {cfg['label']} (Lv {mind.level(cfg)}): {good_for(m, cfg)}."
+            if not trade_only and p.job in JOB_WORK and not mind.trade(cfg):
+                why = 'My own trade has nothing I can practise right now, so I am p' + why[1:]
+            return {'kind': 'train', 'task': key, 'skill': cfg['skill'], 'call': ('action', {'action': key}), 'why': why}
+    return None
+
+
+def supply_plan(m, db, p, mind):
+    """Fetch what a training task of my trade is short of: gather it, or make it with another training task I can do."""
+    trade = sorted((k for k, cfg in m.SEED_TASKS.items() if mind.trade(cfg) and mind.unlocked(k) and mind.spares(cfg)),
+                   key=lambda k: mind.level(m.SEED_TASKS[k]))
+    for key in trade:
+        cfg = m.SEED_TASKS[key]
+        short = [(k, n * PLENTY) for k, n in cfg['cost'].items() if mind.have(k) < n * PLENTY]
+        if not short or not mind.open(key):
+            continue
+        for k, need in short:
+            step = fetch(m, db, p, mind, k, depth=2)
+            if step:
+                step['why'] = f"{cfg['label']} needs {mind.name(k)} and I have {mind.have(k)} of {need}. " + step['why']
+                return step
+    return None
+
+
+def fetch(m, db, p, mind, key, depth):
+    """A step that brings in `key`: gathering it, or the training task that makes it (one more level down when short)."""
+    natural = gather_key(m, mind.name(key))
+    if natural:
+        return {'kind': 'gather', 'item': natural, 'why': f"Collecting {mind.name(key)} first."}
+    for task, cfg in m.SEED_TASKS.items():
+        if key not in cfg['output'] or not mind.unlocked(task) or not mind.spares(cfg) or not mind.open(task):
+            continue
+        if mind.plenty(cfg) and ready(m, db, p, task):
+            return {'kind': 'train', 'task': task, 'skill': cfg['skill'], 'call': ('action', {'action': task}),
+                    'why': f"Making it with {cfg['label']} first."}
+        if depth > 1:
+            for k, n in cfg['cost'].items():
+                if mind.have(k) < n * PLENTY:
+                    step = fetch(m, db, p, mind, k, depth - 1)
+                    if step:
+                        step['why'] = f"{cfg['label']} makes it, but needs {mind.name(k)}. " + step['why']
+                        return step
+    return None
+
+
+def collect_plan(m, db, p, found, mind):
+    """My job's materials, the one I have least of first, or my job task; now and then something I have none of."""
+    if random.random() < CURIOUS:
+        from . import seed_content as s, crafting_progression as cp
+        owned = s.stock(m, db, p)
+        new = [k for k in s.GATHER if k not in cp.RARE and not owned.get(k)]
+        if new:
+            key = new[found.cycle % len(new)]
+            found.cycle += 1
+            return {'kind': 'gather', 'item': key, 'why': f"I have never brought back {m.resource_name(key)}. Time to find some."}
     options = JOB_WORK.get(p.job, NO_JOB_WORK)
+    keys = {o: gather_key(m, o) for o in options if not o.startswith('act:')}
+    materials = [k for k in keys.values() if k]
+    role = job_title(m, p)
     for _ in range(len(options)):
         choice = options[found.cycle % len(options)]
         found.cycle += 1
         if choice.startswith('act:'):
             act = choice[4:]
-            return {'kind': act, 'call': ('action', {'action': act})}
-        key = gather_key(m, choice)
-        if key:
-            return {'kind': 'gather', 'item': key}
-    return {'kind': 'gather', 'item': gather_key(m, 'Lumber')}
+            return {'kind': act, 'call': ('action', {'action': act}), 'why': f"As {a_or_an(role)}, today I am {DOING[act]}."}
+        if keys.get(choice):
+            # A gathering turn: the job material I have least of (the rotation's own pick on a tie).
+            key = min(materials, key=lambda k: (mind.have(k), k != keys[choice]))
+            have = f'I only have {mind.have(key)}' if mind.have(key) else 'I have none'
+            return {'kind': 'gather', 'item': key, 'why': (f"As {a_or_an(role)}, I bring in {m.resource_name(key)}, and {have}." if p.job in JOB_WORK
+                                                          else f"Everyone can use {m.resource_name(key)}, and {have}.")}
+    return {'kind': 'gather', 'item': gather_key(m, 'Lumber'), 'why': 'Lumber is always useful.'}
+
+
+def work_plan(m, db, p, found):
+    """Think the Work turn through: collecting and practice take turns, and the goal's own steps come first in each.
+    The step carries 'why': the reason, in the Seedling's own words."""
+    mind = Mind(m, db, p)
+    collect, train = goal_plan(m, db, p, mind)
+    if (found.activity or '').startswith(('Gathering', 'Working')):          # collected last time: now practise
+        # The goal's training, else my trade's, else fetch what my trade's training is short of, else any training I can do.
+        step = (train or practice_plan(m, db, p, mind, True, found.cycle) or supply_plan(m, db, p, mind)
+                or practice_plan(m, db, p, mind, False, found.cycle))
+        if step:
+            return step
+    return collect or train or collect_plan(m, db, p, found, mind)
 
 
 def plan(m, db, p, found, life, clock):
-    """What the Seedling does now: a dict with 'kind', and 'call' or 'item' for game actions."""
+    """What the Seedling does now: a dict with 'kind', 'why', and 'call' or 'item' for game actions."""
     block = schedule_of(found)[clock['phase']]
     if block == 'sleep' and ready(m, db, p, 'sleep') and (life.energy < 90 or life.comfort < 90):
-        return {'kind': 'sleep', 'call': ('action', {'action': 'sleep'})}
+        return {'kind': 'sleep', 'call': ('action', {'action': 'sleep'}),
+                'why': f"It is my time to sleep, and I could use it (Energy {life.energy}, Comfort {life.comfort})."}
     step = needs_plan(m, db, p, life, block)
     if step is not None:
         return step
     if block == 'sleep':
-        return {'kind': 'rest'}
+        return {'kind': 'rest', 'why': 'Sleep time, but I am rested. A quiet hour at home.'}
     if block == 'work':
         return work_plan(m, db, p, found)
     if block == 'social':
-        return social_plan(m, db, p) or {'kind': 'games', 'call': ('games', {})}
+        step = social_plan(m, db, p)
+        return dict(step, why=f"Time for friends: catching up with {clean_name(step['friend'])}.") if step else \
+            {'kind': 'games', 'call': ('games', {}), 'why': 'Time for friends. A game in the Commons it is.'}
     preferred = m.colony_seedling(db, p).preferred_activity
     roll = random.random()
     if roll < .55:
         hobby = favourite_hobby(m, db, p, found)
-        return {'kind': 'hobby', 'hobby': hobby, 'call': ('hobby', {'hobby': hobby})}
+        return {'kind': 'hobby', 'hobby': hobby, 'call': ('hobby', {'hobby': hobby}), 'why': f'Free time: an hour of {hobby}.'}
     if roll < .75:
-        return {'kind': 'walk', 'call': ('walk', {})}
+        return {'kind': 'walk', 'call': ('walk', {}), 'why': 'Free time: a walk past the habitat blocks.'}
     if preferred == 'games' or roll < .88:
-        return {'kind': 'games', 'call': ('games', {})}
-    return {'kind': 'relax', 'call': ('relax', {})}
+        return {'kind': 'games', 'call': ('games', {}), 'why': 'Free time: a game in the Commons.'}
+    return {'kind': 'relax', 'call': ('relax', {}), 'why': 'Free time: feet up for a while.'}
 
 
 def social_plan(m, db, p):
@@ -582,6 +817,9 @@ def report(m, p, step, change, clock, reason=''):
     elif kind in TASKS:
         desk, place, _ = TASKS[kind]
         emoji = EMOJI.get(kind, '💼')
+    elif kind == 'train':
+        cfg = m.SEED_TASKS.get(step.get('task'), {})
+        desk, place, emoji, label = 'TRAINING', PLACE_OF_SKILL.get(cfg.get('skill'), 'industrial_ward'), '🎓', cfg.get('label', 'a skill')
     elif kind == 'hobby':
         desk, place, emoji = 'LEISURE', HOBBY_PLACE.get(step.get('hobby', ''), 'commons'), '🎨'
     elif kind in {'hangout', 'hi', 'games'}:
@@ -601,21 +839,25 @@ def report(m, p, step, change, clock, reason=''):
     spent = [f"{a - b} {k.title()}" for k, (a, b) in nd.items() if k in ('energy', 'nutrition', 'comfort') and a > b]
     earned = (', earning ' + ' and '.join(extras_)) if extras_ else ''
     cost = need_text(nd, ('energy', 'nutrition', 'comfort'))
-    if kind == 'gather' or kind in TASKS:
+    if kind == 'gather' or kind in TASKS or kind == 'train':
         role = job_title(m, p)
         if got or sc > 0 or prac:
             what = items_text(m, got)
             head = (f'{name} brings in {what}' if what else f'{name} earns {sc} SC' if sc > 0
                     else f"{name}: {TASKS[kind][2] if kind in TASKS else 'a good shift'}")
-            doing = f'gathered {what}' if kind == 'gather' else f"{TASKS[kind][2]}" + (f' and brought back {what}' if what else '')
+            doing = f'gathered {what}' if kind == 'gather' else f"{TASKS[kind][2]}" + (f' and brought back {what}' if what else '') if kind in TASKS else ''
+            if kind == 'train':
+                head, doing = (f'{name} makes {what}' if what else f'{name} trains {label}'), f'practised {label}' + (f' and made {what}' if what else '')
             if kind == 'gather' and step['item'] not in got:
                 verb = 'went mining for' if desk == 'MINING' else 'went out for'
                 doing, head = f'{verb} {item} but only turned up {what}', f'{name} digs up {what}'
             goal = " for their goal" if step.get('goal') else ''
             return desk, head, f'{dateline}{role} {name} {doing} {when}{goal}{earned}.', place, emoji
-        doing = f'went out for {item}' if kind == 'gather' else TASKS[kind][2]
+        doing = f'went out for {item}' if kind == 'gather' else f'practised {label}' if kind == 'train' else TASKS[kind][2]
         why = f' {reason}' if reason else ''
         cost = (' The shift cost ' + (', '.join(spent[:-1]) + ' and ' if len(spent) > 1 else '') + spent[-1] + '.') if spent else ''
+        if kind == 'train':
+            return desk, f'A tough lesson for {name}', f'{dateline}{role} {name} {doing} {when} but it did not work out.{why}{cost}', place, emoji
         return desk, f'Empty-handed shift for {name}', f'{dateline}{role} {name} {doing} {when} but came back with nothing.{why}{cost}', place, emoji
     if kind == 'eat':
         eaten = items_text(m, change['used']) or 'an emergency ration'
@@ -717,7 +959,8 @@ def live_one(m, channel, uid, force=False):
         step = None
         if queue is not None and queue.state in m.task_queue.ACTIVE:
             if queue.state == 'paused' and needs.blocked_needs(life):
-                step = {'kind': 'recover', 'call': ('recover_needs', {}), 'queue': True}      # get a paused queue going again
+                step = {'kind': 'recover', 'call': ('recover_needs', {}), 'queue': True,       # get a paused queue going again
+                        'why': 'My queue stopped because my needs are low. Recovering so it can carry on.'}
             else:
                 label = m.task_queue.choices(m).get(queue.task, queue.task)
                 changed = found.activity != f'Queue: {label}'
@@ -753,12 +996,15 @@ def live_one(m, channel, uid, force=False):
             db.commit()
             return ''
         productive = bool(change['gained'] or change['sc'] > 0 or change['practice'])
-        if step['kind'] == 'gather' or step['kind'] in TASKS:
+        if step['kind'] in {'gather', 'train'} or step['kind'] in TASKS:
             found.successes, found.failures = (found.successes + 1, 0) if productive else (found.successes, found.failures + 1)
         reason = '' if productive else clean_reason(result)
         for raw in {p.display_name, p.display_name.replace('_', '')}:
             reason = reason.replace(raw, clean_name(p.display_name))     # the game's text uses the full display name
         desk, headline, story, place, emoji = report(m, p, step, change, clock, reason)
+        if step.get('why'):
+            found.plan = step['why'][:200]
+            story += f' “{step["why"]}”'          # the news quotes its reasoning
         if step.get('queue'):
             story += ' The paused queue can carry on.'
         found.place, found.emoji = place, emoji
@@ -780,11 +1026,16 @@ def activity_label(step, ok, m=None):
     labels = {'eat': 'Eating', 'sleep': 'Sleeping', 'rest': 'Resting at home', 'relax': 'Relaxing', 'recover': 'Recovering',
               'walk': 'Out for a walk', 'games': 'Playing games', 'hangout': f"With {clean_name(step.get('friend', 'a friend'))}",
               'hi': f"Saying hi to {clean_name(step.get('friend', 'someone'))}", 'hobby': f"Hobby: {step.get('hobby', '').title()}"}
+    if kind == 'train' and m is not None:
+        return f"Training: {m.SEED_TASKS[step['task']]['label']}"
     return labels.get(kind, f'Working: {kind.title()}')
 
 
 def task_place(task):
     kind, _, key = task.partition(':')
+    from .seed_skills import TASKS as TRAINING
+    if kind == 'work' and key in TRAINING:
+        return PLACE_OF_SKILL.get(TRAINING[key]['skill'], 'industrial_ward')
     if kind in {'mine', 'gather'}:
         from . import seed_content as s
         return PLACE_OF_BRANCH.get(s.GATHER.get(key, {}).get('branch', ''), 'frontier_edge')
@@ -866,12 +1117,17 @@ def view_text(m, db, p, provider='discord'):
     lines = [f'🌱 YOUR SEEDLING — {p.display_name.upper()}',
              f'{emoji} **{label}** · {reason}' + (f' · {round(bonus * 100):+d}% success' if bonus else ''),
              f'💭 *"{found.thought}"*', '',
-             'RIGHT NOW', f"{found.emoji} {found.activity} · {place[1]} {place[0]}",
+             'RIGHT NOW', f"{found.emoji} {found.activity} · {place[1]} {place[0]}"]
+    if found.plan:
+        lines.append(f'🧠 Thinking: {found.plan}')
+    lines += [
              f"{clock['phase_emoji']} {clock['phase']} on Avesta: **{BLOCKS[now_block][1]}** time", '',
              'SCHEDULE', f'{preset_name(found)} — {sched}', '',
              'AUTONOMY', ('On: while you are away, your Seedling follows this schedule and lives by the normal game rules '
-                          f'(about one action every {AUTONOMY_MINUTES} minutes). Work gathers real materials for your job (or your goal); '
-                          'it eats, rests and sleeps before its needs get low, and it steps aside while you play.')
+                          f'(about one action every {AUTONOMY_MINUTES} minutes). At work it thinks first: your goal\'s next step it can do itself, '
+                          'then it takes turns collecting for its job (what it has least of, now and then something new) and training its skills '
+                          '(making things from materials it has plenty of, never ones your goal needs). '
+                          'It eats, rests and sleeps before its needs get low, and it steps aside while you play.')
              if found.enabled else 'Off: your Seedling waits for you.']
     from . import looks
     styled = looks.describe(looks.row(db, p))
@@ -963,8 +1219,8 @@ def chatter(s, everyone, context):
     r = random.Random(f"{s['id']}:{context['bucket']}")
     activity = s.get('activity') or ''
     fill = {'place': PLACES.get(s['place'], ('home', ''))[0], 'hobby': activity.partition('Hobby: ')[2].lower() or 'my hobby',
-            'item': activity.partition('Gathering ')[2] or 'material'}
-    lines = [s.get('thought') or '']
+            'item': activity.partition('Gathering ')[2] or 'material', 'task': activity.partition('Training: ')[2] or 'this'}
+    lines = [s.get('thought') or '', s.get('plan') or '']
     doing = next((v for k, v in SAY_DOING.items() if activity.startswith(k)), None)
     if doing:
         lines.append(r.choice(doing).format(**fill))
@@ -1017,7 +1273,7 @@ def overlay_data(m, db, source_ids):
         seedlings.append({'id': hashlib.sha1(f'{p.channel_id}:{p.twitch_uid}'.encode()).hexdigest()[:10], 'name': clean_name(p.display_name),
                           'place': place, 'place_name': PLACES[place][0], 'activity': found.activity if found else 'Settling in', 'job': p.job or '',
                           'emoji': found.emoji if found else '🏠', 'mood': MOODS[mood][1], 'mood_emoji': MOODS[mood][0],
-                          'thought': found.thought if found else ''})
+                          'thought': found.thought if found else '', 'plan': found.plan if found else ''})
     context = say_context(m, db, source_ids)
     from . import looks
     styled = looks.for_players(db, {(p.channel_id, p.twitch_uid) for p in players})

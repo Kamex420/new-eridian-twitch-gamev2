@@ -22,7 +22,7 @@ The application now has one canonical Python package. Earlier releases stored im
 | `inbox.py` | Private notifications: per-citizen inbox, popups after the next interaction, warnings and one-time tips |
 | `extras.py` | Planning and convenience: live countdowns, queue max, recent actions and `!again`, goals, plans and routines, item uses, welcome-back and reminders, auto-sell, undo, eat until full, `/find` and the remembered Workbench place |
 | `stream_overlay.py` | Stream highlights feed, overlay extras (leaders, working queues, festival, join tips) and the alerts, ticker, leaders, working, join and setup OBS pages |
-| `autonomy.py` | Autonomous Seedlings: schedules, the background worker that lets each Seedling act through ordinary commands, moods and their success modifier, thoughts, the diary, and the map/narrator overlay data |
+| `autonomy.py` | Autonomous Seedlings: schedules, the background worker that lets each Seedling act through ordinary commands, how it thinks a Work turn through (the goal's next step, then turns of collecting and training, with its reason kept and quoted), moods and their success modifier, thoughts, the diary, and the map/narrator overlay data |
 | `menu.py` | The /menu button tree: areas, their action and view buttons, choice lists and follow-up buttons on every reply |
 | `presentation.py` | How every Discord card and Twitch line looks: task receipts, notices and information cards |
 | `layout_v2.py` | Discord's newer message layout (Components V2): rebuilds every message as one card just before it is sent, puts a button beside each list item a screen names (`ui.with_items`), and keeps every edit in the layout its message already has |
