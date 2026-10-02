@@ -1,5 +1,11 @@
 # Release notes
 
+## Every task practises a skill, with lucky finds
+
+- **Every task gives XP now.** Gear repair gives Engineering and Maintenance & Repair practice, building with `/use` gives Engineering practice, and supplying the clinic gives Medicine practice. Everything else already did.
+- **Lucky finds.** After a successful task there is a 15% chance (25% after an especially good result) of finding one common item from the same line of work: a Harvester turns up Clay or Coal, a cook Salt or Tomatoes, a medic Herbs or Golden Cap, a trader a spare Cargo. Training tasks find items from their own branch. The reply says "🎁 Lucky find (Skill): +1 Item", and queues and autonomous Seedlings find things the same way.
+- Life and social actions (eating, sleeping, relaxing, games, hangouts) and buying or selling never find anything, and a failed attempt finds nothing either.
+
 ## Goals walk you through skill levels too
 
 A goal that needs a skill level now shows how to get it, step by step, instead of only pointing at the training list.

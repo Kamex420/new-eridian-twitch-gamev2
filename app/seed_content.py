@@ -190,18 +190,20 @@ def craft(m,db,p,key,provider):
     chosen=production_balance.selected_station(m,db,p,key)
     for k,v in outputs.items():m.material_change(db,p,k,v)
     # Keep Pharmacy practice separate from healing practice; a declared minigame rule.
-    xp=[]
+    xp=[];line=None
     for sk in dict.fromkeys(r['xp'].get('TrainedSkills') or [req]):
         if sk not in SKILLS:continue
         if sk=='SK_MEDICINE' and req=='SK_PHARMACY':continue
-        main,branch=SKILLS[sk]
+        main,branch=SKILLS[sk];line=line or (main,branch)
         amount=1+workshop_bonus if branch else m.gain_skill(p,main,1+workshop_bonus)
         if branch:m.gain_branch(db,p,branch,amount)
         xp.append(f'+{amount} {skill_name(sk)} XP')
+    from . import practice
+    found=practice.find(m,db,p,*(line or ('fabrication',None)))
     life=m.life_state(db,p);m.spend_life_for_action(life,'make')
     p.actions+=1;p.successes+=1;m.craft_record(db,p,key);db.commit()
     return ('✅ CRAFTING COMPLETE\n\nOUTPUT\n'+ '\n'.join(f"• {item_label(k)} ×{v}" for k,v in outputs.items())+
-      '\n\nUSED\n'+(m.requirement_text(r['inputs']) or 'No ingredients')+'\n\nPRACTICE\n'+', '.join(xp)+
+      '\n\nUSED\n'+(m.requirement_text(r['inputs']) or 'No ingredients')+'\n\nPRACTICE\n'+', '.join(xp)+(f'\n{found}' if found else '')+
       '\n\nWorkshop: '+(cp.STATIONS[chosen]['name'] if chosen else station(r))+(' · Owned workstation: +1 practice per trained skill included.' if workshop_bonus else '')+'\n'+need_cost(2)+mining_detail)
 
 def gather(m,db,p,key,provider):
@@ -218,8 +220,10 @@ def gather(m,db,p,key,provider):
         if not success:return cp.mining_failure(m,db,p,provider,detail)
         m.determination_clear(db,p,'extraction')
     cfg=GATHER[key];m.material_change(db,p,key,cfg['amount']);xp=m.gain_skill(p,'extraction',1);m.gain_branch(db,p,cfg['branch'],xp)
+    from . import practice
+    found=practice.find(m,db,p,'extraction',cfg['branch'])
     m.spend_life_for_action(life,'make');p.actions+=1;p.successes+=1;db.commit()
-    return f"✅ GATHERING COMPLETE\n\nOUTPUT\n• {ITEMS[key]['name']} ×{cfg['amount']}\n\nPRACTICE\n+{xp} Harvesting and {cfg['branch'].replace('_',' ').title()} XP\n"+need_cost(2)+detail
+    return f"✅ GATHERING COMPLETE\n\nOUTPUT\n• {ITEMS[key]['name']} ×{cfg['amount']}\n\nPRACTICE\n+{xp} Harvesting and {cfg['branch'].replace('_',' ').title()} XP\n"+(f"{found}\n" if found else "")+need_cost(2)+detail
 
 # New Eridian adaptations: one primary category per obtainable item.
 CATEGORIES={
@@ -333,7 +337,7 @@ def purpose(key):
     if cat=='medicine':
         batches=[sum(r['inputs'].values())/r['outputs'][key] for r in RECIPES.values() if key in r['outputs']]
         units=max(1,min(8,math.ceil(min(batches,default=1))))
-        return dict(mode='clinic',label=f'Supply clinic: consumes 1; +{units} shared Medicines, +1 Contribution.',consume=True,units=units)
+        return dict(mode='clinic',label=f'Supply clinic: consumes 1; +{units} shared Medicines, +1 Contribution, +1 Medicine XP.',consume=True,units=units)
     if cat=='seeds':
         output=source_key(SEED_CROPS[src.removeprefix('GMT_SEED_')])
         return dict(mode='plant',label=f"Garden batch: 1 seed + 1 Clean Water → 3 {ITEMS[output]['name']}; +1 Farming and Seed Cultivation XP.",consume=True,output=output)
@@ -343,7 +347,7 @@ def purpose(key):
     if src=='DELIVERY_DRONE' or cat=='storage' or 'BACKPACK' in src:return dict(mode='pack',label='Pack delivery: keeps item; 1 personal Cargo → 2 shared Cargo, +1 Logistics XP. Costs work needs.',consume=False)
     if 'CAT_MAIN_VENDING_MACHINES' in v['categories']:return dict(mode='vend',label='Stock vending machine: keeps machine; 1 Crop → 1 SC, +1 Commerce XP. Costs work needs.',consume=False)
     if cat=='machines':return dict(mode='workshop',label='Owning this machine grants matching workshop access after its tier unlock, plus +1 base practice per trained skill/branch. Bonus capped at +1; machine kept. /workshop shows access and tiers.',consume=False)
-    if cat=='building' or src.endswith(('_MORTAR','_STONE_TILES')):return dict(mode='build',label='Build: consumes 1; +1 shared Infrastructure. Every 5 Infrastructure adds 1 housing space. Costs work needs.',consume=True)
+    if cat=='building' or src.endswith(('_MORTAR','_STONE_TILES')):return dict(mode='build',label='Build: consumes 1; +1 shared Infrastructure, +1 Engineering XP. Every 5 Infrastructure adds 1 housing space. Costs work needs.',consume=True)
     if cat=='beds':return dict(mode='recover',label='Rest: keeps item; +40 Energy, +25 Comfort, +5 Morale.',consume=False,boost={'energy':40,'comfort':25,'morale':5})
     if cat=='seating':return dict(mode='recover',label='Relax: keeps item; +20 Comfort, +10 Social.',consume=False,boost={'comfort':20,'social':10})
     if cat=='bathroom':return dict(mode='wash',label='Wash: keeps fixture; consumes 1 Clean Water; +30 Comfort, +5 Morale.',consume=False,boost={'comfort':30,'morale':5})
@@ -435,6 +439,10 @@ def use_menu(m,db,p,category='',page=1):
     if not keys:lines+=['You do not own any usable items in this category.']
     return '\n'.join(lines+['','Select Category to filter; change Page to see every item. Select Item to use it.','Ingredients are used by /make. Owned machines improve matching recipe practice automatically.'])
 
+# Item work practises a skill; a lucky find comes from the same line of work.
+WORK_LINE={'plant':('cultivation','seed_cultivation'),'scan':('research',None),'pack':('logistics',None),
+           'vend':('commerce',None),'build':('infrastructure','maintenance_repair'),'research':('research',None)}
+
 def use(m,db,p,key,provider):
     if key not in ACTIVE:return '🛑 Unknown item. Nothing spent.'
     cfg=PURPOSE[key];mode=cfg['mode'];name=item_label(key)
@@ -460,7 +468,9 @@ def use(m,db,p,key,provider):
     for field,amount in cfg.get('boost',{}).items():
         before=getattr(life,field);setattr(life,field,min(100,before+amount));changes.append(f'{field.title()} {before}→{getattr(life,field)}')
     shared=m.colony_state(db,p.channel_id)
-    if mode=='clinic':shared.medicines+=cfg['units'];p.contribution+=1;changes+=[f"+{cfg['units']} shared Medicines",'+1 Contribution']
+    if mode=='clinic':
+        shared.medicines+=cfg['units'];p.contribution+=1;xp=m.gain_skill(p,'medicine',1)
+        changes+=[f"+{cfg['units']} shared Medicines",'+1 Contribution',f'+{xp} Medicine XP']
     if mode=='plant':
         m.material_change(db,p,cfg['output'],3);xp=m.gain_skill(p,'cultivation',1);m.gain_branch(db,p,'seed_cultivation',xp)
         changes += [f"+3 {ITEMS[cfg['output']]['name']}",f'+{xp} Farming and Seed Cultivation XP']
@@ -471,8 +481,14 @@ def use(m,db,p,key,provider):
     if mode=='build':
         before=shared.infrastructure;shared.infrastructure+=1;housing=shared.infrastructure//5-before//5;shared.housing+=housing;changes+=['+1 shared Infrastructure']
         if housing:changes+=['+1 housing space']
+        xp=m.gain_skill(p,'infrastructure',1);m.gain_branch(db,p,'maintenance_repair',xp);changes+=[f'+{xp} Engineering XP']
     if mode=='research':
         m.society(db,p.channel_id).knowledge+=1;xp=m.gain_skill(p,'research',1);changes += ['+1 society Knowledge',f'+{xp} Research XP']
-    if work:m.spend_life_for_action(life,'make');changes+=[need_cost(2)]
+    if work:
+        from . import practice
+        line=WORK_LINE.get(mode)
+        found=practice.find(m,db,p,*line) if line else ''
+        if found:changes.append(found)
+        m.spend_life_for_action(life,'make');changes+=[need_cost(2)]
     p.actions+=1;p.successes+=1;db.commit()
     return '\n'.join([f'✅ {name} — Complete','','RESULT',*['• '+x for x in changes],'','USED',m.requirement_text(cost) if cost else 'No items were consumed.',*(['The selected durable item was kept.'] if not cfg['consume'] else [])])

@@ -150,10 +150,12 @@ def rare_gather(m,db,p,key,provider='discord',workshop_bonus=0):
     mining_outcome.set('success' if complete else 'progress')
     if complete:m.material_change(db,p,key,1)
     xp=m.gain_skill(p,'extraction',1+workshop_bonus);m.gain_branch(db,p,'ore_mining',xp)
+    from . import practice
+    found=practice.find(m,db,p,'extraction','ore_mining')
     m.spend_life_for_action(life,'rare');p.actions+=1;p.successes+=int(complete);db.commit()
     return (f"{'✅ ORE RECOVERED' if complete else '⛏️ PROSPECTING'} · {s.item_label(key)}\n"
             f"Progress: {progress}/3 · {'+1 ore; progress resets.' if complete else 'No ore yet; progress saved.'}\n"
-            f'+{xp} Harvesting/Ore Mining XP · '+need_cost(3)+' · 20s cooldown'+detail)
+            f'+{xp} Harvesting/Ore Mining XP · '+need_cost(3)+' · 20s cooldown'+(f'\n{found}' if found else '')+detail)
 
 # Price all catalog materials from existing base-resource values plus processing
 # labor. No-input extraction never makes ores free. Market buyback is applied

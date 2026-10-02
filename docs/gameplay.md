@@ -66,6 +66,10 @@ On completion, cancellation, unmet requirements or a terminal error, the bot pos
 
 Higher-output methods trade more Energy for better yields. Failure still spends needs but grants none of these outputs. Existing random bonus yields are additional and included in queue totals. XP, society rewards and SC pay remain in place. Pumpkin Seeds have an existing planting use: one seed plus Clean Water yields three Pumpkins. Stone samples use the same Stone inventory as crafting; no duplicate item identities were introduced.
 
+### Practice XP and lucky finds
+
+Every task practises a skill: work, training tasks, gathering, mining and prospecting, crafting, production orders, item work (`/use` to plant, scan, pack, stock, build, analyse or supply the clinic) and gear repair (Engineering, Maintenance & Repair). After a successful task there is a 15% chance (25% after an especially good result) of a **lucky find**: one common item from the same line of work, added to the bag and shown as "🎁 Lucky find (Skill): +1 Item". Training tasks find items from their own branch (Chemistry finds Salt, Herbs or Smelly Fungus; Pottery finds Clay or Murky Water); other tasks use their main skill's list (`app/practice.py`). Failed attempts, life and social actions (eat, sleep, relax, games, hangouts), and buying or selling never find anything.
+
 Specialist methods can be queued with task IDs such as `work:water@hydroponics`, `work:research@field_analysis`, `work:spaceport@expedite` and `work:market@analyze`. Equipment and consumable requirements are checked for every attempt. Repair targets and distinct manufacturing/clinic recipes retain their separate purposes; they are not ranked as interchangeable resource-harvesting methods.
 
 ## Mining success and Stone Dust

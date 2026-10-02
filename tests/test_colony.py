@@ -30,6 +30,8 @@ def reset(monkeypatch):
     monkeypatch.setattr(m.onboarding,"ENABLED",False)
     # Votes, seasons, trophies and stream challenges pay SC too; tests/test_community.py turns them on.
     monkeypatch.setattr(m.community,"ENABLED",False)
+    # Lucky finds add a random item after tasks; tests/test_practice_finds.py turns them on.
+    monkeypatch.setattr(m.practice,"ENABLED",False)
     # Twitch is a lite version of the game; the tests exercise every command on both platforms (tests/test_twitch_lite.py covers the split).
     monkeypatch.setattr(m.twitch_lite,"ENABLED",False)
 
@@ -67,9 +69,9 @@ def test_needs_reduce_real_output():
     assert run(low)<run(good)
     assert practice_gain(1,False,productivity(low),False)<practice_gain(1,True,productivity(good),True)
 
-@pytest.mark.parametrize('action',list(m.ACTION_SKILLS)+['eat','sleep'])
-def test_all_actions_success_paths(action,monkeypatch):
-    seed(provider='discord');monkeypatch.setattr(m.random,'random',lambda:0.0)
+def ready_for(action):
+    """A Discord citizen with everything the action needs: workstations, level, supplies."""
+    seed(provider='discord')
     with m.SessionLocal() as db:
         p=db.query(m.Player).one()
         if action=='rare':p.mining_xp=12
@@ -94,6 +96,10 @@ def test_all_actions_success_paths(action,monkeypatch):
             for key,amount in cfg['cost'].items():
                 m.material_change(db,p,key,max(0,amount-m.material_amount(db,p,key)))
         db.commit()
+
+@pytest.mark.parametrize('action',list(m.ACTION_SKILLS)+['eat','sleep'])
+def test_all_actions_success_paths(action,monkeypatch):
+    monkeypatch.setattr(m.random,'random',lambda:0.0);ready_for(action)
     r=client.get('/api/v1/action/'+action,params=dict(channel='test',uid='u',provider='discord'))
     assert r.status_code==200,r.text
     assert ('PROSPECTING' if action=='rare' else 'TASK COMPLETE') in r.text,r.text

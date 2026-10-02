@@ -15,6 +15,7 @@ The application now has one canonical Python package. Earlier releases stored im
 | `task_queue.py` | Saved queue state, worker lifecycle and transactional execution |
 | `needs.py` | Elapsed-time recovery and productivity effects |
 | `competencies.py`, `progression.py`, `seed_skills.py` | Skill vocabulary, practice and progression |
+| `practice.py` | Lucky finds: the item lists by training branch and main skill, and the occasional find after a successful task |
 | `settlement.py`, `seedlings.py`, `occupations.py`, `events.py` | Shared simulation, citizen routines, jobs and incidents |
 | `command_catalog.py`, `twitch_help.py` | Platform command definitions and help text |
 | `fun_systems.py`, `seasonal.py` | Supplemental activities and calendar flavor |

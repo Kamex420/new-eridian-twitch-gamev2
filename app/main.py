@@ -118,6 +118,7 @@ from . import item_identity
 from . import seed_content as seed_content
 from . import crafting_progression as crafting_progression
 from . import task_yields
+from . import practice
 from . import workbench
 from .seed_skills import LABELS as SEED_LABELS, HUBS as SEED_HUBS, TASKS as SEED_TASKS, TREE as SEED_TREE, NEW_JOBS, NEW_SPECS, LEGACY_BRANCH, CRAFT_PRACTICE
 from .models import SkillBranch
@@ -2537,7 +2538,9 @@ def craft_reward(db,p,s,kind,recipe=""):
         extra_xp=gain_skill(p,extra_skill,1)
         gain_branch(db,p,branch,extra_xp)
         extra=f" · +{extra_xp} {SKILL_LABELS[extra_skill]} XP ({branch.replace('_',' ').title()})"
-    return {"extra":extra,"sc":cfg["sc"]+job_bonus,"xp":xp,"contribution":cfg["contribution"],"development":cfg["development"],"job_bonus":job_bonus}
+    found=practice.find(sys.modules[__name__],db,p,"fabrication")
+    return {"extra":extra,"sc":cfg["sc"]+job_bonus,"xp":xp,"contribution":cfg["contribution"],"development":cfg["development"],"job_bonus":job_bonus,
+            "found":f"\n• {found}" if found else ""}
 
 def craft_system_notes(db,p,s):
     w=world(db,p.channel_id);resolve_expired_event(db,s,w)
@@ -2666,7 +2669,7 @@ def craft_legacy(db,p,channel,recipe,provider,life):
               f"USED\n{requirement_text(costs)}\n\n"
               f"CHANGE\n• {need_cost_text(STANDARD_ENERGY)}\n"
               f"• +{rewards['xp']} Crafting XP{rewards['extra']} · +{rewards['sc']} SC · +{rewards['contribution']} Contribution"
-              +(f" · Matching job bonus included" if rewards['job_bonus'] else "")+
+              +(f" · Matching job bonus included" if rewards['job_bonus'] else "")+rewards['found']+
               f"\n• New Eridian +{rewards['development']} Development"
               +updates+task_readiness_warning(life,provider))
         return PlainTextResponse(text) if provider=="discord" else out(chat_line(text))
@@ -2689,7 +2692,7 @@ def craft_legacy(db,p,channel,recipe,provider,life):
           f"CHANGE\n• {need_cost_text(STANDARD_ENERGY)}\n"
           f"• +{rewards['xp']} Crafting XP{rewards['extra']} · +{rewards['sc']} SC"
           +(f" · +{rewards['contribution']} Contribution" if rewards['contribution'] else "")+
-          (f" · Matching job bonus included" if rewards['job_bonus'] else "")+
+          (f" · Matching job bonus included" if rewards['job_bonus'] else "")+rewards['found']+
           f"\n• New Eridian +{rewards['development']} Development"
           +updates+task_readiness_warning(life,provider))
     return PlainTextResponse(text) if provider=="discord" else out(chat_line(text))
@@ -2954,12 +2957,13 @@ def seed_industries(channel:str,uid:str,name:str="Citizen",action:str="browse",i
             for material,qty in data["cost"].items():material_change(db,p,material,-qty)
             numbers=production_order_numbers(data);p.sc+=numbers["sc"];p.contribution+=numbers["contribution"];p.actions+=1;p.successes+=1
             gain_skill(p,"fabrication",2);gain_skill(p,"commerce",1);society(db,channel).development+=numbers["development"]
+            found=practice.find(sys.modules[__name__],db,p,"fabrication")
             db.add(ProductionOrderCompletion(channel_id=channel,canonical_uid=p.twitch_uid,avesta_day=clock["day"],order_key=order_key));db.commit()
             journal_add(db,p,f"Completed Seed Industries order: {data['name']}.");milestone=achieve(db,p)
             text=(f"✅ PRODUCTION ORDER COMPLETE — {data['name']}\n\n"
                   f"DELIVERED\n• {cost_text(data['cost'])[1:-1]}\n\n"
                   f"REWARDS\n• +{numbers['sc']} SC · +{numbers['contribution']} Contribution\n"
-                  f"• +2 Crafting XP · +1 Commerce XP\n• New Eridian +{numbers['development']} Development\n\n"
+                  f"• +2 Crafting XP · +1 Commerce XP\n"+(f"• {found}\n" if found else "")+f"• New Eridian +{numbers['development']} Development\n\n"
                   f"WHY IT MATTERED\n• {data['purpose']}\n\nNEXT\n• View the remaining Day {clock['day']} orders or continue your daily contract."+milestone)
             return PlainTextResponse(text) if provider=="discord" else out(chat_line(text))
     if key not in SEED_INDUSTRIES and item_name:
@@ -3056,8 +3060,11 @@ def gearrepair(channel:str,uid:str,name:str="Citizen",item:str="",provider:str="
         if row.condition>=100:return out("🔧 That item is already at full condition. Nothing spent.")
         cost=gear_repair_cost(row.condition)
         if p.components<cost:return out(f"🔧 Repair needs {cost} Iron Nails. You have {p.components}. Iron Nails: {material_source('components',provider)} Nothing spent.")
-        p.components-=cost;row.condition=100;spend_life_for_action(life,"repair");db.commit()
-        text=f"🔧 Repaired {row.quality} {row.item_name} to 100% (-{cost} Iron Nails · {need_cost_text(work_energy('repair'))})."+task_readiness_warning(life,provider)
+        p.components-=cost;row.condition=100;spend_life_for_action(life,"repair")
+        xp=gain_skill(p,"infrastructure",1);gain_branch(db,p,"maintenance_repair",xp)
+        found=practice.find(sys.modules[__name__],db,p,"infrastructure","maintenance_repair");db.commit()
+        text=(f"🔧 Repaired {row.quality} {row.item_name} to 100% (-{cost} Iron Nails · {need_cost_text(work_energy('repair'))}). "
+              f"+{xp} Engineering and Maintenance & Repair XP."+(f" {found}." if found else "")+task_readiness_warning(life,provider))
         return PlainTextResponse(text) if provider=="discord" else out(text)
 
 @app.get("/api/v1/use")
@@ -5488,6 +5495,9 @@ def action(action:str,channel:str,uid:str,name:str="Citizen",msg:str="",provider
         production_action="private_meal" if action=="eat" and "emergency community meal" not in base else ("healthy_sleep" if action=="sleep" and pw.siro_exposure==0 else action)
         production=colony_produce(shared,s,production_action,productivity(life,pw.siro_exposure))
         if production:base+=" Settlement production: "+production+"."
+        if skill:   # work and training tasks sometimes turn up an item from the same line of work (eat and sleep never do)
+            found=practice.find(sys.modules[__name__],db,p,skill,SEED_TASKS[action]['branch'] if action in SEED_TASKS else LEGACY_BRANCH.get(action))
+            if found:base+=" | "+found+"."
         if action=="sleep" and "medicines -1" in production:pw.siro_exposure=max(0,pw.siro_exposure-10)
         p.actions+=1;p.successes+=1;db.commit()
         note=progress_daily(db,p,action)
