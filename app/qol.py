@@ -810,6 +810,9 @@ def status_text(m, db, p, provider='discord'):
         else:
             parts.append('Next: ' + next_step(m, db, p, provider, ctx))
         return ' | '.join(parts)
+    from . import quiet_hours
+    quiet = quiet_hours.short(db, p.channel_id, p.twitch_uid, m.now()) if mode in {'dm', 'quiet'} else ''
+    quiet = f' · {quiet}' if quiet else ''
     lines = [f'📊 STATUS — {p.display_name}', '', 'NEEDS',
              f'⚡ Energy {life.energy} · 🍲 Nutrition {life.nutrition} · 🤝 Social {life.social} · 🏠 Comfort {life.comfort} · ✨ Morale {life.morale}']
     if blocked:
@@ -829,7 +832,7 @@ def status_text(m, db, p, provider='discord'):
     if goal is not None:
         lines += ['', f'🎯 GOAL — {goal.name}', m.extras.next_step(m, db, p, provider)[0] + ' · /menu → Craft → Goal']
     lines += ['', 'NEXT STEP', next_step(m, db, p, provider, ctx),
-              '', 'SETTINGS', f'Alerts: {ALERT_LABELS[mode]} · Auto-recover: {"on" if auto else "off"} · Favourites: {len(favs)}/{MAX_FAVORITES} · /settings changes these.']
+              '', 'SETTINGS', f'Alerts: {ALERT_LABELS[mode]}{quiet} · Auto-recover: {"on" if auto else "off"} · Favourites: {len(favs)}/{MAX_FAVORITES} · /settings changes these.']
     return '\n'.join(lines)
 
 
@@ -852,7 +855,7 @@ def settings_text(m, db, p, provider, alerts='', autorecover='', text='', popups
         if alerts not in ALERT_MODES:
             return '⚙️ Alerts must be mention, dm, private, quiet or off. Nothing changed.'
         if alerts in {'dm', 'private'} and provider != 'discord':
-            return '⚙️ Direct-message and private alerts are Discord options. On Twitch choose mention, quiet or off. Nothing changed.'
+            return '⚙️ Direct-message and private alerts (and quiet hours for DMs) are Discord options. On Twitch choose mention, quiet or off. Nothing changed.'
         row = prefs(db, p.channel_id, p.twitch_uid, create=True)
         row.alerts = alerts
         changed.append(f'Alerts: {ALERT_LABELS[alerts]} — {ALERT_MODES[alerts]}.')
@@ -878,8 +881,10 @@ def settings_text(m, db, p, provider, alerts='', autorecover='', text='', popups
         current = f'Alerts {mode} · Auto-recover {"on" if auto else "off"}'
         return ('⚙️ ' + ' '.join(changed) + ' | ' if changed else '⚙️ ') + current + ' | !settings alerts <mention|quiet|off> · !settings autorecover <on|off>'
     lines = ['⚙️ SETTINGS'] + (['', 'CHANGED'] + ['• ' + x for x in changed] if changed else [])
+    from . import quiet_hours
     lines += ['', 'CURRENT', f'• Alerts: {ALERT_LABELS[mode]} — {ALERT_MODES[mode]}',
+              quiet_hours.settings_line(db, p.channel_id, p.twitch_uid, mode, m.now()),
               f'• Auto-recover: {"on" if auto else "off"} — when a queue pauses for low needs it tries relax, games, your cheapest food, a comfort item or sleep first.',
               f'• Popups: {popup} — {inbox.POPUP_MODES[popup]}. Popups are private ("only you can see this") and appear with your next command or button.',
-              '', 'Change with /settings alerts:<choice> autorecover:<On/Off> popups:<choice>.']
+              '', 'Change with /settings alerts:<choice> autorecover:<On/Off> popups:<choice>. Quiet hours: /menu → You → Settings.']
     return '\n'.join(lines)

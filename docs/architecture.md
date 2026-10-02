@@ -31,6 +31,7 @@ The application now has one canonical Python package. Earlier releases stored im
 | `qol.py` | Status view, favourites, follow-up queues, alert and auto-recovery preferences, recovery estimates, fetch plans, bulk selling, inventory search and fuzzy names |
 | `keep_levels.py` | Keep levels: how many of an item bulk and automatic selling always leaves, and restocking back up to it through the ordinary queue, craft queue or purchase |
 | `shopping_list.py` | Shopping list: up to 10 recipes in the amounts of their output wanted, planned together with the goal's planner and one shared pool (combined materials, Fetch next, Buy all missing) |
+| `quiet_hours.py` | Quiet hours: a daily window in the citizen's time zone (IANA or UTC offset) when DM queue alerts are held by the Discord worker, then released as one summary DM |
 
 ## Runtime boundaries
 

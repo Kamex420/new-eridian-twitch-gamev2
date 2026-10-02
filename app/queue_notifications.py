@@ -62,6 +62,8 @@ def dismiss_pause(db, dest):
     if dest is None:return
     ids=select(NoticeEvent.notice_id).where(NoticeEvent.run_id==dest.run_id,NoticeEvent.kind=='paused')
     db.execute(update(Notice).where(Notice.id.in_(ids),Notice.state=='pending').values(state='superseded'))
+    from . import quiet_hours
+    quiet_hours.forget_superseded(db,ids)      # a pause held for quiet hours is never sent now
 
 
 def destination(m,db,p):
@@ -119,15 +121,19 @@ def stopped(m,db,p,queue,kind,reason='',following=''):
 DM_PREFIX='dm|'
 
 
-def dm_closed(m,notice):
+def dm_closed(m,notice,at=None):
     """The player's DMs are closed: keep the alert private instead of posting it in the game channel.
     Its notification (saved when the alert was made) is marked unread, so it pops up privately the
-    next time they use a command or button."""
+    next time they use a command or button. `at`: when the alert was made (an alert held for quiet
+    hours is older than the newest notification), so its own notification is the one marked; one not
+    marked yet, so several held alerts mark one each."""
     from . import inbox
     with m.SessionLocal() as db:
         uid=inbox._canonical(m,db,str(notice.recipient))
-        row=db.execute(select(inbox.InboxItem).where(inbox.InboxItem.channel_id==notice.channel_id,inbox.InboxItem.canonical_uid==uid,
-                                                     inbox.InboxItem.kind=='queue').order_by(inbox.InboxItem.id.desc())).scalars().first()
+        query=select(inbox.InboxItem).where(inbox.InboxItem.channel_id==notice.channel_id,inbox.InboxItem.canonical_uid==uid,
+                                            inbox.InboxItem.kind=='queue')
+        if at is not None:query=query.where(inbox.InboxItem.created_at<=at,inbox.InboxItem.seen==1)
+        row=db.execute(query.order_by(inbox.InboxItem.id.desc())).scalars().first()
         if row is not None:row.seen=0
         db.commit()
 
@@ -173,7 +179,8 @@ def renew(db,row):
 
 
 def delivery_status(db,queue,m=None):
-    from . import qol
+    from . import qol, quiet_hours
+    from datetime import datetime, timezone
     mode=qol.alert_mode(db,queue.channel_id,queue.canonical_uid)
     if mode=='off':return 'Queue alerts are off (/settings or !settings alerts dm turns them back on). Your results are saved here.'
     dest=db.get(Destination,(queue.channel_id,queue.canonical_uid))
@@ -191,10 +198,15 @@ def delivery_status(db,queue,m=None):
         reason={'wrong_application':'the bot token does not match DISCORD_APPLICATION_ID','invalid_token':'the Discord bot token was rejected','connection_error':'Discord authentication is temporarily unavailable','stopped':'the Discord sender is stopped'}[runtime.state]
         return 'Queue notification could not be delivered: '+reason+'. Your results are saved.'
     if notice:
-        return 'Queue notification is waiting for delivery. Your results are saved.'
-    if mode=='quiet':return 'Quiet alerts: a direct message when the queue finishes or stops, not when it pauses.'
+        held=quiet_hours.held_line(m,db,notice) if m is not None else ''
+        return held or 'Queue notification is waiting for delivery. Your results are saved.'
+    quiet=''
+    if mode in {'dm','quiet'} and dest is not None and dest.provider=='discord':
+        quiet=quiet_hours.delivery_line(db,queue.channel_id,queue.canonical_uid,m.now() if m is not None else datetime.now(timezone.utc))
+        quiet=' '+quiet if quiet else ''
+    if mode=='quiet':return 'Quiet alerts: a direct message when the queue finishes or stops, not when it pauses.'+quiet
     if mode=='private':return 'Private alerts: results appear only to you, the next time you use a command or button.'
-    if mode=='dm':return 'You will get a direct message when the queue pauses or stops (in your Notifications instead if your DMs are closed).'
+    if mode=='dm':return 'You will get a direct message when the queue pauses or stops (in your Notifications instead if your DMs are closed).'+quiet
     return 'You will be @mentioned in the game channel when the queue pauses or stops, if delivery is configured.'
 
 

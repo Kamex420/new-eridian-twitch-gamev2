@@ -98,6 +98,38 @@ with m.SessionLocal() as db:
     assert [(r.recipe_id, r.want) for r in shopping_list._rows(db, W, keeper)] == [(campfire, 3), (plate, 30)]
     assert shopping_list._rows(db, W, 'pg-src') == []
 
+# Quiet hours: the two additive tables, DM alerts held without spending an attempt, then released by two workers at
+# once as one summary (one conditional claim per row, so neither worker can send what the other claimed).
+import asyncio, json
+from types import SimpleNamespace
+from app import quiet_hours, discord_queue_worker as dqw, queue_notifications as qn
+sent = []
+async def request(route, json): sent.append(json); return {'id': '1'}
+async def open_dm(): return SimpleNamespace(id=789)
+dm_client = SimpleNamespace(get_user=lambda _: SimpleNamespace(create_dm=open_dm), get_channel=lambda _: None, http=SimpleNamespace(request=request))
+now = m.now()
+with m.SessionLocal() as db:
+    p = m.player(db, W, 'discord', '4242', 'Citizen4242')[1]
+    for i in range(3):
+        db.add(qn.Notice(id=f'pgquiet{i:025d}', provider='discord', recipient='4242', channel_id=W, message_channel=qn.DM_PREFIX,
+                         content='TASK QUEUE — COMPLETED\nGather Lumber\nAttempts completed: 1/1; remaining: 0.\nSucceeded: 1; failed: 0.', next_at=now))
+        db.add(qn.NoticeEvent(notice_id=f'pgquiet{i:025d}', run_id=f'pgrun{i}', kind='completed', created_at=now))
+    assert 'Quiet hours set' in quiet_hours.set_hours(m, db, p, 'UTC', f'{(now.hour - 1) % 24:02d}', f'{(now.hour + 2) % 24:02d}')
+    db.commit()
+asyncio.run(dqw.deliver(m, dm_client))
+with m.SessionLocal() as db:
+    rows = db.query(qn.Notice).filter(qn.Notice.recipient == '4242').all()
+    assert not sent and all(r.state == 'pending' and r.attempts == 0 and r.next_at > m.now() for r in rows)
+    assert db.query(quiet_hours.HeldAlert).count() == 3
+    assert '3 held alerts are on their way' in quiet_hours.turn_off(m, db, m.player(db, W, 'discord', '4242', 'Citizen4242')[1])
+    db.commit()
+workers = [threading.Thread(target=lambda: asyncio.run(dqw.deliver(m, dm_client))) for _ in range(2)]
+[t.start() for t in workers]; [t.join() for t in workers]
+assert len(sent) == 1 and '3 queue alerts waited' in json.dumps(sent[0], ensure_ascii=False), sent
+with m.SessionLocal() as db:
+    assert all(r.state == 'sent' and r.attempts == 1 for r in db.query(qn.Notice).filter(qn.Notice.recipient == '4242'))
+    assert db.query(quiet_hours.HeldAlert).count() == 0 and quiet_hours.row(db, W, 'discord:4242') is None
+
 now = m.now()
 with m.SessionLocal() as db:
     db.query(m.ActionLog).delete(); db.query(m.JournalEntry).delete()

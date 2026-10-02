@@ -44,7 +44,7 @@ The filesystem cleanup is independent of the database format. Earlier item conve
 
 Completion inserts one immutable `queue_notifications_v1` outbox row in the same transaction as the final rewards and counters. A separate lifecycle worker sends notifications; network requests never hold up the work scheduler. A conditional update claims a two-minute delivery lease. Retry attempts are bounded at five, with backoff and rate-limit delays; invalid credentials or permissions become terminal failures. An expired lease can be reclaimed after a process restart.
 
-Discord messages use an explicit user mention whitelist, disabling role and everyone mentions, with a stable nonce for retry deduplication. Remote send and database acknowledgement cannot be made atomic: a crash after acceptance may duplicate a notification outside Discord's deduplication window; it cannot duplicate game rewards. No interaction tokens are stored, and no completion DMs are sent.
+Discord messages use an explicit user mention whitelist, disabling role and everyone mentions, with a stable nonce for retry deduplication. Remote send and database acknowledgement cannot be made atomic: a crash after acceptance may duplicate a notification outside Discord's deduplication window; it cannot duplicate game rewards. No interaction tokens are stored. Discord alerts go to the player's direct messages unless they chose channel mentions; when DMs are closed the alert waits in their Notifications instead of falling back to the channel, and quiet hours (below) can hold DM alerts.
 
 ### Message detail snapshots
 
@@ -103,3 +103,34 @@ Successful authentication triggers one repair scan for current stopped queues
 whose saved deadline is within the last 24 hours. Failed notices are requeued;
 missing notices are reconstructed from saved totals. Already-sent notices are
 left alone. This repair does not modify inventory, needs or queue counters.
+
+### Quiet hours
+
+`player_quiet_hours_v1` stores one row per citizen with quiet hours (world,
+citizen, time zone, start and end as minutes after local midnight); no row means
+they are off. Account linking keeps the target's row, otherwise the source's row
+moves. `quiet_held_alerts_v1` records each held outbox notice (notice ID, world,
+Discord recipient, when it was first held). Both tables are additive; no column of
+`queue_notifications_v1` or any other table changes, and every time stays in UTC.
+
+Holding happens in the Discord worker after a due notice is selected and before it
+is claimed. A due DM notice whose recipient is inside their window is moved with a
+conditional update (still pending or sending, still due) to `next_at` = the
+window's end, so holding spends no attempt and takes no lease, and only one worker
+can hold it. When a held notice is due again and its recipient is outside the
+window, the worker claims every due DM notice of that recipient together: one
+conditional update per row in ID order, the same conditions and two-minute lease
+as the ordinary claim, and one commit. A row is claimed by exactly one worker, so
+two passes or instances cannot both send it. The claimed notices go out as one
+summary DM with its own stable nonce (derived from the first notice ID), or as the
+ordinary alert when there is one. Success marks each sent and deletes its held
+row; a failure applies the ordinary backoff and five-attempt limit to each and
+keeps the held rows, so the retry is again one message; closed DMs mark each
+notice's own notification unread. A pause notice superseded while held is never
+claimed and its held row is deleted with it. Turning quiet hours off, or moving the
+window so the recipient is outside it, sets held notices due at once.
+
+Delivery stays at-least-once with the same limit as before: a crash after Discord
+accepts the summary but before it is acknowledged can repeat that summary outside
+Discord's nonce window. Holding and release add no other duplicate. Startup repair
+leaves held notices alone because they are pending, not failed or missing.

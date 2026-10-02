@@ -29,6 +29,7 @@ custom_id grammar (max 100 characters):  ne|<owner id>|<verb>|<args...>
   ls|<recipe>|<amount>    want that many of a recipe's output (0 removes it), then show the list
   la|<recipe>             add a recipe to the shopping list (one batch), then show its entry
   lx|done|all             clear the done entries, or the whole list
+  qo                      turn quiet hours off, then show settings (the form is mo|quiet)
   mn|mv|mk|mp             game menu areas, views and choices (see menu.py)
   bk|<fallback...>        Back: the screen this message showed before, else the fallback address
   mo|<leaf>               open a leaf's pop-up form (Discord modal)
@@ -844,7 +845,7 @@ def handle_component(m, payload, schedule=None):
         return go_back(m, payload, uid, name, owner, args)
     if verb == 'mo':
         from . import menu
-        form = menu.modal(owner, args[0] if args else '', args[1:])
+        form = menu.modal(owner, args[0] if args else '', args[1:], m)
         return form or _notice('This control is no longer available. Open /menu again.')
     if verb == 'mp':
         from . import menu
@@ -1191,7 +1192,7 @@ def post_public_panel(m, channel_id, token=None):
 
 # ---------------------------------------------------------------- goal, plans, auto-sell, uses, find, recent (see extras.py)
 
-EXTRA_VERBS = {'gv', 'gs', 'gc', 'pv', 'pc', 'rd', 'av', 'at', 'kv', 'ki', 'ks', 'fu', 'fi', 'fd', 'lv', 'li', 'ls', 'la', 'lx'}
+EXTRA_VERBS = {'gv', 'gs', 'gc', 'pv', 'pc', 'rd', 'av', 'at', 'kv', 'ki', 'ks', 'fu', 'fi', 'fd', 'lv', 'li', 'ls', 'la', 'lx', 'qo'}
 EXTRA_TICKETS = {'plan', 'sellstep', 'saveroutine', 'routine', 'undo', 'buyitem', 'restock', 'shopbuy'}
 
 
@@ -1363,6 +1364,29 @@ def keep_item_message(m, db, p, owner, key, note=''):
         second.append(restock_button(m, p, owner, short))
     rows = [row(*first), row(*second), row(back_button(owner, 'kv'), button('Menu', cid(owner, 'mn', 'home'), emoji='🏠'))]
     return with_crumb(message(m, keep.item_text(m, db, p, key, note), rows, 'inventory'), crumb('bag', 'Keep levels › ' + m.resource_name(key)))
+
+
+def quiet_form(m, owner):
+    """The quiet-hours pop-up form: time zone, start and end, filled in with the current setting."""
+    from . import quiet_hours as quiet, inbox
+    tz = start = end = ''
+    if m is not None:
+        with m.SessionLocal() as db:
+            r = quiet.row(db, m.DISCORD_WORLD_ID, inbox._canonical(m, db, owner))
+            if r is not None:
+                tz, start, end = r.tz, quiet.clock(r.start_min), quiet.clock(r.end_min)
+    return modal(cid(owner, 'md', 'quiet'), 'Quiet hours', 'Time zone (e.g. Europe/London or UTC+2)', 'e.g. Europe/London', 1, 48, tz,
+                 more=[text_box('start', 'Start (24-hour clock: HH or HH:MM)', 'e.g. 23:00', 1, 5, start),
+                       text_box('end', 'End (24-hour clock: HH or HH:MM)', 'e.g. 08:00', 1, 5, end)])
+
+
+def quiet_message(m, db, p, owner, note=''):
+    """Settings after a quiet-hours change: what changed, every setting, and the Settings buttons (Quiet hours, Turn off…)."""
+    from . import menu
+    head, _, rest = qol.settings_text(m, db, p, 'discord').partition('\n')
+    text = head + ('\n' + note if note else '') + '\n' + rest
+    rows = menu.grid(m, owner, menu.children_of(m, 'settings', menu.context(m, owner, db, p)), rows=3) + [menu.nav(owner, 'settings', 'settings')]
+    return with_crumb(message(m, text, rows, 'settings'), menu.crumb('settings', '🌙 Quiet hours'))
 
 
 def shopping_entry_button(owner, x):
@@ -1539,6 +1563,11 @@ def extra_view(m, db, p, owner, verb, args, values, name):
         return shopping_message(m, db, p, owner, note)
     if verb == 'li':
         return shopping_item_message(m, db, p, owner, args[0] if args else '')
+    if verb == 'qo':
+        from . import quiet_hours
+        note = quiet_hours.turn_off(m, db, p)
+        db.flush()
+        return quiet_message(m, db, p, owner, note)
     if verb == 'la':
         from . import shopping_list as shop
         recipe = args[0] if args else ''

@@ -15,7 +15,7 @@ from types import SimpleNamespace
 import discord
 from discord.ext import tasks
 from sqlalchemy import select, update
-from . import queue_notifications as n, qol, layout_v2
+from . import queue_notifications as n, qol, layout_v2, quiet_hours
 
 log=logging.getLogger('uvicorn.error.discord_queue')
 
@@ -38,18 +38,36 @@ def pending(m):
             n.Notice.state.in_(['pending','sending']),n.Notice.next_at<=m.now()).order_by(n.Notice.next_at).limit(10)))
 
 
+def settle(m,row,notice,error=None):
+    """Record one claimed send: sent, or back to pending with backoff (failed after five attempts or a permanent error).
+    False when this worker no longer holds the claim."""
+    if not row or row.state!='sending' or row.attempts!=notice.attempts:return False
+    if error:
+        row.state='failed' if error.permanent or row.attempts>=5 else 'pending'
+        row.error=str(error)
+        row.next_at=m.now()+timedelta(seconds=max(error.delay,min(600,30*2**(row.attempts-1))))
+        log.warning('Discord queue alert %s: %s',row.state,row.error)
+    else:
+        row.state='sent';row.error=''
+        log.info('Discord queue alert sent')
+    return True
+
+
 def finish(m,notice,error=None):
     with m.SessionLocal() as db:
-        row=db.get(n.Notice,notice.id)
-        if not row or row.state!='sending' or row.attempts!=notice.attempts:return
-        if error:
-            row.state='failed' if error.permanent or row.attempts>=5 else 'pending'
-            row.error=str(error)
-            row.next_at=m.now()+timedelta(seconds=max(error.delay,min(600,30*2**(row.attempts-1))))
-            log.warning('Discord queue alert %s: %s',row.state,row.error)
-        else:
-            row.state='sent';row.error=''
-            log.info('Discord queue alert sent')
+        settle(m,db.get(n.Notice,notice.id),notice,error)
+        db.commit()
+
+
+def finish_all(m,batch,error=None):
+    """finish() for every alert of one quiet-hours release, in one transaction. Alerts that were sent or failed for
+    good are no longer held; ones that will retry stay held, so the retry is again one message."""
+    with m.SessionLocal() as db:
+        done=[]
+        for notice in batch:
+            row=db.get(n.Notice,notice.id)
+            if settle(m,row,notice,error) and row.state in {'sent','failed'}:done.append(row.id)
+        quiet_hours.forget(db,done)
         db.commit()
 
 
@@ -118,11 +136,12 @@ async def send_notice(m,client,notice):
         if room is not None:
             try:
                 line=mention.split('> ',1)[-1]
+                if getattr(notice,'held',False):line+=' '+quiet_hours.HELD_LINE
                 if not await send_v2(client,room.id,v2_body(data,line,notice,dm=True)):
                     await room.send(**message_args(data,line,notice,dm=True))
                 return
             except (discord.Forbidden,discord.HTTPException):pass
-        await asyncio.to_thread(n.dm_closed,m,notice)
+        await asyncio.to_thread(n.dm_closed,m,notice,getattr(notice,'created_at',None))
         return
     channel=client.get_channel(int(channel_id)) or await client.fetch_channel(int(channel_id))
     if not isinstance(channel,(discord.TextChannel,discord.Thread)):
@@ -177,21 +196,66 @@ def message_args(data,mention,notice,dm=False):
     return args
 
 
+async def send_summary(m,client,batch):
+    """Several alerts held during quiet hours, as one DM card. Closed DMs mark each one unread in Notifications."""
+    lead=min(batch,key=lambda x:x.id)
+    if not str(lead.recipient).isdigit():
+        raise n.DeliveryError('A numeric Discord player ID is required',permanent=True)
+    data,line=await asyncio.to_thread(quiet_hours.summary,m,batch)
+    # Its own stable nonce, from the first alert's id, never equal to that alert's own nonce.
+    card=SimpleNamespace(id='q'+lead.id,recipient=lead.recipient,content=line+'\n'+data['embeds'][0]['description'])
+    room=await direct_channel(client,lead.recipient)
+    if room is not None:
+        try:
+            if not await send_v2(client,room.id,v2_body(data,line,card,dm=True)):
+                await room.send(**message_args(data,line,card,dm=True))
+            return
+        except (discord.Forbidden,discord.HTTPException):pass
+    for notice in batch:
+        await asyncio.to_thread(n.dm_closed,m,notice,notice.created_at)
+
+
+async def attempt(sending):
+    """Run one send within its lease: None when delivered, else the DeliveryError to record."""
+    try:
+        # Leave headroom within the lease even if Discord waits on a rate limit.
+        await asyncio.wait_for(sending,timeout=45)
+    except n.DeliveryError as exc:return exc
+    except discord.Forbidden:return n.DeliveryError('Discord denied channel access or Send Messages permission (403)',permanent=True)
+    except discord.NotFound:return n.DeliveryError('Discord game channel was not found (404)',permanent=True)
+    except discord.HTTPException as exc:return n.DeliveryError(f'Discord HTTP {exc.status}',permanent=exc.status in {400,401,403,404})
+    except (TimeoutError,OSError):return n.DeliveryError('Discord send timed out or the network is unavailable')
+    except Exception:return n.DeliveryError('Unexpected Discord queue delivery error')
+    return None
+
+
+async def release(m,client,channel,recipient):
+    """A recipient's quiet hours are over: every due DM alert of theirs, claimed together, as one message."""
+    batch=await asyncio.to_thread(quiet_hours.claim_release,m,channel,recipient)
+    if not batch:return
+    if len(batch)==1:
+        batch[0].held=True                                   # the normal alert, with a 🌙 line
+        error=await attempt(send_notice(m,client,batch[0]))
+    else:
+        error=await attempt(send_summary(m,client,batch))
+    await asyncio.to_thread(finish_all,m,batch,error)
+
+
 async def deliver(m,client,stop=None):
+    released=set()
     for notice_id in await asyncio.to_thread(pending,m):
         if stop is not None and stop.is_set():break
+        # Quiet hours act before the claim: holding an alert spends no attempt and no lease.
+        step=await asyncio.to_thread(quiet_hours.check,m,notice_id)
+        if step is None:continue
+        if step!='send':
+            if step not in released:
+                released.add(step)
+                await release(m,client,*step)
+            continue
         notice=await asyncio.to_thread(claim,m,notice_id)
         if notice is None:continue
-        error=None
-        try:
-            # Leave headroom within the lease even if Discord waits on a rate limit.
-            await asyncio.wait_for(send_notice(m,client,notice),timeout=45)
-        except n.DeliveryError as exc:error=exc
-        except discord.Forbidden:error=n.DeliveryError('Discord denied channel access or Send Messages permission (403)',permanent=True)
-        except discord.NotFound:error=n.DeliveryError('Discord game channel was not found (404)',permanent=True)
-        except discord.HTTPException as exc:error=n.DeliveryError(f'Discord HTTP {exc.status}',permanent=exc.status in {400,401,403,404})
-        except (TimeoutError,OSError):error=n.DeliveryError('Discord send timed out or the network is unavailable')
-        except Exception:error=n.DeliveryError('Unexpected Discord queue delivery error')
+        error=await attempt(send_notice(m,client,notice))
         await asyncio.to_thread(finish,m,notice,error)
 
 

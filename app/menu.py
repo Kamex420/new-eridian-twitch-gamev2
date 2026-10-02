@@ -54,8 +54,8 @@ AREAS = {
            ['me_overview', 'me_skills', 'me_daily', 'me_achievements', 'me_more', 'choices', 'seedling', 'settings', 'account']),
     'choices': ('🧭', 'Choices', 'Job, district, shift, delivery partner, title, hat, badge, specialization and display style.',
                 ['job', 'district', 'shift', 'duck', 'title', 'c_hat', 'c_badge', 'specialize', 'display_compact', 'display_detailed']),
-    'settings': ('⚙️', 'Settings', 'How queue alerts and notifications reach you, and whether queues recover by themselves.',
-                 ['alerts', 'popups', 'auto_on', 'auto_off', 'feed_on', 'feed_off']),
+    'settings': ('⚙️', 'Settings', 'How queue alerts and notifications reach you, quiet hours for DMs, and whether queues recover by themselves.',
+                 ['alerts', 'quiet', 'quiet_off', 'popups', 'auto_on', 'auto_off', 'feed_on', 'feed_off']),
     'help': ('📖', 'Help', 'What to do next, a guide for any goal, search, the handbook, and who made the game.', ['guide', 'guidegoal', 'find', 'h_topics', 'h_about']),
     'seedling': ('🌱', 'My Seedling', 'Your Seedling lives its own day: mood, thoughts, schedule, diary and autonomy.',
                  ['sl_view', 'sl_decide', 'sl_diary', 'looks', 'sl_schedule', 'sl_custom', 'sl_on', 'sl_off']),
@@ -301,6 +301,8 @@ leaf('h_topics', 'Handbook', '📚', 'pick', 'seed', pick='leaves:h_start,h_char
      then='leaf', hint='every topic of the handbook')
 leaf('alerts', 'Queue alerts', '🔔', 'pick', 'settings', pick='alerts', then='do', option='alerts', hint='how you hear that a queue paused or finished')
 leaf('popups', 'Notifications', '📬', 'pick', 'settings', pick='popups', then='do', option='popups', hint='what pops up for you after commands')
+leaf('quiet', 'Quiet hours', '🌙', 'modal', 'settings', hint='a daily window in your time zone when DM alerts wait, then arrive as one message')
+leaf('quiet_off', 'Turn off quiet hours', '☀️', 'nav', nav=('qo',), hint='DM alerts arrive as they happen again; anything held comes now')
 
 # Every button gets a line that explains it, so the newer layout can put the button beside it.
 _HINTS = {
@@ -411,6 +413,10 @@ class Ctx:
             return bool(sale) and (self.m.now() - self.m.as_utc(datetime.fromisoformat(sale['at']))).total_seconds() <= self.m.extras.UNDO_SECONDS
         return self.get('undo', read)
 
+    def quiet_on(self):
+        from . import quiet_hours
+        return self.get('quiet', lambda: quiet_hours.row(self.db, self.p.channel_id, self.p.twitch_uid) is not None)
+
     def feed_hidden(self):
         return self.get('feed', lambda: self.m.activity_feed.hidden(self.db, self.p))
 
@@ -480,6 +486,7 @@ WHEN = {
     'm_eventstart': (lambda c: not c.event_active(), 'an event is already running'),
     'm_eventstop': (lambda c: c.event_active(), 'no event is running'),
     'm_chalstart': (lambda c: not c.challenge_active(), 'a stream challenge is running'),
+    'quiet_off': (lambda c: c.quiet_on(), 'quiet hours are off'),
     'feed_on': (lambda c: c.feed_hidden(), 'your activity already shows in the feed'),
     'feed_off': (lambda c: not c.feed_hidden(), 'your activity is already hidden'),
     'm_chalstop': (lambda c: c.challenge_active(), 'no stream challenge is running'),
@@ -490,7 +497,7 @@ WHEN = {
 }
 # Toggles and one-way switches: the hidden side is just the current state, so it is not listed as unavailable.
 TOGGLES = {'auto_on', 'auto_off', 'sl_on', 'sl_off', 'display_compact', 'display_detailed', 'bstart', 'm_eventstart', 'm_eventstop', 'link', 'account',
-           'm_chalstart', 'm_chalstop', 'feed_on', 'feed_off'}
+           'm_chalstart', 'm_chalstop', 'feed_on', 'feed_off', 'quiet_off'}
 
 
 def can(ctx, key):
@@ -947,11 +954,13 @@ def amount_view(m, db, p, owner, key, value):
                                                             ui.button('Menu', ui.cid(owner, 'mn', 'home'), emoji='🏠'))], 'menu')
 
 
-def modal(owner, key, args=()):
+def modal(owner, key, args=(), m=None):
     """The pop-up form for a leaf (response type 9), or None."""
     item = LEAVES.get(key)
     if item is None:
         return None
+    if key == 'quiet':
+        return ui.quiet_form(m, owner)
     if key == 'keep' and args:
         return ui.modal(ui.cid(owner, 'md', key, args[0]), 'Keep how many?', 'Amount to always keep (0 removes it)', 'e.g. 30', 1, 4)
     if key == 'shopping':
@@ -976,6 +985,13 @@ def submit(m, db, p, owner, name, key, args, value, fields=None):
     if key == 'keep':
         # A keep level only changes the citizen's own setting, so it needs no one-time ticket.
         return ui.keep_message(m, db, p, owner, m.keep_levels.set_level(m, db, p, args[0] if args else '', value))
+    if key == 'quiet':
+        # Quiet hours too: three boxes (time zone, start, end); a refusal changes nothing.
+        from . import quiet_hours
+        fields = fields or {}
+        note = quiet_hours.set_hours(m, db, p, value, fields.get('start', ''), fields.get('end', ''))
+        db.flush()
+        return ui.quiet_message(m, db, p, owner, note)
     if key == 'shopping':
         # So does the shopping list: a recipe's amount (Custom…), or a recipe and an amount (Add recipe…).
         shop = m.shopping_list
