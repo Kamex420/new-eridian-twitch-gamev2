@@ -455,6 +455,7 @@ When someone plays on both Twitch and Discord without linking the accounts, they
     - Both the Twitch and Discord IDs then point at the kept character, and a Twitch + Discord pair becomes a permanent link.
   - Society stats are not touched. Population drops by one, because the duplicate was being counted as an extra citizen.
   - The merge is recorded in the moderator log.
+- **From Discord:** the owner can do the same without `ADMIN_KEY` from `/menu` → Moderator → **Force merge** (owners only, checked again at every step and when Confirm is pressed). Pick the character to keep, pick the one merged into it (the first is not in the list), and a preview shows both characters, the combined totals, the queue outcome and which Twitch/Discord IDs will point at the survivor. ✔️ Confirm merge is a one-time button; 🔁 Swap exchanges the two. Nothing changes before Confirm, a failure changes nothing, and the log entry names the owner (`owner <Discord ID> via /menu`). Both routes share one preview-and-apply function (`app/force_merge.py`).
 
 Players can still do this themselves: `!link` on Twitch gives a code, and `/link CODE` on Discord merges the two characters in the same way.
 

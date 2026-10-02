@@ -5167,26 +5167,14 @@ def admin_merge(keep:str,merge:str,channel:str="",key:str="",confirm:int=0):
     Without confirm=1 it only shows what the merged character would look like."""
     if not valid_admin_key(key):return JSONResponse({"ok":False,"error":"Invalid game-admin key."},status_code=403)
     channel=channel or DISCORD_WORLD_ID
-    if keep==merge:return JSONResponse({"ok":False,"error":"keep and merge are the same character."},status_code=400)
+    me=sys.modules[__name__]
     with SessionLocal() as db:
-        a=db.execute(select(Player).where(Player.channel_id==channel,Player.twitch_uid==keep)).scalar_one_or_none()
-        b=db.execute(select(Player).where(Player.channel_id==channel,Player.twitch_uid==merge)).scalar_one_or_none()
-        if not a or not b:return JSONResponse({"ok":False,"error":"Both characters must exist in this channel (use the uid values from /api/v1/admin/duplicates)."},status_code=404)
-        before=[_player_summary(db,channel,a),_player_summary(db,channel,b)]
-        combined={k:before[0][k]+before[1][k] for k in ("sc","contribution","actions","xp")}
+        try:pair=force_merge.load(me,db,channel,keep,merge)    # the preview-and-apply core the owner's /menu Force merge button shares
+        except force_merge.Refused as e:return JSONResponse({"ok":False,"error":e.error},status_code=e.status)
         if not confirm:
-            return JSONResponse({"ok":True,"preview":True,"keep":before[0],"merge":before[1],"after":{**combined,"uid":keep,"name":a.display_name},
+            return JSONResponse({"ok":True,"preview":True,"keep":pair.before[0],"merge":pair.before[1],"after":{**pair.combined,"uid":keep,"name":pair.keep.display_name},
                                  "apply":"repeat this URL with &confirm=1"})
-        merge_accounts(db,channel,merge,keep)
-        # A Twitch + Discord pair becomes a permanent link, exactly as if the player had used /link.
-        ids=db.execute(select(Identity).where(Identity.channel_id==channel,Identity.canonical_uid==keep)).scalars().all()
-        tw=[i.provider_uid for i in ids if i.provider=="twitch"];dc=[i.provider_uid for i in ids if i.provider=="discord"]
-        if len(dc)==1 and not db.execute(select(AccountLink).where(AccountLink.channel_id==channel,AccountLink.discord_uid==dc[0])).scalar_one_or_none() \
-           and not db.execute(select(AccountLink).where(AccountLink.channel_id==channel,AccountLink.twitch_uid==keep)).scalar_one_or_none():
-            db.add(AccountLink(channel_id=channel,twitch_uid=keep,discord_uid=dc[0]))
-        audit_moderator(db,channel,"game admin","merge",f"{before[1]['name']} ({merge}) into {before[0]['name']} ({keep})");db.commit()
-        p=db.execute(select(Player).where(Player.channel_id==channel,Player.twitch_uid==keep)).scalar_one()
-        return JSONResponse({"ok":True,"merged":True,"character":_player_summary(db,channel,p),"expected":combined})
+        return JSONResponse({"ok":True,"merged":True,**force_merge.apply(me,db,channel,pair,"game admin")})
 
 @app.get("/api/v1/admin/event/{event}/{state}")
 @game_transaction
@@ -7514,7 +7502,7 @@ def queue_task_menu(query:str='',page:int=1,provider:str='twitch'):
     return platform_response(provider,text,text.replace('\n',' | '))
 
 
-from . import qol, presentation, menu, inbox, extras, keep_levels, shopping_list
+from . import qol, presentation, menu, inbox, extras, keep_levels, shopping_list, force_merge
 game_menu=menu
 inbox.install(sys.modules[__name__])
 extras.install(sys.modules[__name__])

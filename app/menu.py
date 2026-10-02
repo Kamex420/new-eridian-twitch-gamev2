@@ -64,11 +64,13 @@ AREAS = {
     'account': ('🔗', 'Account', 'Create your citizen, or link your Twitch citizen: type !link in Twitch chat, then enter the code here.',
                 ['start', 'link']),
     'mod': ('🛡️', 'Moderator', 'Events, the moderator log, account lookups and the channel panels. Moderators only.',
-            ['m_eventstart', 'm_eventstop', 'm_chalstart', 'm_chalstop', 'm_live', 'm_recap', 'm_recappost', 'm_feed', 'm_modlog', 'm_lookup',
+            ['m_eventstart', 'm_eventstop', 'm_chalstart', 'm_chalstop', 'm_live', 'm_recap', 'm_recappost', 'm_feed', 'm_modlog', 'm_lookup', 'm_force',
              'm_guidepanels', 'm_menupanel', 'h_moderator']),
 }
 # Areas only moderators see on the Home screen.
 MOD_AREAS = {'mod'}
+# Leaves only owners see and can use (Force merge: the screens and its ticket check ownership again every time).
+OWNER_ONLY = {'m_force'}
 # Commands a menu button may only run for moderators (linklookup: owners).
 MOD_COMMANDS = {'eventstart', 'eventstop', 'modlog', 'guidepanels', 'menupanel', 'linklookup',
                 'challengestart', 'challengestop', 'liveon', 'liveoff', 'liveauto', 'recappreview', 'recappost', 'feedhere', 'feedoff'}
@@ -253,6 +255,7 @@ leaf('m_eventstop', 'Stop event', '🛑', 'do', 'eventstop', style=4, hint='canc
 leaf('m_modlog', 'Moderator log', '📜', 'view', 'modlog', hint='the last ten moderator actions')
 leaf('m_lookup', 'Account lookup', '🔍', 'pick', 'linklookup', pick='player_name', then='view', option='player',
      hint='linked accounts of a citizen (owners)')
+leaf('m_force', 'Force merge', '🧬', 'nav', nav=('xk',), hint='merge two characters into one, irreversibly (owners)')
 leaf('m_guidepanels', 'Post guide panels', '📖', 'do', 'guidepanels', hint='the how-to-play panels, in this channel')
 leaf('m_menupanel', 'Post game panel', '🎛️', 'do', 'menupanel', hint='a button panel anyone can press to open their menu')
 leaf('m_chalstart', 'Start stream challenge', '⚡', 'pick', 'challengestart', pick='field:mod:challenge', then='confirm', option='challenge',
@@ -557,6 +560,8 @@ def children_of(m, area, ctx=None):
     keys = AREAS[area][3]
     if area == 'home' and not ui.is_moderator(m):
         keys = [k for k in keys if k not in MOD_AREAS]
+    if not ui.is_owner(m):
+        keys = [k for k in keys if k not in OWNER_ONLY]
     return [k for k in keys if can(ctx, k)]
 
 
@@ -874,6 +879,8 @@ def navigate(m, db, p, owner, verb, args, values, name):
         return ui.message(m, 'That button is no longer available. Here is the menu.', area_components(m, owner, 'home', context(m, owner, db, p)), 'menu')
     item = LEAVES[key]
     area = PARENT.get(key, 'home')
+    if key in OWNER_ONLY:
+        return ui.extra_view(m, db, p, owner, 'xk', [], [], name)
     if verb == 'mv':
         command, options = options_for(key)
         return show(m, db, p, owner, command, options, area, name, key)

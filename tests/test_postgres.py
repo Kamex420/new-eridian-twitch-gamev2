@@ -130,6 +130,55 @@ with m.SessionLocal() as db:
     assert all(r.state == 'sent' and r.attempts == 1 for r in db.query(qn.Notice).filter(qn.Notice.recipient == '4242'))
     assert db.query(quiet_hours.HeldAlert).count() == 0 and quiet_hours.row(db, W, 'discord:4242') is None
 
+# Force merge: the preview wrote nothing; a merge that fails half way is rolled back whole; then the owner's button confirms
+# the same shared core inside the game transaction (one-time ticket, owner named in the moderator log).
+from app import force_merge, ui
+with m.SessionLocal() as db:
+    a = m.player(db, W, 'twitch', 'pg-tw', 'Pgmerge')[1]; a.sc, a.actions = 300, 25
+    m.material_change(db, a, lumber, 12)
+    b = m.player(db, W, 'discord', '5151', 'pgmerge')[1]; b.sc, b.actions = 120, 9
+    m.material_change(db, b, lumber, 5)
+    db.commit()
+    ids = (a.id, b.id)
+with m.SessionLocal() as db:
+    pair = force_merge.load(m, db, W, 'pg-tw', 'discord:5151')
+    assert pair.combined['sc'] == 420 and db.query(m.Player).filter(m.Player.id.in_(ids)).count() == 2
+real = m.merge_accounts
+def boom(db, channel, source, target):
+    real(db, channel, source, target); raise RuntimeError('boom')
+m.merge_accounts = boom
+try:
+    with task_queue.atomic(m, W):
+        with m.SessionLocal() as db:
+            force_merge.apply(m, db, W, force_merge.load(m, db, W, 'pg-tw', 'discord:5151'), 'owner 6161 via /menu')
+    raise AssertionError('the failing merge did not raise')
+except RuntimeError:
+    pass
+finally:
+    m.merge_accounts = real
+with m.SessionLocal() as db:
+    assert db.query(m.Player).filter(m.Player.id.in_(ids)).count() == 2 and db.query(m.ModeratorAudit).count() == 0
+    assert db.query(m.AccountLink).filter_by(channel_id=W, twitch_uid='pg-tw').count() == 0
+m.DISCORD_OWNER_USER_IDS = {'6161'}
+press = lambda cid, values=(): ui.handle_component(m, {'type': 3, 'data': {'custom_id': cid, 'values': list(values)}, 'message': {'flags': 64, 'id': 'pg'},
+                                                       'member': {'user': {'id': '6161', 'username': 'Owner'}, 'permissions': str(0x20)}})
+for forged in (ui.cid('6161', 'xm', '99999999999999999999', ids[1]), ui.cid('6161', 'xm', ids[0], '99999999999999999999')):
+    assert 'That character no longer exists. Choose again. Nothing changed.' in press(forged)['data']['embeds'][0]['description']
+assert 'step 2 of 3' in press(ui.cid('6161', 'xm', ids[0]), ['__page:99999999999999999999'])['data']['embeds'][0]['title']
+shown = press(ui.cid('6161', 'xm', ids[0], ids[1]))
+assert '420 SC' in shown['data']['embeds'][0]['description'] and 'cannot be undone' in shown['data']['embeds'][0]['description']
+with m.SessionLocal() as db:
+    assert db.query(m.Player).filter(m.Player.id.in_(ids)).count() == 2
+ticket = next(c['custom_id'] for r in shown['data']['components'] for c in r['components'] if c.get('label') == 'Confirm merge')
+done = press(ticket)
+assert 'Merged **pgmerge** into **Pgmerge**' in done['data']['embeds'][0]['description']
+assert 'already used' in str(press(ticket))
+with m.SessionLocal() as db:
+    kept = db.query(m.Player).filter(m.Player.id.in_(ids)).all()
+    assert [(p.twitch_uid, p.sc, p.actions) for p in kept] == [('pg-tw', 420, 34)] and m.material_amount(db, kept[0], lumber) == 17
+    assert db.query(m.AccountLink).filter_by(channel_id=W, twitch_uid='pg-tw', discord_uid='5151').count() == 1
+    assert [(x.moderator, x.action) for x in db.query(m.ModeratorAudit)] == [('owner 6161 via /menu', 'merge')]
+
 now = m.now()
 with m.SessionLocal() as db:
     db.query(m.ActionLog).delete(); db.query(m.JournalEntry).delete()

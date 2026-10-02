@@ -46,6 +46,8 @@ The game keeps the Discord channel quiet. Command replies are private to the pla
 
 Enter the commands in the StreamElements dashboard (Chatbot → Chat commands → Custom commands), never by typing `!command add` in Twitch chat: chat is public and copied by chat-log sites, so a key typed there is public. If a key has been pasted in chat, set new values on Railway and update the commands. `ADMIN_KEY` still works for moderator commands added before `MOD_KEY` existed. Request logs replace `k=` and `key=` values with `***`.
 
+The owner can also merge two characters without any key: `/menu` → Moderator → **Force merge** (visible and usable only to the Discord IDs in `DISCORD_OWNER_USER_IDS`; moderators who are not owners do not see it). Choose the character to keep, then the one merged into it, check the preview and press Confirm merge. It is the same merge as `/api/v1/admin/merge` and `/link`, is irreversible, and is recorded in the moderator log as `owner <Discord ID> via /menu`.
+
 Without `TWITCH_API_KEY` anyone can call the game API as any Twitch player; the startup log and `/health` warn about it.
 
 ## Optional settings

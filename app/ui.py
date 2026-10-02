@@ -30,6 +30,8 @@ custom_id grammar (max 100 characters):  ne|<owner id>|<verb>|<args...>
   la|<recipe>             add a recipe to the shopping list (one batch), then show its entry
   lx|done|all             clear the done entries, or the whole list
   qo                      turn quiet hours off, then show settings (the form is mo|quiet)
+  xk                      Force merge (owners): choose the character to keep (value = its id)
+  xm|<keep>[|<merge>]     Force merge: choose the character to merge in (value = its id), then the preview; Swap = xm|<merge>|<keep>
   mn|mv|mk|mp             game menu areas, views and choices (see menu.py)
   bk|<fallback...>        Back: the screen this message showed before, else the fallback address
   mo|<leaf>               open a leaf's pop-up form (Discord modal)
@@ -706,7 +708,7 @@ _HISTORY_LOCK = threading.Lock()   # presses are answered on worker threads
 # Controls that only show a screen, so Back can show it again. Anything else (a one-time action,
 # a toggle, setting a goal) leaves its result on the message, and Back returns to the screen before.
 SCREENS = {'wh', 'wc', 'sc', 'ss', 'wr', 'sr', 'qp', 'sq', 'qv', 'qd', 'st', 'gv', 'pv', 'av', 'kv', 'ki', 'fu', 'fi', 'fd', 'fm',
-           'mn', 'mv', 'mk', 'mp', 'ma', 'lp', 'lv', 'li'}
+           'mn', 'mv', 'mk', 'mp', 'ma', 'lp', 'lv', 'li', 'xk', 'xm'}
 
 
 def back_button(owner, *fallback):
@@ -981,6 +983,8 @@ def run_ticket(m, uid, name, action, payload=None):
     with ticket_batch(m):
         with m.task_queue.atomic(m, channel):
             data = _run(m, uid, name, action, kind, channel)
+    if kind == 'forcemerge' and payload:
+        _history(payload, uid)['screens'].clear()      # the preview is stale once a merge was tried: Back goes up to Moderator
     if not isinstance(data, dict):
         return data
     if action.get('goal'):
@@ -1192,8 +1196,8 @@ def post_public_panel(m, channel_id, token=None):
 
 # ---------------------------------------------------------------- goal, plans, auto-sell, uses, find, recent (see extras.py)
 
-EXTRA_VERBS = {'gv', 'gs', 'gc', 'pv', 'pc', 'rd', 'av', 'at', 'kv', 'ki', 'ks', 'fu', 'fi', 'fd', 'lv', 'li', 'ls', 'la', 'lx', 'qo'}
-EXTRA_TICKETS = {'plan', 'sellstep', 'saveroutine', 'routine', 'undo', 'buyitem', 'restock', 'shopbuy'}
+EXTRA_VERBS = {'gv', 'gs', 'gc', 'pv', 'pc', 'rd', 'av', 'at', 'kv', 'ki', 'ks', 'fu', 'fi', 'fd', 'lv', 'li', 'ls', 'la', 'lx', 'qo', 'xk', 'xm'}
+EXTRA_TICKETS = {'plan', 'sellstep', 'saveroutine', 'routine', 'undo', 'buyitem', 'restock', 'shopbuy', 'forcemerge'}
 
 
 def _menu_row(owner, back=None):
@@ -1519,6 +1523,9 @@ def item_text(m, db, p, key):
 
 def extra_view(m, db, p, owner, verb, args, values, name):
     from . import extras as more
+    if verb in {'xk', 'xm'}:
+        from . import force_merge
+        return force_merge.view(m, db, p, owner, verb, args, values)
     if verb in {'gv', 'gs', 'gc'}:
         note = ''
         if verb == 'gs':
@@ -1592,6 +1599,9 @@ def extra_view(m, db, p, owner, verb, args, values, name):
 
 def extra_ticket(m, uid, name, action, kind, channel):
     from . import extras as more
+    if kind == 'forcemerge':
+        from . import force_merge
+        return force_merge.run(m, uid, action)
     with m.SessionLocal() as db:
         p = _player(m, db, uid, name)
         if kind == 'plan':
