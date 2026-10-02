@@ -1,5 +1,13 @@
 # Release notes
 
+## Back goes to the screen you were just on
+
+- **Every menu screen has ◀️ Back next to 🏠 Menu**, always the last two buttons.
+- **Back works like a browser's Back button.** It returns to the screen you were on before, and pressing it again keeps stepping back through the screens that message showed. After an action such as Craft, Start or Sell, Back returns to the screen you pressed it on. On a Details page it returns to the first page.
+- **On a message's first screen, Back goes one level up.** That happens straight after a slash command or after the bot restarts. A recipe goes back to its list, an area to the area above it, and a screen inside an area to that area.
+- The home menu gets a Back button too, once there is an earlier screen to go back to.
+- The old "Back: Work", "Back to list" and "Back to recipe" buttons are now this one Back.
+
 ## Seedlings think their work through
 
 Autonomous Seedlings now weigh their options at work and say why they chose what they did.

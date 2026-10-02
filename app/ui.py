@@ -22,6 +22,7 @@ custom_id grammar (max 100 characters):  ne|<owner id>|<verb>|<args...>
   fm|<id>|<batches>       fetch-missing-ingredients plan
   cn                      clear the next (follow-up) queue
   mn|mv|mk|mp             game menu areas, views and choices (see menu.py)
+  bk|<fallback...>        Back: the screen this message showed before, else the fallback address
   mo|<leaf>               open a leaf's pop-up form (Discord modal)
   md|<leaf>[|<arg>]       a submitted pop-up form (interaction type 5)
   t|<ticket>              one-time action
@@ -30,6 +31,10 @@ Owner '*' marks the public game panel posted in the channel: anyone may press
 it, and each press opens that citizen's own private menu. Public buttons only
 navigate; they never carry tickets.
 
+Every screen has ◀️ Back next to 🏠 Menu. Each panel message remembers the screens it
+showed (HISTORY), so Back steps through them in reverse; on a message's first screen
+or after a restart, Back goes one level up (the fallback its custom_id carries).
+
 Category keys include the personal views 'ready' and 'favorites'. Setting a
 favourite or clearing the next queue is idempotent, so neither needs a ticket.
 """
@@ -37,6 +42,8 @@ import contextvars
 import copy
 import json
 import secrets
+import threading
+from collections import OrderedDict
 from datetime import timedelta
 from sqlalchemy import Column, String, Text, DateTime, delete, update
 from .db import Base
@@ -384,7 +391,7 @@ def recipe_components(m, ctx, owner, e, category='', page=1, station=''):
         button(craft_label, cid(owner, 't', craft_ticket), style=3, disabled=status.code not in {'ready', 'missing'}, emoji='🛠️'),
         button('Queue 5', cid(owner, 'qp', task, 5), disabled=status.code in {'locked', 'owned'}, emoji='⏱️'),
         button('Queue 10', cid(owner, 'qp', task, 10), disabled=status.code in {'locked', 'owned'}, emoji='⏱️'),
-        button('Back to list', cid(owner, 'wc', category, page, st), emoji='◀️'))
+        back_button(owner, 'wc', category, page, st))
     amounts = select(cid(owner, 'sq', task), 'Queue a different number of batches (1–10)',
                      [option(f'Queue {n} batch' + ('es' if n > 1 else ''), n, f'Shows totals before starting · up to {n * ctx.batch_size(e)} {e.name}')
                       for n in range(1, 11)])
@@ -425,7 +432,7 @@ def queue_plan(m, db, p, owner, task, count):
     if e is not None:
         ctx = wb.Context(m, db, p)
         text = wb.queue_plan_text(ctx, e, count)
-        back = button('Back to recipe', cid(owner, 'wr', e.id, e.category, 1, ''), emoji='◀️')
+        back = back_button(owner, 'wr', e.id, e.category, 1, '')
     else:
         text = (f'⏱️ QUEUE {count} × {task_label(m, task).upper()}\n' + m.task_queue.requirements(m, db, p, task, count) +
                 '\n\nPress Start to begin. The queue works one attempt every 10 seconds, pauses when a need or item runs short, and resumes by itself.')
@@ -510,7 +517,7 @@ def fetch_components(m, ctx, owner, e, batches, start):
         buttons.append(button(f"{source['recipe_name']} recipe", cid(owner, 'wr', source['recipe'], '', 1, ''), emoji='📋'))
     other = 5 if batches == 1 else 1
     navigation = [button(f'Plan for {other} batch' + ('es' if other > 1 else ''), cid(owner, 'fm', e.id, other), emoji='🔢'),
-                  button('Back to recipe', cid(owner, 'wr', e.id, e.category, 1, ''), emoji='◀️')]
+                  back_button(owner, 'wr', e.id, e.category, 1, '')]
     return [row(*buttons[:5]), row(*navigation)] if buttons else [row(*navigation)]
 
 
@@ -628,19 +635,117 @@ def _user(payload):
 
 
 def with_menu(data, owner=None):
-    """Every screen ends with 🏠 Menu (last, in the same place), so no screen is a dead end."""
+    """Every screen ends with ◀️ Back and 🏠 Menu, together and last, so no screen is a dead end.
+    The home menu gets Back too once its message has an earlier screen to go back to."""
     rows = [r for r in data.get('components') or [] if r and r.get('components')]
     ids = [str(c.get('custom_id') or '') for r in rows for c in r['components']]
     owner = next((i.split('|')[1] for i in ids if i.startswith('ne|')), owner)
-    if not rows or owner is None or data.get('_home') or any(i.endswith('|mn|home') for i in ids):
+    if not rows or owner is None:
         return data
-    home = button('Menu', cid(owner, 'mn', 'home'), emoji='🏠')
-    if all(c.get('type') == 2 for c in rows[-1]['components']) and len(rows[-1]['components']) < 5:
-        rows[-1] = dict(rows[-1], components=rows[-1]['components'] + [home])
-    elif len(rows) < 5:
-        rows.append(row(home))
-    data['components'] = rows
+    is_back = lambda c: str(c.get('custom_id') or '').split('|')[2:3] == ['bk']
+    is_menu = lambda c: str(c.get('custom_id') or '').split('|')[2:] == ['mn', 'home']
+    back = next((c for r in rows for c in r['components'] if is_back(c)), None)
+    menu = next((c for r in rows for c in r['components'] if is_menu(c)), None)
+    home = bool(data.get('_home'))
+    if back is None and owner != PUBLIC and (not home or _earlier_screen(owner)):
+        back = back_button(owner)
+    if menu is None and not home:
+        menu = button('Menu', cid(owner, 'mn', 'home'), emoji='🏠')
+    tail = [c for c in (back, menu) if c is not None]
+    if not tail:
+        return data
+    kept = [dict(r, components=[c for c in r['components'] if not is_back(c) and not is_menu(c)]) for r in rows]
+    kept = [r for r in kept if r['components']]
+    if kept and all(c.get('type') == 2 for c in kept[-1]['components']) and len(kept[-1]['components']) + len(tail) <= 5:
+        kept[-1] = dict(kept[-1], components=kept[-1]['components'] + tail)
+    elif len(kept) < 5:
+        kept.append(row(*tail))
+    else:
+        return data                     # five full rows: leave the screen as it is
+    data['components'] = kept
     return data
+
+
+def _earlier_screen(owner):
+    """Whether the message being pressed has shown a screen before this one (for Back on the home menu)."""
+    payload = INTERACTION.get()
+    if not payload:
+        return False
+    found = HISTORY.get((owner, str((payload.get('message') or {}).get('id') or '')))
+    return bool(found and found['screens'])
+
+
+# ---------------------------------------------------------------- Back: the screens a message showed
+
+# Each panel message remembers the screens it showed, newest last, so ◀️ Back reopens the one
+# before, step by step. Kept in memory: on a message's first screen, or after a restart, Back
+# goes one level up instead (the fallback address its button carries).
+HISTORY = OrderedDict()            # (owner, message id) -> {'screens': [(verb, args, values)…], 'on': bool}
+HISTORY_KEEP = 5000                # messages remembered, the oldest forgotten first
+HISTORY_DEPTH = 20                 # screens remembered per message
+_HISTORY_LOCK = threading.Lock()   # presses are answered on worker threads
+# Controls that only show a screen, so Back can show it again. Anything else (a one-time action,
+# a toggle, setting a goal) leaves its result on the message, and Back returns to the screen before.
+SCREENS = {'wh', 'wc', 'sc', 'ss', 'wr', 'sr', 'qp', 'sq', 'qv', 'qd', 'st', 'gv', 'pv', 'av', 'fu', 'fi', 'fd', 'fm',
+           'mn', 'mv', 'mk', 'mp', 'ma', 'lp'}
+
+
+def back_button(owner, *fallback):
+    """◀️ Back: the screen this message showed before; on its first screen, `fallback` (one level up), else the menu."""
+    return button('Back', cid(owner, 'bk', *fallback), emoji='◀️')
+
+
+def _history(payload, owner):
+    key = (owner, str((payload.get('message') or {}).get('id') or ''))
+    with _HISTORY_LOCK:
+        found = HISTORY.get(key)
+        if found is None:
+            found = HISTORY[key] = {'screens': [], 'on': False}
+            while len(HISTORY) > HISTORY_KEEP:
+                HISTORY.popitem(last=False)
+        HISTORY.move_to_end(key)
+        return found
+
+
+def _remember(payload, owner, verb, args, values, answer):
+    """A screen shown in place joins its message's history; any other change to the message is a result."""
+    if not isinstance(answer, dict) or answer.get('type') != 7:
+        return answer                   # a private notice or a new message: this message did not change
+    found = _history(payload, owner)
+    if verb not in SCREENS:
+        found['on'] = False
+        return answer
+    screen = (verb, list(args), list(values or []))
+    if not (found['on'] and found['screens'] and found['screens'][-1] == screen):
+        found['screens'] = (found['screens'] + [screen])[-HISTORY_DEPTH:]
+    found['on'] = True
+    return answer
+
+
+def _left_screen(payload, owner):
+    """A one-time action is about to replace the screen with its result."""
+    if int((payload.get('message') or {}).get('flags', 0)) & 64:
+        _history(payload, owner)['on'] = False
+
+
+def go_back(m, payload, uid, name, owner, fallback):
+    """◀️ Back: the screen before the one shown (or before an action's result), else the fallback."""
+    found = _history(payload, owner)
+    if found['on'] and found['screens']:
+        found['screens'].pop()          # leave the screen being shown
+    if found['screens']:
+        verb, args, values = found['screens'][-1]
+    elif fallback:
+        verb, args, values = fallback[0], list(fallback[1:]), []
+    else:
+        verb, args, values = 'mn', ['home'], []
+    with ticket_batch(m):
+        try:
+            answer = _navigate(m, payload, uid, name, owner, verb, args, values)
+        except (IndexError, KeyError, ValueError):
+            verb, args, values = 'mn', ['home'], []
+            answer = _navigate(m, payload, uid, name, owner, verb, args, values)
+    return _remember(payload, owner, verb, args, values, answer)
 
 
 def _reply(data, payload, notice=False):
@@ -715,6 +820,10 @@ def handle_component(m, payload, schedule=None):
         values, args = [args[-1][1:]], args[:-1]
     if verb == 'sh':
         return share(m, uid, name, args)
+    if verb == 'bk':
+        if schedule is not None:
+            schedule(_popups, m, payload, uid)
+        return go_back(m, payload, uid, name, owner, args)
     if verb == 'mo':
         from . import menu
         form = menu.modal(owner, args[0] if args else '', args[1:])
@@ -725,6 +834,7 @@ def handle_component(m, payload, schedule=None):
         if item is not None and item.get('then') == 'do':
             # Choosing from an action list (a food, a hobby…) performs it, like a slash command.
             action = {'do': 'cmd', 'leaf': args[0], 'value': values[0] if values else ''}
+            _left_screen(payload, owner)
             if schedule is None:
                 return _reply(run_ticket(m, uid, name, action, payload), payload)
             schedule(finish_ticket, m, payload, uid, name, action)
@@ -735,6 +845,7 @@ def handle_component(m, payload, schedule=None):
         action, reason = claim(m, owner, args[0] if args else '')
         if action is None:
             return _notice(reason)
+        _left_screen(payload, owner)
         if schedule is None:
             return _reply(run_ticket(m, uid, name, action, payload), payload)
         schedule(finish_ticket, m, payload, uid, name, action)
@@ -745,7 +856,7 @@ def handle_component(m, payload, schedule=None):
     # presser's own preferences. Game commands they show take it themselves.
     with ticket_batch(m):
         try:
-            return _navigate(m, payload, uid, name, owner, verb, args, values)
+            return _remember(payload, owner, verb, args, values, _navigate(m, payload, uid, name, owner, verb, args, values))
         except (IndexError, KeyError, ValueError):
             # Malformed or outdated custom_id: navigation is read-only, so just say so.
             return _notice('This control is no longer available. Run the command again.')
@@ -996,6 +1107,7 @@ def handle_modal(m, payload, schedule=None):
             db.commit()
     if result is None:
         return _notice('This form is no longer available. Open /menu again.')
+    _left_screen(payload, owner if owner != PUBLIC else uid)
     if 'do' in result:
         # Spending forms (link, start a business, buy an amount) run like a one-time button.
         if schedule is None:
@@ -1053,8 +1165,8 @@ EXTRA_TICKETS = {'plan', 'sellstep', 'saveroutine', 'routine', 'undo', 'buyitem'
 
 
 def _menu_row(owner, back=None):
-    buttons = [button('Back: ' + back[1], cid(owner, 'mn', back[0]), emoji='◀️')] if back else []
-    return row(*buttons, button('Menu', cid(owner, 'mn', 'home'), emoji='🏠'))
+    """◀️ Back (else up to `back`'s area) and 🏠 Menu."""
+    return row(back_button(owner, 'mn', back[0]) if back else back_button(owner), button('Menu', cid(owner, 'mn', 'home'), emoji='🏠'))
 
 
 def step_button(m, owner, step, first=False):
@@ -1200,7 +1312,7 @@ def schedule_editor(m, db, p, owner, note=''):
     rows = [select(cid(owner, 'lp', ph), f'{ph}: {autonomy.BLOCKS[b][1]}',
                    [option(label, key, emoji=emoji, default=key == b) for key, (emoji, label) in autonomy.BLOCKS.items()])
             for ph, b in blocks.items()]
-    return message(m, text, rows + [row(button('Back: My Seedling', cid(owner, 'mn', 'seedling'), emoji='◀️'),
+    return message(m, text, rows + [row(back_button(owner, 'mn', 'seedling'),
                                         button('Menu', cid(owner, 'mn', 'home'), emoji='🏠'))], 'seedling')
 
 

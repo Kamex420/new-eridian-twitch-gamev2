@@ -534,15 +534,12 @@ def grid(m, owner, keys, rows=4):
     return [ui.row(*buttons[i:i + 5]) for i in range(0, len(buttons), 5)]
 
 
-def nav(owner, area):
-    back = PARENT.get(area, 'home') if area != 'home' else None
-    buttons = []
-    if back and back != 'home':
-        emoji, title, _, _ = AREAS[back]
-        buttons.append(ui.button('Back: ' + title, ui.cid(owner, 'mn', back), emoji='◀️'))
-    if area != 'home':
-        buttons.append(ui.button('Menu', ui.cid(owner, 'mn', 'home'), emoji='🏠'))
-    return ui.row(*buttons) if buttons else None
+def nav(owner, area, up=None):
+    """◀️ Back and 🏠 Menu under a screen in `area`. Back returns to the screen shown before; on a
+    message's first screen it goes up to `up` (an area screen: its parent; a screen inside one: the area)."""
+    if area == 'home' and up is None:
+        return None
+    return ui.row(ui.back_button(owner, 'mn', up or PARENT.get(area, 'home')), ui.button('Menu', ui.cid(owner, 'mn', 'home'), emoji='🏠'))
 
 
 def children_of(m, area, ctx=None):
@@ -807,7 +804,7 @@ def pick_view(m, db, p, owner, key, page=1):
         empty = {'food': 'You have no food. Harvest, gather or craft some first.', 'use': 'You own nothing usable yet.',
                  'sell': 'You have nothing Seed Industries buys.', 'player': 'No other citizens yet.',
                  'title': 'You have not unlocked a title yet.', 'order': 'No production orders today.'}
-        return text + '\n\n' + empty.get(item['pick'], 'Nothing to choose from right now.'), [nav(owner, area)]
+        return text + '\n\n' + empty.get(item['pick'], 'Nothing to choose from right now.'), [nav(owner, area, area)]
     options = [ui.option(label, value) for label, value in rows]
     if pages > 1:
         text += f'\nPage {page} of {pages}.'
@@ -816,8 +813,7 @@ def pick_view(m, db, p, owner, key, page=1):
         if page < pages:
             options.append(ui.option(f'Next page ({page + 1}/{pages}) ▶', f'__page:{page + 1}'))
     menu = ui.select(ui.cid(owner, 'mp', key), 'Choose…' if pages == 1 else f'Choose… (page {page}/{pages})', options)
-    return text, [menu, ui.row(ui.button('Back: ' + AREAS[area][1], ui.cid(owner, 'mn', area), emoji='◀️'),
-                               ui.button('Menu', ui.cid(owner, 'mn', 'home'), emoji='🏠'))]
+    return text, [menu, nav(owner, area, area)]
 
 
 def pick_message(m, db, p, owner, key, page=1):
@@ -896,14 +892,14 @@ def navigate(m, db, p, owner, verb, args, values, name):
             if key == 'sell':
                 later = ui.button('Sell it after my queue', ui.cid(owner, 't', ui.issue(m, owner, {'do': 'sellstep', 'item': value})), emoji='🗺️')
             return ui.message(m, text, [ui.row(ui.button('Confirm', ui.cid(owner, 't', ticket), style=3, emoji='✔️'), later,
-                                               ui.button('Back', ui.cid(owner, 'mk', key), emoji='◀️'),
+                                               ui.back_button(owner, 'mk', key),
                                                ui.button('Menu', ui.cid(owner, 'mn', 'home'), emoji='🏠'))], 'menu')
         if then == 'panel':
             if item['pick'] == 'ore':
                 command, options = 'mine', {'ore': value}
                 return show(m, db, p, owner, command, options, area, name, key)
             text = m._discord_call_internal('catalog', owner, name, {'item': value}, '')
-            return reply(m, text, 'catalog', ui.work_components(m, owner, 'gather:' + value) + [nav(owner, area)])
+            return reply(m, text, 'catalog', ui.work_components(m, owner, 'gather:' + value) + [nav(owner, area, area)])
         if then == 'uses':
             text, rows = m.extras.uses_text(m, db, p, value)
             return ui.message(m, text, ui.uses_components(owner, rows), 'catalog')
@@ -912,7 +908,7 @@ def navigate(m, db, p, owner, verb, args, values, name):
             buttons = [ui.button(LEAVES['s_' + a]['label'], ui.cid(owner, 't', ui.issue(m, owner, {'do': 'cmd', 'leaf': 's_' + a, 'value': value})),
                                  style=3, emoji=LEAVES['s_' + a]['emoji']) for a, _, _ in SOCIAL]
             text = f'🤝 WITH {label.upper()}\nPick an activity. Each one builds your relationship and restores Social.'
-            return ui.message(m, text, [ui.row(*buttons[:5]), ui.row(*buttons[5:]), nav(owner, 'social')], 'menu')
+            return ui.message(m, text, [ui.row(*buttons[:5]), ui.row(*buttons[5:]), nav(owner, 'social', 'social')], 'menu')
         return None   # 'do': run it as an action
     return None
 
@@ -941,7 +937,7 @@ def amount_view(m, db, p, owner, key, value):
         f'\nYou have {have}.' if selling else '')
     if selling and not have:
         text += '\nYou have none of this to sell.'
-    return ui.message(m, text, [ui.row(*buttons[:5]), ui.row(other, ui.button('Back', ui.cid(owner, 'mk', key), emoji='◀️'),
+    return ui.message(m, text, [ui.row(*buttons[:5]), ui.row(other, ui.back_button(owner, 'mk', key),
                                                             ui.button('Menu', ui.cid(owner, 'mn', 'home'), emoji='🏠'))], 'menu')
 
 
@@ -966,7 +962,7 @@ def submit(m, db, p, owner, name, key, args, value):
         return None
     if item.get('then') == 'amount':
         if not value.isdigit() or not 1 <= int(value) <= 100:
-            return ui.message(m, '✏️ Enter a whole number from 1 to 100. Nothing was spent.', [nav(owner, PARENT.get(key, 'home'))], 'menu')
+            return ui.message(m, '✏️ Enter a whole number from 1 to 100. Nothing was spent.', [nav(owner, PARENT.get(key, 'home'), PARENT.get(key, 'home'))], 'menu')
         return {'do': 'cmd', 'leaf': key, 'value': args[0] if args else '', 'amount': int(value)}
     command, options = options_for(key, value)
     if key == 'find':
@@ -988,11 +984,11 @@ def show(m, db, p, owner, command, options, area, name, key=''):
     """Run a view command and show it with its own panel (if any) and this area's buttons."""
     denied = _denied(m, m.discord_legacy_route(command, options)[0])
     if denied:
-        return ui.message(m, denied, [nav(owner, area)], 'moderator')
+        return ui.message(m, denied, [nav(owner, area, area)], 'moderator')
     text = m._discord_call_internal(command, owner, name, options, '')
     legacy, legacy_options = m.discord_legacy_route(command, options)
     panel = ui.slash_panel(m, legacy, owner, name, legacy_options, text)
-    bottom = nav(owner, area)
+    bottom = nav(owner, area, area)
     shared = ui.share_button(owner, legacy, legacy_options)
     if shared:
         bottom = ui.row(shared, *((bottom or {}).get('components') or []))
@@ -1023,15 +1019,15 @@ def run(m, uid, name, action, token=''):
     legacy, legacy_options = m.discord_legacy_route(command, options)
     denied = _denied(m, legacy)
     if denied:
-        return reply(m, denied, 'moderator', [nav(uid, area) or ui.row(ui.button('Menu', ui.cid(uid, 'mn', 'home'), emoji='🏠'))])
+        return reply(m, denied, 'moderator', [nav(uid, area, area)])
     text = m._discord_call_internal(command, uid, name, options, 'menu-' + (token or secrets.token_hex(8)))
     panel = ui.slash_panel(m, legacy, uid, name, legacy_options, text)
     if panel is not None:
         rows = [r for r in panel.get('components', []) if r.get('components')]
-        panel['components'] = rows[:4] + [nav(uid, area) or ui.row(ui.button('Menu', ui.cid(uid, 'mn', 'home'), emoji='🏠'))]
+        panel['components'] = rows[:4] + [nav(uid, area, area)]
         return panel
     visible = with_context(m, uid, lambda c: children_of(m, area, c), name)
-    rows = grid(m, uid, visible, rows=3) + [nav(uid, area) or ui.row(ui.button('Menu', ui.cid(uid, 'mn', 'home'), emoji='🏠'))]
+    rows = grid(m, uid, visible, rows=3) + [nav(uid, area, area)]
     if legacy == 'seedindustries' and legacy_options.get('action') in {'sellall'} and 'sold' in text:
         rows = [ui.row(ui.button('Undo sale (60s)', ui.cid(uid, 't', ui.issue(m, uid, {'do': 'undo'})), style=4, emoji='↩️'),
                        ui.button('Sell another', ui.cid(uid, 'mk', 'sell'), emoji='🏷️'), ui.button('Auto-sell', ui.cid(uid, 'av'), emoji='🧹')), rows[-1]]
