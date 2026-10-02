@@ -14,6 +14,7 @@ IRON_PLATE = s.key('Iron Plate')
 STONE_DUST = s.key('Stone Dust')
 STONE = s.key('Stone')
 GLASS = s.key('Glass')
+ARGENTITE = s.key('Argentite Ore')
 
 
 def player(uid='111'):
@@ -268,11 +269,120 @@ def test_restock_a_crafted_item_starts_the_craft_queue():
     citizen(lumber=10)
     set_keep(CAMPFIRE.output, 2)
     r = shortfall(CAMPFIRE.output)
-    assert r['kind'] == 'recipe' and r['recipe'] == CAMPFIRE.id
+    assert r['kind'] == 'recipe' and r['recipe'] == CAMPFIRE.id and not r['blocked'] and (r['batches'], r['count']) == (2, 2)
     text = keep.restock(m, W, '111', 'Kam', 'discord', CAMPFIRE.output)
     assert 'TASK QUEUE' in text
     row = queue_row()
-    assert row.task == 'make:' + CAMPFIRE.id and row.total == min(10, r['batches']) and row.state == 'running'
+    assert row.task == 'make:' + CAMPFIRE.id and row.total == 2 and row.state == 'running'
+
+
+def test_restock_queues_only_the_batches_the_ingredients_cover():
+    citizen(lumber=4)                                                  # 2 Lumber a Campfire: 2 batches of the 5 needed
+    set_keep(CAMPFIRE.output, 5)
+    r = shortfall(CAMPFIRE.output)
+    assert not r['blocked'] and (r['batches'], r['count'], r['more']) == (5, 2, 'Lumber')
+    text = keep.restock(m, W, '111', 'Kam', 'discord', CAMPFIRE.output)
+    assert 'ingredients cover 2 of 5 batches; the rest needs more Lumber' in text and 'TASK QUEUE' in text
+    row = queue_row()
+    assert row.task == 'make:' + CAMPFIRE.id and row.total == 2
+
+
+def no_tickets(data):
+    return all('|t|' not in str(c.get('custom_id')) and c.get('style') != 3 for c in controls(data))
+
+
+def test_restock_never_starts_a_craft_whose_ingredients_are_missing():
+    citizen(lumber=0)
+    set_keep(CAMPFIRE.output, 2)
+    r = shortfall(CAMPFIRE.output)
+    assert r['blocked'] == '❌ need 2 Lumber' and r['view'] == ('fm', CAMPFIRE.id, 2)
+    text = keep.restock(m, W, '111', 'Kam', 'discord', CAMPFIRE.output)
+    assert text.startswith('🛡️ Restock Campfire is blocked: craft Campfire ×2 · ❌ need 2 Lumber — fetch the ingredients first.')
+    assert 'FETCH INGREDIENTS' in text and text.endswith('Nothing changed.') and queue_row() is None
+    advance()
+    assert queue_row() is None
+    screen = press(ui.cid('111', 'kv'))['data']
+    assert 'need 2 Lumber — fetch the ingredients first' in text_of(screen['embeds'])
+    assert 'Restock Campfire' not in labels(screen) and no_tickets(screen)        # no one-time ticket, nothing green
+    fetch = find(screen, 'Fetch for Campfire')
+    assert fetch['custom_id'] == ui.cid('111', 'fm', CAMPFIRE.id, 2) and fetch['style'] == 2
+    assert 'Fetch Ingredients · Campfire ×2 batches' in text_of(press(fetch['custom_id'])['data']['embeds'])   # the existing fetch screen
+
+
+def test_restock_never_starts_a_craft_at_a_locked_workstation():
+    citizen(lumber=0)
+    set_keep(IRON_PLATE, 5)
+    r = shortfall(IRON_PLATE)
+    e = wb.entry(m, r['recipe'])
+    assert r['blocked'] == '🔑 unlock Metalworking Bench 15 SC' and r['view'] == ('wr', e.id, e.category, 1, '')
+    text = keep.restock(m, W, '111', 'Kam', 'discord', IRON_PLATE)
+    assert text.startswith('🛡️ Restock Iron Plate is blocked: craft Iron Plate ×1 · 🔑 unlock Metalworking Bench 15 SC — open the recipe to unlock.')
+    assert text.endswith('Nothing changed.') and queue_row() is None
+    screen = press(ui.cid('111', 'kv'))['data']
+    assert 'Restock Iron Plate' not in labels(screen) and no_tickets(screen)
+    recipe = find(screen, 'Iron Plate recipe')
+    assert recipe['custom_id'] == ui.cid('111', 'wr', e.id, e.category, 1, '') and recipe['style'] == 2
+    assert any(label.startswith('Unlock Metalworking Bench') for label in labels(press(recipe['custom_id'])['data']))
+
+
+def test_restock_never_mines_a_rare_ore_without_the_harvesting_level():
+    citizen(lumber=0)
+    set_keep(ARGENTITE, 3)
+    r = shortfall(ARGENTITE)
+    assert r['kind'] == 'queue' and r['blocked'] == '🔒 rare ores require Harvesting Lv.3 (you are Lv 1)' and r['view'] is None
+    text = keep.restock(m, W, '111', 'Kam', 'discord', ARGENTITE)
+    assert text.startswith('🛡️ Restock Argentite Ore is blocked: Mine ×10') and 'Harvesting Lv.3' in text
+    assert text.endswith('Nothing changed.') and queue_row() is None
+    screen = press(ui.cid('111', 'kv'))['data']
+    assert not any('Argentite' in label for label in labels(screen)[1:]) and no_tickets(screen)   # no button, only the text
+
+
+def test_a_blocked_restock_leaves_a_running_queue_alone():
+    citizen(lumber=0)
+    m.queued_tasks(W, '111', 'Kam', 'start', 'gather:' + LUMBER, '3', 'discord')
+    set_keep(IRON_PLATE, 5)
+    assert keep.restock(m, W, '111', 'Kam', 'discord', IRON_PLATE).endswith('Nothing changed.')
+    row = queue_row()
+    assert (row.task, row.total, row.remaining) == ('gather:' + LUMBER, 3, 3)
+
+
+def test_low_needs_alone_do_not_block_a_restock():
+    citizen(lumber=0)
+    with m.SessionLocal() as db:
+        m.life_state(db, m.player(db, W, 'discord', '111', 'Kam')[1]).energy = 0
+        db.commit()
+    set_keep(LUMBER, 5)
+    assert shortfall(LUMBER)['blocked'] == ''
+    keep.restock(m, W, '111', 'Kam', 'discord', LUMBER)
+    row = queue_row()
+    assert row.task == 'gather:' + LUMBER and row.total == 5           # it waits for Energy, then carries on by itself
+
+
+def test_restock_without_an_item_skips_blocked_rows():
+    citizen(lumber=0)
+    set_keep(IRON_PLATE, 5)                                             # blocked, and first by name
+    db, p = player()
+    with db:
+        assert keep.restock_plan(m, db, p, 'twitch').startswith('🛡️ Restock Iron Plate: have 0 / keep 5, short 5 → craft Iron Plate ×1 · 🔑')
+    assert 'is blocked' in keep.restock(m, W, '111', 'Kam', 'discord') and queue_row() is None   # only blocked rows: it explains
+    set_keep(LUMBER, 5)
+    db, p = player()
+    with db:
+        assert keep.restock_plan(m, db, p, 'twitch').startswith('🛡️ Restock Lumber: have 0 / keep 5, short 5 → Gather ×5. !keep restock go')
+        assert keep._pick(keep.shortfalls(m, db, p))['key'] == LUMBER
+    assert keep.restock(m, W, '111', 'Kam', 'discord').startswith('🛡️ Restocking Lumber')
+    assert queue_row().task == 'gather:' + LUMBER
+
+
+def test_twitch_restock_go_on_a_blocked_row_points_to_fetching():
+    seed()
+    reply = chat('campfire 2')
+    assert 'always keep 2 Campfire' in reply
+    blocked = chat('restock go')
+    assert blocked.startswith('🛡️ Restock Campfire is blocked: craft Campfire ×2 · ❌ need 2 Lumber — fetch the ingredients first.')
+    assert '!fetchgo Campfire 2 starts it.' in blocked and blocked.endswith('Nothing changed.')
+    with m.SessionLocal() as db:
+        assert db.get(q.TaskQueue, ('test', 'u')) is None
 
 
 def test_restock_a_bought_item_buys_the_shortfall_only_with_enough_sc():

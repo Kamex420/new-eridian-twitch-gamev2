@@ -110,8 +110,9 @@ def when(m, seconds, provider='discord'):
 
 # ---------------------------------------------------------------- queue max
 
-def max_attempts(m, db, p, task):
-    """(attempts, what limits it): the most of `task` your items and needs allow, up to 10."""
+def max_attempts(m, db, p, task, with_needs=True):
+    """(attempts, what limits it): the most of `task` your items and needs allow, up to 10.
+    with_needs=False counts items only (needs recover by themselves while a queue waits)."""
     tq = m.task_queue
     if task not in tq.choices(m):
         return 0, 'unknown task'
@@ -121,7 +122,7 @@ def max_attempts(m, db, p, task):
         enough = m.material_amount(db, p, key) // max(1, n)
         if enough < limit:
             limit, reason = enough, m.resource_name(key)
-    if not m.qol.autorecover_on(db, p.channel_id, p.twitch_uid):
+    if with_needs and not m.qol.autorecover_on(db, p.channel_id, p.twitch_uid):
         life = m.life_state(db, p)
         comfort = needs.comfort_cost(energy)
         rows = [((life.energy - needs.TASK_NEED_MINIMUM) // energy + 1 if life.energy >= needs.TASK_NEED_MINIMUM else 0, 'Energy'),

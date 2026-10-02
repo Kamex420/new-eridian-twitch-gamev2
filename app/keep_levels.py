@@ -8,13 +8,16 @@ never limited, and undo works as before.
 Restock lists every item below its level with the best way back up (the routes fetching
 ingredients uses: a gathering or mining queue, a craft queue or a Seed Industries purchase) and
 starts it through the ordinary queue, craft queue or purchase, so every gate, cost, cooldown and
-the one-queue rule still apply. One additive table holds the levels, at most 25 per citizen.
+the one-queue rule still apply. It only starts work that can progress now: a missing ingredient,
+a locked recipe or workstation, or a rare ore without the Harvesting level is shown with the
+screen that fixes it, and nothing starts (low needs and cooldowns are fine: a queue waits them
+out). One additive table holds the levels, at most 25 per citizen.
 """
 import re
 from types import SimpleNamespace
 from sqlalchemy import Column, String, Integer, select
 from .db import Base
-from . import seed_content as s, workbench as wb
+from . import seed_content as s, workbench as wb, crafting_progression as cp
 
 MAX_LEVELS = 25
 MAX_AMOUNT = 9999
@@ -122,39 +125,70 @@ def set_level(m, db, p, key, amount):
 # ---------------------------------------------------------------- restock
 
 def shortfalls(m, db, p, provider='discord'):
-    """Every item below its keep level with its best route back up (qol.fetch_routes), in name order."""
+    """Every item below its keep level with its best route back up (qol.fetch_routes), in name order.
+
+    Each row also says whether restocking can start now, using the game's own gates: r['blocked'] is ''
+    or what stops it, r['view'] the custom_id parts of the screen that fixes it (Fetch missing, or the
+    recipe with its Unlock), and r['count'] the attempts or batches a restock queues."""
     want = levels(db, p.channel_id, p.twitch_uid)
     if not want:
         return []
     ctx = wb.Context(m, db, p, provider)
     rows = m.qol.fetch_routes(ctx, SimpleNamespace(inputs=want), 1)
     for r in rows:
-        r.update(have=ctx.have(r['key']), keep=want[r['key']], status='')
-        if r['kind'] == 'recipe':
-            status = ctx.status(wb.entry(m, r['recipe']))
-            r['status'] = '' if status.code == 'ready' else f'{status.emoji} {status.short}'
+        r.update(have=ctx.have(r['key']), keep=want[r['key']], blocked='', fix='', view=None, more='', count=r.get('attempts', 0))
+        if r['kind'] == 'queue' and r['key'] in cp.RARE and ctx.harvesting < cp.RARE_LEVEL:
+            r['blocked'] = f'🔒 rare ores require Harvesting Lv.{cp.RARE_LEVEL} (you are Lv {ctx.harvesting})'
+        elif r['kind'] == 'recipe':
+            e = wb.entry(m, r['recipe'])
+            status = ctx.status(e)
+            r['count'] = min(10, r['batches'])
+            if status.code == 'missing':
+                r.update(blocked=f'{status.emoji} {status.short}', fix='fetch', view=('fm', e.id, r['count']))
+            elif status.code != 'ready':
+                r.update(blocked=f'{status.emoji} {status.short}', fix='unlock' if status.code == 'station' else 'recipe',
+                         view=('wr', e.id, e.category, 1, ''), detail=status.detail)
+            else:
+                # Only the batches today's ingredients cover (needs recover while the queue waits).
+                allowed, short_of = m.extras.max_attempts(m, db, p, 'make:' + e.id, with_needs=False)
+                if allowed <= 0:
+                    r.update(blocked='🛑 this recipe cannot be queued', fix='recipe', view=('wr', e.id, e.category, 1, ''))
+                elif allowed < r['count']:
+                    r.update(count=allowed, more=short_of)
     return sorted(rows, key=lambda r: r['name'].casefold())
 
 
+FIXES = {'fetch': 'fetch the ingredients first', 'unlock': 'open the recipe to unlock', 'recipe': 'open the recipe'}
+
+
 def route_text(m, r, provider='discord'):
-    """What restocking one short item does."""
+    """What restocking one short item does, and what blocks it."""
     if r['kind'] == 'queue':
         verb = 'Mine' if r['task'].startswith('mine:') else 'Gather'
-        return f"{verb} ×{r['attempts']}" + (' (10 is the queue maximum; restock again afterwards)' if r['capped'] else '')
-    if r['kind'] == 'recipe':
-        count = min(10, r['batches'])
-        return (f"craft {r['recipe_name']} ×{count}" + (' (10 is the queue maximum; restock again afterwards)' if r['batches'] > 10 else '')
-                + (f" · {r['status']}" if r['status'] else ''))
-    if r['kind'] == 'buy':
+        text = f"{verb} ×{r['attempts']}" + (' (10 is the queue maximum; restock again afterwards)' if r['capped'] else '')
+    elif r['kind'] == 'recipe':
+        text = f"craft {r['recipe_name']} ×{r['count']}"
+        if r['more']:
+            text += f" (ingredients cover {r['count']} of {min(10, r['batches'])} batches; the rest needs more {r['more']})"
+        elif r['batches'] > 10:
+            text += ' (10 is the queue maximum; restock again afterwards)'
+    elif r['kind'] == 'buy':
         return f"buy {r['short']} for {r['price'] * r['short']} SC"
-    return 'cannot be restocked automatically: ' + m.material_source(r['key'], provider).rstrip('.')
+    else:
+        return 'cannot be restocked automatically: ' + m.material_source(r['key'], provider).rstrip('.')
+    if r['blocked']:
+        fix = FIXES.get(r['fix'], '')
+        if fix and provider != 'discord' and r['fix'] != 'fetch':
+            fix = 'see !make ' + r['recipe_name']
+        text += f" · {r['blocked']}" + (f' — {fix}' if fix else '')
+    return text
 
 
 def _pick(rows, key=''):
-    """The row to restock: the one named, else the first that can be started, else the first."""
+    """The row to restock: the one named, else the first that can start now, else the first (its reply explains)."""
     if key:
         return next((r for r in rows if r['key'] == key), None)
-    return next((r for r in rows if r['kind'] != 'none'), rows[0] if rows else None)
+    return next((r for r in rows if r['kind'] != 'none' and not r['blocked']), rows[0] if rows else None)
 
 
 def _not_short(m, db, p, key):
@@ -170,6 +204,25 @@ def _not_short(m, db, p, key):
     return f'✅ You have {m.material_amount(db, p, key)} {name}, at or above your keep level of {keep}. Nothing to restock.'
 
 
+def _blocked_reply(m, db, p, r, provider):
+    """A restock that cannot start now: what blocks it and how to fix it. Nothing is started."""
+    head = f"🛡️ Restock {r['name']} is blocked: {route_text(m, r, provider)}."
+    tail = ' Nothing changed.'
+    if r['fix'] == 'fetch':
+        # The fetch-ingredients flow's own plan (and its !fetchgo hint on Twitch).
+        plan, _ = m.qol.fetch_plan(wb.Context(m, db, p, provider), wb.entry(m, r['recipe']), r['count'])
+        if provider == 'discord':
+            return f'{head}\n\n{plan}\n\nNothing changed.'
+        room = m.presentation.CHAT_LIMIT - len((head + ' ' + tail).encode())
+        parts = plan.split(' | ')
+        while len(parts) > 2 and len(' | '.join(parts).encode()) > room:
+            parts.pop(-2)                                  # keep the plan's title and its closing !fetchgo hint
+        return f"{head} {' | '.join(parts)}{tail}"
+    if r.get('detail'):
+        head += ' ' + r['detail'].rstrip('.') + '.'
+    return head + tail
+
+
 def restock_plan(m, db, p, provider='discord', key=''):
     """One line: what restocking the chosen (or first) short item would do."""
     key = m.item_identity.canonical(key) if key else ''
@@ -180,7 +233,7 @@ def restock_plan(m, db, p, provider='discord', key=''):
     text = f"🛡️ Restock {r['name']}: have {r['have']} / keep {r['keep']}, short {r['short']} → {route_text(m, r, provider)}."
     if r['kind'] == 'buy' and p.sc < r['price'] * r['short']:
         text += f" You have {p.sc} SC."
-    elif r['kind'] != 'none':
+    elif r['kind'] != 'none' and not r['blocked']:
         text += ' !keep restock go starts it.' if provider != 'discord' else ' Press Restock to start it.'
     if len(rows) > 1:
         text += f' {len(rows)} items are below their keep level.'
@@ -188,9 +241,10 @@ def restock_plan(m, db, p, provider='discord', key=''):
 
 
 def restock(m, channel, uid, name, provider='discord', key=''):
-    """Start getting one item (the first short one when none is named) back up to its keep level.
+    """Start getting one item (the first short one that can start when none is named) back up to its keep level.
 
-    Runs the ordinary queue, craft queue or Seed Industries purchase; never anything special."""
+    Runs the ordinary queue, craft queue or Seed Industries purchase; never anything special, and nothing
+    when a gate the queue cannot clear by itself blocks it."""
     tq = m.task_queue
     key = m.item_identity.canonical(key) if key else ''
     with m.SessionLocal() as db:
@@ -204,6 +258,10 @@ def restock(m, channel, uid, name, provider='discord', key=''):
         if r['kind'] == 'none':
             db.commit()
             return f"🛡️ {r['name']} {route_text(m, r, provider)}. Nothing changed."
+        if r['blocked']:
+            text = _blocked_reply(m, db, p, r, provider)
+            db.commit()
+            return text
         if r['kind'] == 'buy':
             cost = r['price'] * r['short']
             if p.sc < cost:
@@ -217,7 +275,10 @@ def restock(m, channel, uid, name, provider='discord', key=''):
             label = tq.choices(m).get(queue.task, queue.task)
             db.commit()
             return f"⏱️ Your queue is still running ({label}), so no restock was started. Restock {r['name']} when it finishes. Nothing changed."
-        task, count = (r['task'], r['attempts']) if r['kind'] == 'queue' else ('make:' + r['recipe'], min(10, r['batches']))
+        task = r['task'] if r['kind'] == 'queue' else 'make:' + r['recipe']
+        if r['more']:
+            head += f"ingredients cover {r['count']} of {min(10, r['batches'])} batches; the rest needs more {r['more']}. "
+        count = r['count']
         db.commit()
     result = m.queued_tasks(channel, uid, name, 'start', task, str(count), provider).body.decode()
     return head + result

@@ -1268,10 +1268,17 @@ def autosell_components(m, db, p, owner):
 
 
 def restock_button(m, p, owner, r):
-    """Restock one short item (a one-time ticket); greyed out when the purchase costs more SC than you have; None when
-    it can only be found or made elsewhere (the screen says where)."""
+    """Restock one short item (a one-time ticket); greyed out when the purchase costs more SC than you have. When a gate
+    blocks it (keep_levels.shortfalls), the screen that fixes it instead: Fetch missing, or the recipe with its Unlock,
+    spending nothing. None when nothing here helps (the screen says why or where it comes from)."""
     if r['kind'] == 'none':
         return None
+    if r['blocked']:
+        if not r['view']:
+            return None
+        if r['view'][0] == 'fm':
+            return button(f"Fetch for {r['name']}", cid(owner, *r['view']), emoji='🧺')
+        return button(f"{r['recipe_name']} recipe", cid(owner, *r['view']), emoji='📋')
     label = f"Restock {r['name']}"
     if r['kind'] == 'buy':
         cost = r['price'] * r['short']
