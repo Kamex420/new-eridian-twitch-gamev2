@@ -27,7 +27,7 @@ from . import layout_v2
 
 # How often the feed updates. It edits its own message when nobody else has posted since (edits do not
 # notify anyone), so a calm channel gets one message that grows; big moments go out at once.
-FEED_SECONDS = max(20, int(os.getenv('FEED_SECONDS', '300')))
+FEED_SECONDS = max(20, int(os.getenv('FEED_SECONDS', '1200')))        # 20 minutes
 MAX_LINES = 15           # lines in one feed message before a new one starts
 KEEP_MINUTES = 30        # a feed message older than this is not edited any more
 FLUSH_LINES = 10         # lines added in one update; the rest are summed up
