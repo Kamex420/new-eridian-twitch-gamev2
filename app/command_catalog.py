@@ -25,7 +25,8 @@ commands = [
             {"name":"Home, Business & Crafting","value":"property"},{"name":"Life & Social","value":"life"},
             {"name":"Work Actions","value":"production"},{"name":"Logistics, Frontier & Commerce","value":"operations"},
             {"name":"Society & World","value":"society"},{"name":"Other Player Actions","value":"other"},
-            {"name":"Moderator Controls","value":"moderator"},{"name":"Terms & Definitions","value":"terms"}
+            {"name":"Moderator Controls","value":"moderator"},{"name":"Terms & Definitions","value":"terms"},
+            {"name":"About this fan project","value":"about"}
         ]
     }]),
     cmd("guide","Tell me what to do next and why",[{

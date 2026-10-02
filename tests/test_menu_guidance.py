@@ -114,3 +114,15 @@ def test_every_screen_shows_where_it_is_and_ends_with_menu():
         data = press(custom_id)['data']
         last = [r for r in data['components'] if r.get('components')][-1]['components'][-1]
         assert last['custom_id'] == ui.cid('111', 'mn', 'home'), custom_id
+
+
+def test_the_game_says_it_is_a_free_fan_project_by_kamex():
+    from app import notice, twitch_help
+    citizen()
+    about = press(ui.cid('111', 'mv', 'h_about'))['data']
+    text = v2.text_of(about)
+    assert 'fan project made by Kamex' in text and 'not made, endorsed, sponsored or approved by Klang Games' in text
+    assert 'nothing to buy' in text and about['embeds'][0]['footer']['text'] == notice.FOOTER   # every card: "a fan project by Kamex"
+    assert 'h_about' in menu.AREAS['help'][3]
+    assert 'Kamex' in m.twitch_seed('about').body.decode() and twitch_help.TOPICS['about'] == notice.TWITCH
+    assert 'Kamex' in v2.text_of(ui.public_panel(m))

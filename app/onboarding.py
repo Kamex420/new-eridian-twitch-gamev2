@@ -230,4 +230,5 @@ def welcome_text(m, db, p, provider):
         return (f"🌱 Welcome to New Eridian, {p.display_name}! Your Seedling just moved in and you're on the stream map now. "
                 f"Welcome kit: {kit}. First step: !gather lumber." + _craft_hint())
     return (f"🌱 **Welcome to New Eridian, {p.display_name}!**\nYour Seedling just moved into the Residential Ring, and you are now on the stream map.\n"
-            f"🎁 Welcome kit: {kit}. That is enough for a Campfire and a snack.\n\n" + status(m, db, p, provider))
+            f"🎁 Welcome kit: {kit}. That is enough for a Campfire and a snack.\n\n" + status(m, db, p, provider)
+            + "\n\nℹ️ New Eridian v2 is a free, unofficial fan project by Kamex, not affiliated with Klang Games. Help → About has the details.")

@@ -58,7 +58,8 @@ NEWCOMER_PANELS = [
       ('IT KEEPS GOING WITHOUT YOU', [
           ('Your Seedling', 'Your citizen is a little person on the stream map. When you stop playing it carries on: it works, eats, sleeps, makes friends and writes you a diary.')]),
       ('WHAT IS SEED?', [
-          ('SEED by Klang Games', "A life-sim MMO about humanity's new home on Avesta. New Eridian borrows its world and its items, but has its own rules. You do not need to know SEED.")]),
+          ('SEED by Klang Games', "A life-sim MMO about humanity's new home on Avesta. New Eridian borrows its world and its items, but has its own rules. You do not need to know SEED."),
+          ('A free fan project by Kamex', 'Unofficial: not made, endorsed or sponsored by Klang Games. Nothing to buy, ever.')]),
       ('WHERE YOU PLAY', [
           ('Twitch chat · the lite version', 'Type !start while you watch the stream.'),
           ('Discord · the full game', 'Type /start here. Crafting, queues and trading are only on Discord.')])],

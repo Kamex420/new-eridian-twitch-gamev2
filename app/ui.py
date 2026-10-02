@@ -42,7 +42,7 @@ from sqlalchemy import Column, String, Text, DateTime, delete, update
 from .db import Base
 from . import workbench as wb, seed_content as s, qol
 
-FOOTER = "New Eridian v2 • May Rocky's wisdom guide you."
+from .notice import FOOTER                     # "… · a fan project by Kamex • …"
 PUBLIC = '*'
 # The Discord interaction being answered, so menu actions can check moderator rights.
 INTERACTION = contextvars.ContextVar('ne_interaction', default=None)
@@ -1016,7 +1016,8 @@ def public_panel(m):
             '⛏️ **Work** — gather, mine, train and run queues\n🛠️ **Craft** — your goal walks you through it; every recipe\n'
             '❤️ **Life** — relax, sleep, eat, recover\n🪙 **Bag & Trade** — what you own, buying and selling\n'
             '🎪 **Colony** — events, the vote, the season and trophies\n👤 **You** — your citizen, Seedling and settings\n'
-            '🔎 **Find** — search anything\n🔗 **Account** — start or link Twitch')
+            '🔎 **Find** — search anything\n🔗 **Account** — start or link Twitch\n\n'
+            'ℹ️ A free, unofficial fan project by Kamex. Not affiliated with Klang Games, the makers of SEED.')
     rows = [row(button('Menu', cid(PUBLIC, 'mn', 'home'), style=1, emoji='🏠'), button('Status', cid(PUBLIC, 'st'), style=1, emoji='📊'),
                 button('Work', cid(PUBLIC, 'mn', 'work'), emoji='⛏️'), button('Craft', cid(PUBLIC, 'mn', 'craft'), emoji='🛠️'),
                 button('Life', cid(PUBLIC, 'mn', 'life'), emoji='❤️')),

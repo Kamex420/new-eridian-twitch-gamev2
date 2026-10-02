@@ -30,6 +30,9 @@ The Holidays panel's COMING UP part is worked out when the bot posts it; the cop
 [0mA life-sim MMO about humanity's new home on Avesta. New
 [0mEridian borrows its world and its items, but has its own
 [0mrules. You do not need to know SEED.
+[0;33mA free fan project by Kamex
+[0mUnofficial: not made, endorsed or sponsored by Klang
+[0mGames. Nothing to buy, ever.
 [1;36mWHERE YOU PLAY
 [0;33mTwitch chat · the lite version
 [0mType !start while you watch the stream.

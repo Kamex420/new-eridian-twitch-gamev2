@@ -1,5 +1,12 @@
 # Release notes
 
+## Fan project notice
+
+The game now says plainly that it is a free, unofficial fan project made by Kamex, not affiliated with Klang Games (the makers of SEED), with nothing to buy.
+- **Help → About** (also `/seed topic:About`, and `!seed about` on Twitch) shows the full notice: who made it, that it is unofficial and free, that SEED's names, items and lore belong to Klang Games, and how a rights holder can ask for changes.
+- Every Discord card's footer now reads "New Eridian v2 · a fan project by Kamex".
+- A short version is in the first newcomer guide panel, on the pinned game panel and in a new player's first welcome.
+
 ## A quieter game channel
 
 The game posts far less in the Discord channel, so nobody needs to mute it.

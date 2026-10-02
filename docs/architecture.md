@@ -25,6 +25,7 @@ The application now has one canonical Python package. Earlier releases stored im
 | `menu.py` | The /menu button tree: areas, their action and view buttons, choice lists and follow-up buttons on every reply |
 | `presentation.py` | How every Discord card and Twitch line looks: task receipts, notices and information cards |
 | `layout_v2.py` | Discord's newer message layout (Components V2): rebuilds every message as one card just before it is sent, puts a button beside each list item a screen names (`ui.with_items`), and keeps every edit in the layout its message already has |
+| `notice.py` | The fan-project notice (a free, unofficial fan project by Kamex, not affiliated with Klang Games): the card footer, Help → About, `!seed about`, the first guide panel, the pinned panel and the first welcome all use it. |
 | `qol.py` | Status view, favourites, follow-up queues, alert and auto-recovery preferences, recovery estimates, fetch plans, bulk selling, inventory search and fuzzy names |
 
 ## Runtime boundaries

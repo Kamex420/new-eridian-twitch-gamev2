@@ -12,7 +12,7 @@ from datetime import timedelta
 from sqlalchemy import Column, String, Text, DateTime, delete
 from .db import Base
 
-FOOTER = "New Eridian v2 • May Rocky's wisdom guide you."
+from .notice import FOOTER                     # "… · a fan project by Kamex • …"
 
 class MessagePages(Base):
     __tablename__ = 'message_pages_v1'

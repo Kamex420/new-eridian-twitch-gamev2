@@ -25,6 +25,7 @@ Never played SEED or New Eridian? Start with these four panels. The game is free
 **What Is Seed?**
 
 - **SEED by Klang Games:** A life-sim MMO about humanity's new home on Avesta. New Eridian borrows its world and its items, but has its own rules. You do not need to know SEED.
+- **A free fan project by Kamex:** Unofficial: not made, endorsed or sponsored by Klang Games. Nothing to buy, ever.
 
 **Where You Play**
 

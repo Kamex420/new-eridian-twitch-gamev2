@@ -13,6 +13,7 @@ from datetime import datetime, timezone, timedelta
 from fastapi import FastAPI, HTTPException, Request, BackgroundTasks
 from starlette.concurrency import run_in_threadpool
 from . import discord_deferred, message_layout, discord_execution, ui, layout_v2
+from . import notice as fan_notice
 from fastapi.responses import PlainTextResponse, HTMLResponse, JSONResponse
 from sqlalchemy import create_engine, Column, Integer, String, DateTime, Boolean, UniqueConstraint, select, inspect, func, text as sql_text
 from sqlalchemy.orm import declarative_base, sessionmaker
@@ -5708,9 +5709,12 @@ Result style — Compact keeps routine cards short; Detailed adds every modifier
 Discoverable lore — Rare unique journal entries found during successful skilled work.""",
 }
 
+SEED_HELP_TOPICS["about"]=fan_notice.FULL
+
 def discord_seed_help(topic="overview",name="Citizen"):
     topic=(topic or "overview").lower()
     greeting=f"📖 {clean(name)} — New Eridian Handbook\n\n"
+    if topic=="about":return greeting+SEED_HELP_TOPICS[topic]
     if topic in SEED_HELP_TOPICS:
         extra="\n\nSUPPLIES\n/catalog Category lists every item through numbered Pages; select Item for exact uses and ingredients. /gather collects natural resources. /make uses the same categories, lists recipes easiest first and previews before spending. /use lists owned items with their costs and effects; durable items are kept. /eat lists owned edible foods." if topic in {'property','production','terms'} else ''
         return greeting+SEED_HELP_TOPICS[topic]+extra
@@ -5719,7 +5723,8 @@ def discord_seed_help(topic="overview",name="Citizen"):
             "🏠 Property — home, business, crafting\n🌿 Life Systems — needs, recovery, social actions\n"
             "🏭 Production — mining, industry, research\n🛰️ Operations — logistics, frontier, commerce\n"
             "🏙️ Society — tiers and events\n🍲 Other — eat and sleep\n🛡️ Moderator — event controls\n"
-            "📖 Terms — definitions for SC, XP, Contribution, aptitudes, tiers, and event roles\n\n"
+            "📖 Terms — definitions for SC, XP, Contribution, aptitudes, tiers, and event roles\n"
+            "ℹ️ About — a free fan project by Kamex\n\n"
             "Not sure what to do? Use /guide. Standard work, /eat and /make use 5 seconds, social/recovery use 20–60 seconds, and /sleep is available once every 30 minutes.")
 
 def twitch_pages(content, page, command):
@@ -5742,7 +5747,7 @@ def twitch_pages(content, page, command):
 def twitch_seed(topic:str="overview",page:str="1"):
     topic=(topic or "overview").lower().strip()
     if topic not in SEED_HELP_TOPICS:
-        return out(f"New Eridian: !start then !job then !guide. Handbook: !seed start, character, property, life, production, operations, society, other, moderator, terms. Example: !seed property 2. Work, !eat, !make, !gather: 5s; social/recovery: 20–60s; !sleep: once per {duration_text(SLEEP_COOLDOWN_SECONDS)}.")
+        return out(f"New Eridian: !start then !job then !guide. Handbook: !seed start, character, property, life, production, operations, society, other, moderator, terms, about. Example: !seed property 2. Work, !eat, !make, !gather: 5s; social/recovery: 20–60s; !sleep: once per {duration_text(SLEEP_COOLDOWN_SECONDS)}.")
     from .twitch_help import TOPICS
     content=twitch_lite.topic(topic,TOPICS[topic])
     return twitch_pages(content,page,f"!seed {topic}")
@@ -5836,7 +5841,7 @@ def _discord_embed(title,description="",status="info"):
         "title":_discord_clean_piece(title,256),
         "color":_discord_embed_color(status),
         "fields":[],
-        "footer":{"text":"New Eridian v2 • May Rocky's wisdom guide you."},
+        "footer":{"text":fan_notice.FOOTER},
     }
     if description:
         e["description"]=_discord_clean_piece(description,1800)

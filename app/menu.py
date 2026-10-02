@@ -56,7 +56,7 @@ AREAS = {
                 ['job', 'district', 'shift', 'duck', 'title', 'c_hat', 'c_badge', 'specialize', 'display_compact', 'display_detailed']),
     'settings': ('⚙️', 'Settings', 'How queue alerts and notifications reach you, and whether queues recover by themselves.',
                  ['alerts', 'popups', 'auto_on', 'auto_off', 'feed_on', 'feed_off']),
-    'help': ('📖', 'Help', 'What to do next, a guide for any goal, search, and the handbook.', ['guide', 'guidegoal', 'find', 'h_topics']),
+    'help': ('📖', 'Help', 'What to do next, a guide for any goal, search, the handbook, and who made the game.', ['guide', 'guidegoal', 'find', 'h_topics', 'h_about']),
     'seedling': ('🌱', 'My Seedling', 'Your Seedling lives its own day: mood, thoughts, schedule, diary and autonomy.',
                  ['sl_view', 'sl_decide', 'sl_diary', 'looks', 'sl_schedule', 'sl_custom', 'sl_on', 'sl_off']),
     'looks': ('🎨', 'Looks & personality', 'Make your Seedling yours: how it looks on the stream map and how it talks. Purely cosmetic.',
@@ -285,6 +285,7 @@ leaf('c_badge', 'Pin a badge', '📌', 'pick', 'trophies', pick='badges', then='
 for _topic, _label in [('start', 'Start here'), ('character', 'Character'), ('property', 'Home & crafting'), ('life', 'Life'),
                        ('production', 'Work'), ('operations', 'Logistics'), ('society', 'Society'), ('other', 'Other'), ('terms', 'Terms')]:
     leaf('h_' + _topic, _label, '📖', 'view', 'seed', {'topic': _topic}, hint='')
+leaf('h_about', 'About', 'ℹ️', 'view', 'seed', {'topic': 'about'}, hint='a free, unofficial fan project made by Kamex')
 
 # Grouped choices: one dropdown instead of a row of similar buttons. 'leaves:' lists views to pick from.
 leaf('inv_views', 'Sort & filter…', '🗂️', 'pick', 'inventory', pick='leaves:by_value,by_name,by_category,favitems,sellable,ready_items,gear', then='leaf',

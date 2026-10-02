@@ -4,6 +4,12 @@ A persistent Discord and Twitch settlement game. The game is **New Eridian v2**;
 
 Players gather and mine materials, manufacture items at matching workstations, improve skills, and contribute to shared settlement systems. Linked accounts share inventory and progression. A saved queue can repeat one task up to ten times, pausing when needs or requirements prevent work.
 
+## Fan project notice
+
+New Eridian v2 is a free-to-play fan project made by **Kamex**. It is unofficial: it is not made, endorsed, sponsored or approved by Klang Games, and it is not part of SEED. SEED, Avesta, New Eridian and the related names, characters, items and lore belong to Klang Games and their other owners; they appear here only in a free, non-commercial fan project, and all rights stay with them. There is nothing to buy and no real money is involved: Seed Coin (SC) and every item exist only in this game and have no real-world value. Rights holders who would like anything changed or removed can contact Kamex in the game's Discord.
+
+In the game the notice is under Help → About (`/seed topic:About`, `!seed about` on Twitch), in the first newcomer guide panel, on the pinned game panel and in the first welcome, and every Discord card's footer reads "a fan project by Kamex". The text lives in `app/notice.py`.
+
 ## Repository map
 
 | Location | Responsibility |
