@@ -21,6 +21,9 @@ custom_id grammar (max 100 characters):  ne|<owner id>|<verb>|<args...>
   fv|<id>|<on>|<cat>|<page>|<st>  set favourite on (1) or off (0), then show the recipe
   fm|<id>|<batches>       fetch-missing-ingredients plan
   cn                      clear the next (follow-up) queue
+  kv                      keep levels
+  ki[|<item>]             one item's keep level (item = select value or arg): amounts, Custom…, Remove, Restock
+  ks|<item>|<amount>      set a keep level (0 removes it), then show keep levels
   mn|mv|mk|mp             game menu areas, views and choices (see menu.py)
   bk|<fallback...>        Back: the screen this message showed before, else the fallback address
   mo|<leaf>               open a leaf's pop-up form (Discord modal)
@@ -686,7 +689,7 @@ HISTORY_DEPTH = 20                 # screens remembered per message
 _HISTORY_LOCK = threading.Lock()   # presses are answered on worker threads
 # Controls that only show a screen, so Back can show it again. Anything else (a one-time action,
 # a toggle, setting a goal) leaves its result on the message, and Back returns to the screen before.
-SCREENS = {'wh', 'wc', 'sc', 'ss', 'wr', 'sr', 'qp', 'sq', 'qv', 'qd', 'st', 'gv', 'pv', 'av', 'fu', 'fi', 'fd', 'fm',
+SCREENS = {'wh', 'wc', 'sc', 'ss', 'wr', 'sr', 'qp', 'sq', 'qv', 'qd', 'st', 'gv', 'pv', 'av', 'kv', 'ki', 'fu', 'fi', 'fd', 'fm',
            'mn', 'mv', 'mk', 'mp', 'ma', 'lp'}
 
 
@@ -1160,8 +1163,8 @@ def post_public_panel(m, channel_id, token=None):
 
 # ---------------------------------------------------------------- goal, plans, auto-sell, uses, find, recent (see extras.py)
 
-EXTRA_VERBS = {'gv', 'gs', 'gc', 'pv', 'pc', 'rd', 'av', 'at', 'fu', 'fi', 'fd'}
-EXTRA_TICKETS = {'plan', 'sellstep', 'saveroutine', 'routine', 'undo', 'buyitem'}
+EXTRA_VERBS = {'gv', 'gs', 'gc', 'pv', 'pc', 'rd', 'av', 'at', 'kv', 'ki', 'ks', 'fu', 'fi', 'fd'}
+EXTRA_TICKETS = {'plan', 'sellstep', 'saveroutine', 'routine', 'undo', 'buyitem', 'restock'}
 
 
 def _menu_row(owner, back=None):
@@ -1264,6 +1267,69 @@ def autosell_components(m, db, p, owner):
     return rows
 
 
+def restock_button(m, p, owner, r):
+    """Restock one short item (a one-time ticket); greyed out when the purchase costs more SC than you have; None when
+    it can only be found or made elsewhere (the screen says where)."""
+    if r['kind'] == 'none':
+        return None
+    label = f"Restock {r['name']}"
+    if r['kind'] == 'buy':
+        cost = r['price'] * r['short']
+        if p.sc < cost:
+            return button(f'{label} · {cost} SC', cid(owner, 'ki', r['key']), disabled=True, emoji='🛡️')
+        label += f' · {cost} SC'
+    return button(label, cid(owner, 't', issue(m, owner, {'do': 'restock', 'item': r['key']})), style=3, emoji='🛡️')
+
+
+def keep_message(m, db, p, owner, note=''):
+    """Keep levels: each level with what you have, a dropdown of your items, and Restock beside each short item."""
+    from . import keep_levels as keep
+    from .menu import crumb
+    kept = keep.levels(db, p.channel_id, p.twitch_uid)
+    stock = s.stock(m, db, p)
+    owned = sorted((k for k, n in stock.items() if n > 0 and k in s.ACTIVE and k not in kept), key=lambda k: (-stock[k], m.resource_name(k)))
+    keys = (sorted(kept, key=lambda k: m.resource_name(k).casefold()) + owned)[:25]
+    rows = []
+    if not keys:
+        note = (note + '\n' if note else '') + 'You own nothing yet: gather, mine or buy something, then choose it here.'
+    else:
+        rows.append(select(cid(owner, 'ki'), 'Choose an item to keep…',
+                           [option(m.resource_name(k), k, f'have {stock.get(k, 0)} · keep {kept[k]}' if k in kept else
+                                   f'have {stock.get(k, 0)} · no keep level', emoji='🛡️' if k in kept else None) for k in keys]))
+    buttons, items = [], []
+    for r in keep.shortfalls(m, db, p)[:10]:
+        b = restock_button(m, p, owner, r)
+        if b is not None:
+            buttons.append(b)
+            items.append({'match': f"⚠️ {r['name']} — have", 'button': b})
+    rows += [row(*buttons[i:i + 5]) for i in range(0, len(buttons), 5)]
+    rows.append(_menu_row(owner, ('bag', 'Bag')))
+    return with_crumb(message(m, keep.screen_text(m, db, p, note), rows, 'inventory', items), crumb('bag', 'Keep levels'))
+
+
+def keep_item_message(m, db, p, owner, key, note=''):
+    """One item's keep level: quick amounts, Custom…, Remove and Restock. Setting a level spends nothing, so no tickets."""
+    from . import keep_levels as keep
+    from .menu import crumb
+    key = m.item_identity.canonical(str(key or ''))
+    if key not in s.ACTIVE:
+        return keep_message(m, db, p, owner, '🛡️ Choose an item from the list. Nothing changed.')
+    current = keep.keep_for(m, db, p, key)
+    have = m.material_amount(db, p, key)
+    amounts = [(n, f'Keep {n}') for n in keep.QUICK]
+    if 0 < have <= keep.MAX_AMOUNT and have not in keep.QUICK:
+        amounts.append((have, f'Keep {have} (all you have)'))
+    first = [button(label, cid(owner, 'ks', key, n), style=1 if n == current else 2, emoji='🛡️') for n, label in amounts]
+    second = [button('Custom…', cid(owner, 'mo', 'keep', key), emoji='✏️')]
+    if current:
+        second.append(button('Remove', cid(owner, 'ks', key, 0), style=4, emoji='✖️'))
+    short = next((r for r in keep.shortfalls(m, db, p) if r['key'] == key), None)
+    if short is not None:
+        second.append(restock_button(m, p, owner, short))
+    rows = [row(*first), row(*second), row(back_button(owner, 'kv'), button('Menu', cid(owner, 'mn', 'home'), emoji='🏠'))]
+    return with_crumb(message(m, keep.item_text(m, db, p, key, note), rows, 'inventory'), crumb('bag', 'Keep levels › ' + m.resource_name(key)))
+
+
 def uses_components(owner, rows_):
     buttons = [button(wb.clip(e.name, 80), cid(owner, 'wr', e.id, e.category, 1, ''), emoji='📋') for e in rows_[:5]]
     return ([row(*buttons)] if buttons else []) + [_menu_row(owner, ('bag', 'Bag'))]
@@ -1354,6 +1420,15 @@ def extra_view(m, db, p, owner, verb, args, values, name):
         db.flush()
         text = more.autosell_text(m, db, p)
         return message(m, text.split('\n', 1)[0] + '\n' + note + text.split('\n', 1)[1], autosell_components(m, db, p, owner), 'inventory')
+    if verb == 'ks':
+        from . import keep_levels as keep
+        note = keep.set_level(m, db, p, args[0] if args else '', args[1] if len(args) > 1 else '')
+        db.flush()
+        return keep_message(m, db, p, owner, note)
+    if verb == 'ki':
+        return keep_item_message(m, db, p, owner, values[0] if values else (args[0] if args else ''))
+    if verb == 'kv':
+        return keep_message(m, db, p, owner)
     if verb == 'fu':
         text, rows_ = more.uses_text(m, db, p, args[0])
         return message(m, text, uses_components(owner, rows_), 'catalog')
@@ -1399,4 +1474,9 @@ def extra_ticket(m, uid, name, action, kind, channel):
         with m.SessionLocal() as db:
             p = _player(m, db, uid, name)
             return message(m, text, queue_components(m, db, p, uid) + [_menu_row(uid, ('queue', 'Queue'))], 'queue')
+    if kind == 'restock':
+        from . import keep_levels as keep
+        text = keep.restock(m, channel, uid, name, 'discord', action['item'])
+        return message(m, text, [row(button('Keep levels', cid(uid, 'kv'), style=1, emoji='🛡️'), button('Queue status', cid(uid, 'qv'), emoji='📋')),
+                                 _menu_row(uid, ('bag', 'Bag'))], 'queue' if 'TASK QUEUE' in text else 'inventory')
     return message(m, 'This button is no longer supported. Nothing was spent.', [_menu_row(uid)])

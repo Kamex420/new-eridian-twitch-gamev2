@@ -509,6 +509,8 @@ def protected_items(m, db, p):
 
 
 def sell_all(m, db, p, key, provider):
+    """Sell a whole stack, except what the item's keep level keeps (keep_levels.keep_for)."""
+    from . import keep_levels
     key = m.item_identity.canonical(key)
     price = sell_price(m, key)
     name = m.resource_name(key)
@@ -517,46 +519,62 @@ def sell_all(m, db, p, key, provider):
     owned = m.material_amount(db, p, key)
     if owned <= 0:
         return f'🏭 You have no {name}. Nothing sold.'
-    total = price * owned
-    m.material_change(db, p, key, -owned)
+    keep = keep_levels.keep_for(m, db, p, key)
+    count = max(0, owned - keep)
+    if count <= 0:
+        return f'🏭 Nothing to sell: you have {owned} {name} and your keep level keeps {keep}. Selling a chosen amount still works.'
+    total = price * count
+    m.material_change(db, p, key, -count)
     p.sc += total
-    xp = max(1, owned // 3)
+    xp = max(1, count // 3)
     banked = m.gain_skill(p, 'commerce', xp)
     from . import extras
-    extras.remember_sale(m, db, p, {key: owned}, total, banked)
+    extras.remember_sale(m, db, p, {key: count}, total, banked)
     note = ''
     users = [e.name for e in favorite_entries(m, db, p) if key in e.inputs]
     if users:
         note = f' Note: your favourite {users[0]} uses {name}.'
     db.commit()
-    return f'🏭 {p.display_name} sold all {owned} {name} to Seed Industries for {total} SC ({price} each). Balance: {p.sc} SC. +{xp} Commerce XP.{note}'
+    sold = f'{count} {name}' if keep else f'all {owned} {name}'
+    kept = f', keeping {keep} (your keep level)' if keep else ''
+    return f'🏭 {p.display_name} sold {sold} to Seed Industries for {total} SC ({price} each){kept}. Balance: {p.sc} SC. +{xp} Commerce XP.{note}'
 
 
 def clearout_plan(m, db, p):
+    """(key, amount, price) to sell: Materials & Ores beyond the keep level, or CLEAROUT_RESERVE where none is set."""
+    from . import keep_levels
     keep = protected_items(m, db, p)
     rows = []
     for key, qty in sorted(s.stock(m, db, p).items(), key=lambda kv: m.resource_name(kv[0])):
         if key not in s.ACTIVE or s.DISPLAY_CATEGORY.get(key) != 'materials' or key in keep:
             continue
         price = sell_price(m, key)
-        if price and qty > CLEAROUT_RESERVE:
-            rows.append((key, qty - CLEAROUT_RESERVE, price))
+        if not price:
+            continue
+        reserve = keep_levels.keep_for(m, db, p, key, CLEAROUT_RESERVE)
+        if qty > reserve:
+            rows.append((key, qty - reserve, price))
     return rows
 
 
 def clearout(m, db, p, provider, confirm=False):
+    from . import keep_levels
     rows = clearout_plan(m, db, p)
     total = sum(n * price for _, n, price in rows)
-    rule = (f'Clear-out sells Materials & Ores beyond {CLEAROUT_RESERVE} of each. It never sells ingredients of your '
-            'favourites or of your current or next queued recipe.')
+    rule = (f'Clear-out sells Materials & Ores beyond {CLEAROUT_RESERVE} of each, or beyond your keep level where you set one. '
+            'It never sells ingredients of your favourites or of your current or next queued recipe.')
     if not rows:
         return '🧹 Nothing to clear out. ' + rule
     if not confirm:
         if provider != 'discord':
             items = ', '.join(f'{m.resource_name(k)} ×{n}' for k, n, _ in rows[:8]) + (' …' if len(rows) > 8 else '')
-            return f'🧹 Clear-out would sell {items} for {total} SC. !clearout confirm to sell. Keeps {CLEAROUT_RESERVE} of each; favourites protected.'
+            return (f'🧹 Clear-out would sell {items} for {total} SC. !clearout confirm to sell. '
+                    f'Keeps {CLEAROUT_RESERVE} of each (or your keep level); favourites protected.')
         lines = [f'🧹 CLEAR-OUT PREVIEW · {total} SC', rule, '', 'WOULD SELL']
-        lines += [f'• {m.resource_name(k)} ×{n} → {n * price} SC ({price} each)' for k, n, price in rows[:20]]
+        for k, n, price in rows[:20]:
+            kept = keep_levels.keep_for(m, db, p, k, None)
+            lines.append(f'• {m.resource_name(k)} ×{n} → {n * price} SC ({price} each)' +
+                         (f' · keeps {kept} (your keep level)' if kept is not None else ''))
         if len(rows) > 20:
             lines.append(f'• …and {len(rows) - 20} more item types')
         lines += ['', 'Nothing has been sold yet. Press Sell to confirm.']
@@ -575,7 +593,8 @@ def clearout(m, db, p, provider, confirm=False):
     db.commit()
     text = f'🧹 Cleared out {len(rows)} item types for {earned} SC. Balance: {p.sc} SC. +{xp} Commerce XP.'
     if provider == 'discord':
-        return text + '\n\nSOLD\n' + '\n'.join('• ' + x for x in sold) + f'\n\nKept {CLEAROUT_RESERVE} of each and every favourite or queued ingredient.'
+        return text + '\n\nSOLD\n' + '\n'.join('• ' + x for x in sold) + (f'\n\nKept {CLEAROUT_RESERVE} of each (or your keep level) '
+                                                                           'and every favourite or queued ingredient.')
     return text
 
 

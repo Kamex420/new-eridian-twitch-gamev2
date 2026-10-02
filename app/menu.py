@@ -45,7 +45,7 @@ AREAS = {
     'trade': ('🪙', 'Bag & Trade', 'What you own, buying and selling with Seed Industries, orders, and your home and business.',
               ['bag', 'market', 'buy', 'sellsome', 'sell', 'clearout', 'undo', 'browse', 'starters', 'orders', 'fulfill', 'prices', 'commerce', 'analyze', 'property']),
     'bag': ('🎒', 'Bag', 'Everything you own. Look through it, use it, or see what it makes.',
-            ['inventory', 'inv_views', 'search', 'use', 'uses', 'autosell', 'catalog']),
+            ['inventory', 'inv_views', 'search', 'use', 'uses', 'autosell', 'keep', 'catalog']),
     'property': ('🏠', 'Home & Business', 'Your Habitat and your company.', ['habitat', 'homeup', 'business', 'bstart', 'bwork', 'bcontract', 'binvest']),
     'community': ('🎪', 'Colony', 'Everyone together: the active event, the colony vote, the stream challenge, the season, trophies and news.',
                   ['wd_event', 'c_challenge', 'c_vote_pick', 'c_vote', 'wd_overview', 'wd_society_progress', 'c_season', 'c_trophies',
@@ -152,6 +152,7 @@ leaf('sell', 'Sell all of…', '🏷️', 'pick', 'seedindustries', {'action': '
 leaf('clearout', 'Clear out', '🧹', 'view', 'seedindustries', {'action': 'clearout'}, hint='sell surplus materials (preview first)')
 leaf('uses', 'What can I make?', '🔍', 'pick', 'catalog', pick='owned', then='uses', option='item', hint='recipes that use an item you own')
 leaf('autosell', 'Auto-sell', '🤖', 'nav', nav=('av',), hint='items sold automatically when a queue finishes')
+leaf('keep', 'Keep levels', '🛡️', 'nav', nav=('kv',), hint='how many of an item selling always leaves you, and restocking back up to it')
 leaf('undo', 'Undo sale', '↩️', 'do', 'undo', hint=f'take back your last sale (within 60 seconds)')
 # Trade
 leaf('market', 'Seed Industries', '🏭', 'view', 'seedindustries', hint='buy supplies and sell your goods')
@@ -891,6 +892,9 @@ def navigate(m, db, p, owner, verb, args, values, name):
             later = None
             if key == 'sell':
                 later = ui.button('Sell it after my queue', ui.cid(owner, 't', ui.issue(m, owner, {'do': 'sellstep', 'item': value})), emoji='🗺️')
+                kept = m.keep_levels.keep_for(m, db, p, value)
+                if kept:
+                    text += f'\n🛡️ Your keep level keeps {kept}; only the rest is sold.'
             return ui.message(m, text, [ui.row(ui.button('Confirm', ui.cid(owner, 't', ticket), style=3, emoji='✔️'), later,
                                                ui.back_button(owner, 'mk', key),
                                                ui.button('Menu', ui.cid(owner, 'mn', 'home'), emoji='🏠'))], 'menu')
@@ -946,6 +950,8 @@ def modal(owner, key, args=()):
     item = LEAVES.get(key)
     if item is None:
         return None
+    if key == 'keep' and args:
+        return ui.modal(ui.cid(owner, 'md', key, args[0]), 'Keep how many?', 'Amount to always keep (0 removes it)', 'e.g. 30', 1, 4)
     if item.get('then') == 'amount':
         value = args[0] if args else ''
         return ui.modal(ui.cid(owner, 'md', key, value), 'How many?', 'Amount (1–100)', 'e.g. 12', 1, 3)
@@ -960,6 +966,9 @@ def submit(m, db, p, owner, name, key, args, value):
     item = LEAVES.get(key)
     if item is None:
         return None
+    if key == 'keep':
+        # A keep level only changes the citizen's own setting, so it needs no one-time ticket.
+        return ui.keep_message(m, db, p, owner, m.keep_levels.set_level(m, db, p, args[0] if args else '', value))
     if item.get('then') == 'amount':
         if not value.isdigit() or not 1 <= int(value) <= 100:
             return ui.message(m, '✏️ Enter a whole number from 1 to 100. Nothing was spent.', [nav(owner, PARENT.get(key, 'home'), PARENT.get(key, 'home'))], 'menu')
@@ -1030,7 +1039,8 @@ def run(m, uid, name, action, token=''):
     rows = grid(m, uid, visible, rows=3) + [nav(uid, area, area)]
     if legacy == 'seedindustries' and legacy_options.get('action') in {'sellall'} and 'sold' in text:
         rows = [ui.row(ui.button('Undo sale (60s)', ui.cid(uid, 't', ui.issue(m, uid, {'do': 'undo'})), style=4, emoji='↩️'),
-                       ui.button('Sell another', ui.cid(uid, 'mk', 'sell'), emoji='🏷️'), ui.button('Auto-sell', ui.cid(uid, 'av'), emoji='🧹')), rows[-1]]
+                       ui.button('Sell another', ui.cid(uid, 'mk', 'sell'), emoji='🏷️'), ui.button('Auto-sell', ui.cid(uid, 'av'), emoji='🧹'),
+                       ui.button('Keep levels', ui.cid(uid, 'kv'), emoji='🛡️')), rows[-1]]
     leaf_ = LEAVES.get(action.get('leaf', ''))
     return ui.with_crumb(reply(m, text, legacy, rows), crumb(area, leaf_['label'].rstrip('…') if leaf_ else ''))
 

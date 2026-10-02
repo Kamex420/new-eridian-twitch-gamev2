@@ -26,6 +26,8 @@ The worker executes at most one eligible attempt per player per polling pass. Do
 
 Inventory conversion occurs before account balances are combined. Account linking retains at most one active queue. An active target-account queue takes priority when both accounts have one; otherwise the source queue transfers. Completed work remains part of the merged balances, and queue status records cancellation of a conflicting queue.
 
+Keep levels live in the additive `player_keep_levels_v1` table (world, citizen, canonical item key and amount; at most 25 per citizen), created at startup like the other additive tables. Item keys are stored canonically, so an old alias and its catalog item share one row. Linking keeps the target's levels; the source's levels for other items move across while the citizen stays within 25, and the rest are dropped.
+
 ## Rollback semantics
 
 The filesystem cleanup is independent of the database format. Earlier item conversion is not reversed by restoring older source files: a version that still expects separate legacy stock cannot safely interpret a converted save as though conversion never occurred. Queue records are additive, but an application without the worker will not process them. A data-aware rollback or a database snapshot is required when reversing persistent migrations, with the usual consequence that restoring a snapshot loses later changes.

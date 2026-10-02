@@ -834,10 +834,11 @@ def autosell_after_queue(m, db, p):
     keys = autosell_list(db, p)
     if not keys:
         return []
+    from . import keep_levels
     keep = m.qol.protected_items(m, db, p)
     notes = []
     for key in keys:
-        if key in keep or m.material_amount(db, p, key) <= 0:
+        if key in keep or keep_levels.sellable(m, db, p, key) <= 0:      # sell_all itself leaves the keep level
             continue
         notes.append(m.qol.sell_all(m, db, p, key, 'discord').split('. Balance')[0].replace('🏭 ', '🧹 Auto-'))
     return notes
@@ -845,7 +846,8 @@ def autosell_after_queue(m, db, p):
 
 def autosell_text(m, db, p):
     keys = autosell_list(db, p)
-    lines = ['🧹 AUTO-SELL', 'Chosen items are sold to Seed Industries when a queue finishes. Ingredients of favourites and queued recipes are always kept.', '']
+    lines = ['🧹 AUTO-SELL', 'Chosen items are sold to Seed Industries when a queue finishes. Ingredients of favourites and queued recipes '
+             'are always kept, and so is each item\'s keep level (Bag → Keep levels).', '']
     lines += [f'• {m.resource_name(k)} (you have {m.material_amount(db, p, k)})' for k in keys] or ['Nothing chosen yet. Pick an item below; Stone Dust is a common choice.']
     return '\n'.join(lines)
 

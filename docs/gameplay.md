@@ -168,7 +168,15 @@ With **auto-recover** on, a queue that would pause for low needs first runs whic
 
 ### Inventory and selling
 
-`/inventory` accepts search, sort (quantity, name, value, category), show (all, used in ready recipes, used by favourites, sellable) and page. `!inv` accepts the same words in any order, e.g. `!inv ore value 2`. Sell all sells a whole stack at the Seed Industries price. Clear-out sells Materials & Ores beyond 20 of each, never touching ingredients of favourites or of the current or next queued recipe, and always shows a preview first.
+`/inventory` accepts search, sort (quantity, name, value, category), show (all, used in ready recipes, used by favourites, sellable) and page. `!inv` accepts the same words in any order, e.g. `!inv ore value 2`. Sell all sells a whole stack at the Seed Industries price, except what the item's keep level keeps. Clear-out sells Materials & Ores beyond 20 of each (or beyond the keep level, below), never touching ingredients of favourites or of the current or next queued recipe, and always shows a preview first.
+
+### Keep levels
+
+A keep level is how many of an item you always keep: `/menu` → Bag → Keep levels (choose an item, then 10, 25, 50, 100, Custom… or Remove). Up to 25 items, 1–9999 each; an old item name and its catalog item are one keep level. Sell all, auto-sell after a queue and the "sell all" steps of plans and routines sell only what is above it, and their receipts say how many were kept. Clear-out uses the keep level instead of its usual 20, higher or lower, and still never sells favourite or queued ingredients. Selling a chosen amount is never limited, and Undo works as before.
+
+Below a keep level the screen shows what is short and how it comes back, the same routes as Fetch missing: a gathering or mining queue (up to the 10-attempt maximum), a craft queue for its recipe, or buying the shortfall from Seed Industries when you have the SC. Restock starts it with the ordinary queue or purchase, so every gate, cost and cooldown applies and nothing starts while another queue is running. Items without such a route say where they come from.
+
+With the full game on Twitch, `!keep` lists keep levels, `!keep <item> <amount>` sets one (`0` clears it), `!keep restock` shows the plan for the first short item and `!keep restock go` starts it. In the lite version `!keep` points to Discord, like the other trading commands.
 
 ### Names
 

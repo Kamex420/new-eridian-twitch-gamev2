@@ -67,6 +67,22 @@ names = {i['name'] for t in ('action_logs_v5', 'journal_v54', 'discord_command_r
          for i in inspect(m.engine).get_indexes(t)}
 assert {'ix_action_logs_channel_created', 'ix_journal_owner_created', 'ix_command_receipts_created', 'ix_link_codes_expires'} <= names
 
+# Keep levels: the additive table, a Sell all that leaves the keep level, and the account-linking merge (a key change).
+from app import keep_levels
+lumber, glass = m.seed_content.key('Lumber'), m.seed_content.key('Glass')
+with m.SessionLocal() as db:
+    p = m.player(db, W, 'discord', 'keeper', 'Citizenkeeper')[1]
+    m.material_change(db, p, lumber, 12); db.commit()
+    keeper = p.twitch_uid
+assert 'always keep 5 Lumber' in client.get('/api/v1/keep', params=params('keeper', text='lumber 5', provider='discord')).text
+assert 'keeping 5' in client.get('/api/v1/sellall', params=params('keeper', item='lumber', provider='discord')).text
+with m.SessionLocal() as db:
+    assert m.material_amount(db, m.player(db, W, 'discord', 'keeper', 'Citizenkeeper')[1], lumber) == 5
+    db.add_all([keep_levels.KeepLevel(channel_id=W, canonical_uid='pg-src', item_key=k, amount=a) for k, a in ((lumber, 9), (glass, 3))])
+    db.commit()
+    keep_levels.merge(db, W, 'pg-src', keeper); db.commit()
+    assert keep_levels.levels(db, W, keeper) == {lumber: 5, glass: 3} and keep_levels.levels(db, W, 'pg-src') == {}
+
 now = m.now()
 with m.SessionLocal() as db:
     db.query(m.ActionLog).delete(); db.query(m.JournalEntry).delete()

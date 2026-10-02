@@ -30,6 +30,7 @@ DISCORD_ONLY = {
     '/api/v1/seedindustries': ('Trading', '/seedindustries'), '/api/v1/sell': ('Selling', '/seedindustries'),
     '/api/v1/sellall': ('Selling', '/seedindustries'), '/api/v1/clearout': ('Selling', '/seedindustries'),
     '/api/v1/autosell': ('Auto-selling', '/menu → Bag & Trade → Bag'), '/api/v1/undo': ('Selling', '/seedindustries'),
+    '/api/v1/keep': ('Keep levels', '/menu → Bag & Trade → Bag'),
     '/api/v1/marketboard': ('Market prices', '/market'),
     '/api/v1/business': ('Businesses', '/business'), '/api/v1/business/start': ('Businesses', '/business'),
     '/api/v1/home': ('Homes', '/home'), '/api/v1/home/upgrade': ('Homes', '/home'),
@@ -166,7 +167,7 @@ TOPICS = {
             'Using beds, seats and clothing, and auto-recovering queues, are on Discord.',
     'other': '!seedling: your Seedling now. !diary: what it did while you were away. !vote 1-3: the colony vote. !challenge: the stream '
              'challenge. !recap: this week’s leaders. !find <word>: search. !meal: share a Pumpkin. Queues, favourites, goals, '
-             'auto-selling, schedules and your Seedling’s look are on Discord.',
+             'auto-selling, keep levels, schedules and your Seedling’s look are on Discord.',
 }
 
 

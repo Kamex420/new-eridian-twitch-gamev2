@@ -7514,7 +7514,7 @@ def queue_task_menu(query:str='',page:int=1,provider:str='twitch'):
     return platform_response(provider,text,text.replace('\n',' | '))
 
 
-from . import qol, presentation, menu, inbox, extras
+from . import qol, presentation, menu, inbox, extras, keep_levels
 game_menu=menu
 inbox.install(sys.modules[__name__])
 extras.install(sys.modules[__name__])
@@ -7802,6 +7802,14 @@ def autosell(channel:str,uid:str,name:str='Citizen',item:str='',provider:str='tw
             if key is None:return out('🧹 Choose an item Seed Industries buys.'+qol.did_you_mean(suggestions)+' Nothing changed.')
         text=extras.toggle_autosell(module,db,p,key);db.commit()
         return platform_response(provider,text,text)
+
+
+@app.get('/api/v1/keep')
+@game_transaction
+def keep_level(channel:str,uid:str,name:str='Citizen',text:str='',provider:str='twitch'):
+    """Keep levels: blank lists them; '<item> <amount>' sets one (0 clears); 'restock' plans the first short item, 'restock go' starts it."""
+    text=keep_levels.command(sys.modules[__name__],channel,uid,name,provider,text)
+    return platform_response(provider,text,text)
 
 
 
