@@ -6,7 +6,7 @@ from datetime import timedelta
 from sqlalchemy import Column,String,Integer,DateTime,Text,select,text
 from .db import Base, connection_context
 from discord.ext import tasks
-from . import seed_content as s, crafting_progression as cp, task_yields, queue_notifications, needs, qol, keep_levels
+from . import seed_content as s, crafting_progression as cp, task_yields, queue_notifications, needs, qol, keep_levels, shopping_list
 
 class TaskQueue(Base):
     """One saved task per canonical citizen and world; remaining counts attempts.
@@ -465,6 +465,7 @@ def install(m):
     queue_notifications.install(m)
     qol.install(m)
     keep_levels.install(m)
+    shopping_list.install(m)
     @tasks.loop(seconds=2,reconnect=True)
     async def timer():
         try:await asyncio.to_thread(tick,m)
@@ -481,6 +482,7 @@ def install(m):
 def merge_accounts(m,db,channel,source_uid,target_uid):
     qol.merge(db,channel,source_uid,target_uid)
     keep_levels.merge(db,channel,source_uid,target_uid)
+    shopping_list.merge(db,channel,source_uid,target_uid)
     from . import extras
     extras.merge(db,channel,source_uid,target_uid)
     from . import autonomy

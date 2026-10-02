@@ -35,8 +35,8 @@ AREAS = {
     'frontier': ('🧭', 'Frontier', 'Scouting and surveys past the wall.', ['w_scout', 'w_survey']),
     'queue': ('⏱️', 'Queue', 'Work that runs by itself while you watch. Check it, plan it, repeat it or stop it.',
               ['qstatus', 'qdetails', 'plan', 'repeat', 'cancel', 'clearnext']),
-    'craft': ('🛠️', 'Craft', 'Your goal walks you through every step. The Workbench has every recipe.',
-              ['goal', 'workbench', 'ready', 'favs', 'stations']),
+    'craft': ('🛠️', 'Craft', 'Your goal walks you through every step; your shopping list plans several recipes at once. The Workbench has every recipe.',
+              ['goal', 'shopping', 'workbench', 'ready', 'favs', 'stations']),
     'stations': ('🏭', 'Workshops', 'Workstations and personal tiers. Unlock a station once, or own its machine.',
                  ['workshop', 'unlock', 'catalogcat']),
     'life': ('❤️', 'Life', 'Keep Energy, Nutrition, Social and Comfort up so work never stops.',
@@ -123,6 +123,8 @@ leaf('ready', 'Ready now', '✅', 'nav', nav=('wc', 'ready', 1, ''), hint='every
 leaf('favs', 'Favourites', '⭐', 'nav', nav=('wc', 'favorites', 1, ''), hint='your starred recipes')
 leaf('workshop', 'Workshops', '🏭', 'view', 'workshop', hint='stations, tiers and unlock fees')
 leaf('goal', 'Goal', '🎯', 'nav', nav=('gv',), hint='your pinned recipe and everything still needed for it')
+leaf('shopping', 'Shopping list', '🛒', 'nav', nav=('lv',),
+     hint='several recipes in the amounts you want, planned together: what is missing, buy it all, fetch next')
 leaf('catalog', 'Catalog', '📚', 'view', 'catalog', hint='every item and where it comes from')
 leaf('catalogcat', 'Catalog by category', '🗂️', 'pick', 'catalog', pick='field:catalog:category', then='view', option='category',
      hint='items of one category and where they come from')
@@ -952,6 +954,11 @@ def modal(owner, key, args=()):
         return None
     if key == 'keep' and args:
         return ui.modal(ui.cid(owner, 'md', key, args[0]), 'Keep how many?', 'Amount to always keep (0 removes it)', 'e.g. 30', 1, 4)
+    if key == 'shopping':
+        if args:
+            return ui.modal(ui.cid(owner, 'md', key, args[0]), 'Want how many?', 'How many to have (0 removes it)', 'e.g. 30', 1, 3)
+        return ui.modal(ui.cid(owner, 'md', key), 'Add to your shopping list', 'Recipe', 'e.g. Iron Plate', 1, 60,
+                        more=[ui.text_box('amount', 'How many to have (blank: one batch)', 'e.g. 30', 0, 3, required=False)])
     if item.get('then') == 'amount':
         value = args[0] if args else ''
         return ui.modal(ui.cid(owner, 'md', key, value), 'How many?', 'Amount (1–100)', 'e.g. 12', 1, 3)
@@ -961,14 +968,20 @@ def modal(owner, key, args=()):
     return ui.modal(ui.cid(owner, 'md', key), title, label, placeholder, 1, item.get('max_length', 60))
 
 
-def submit(m, db, p, owner, name, key, args, value):
-    """A submitted form: message data to show, or a {'do': ...} action to run once."""
+def submit(m, db, p, owner, name, key, args, value, fields=None):
+    """A submitted form: message data to show, or a {'do': ...} action to run once. `fields`: every text box of the form."""
     item = LEAVES.get(key)
     if item is None:
         return None
     if key == 'keep':
         # A keep level only changes the citizen's own setting, so it needs no one-time ticket.
         return ui.keep_message(m, db, p, owner, m.keep_levels.set_level(m, db, p, args[0] if args else '', value))
+    if key == 'shopping':
+        # So does the shopping list: a recipe's amount (Custom…), or a recipe and an amount (Add recipe…).
+        shop = m.shopping_list
+        note = shop.set_entry(m, db, p, args[0], value) if args else shop.add_typed(m, db, p, value, (fields or {}).get('amount', ''))
+        db.flush()
+        return ui.shopping_message(m, db, p, owner, note)
     if item.get('then') == 'amount':
         if not value.isdigit() or not 1 <= int(value) <= 100:
             return ui.message(m, '✏️ Enter a whole number from 1 to 100. Nothing was spent.', [nav(owner, PARENT.get(key, 'home'), PARENT.get(key, 'home'))], 'menu')

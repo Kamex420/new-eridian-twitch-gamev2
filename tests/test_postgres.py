@@ -83,6 +83,21 @@ with m.SessionLocal() as db:
     keep_levels.merge(db, W, 'pg-src', keeper); db.commit()
     assert keep_levels.levels(db, W, keeper) == {lumber: 5, glass: 3} and keep_levels.levels(db, W, 'pg-src') == {}
 
+# Shopping list: the additive table, an entry set through the route, the combined plan, and the account-linking merge.
+from app import shopping_list
+assert 'Added to your shopping list: 2 Campfire' in client.get('/api/v1/shopping', params=params('keeper', text='add campfire 2', provider='discord')).text
+assert 'want 3 Campfire (was 2' in client.get('/api/v1/shopping', params=params('keeper', text='add campfire 3', provider='discord')).text
+assert 'SHOPPING LIST · 1/10' in client.get('/api/v1/shopping', params=params('keeper', provider='discord')).text
+with m.SessionLocal() as db:
+    campfire = shopping_list._rows(db, W, keeper)[0].recipe_id
+    plate = m.workbench.entry(m, 'sr_1018791011').id
+    db.add_all([shopping_list.ShoppingEntry(channel_id=W, canonical_uid='pg-src', recipe_id=r, want=n, added_at=m.now() - timedelta(days=1))
+                for r, n in ((campfire, 9), (plate, 30))])
+    db.commit()
+    shopping_list.merge(db, W, 'pg-src', keeper); db.commit()
+    assert [(r.recipe_id, r.want) for r in shopping_list._rows(db, W, keeper)] == [(campfire, 3), (plate, 30)]
+    assert shopping_list._rows(db, W, 'pg-src') == []
+
 now = m.now()
 with m.SessionLocal() as db:
     db.query(m.ActionLog).delete(); db.query(m.JournalEntry).delete()

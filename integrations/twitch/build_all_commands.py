@@ -90,6 +90,7 @@ SECTIONS = [
 DISCORD_ONLY = [('!make', 'make', 'recipe'), ('!craftmax', 'craftmax', 'recipe'), ('!recipes', 'recipes', ''), ('!queue', 'queue', ''),
                 ('!catalog', 'seed-supplies', 'item'), ('!workshop', 'workshop', ''), ('!fav', 'favorite', 'recipe'), ('!target', 'target', 'recipe'),
                 ('!routines', 'routines', ''), ('!again', 'again', ''), ('!seedindustries', 'seedindustries', ''), ('!sellall', 'sellall', 'item'), ('!keep', 'keep', 'text'),
+                ('!shopping', 'shopping', 'text'),
                 ('!home', 'home', ''), ('!homeupgrade', 'home/upgrade', ''), ('!business', 'business', ''), ('!businessstart', 'business/start', ''),
                 ('!settings', 'settings', 'text'), ('!schedule', 'schedule', 'preset'), ('!autonomy', 'autonomy', 'state'),
                 ('!specialize', 'specialize', 'path'), ('!hat', 'hat', 'hat'), ('!badge', 'badge', 'badge'), ('!customize', 'looks', '')]

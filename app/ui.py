@@ -24,6 +24,11 @@ custom_id grammar (max 100 characters):  ne|<owner id>|<verb>|<args...>
   kv                      keep levels
   ki[|<item>]             one item's keep level (item = select value or arg): amounts, Custom…, Remove, Restock
   ks|<item>|<amount>      set a keep level (0 removes it), then show keep levels
+  lv                      shopping list
+  li|<recipe>             one shopping-list entry: amounts, Custom…, Remove
+  ls|<recipe>|<amount>    want that many of a recipe's output (0 removes it), then show the list
+  la|<recipe>             add a recipe to the shopping list (one batch), then show its entry
+  lx|done|all             clear the done entries, or the whole list
   mn|mv|mk|mp             game menu areas, views and choices (see menu.py)
   bk|<fallback...>        Back: the screen this message showed before, else the fallback address
   mo|<leaf>               open a leaf's pop-up form (Discord modal)
@@ -409,7 +414,17 @@ def recipe_components(m, ctx, owner, e, category='', page=1, station=''):
         button(f'Queue max ×{most}', cid(owner, 'qp', task, max(1, most)), disabled=not most, emoji='📦') if status.code not in {'locked', 'owned'} else None,
         button('Set goal', cid(owner, 'gs', e.id), emoji='🎯'),
         button('Status', cid(owner, 'st'), emoji='📊'))
-    return [buttons, extras] + ([amounts] if status.code not in {'locked', 'owned'} else [])
+    return [buttons, extras] + ([amounts] if status.code not in {'locked', 'owned'} else []) + [row(shopping_button(ctx, owner, e))]
+
+
+def shopping_button(ctx, owner, e):
+    """🛒 Add to list on a recipe preview, or its entry when the recipe is already on the shopping list. In a row of
+    its own, where ◀️ Back and 🏠 Menu join it (the row above already has five buttons)."""
+    from . import shopping_list as shop
+    listed = ctx.db.get(shop.ShoppingEntry, (ctx.p.channel_id, ctx.p.twitch_uid, e.id)) if ctx.p is not None else None
+    if listed is not None:
+        return button(f'On shopping list · want {listed.want}', cid(owner, 'li', e.id), emoji='🛒')
+    return button('Add to list', cid(owner, 'la', e.id), emoji='🛒')
 
 
 def after_craft_components(m, ctx, owner, e, back):
@@ -690,7 +705,7 @@ _HISTORY_LOCK = threading.Lock()   # presses are answered on worker threads
 # Controls that only show a screen, so Back can show it again. Anything else (a one-time action,
 # a toggle, setting a goal) leaves its result on the message, and Back returns to the screen before.
 SCREENS = {'wh', 'wc', 'sc', 'ss', 'wr', 'sr', 'qp', 'sq', 'qv', 'qd', 'st', 'gv', 'pv', 'av', 'kv', 'ki', 'fu', 'fi', 'fd', 'fm',
-           'mn', 'mv', 'mk', 'mp', 'ma', 'lp'}
+           'mn', 'mv', 'mk', 'mp', 'ma', 'lp', 'lv', 'li'}
 
 
 def back_button(owner, *fallback):
@@ -967,7 +982,11 @@ def run_ticket(m, uid, name, action, payload=None):
             data = _run(m, uid, name, action, kind, channel)
     if not isinstance(data, dict):
         return data
-    return with_menu(with_goal_button(data, uid) if action.get('goal') else data)
+    if action.get('goal'):
+        data = with_goal_button(data, uid)
+    elif action.get('shop'):
+        data = with_goal_button(data, uid, 'lv', 'Shopping list', '🛒')
+    return with_menu(data)
 
 
 def _run(m, uid, name, action, kind, channel):
@@ -1070,23 +1089,32 @@ def _popups(m, payload, uid, command='', text=''):
 
 # ---------------------------------------------------------------- pop-up forms (modals)
 
-def modal(custom_id, title, label, placeholder='', min_length=1, max_length=60, value=''):
-    """A Discord pop-up form with one text box (response type 9)."""
-    field = {'type': 4, 'custom_id': 'value', 'label': wb.clip(label, 45), 'style': 1, 'min_length': min_length,
-             'max_length': max_length, 'required': True}
+def text_box(custom_id, label, placeholder='', min_length=1, max_length=60, value='', required=True):
+    """One text box of a pop-up form, in its own row."""
+    field = {'type': 4, 'custom_id': custom_id, 'label': wb.clip(label, 45), 'style': 1, 'min_length': min_length if required else 0,
+             'max_length': max_length, 'required': required}
     if placeholder:
         field['placeholder'] = wb.clip(placeholder, 100)
     if value:
         field['value'] = str(value)[:max_length]
-    return {'type': 9, 'data': {'custom_id': custom_id, 'title': wb.clip(title, 45), 'components': [{'type': 1, 'components': [field]}]}}
+    return {'type': 1, 'components': [field]}
 
 
-def modal_value(payload):
-    for component_row in (payload.get('data') or {}).get('components') or []:
-        for component in component_row.get('components') or []:
-            if component.get('custom_id') == 'value':
-                return str(component.get('value') or '').strip()
-    return ''
+def modal(custom_id, title, label, placeholder='', min_length=1, max_length=60, value='', more=()):
+    """A Discord pop-up form with one text box (response type 9), and the `more` boxes (text_box) under it."""
+    boxes = [text_box('value', label, placeholder, min_length, max_length, value)] + list(more)
+    return {'type': 9, 'data': {'custom_id': custom_id, 'title': wb.clip(title, 45), 'components': boxes}}
+
+
+def modal_fields(payload):
+    """Every text box of a submitted form: {custom_id: text}."""
+    return {str(component.get('custom_id')): str(component.get('value') or '').strip()
+            for component_row in (payload.get('data') or {}).get('components') or []
+            for component in component_row.get('components') or [] if component.get('custom_id')}
+
+
+def modal_value(payload, field='value'):
+    return modal_fields(payload).get(field, '')
 
 
 def handle_modal(m, payload, schedule=None):
@@ -1106,7 +1134,7 @@ def handle_modal(m, payload, schedule=None):
     with ticket_batch(m):
         with m.SessionLocal() as db:
             p = _player(m, db, uid, name)
-            result = menu.submit(m, db, p, uid, name, key, args, value)
+            result = menu.submit(m, db, p, uid, name, key, args, value, modal_fields(payload))
             db.commit()
     if result is None:
         return _notice('This form is no longer available. Open /menu again.')
@@ -1163,8 +1191,8 @@ def post_public_panel(m, channel_id, token=None):
 
 # ---------------------------------------------------------------- goal, plans, auto-sell, uses, find, recent (see extras.py)
 
-EXTRA_VERBS = {'gv', 'gs', 'gc', 'pv', 'pc', 'rd', 'av', 'at', 'kv', 'ki', 'ks', 'fu', 'fi', 'fd'}
-EXTRA_TICKETS = {'plan', 'sellstep', 'saveroutine', 'routine', 'undo', 'buyitem', 'restock'}
+EXTRA_VERBS = {'gv', 'gs', 'gc', 'pv', 'pc', 'rd', 'av', 'at', 'kv', 'ki', 'ks', 'fu', 'fi', 'fd', 'lv', 'li', 'ls', 'la', 'lx'}
+EXTRA_TICKETS = {'plan', 'sellstep', 'saveroutine', 'routine', 'undo', 'buyitem', 'restock', 'shopbuy'}
 
 
 def _menu_row(owner, back=None):
@@ -1208,13 +1236,13 @@ def goal_message(m, db, p, owner, note=''):
     return with_crumb(message(m, text, rows, 'goal', items), crumb('craft', '🎯 Goal'))
 
 
-def with_goal_button(data, owner):
-    """Add 🎯 Goal to a result reached from the goal walkthrough, so the next step is one press away."""
-    goal = cid(owner, 'gv')
+def with_goal_button(data, owner, verb='gv', label='Goal', emoji='🎯'):
+    """Add 🎯 Goal (or another screen: 🛒 Shopping list) to a result reached from it, so the next step is one press away."""
+    goal = cid(owner, verb)
     rows = [r for r in data.get('components') or [] if r and r.get('components')]
     if any(c.get('custom_id') == goal for r in rows for c in r['components']):
         return data
-    back = button('Goal', goal, style=1, emoji='🎯')
+    back = button(label, goal, style=1, emoji=emoji)
     if rows and len(rows[-1]['components']) < 5 and all(c.get('type') == 2 for c in rows[-1]['components']):
         rows[-1] = dict(rows[-1], components=[back] + rows[-1]['components'])
     elif len(rows) < 5:
@@ -1337,6 +1365,70 @@ def keep_item_message(m, db, p, owner, key, note=''):
     return with_crumb(message(m, keep.item_text(m, db, p, key, note), rows, 'inventory'), crumb('bag', 'Keep levels › ' + m.resource_name(key)))
 
 
+def shopping_entry_button(owner, x):
+    """A shopping-list entry's button: change or remove it (the citizen's own setting, so no ticket); Remove for a
+    recipe no longer in the catalog."""
+    if x.entry is None:
+        return button(f'Remove {x.recipe_id}', cid(owner, 'ls', x.recipe_id, 0), style=4, emoji='✖️')
+    return button(f'{x.name} ×{x.want}', cid(owner, 'li', x.recipe_id), emoji='✅' if x.done else '✏️')
+
+
+def shopping_message(m, db, p, owner, note=''):
+    """The shopping list: each entry with its button beside it, the combined materials, the first steps, and Fetch next,
+    Buy all missing (a one-time ticket, greyed out with its price when you cannot afford it), Add recipe…, Clear done
+    and Clear list."""
+    from . import shopping_list as shop
+    from .menu import crumb
+    info = shop.overview(m, db, p)
+    buttons, items = [], []
+    for x in info.items:
+        b = shopping_entry_button(owner, x)
+        buttons.append(b)
+        items.append({'match': shop.entry_match(x), 'button': dict(b, label='Remove' if x.entry is None else 'Change')})
+    rows = [row(*buttons[i:i + 5]) for i in range(0, len(buttons), 5)]
+    tools = []
+    if info.steps:
+        first = info.steps[0]
+        label = wb.clip('Fetch next: ' + shop.step_text(first), 80)
+        if first['action'] is not None:
+            tools.append(button(label, cid(owner, 't', issue(m, owner, dict(first['action'], shop=True))), style=3, emoji='▶️'))
+        elif first['view']:
+            tools.append(button(label, cid(owner, *first['view']), style=1, emoji='▶️'))
+    if info.cost:
+        label = f'Buy all missing · {info.cost} SC'
+        tools.append(button(label, cid(owner, 't', issue(m, owner, {'do': 'shopbuy'})), style=3, emoji='🪙') if p.sc >= info.cost
+                     else button(label, cid(owner, 'lv', 'buy'), disabled=True, emoji='🪙'))
+    full = len(info.items) >= shop.MAX_ENTRIES
+    tools.append(button(f'List full ({shop.MAX_ENTRIES})' if full else 'Add recipe…', cid(owner, 'mo', 'shopping'), disabled=full, emoji='➕'))
+    if any(x.done for x in info.items):
+        tools.append(button('Clear done', cid(owner, 'lx', 'done'), emoji='🧹'))
+    if info.items:
+        tools.append(button('Clear list', cid(owner, 'lx', 'all'), style=4, emoji='✖️'))
+    rows += [row(*tools), row(button('Refresh', cid(owner, 'lv'), emoji='🔄'), *_menu_row(owner, ('craft', 'Craft'))['components'])]
+    return with_crumb(message(m, shop.screen_text(m, db, p, note, info), rows, 'goal', items), crumb('craft', '🛒 Shopping list'))
+
+
+def shopping_item_message(m, db, p, owner, recipe_id, note=''):
+    """One entry: how many to have (one, two, five or ten batches), Custom…, Remove, its recipe and the list. Changing the
+    list spends nothing, so no tickets."""
+    from . import shopping_list as shop
+    from .menu import crumb
+    e = wb.entry(m, recipe_id)
+    if e is None:
+        return shopping_message(m, db, p, owner, '🛒 That recipe is no longer available: remove it from the list. Nothing changed.')
+    per = max(1, wb.Context(m, db, p).batch_size(e))
+    listed = db.get(shop.ShoppingEntry, (p.channel_id, p.twitch_uid, e.id))
+    amounts = [1] if shop._unique(m, e) else list(dict.fromkeys(min(shop.MAX_WANT, per * k) for k in (1, 2, 5, 10)))
+    first = [button(f'Want {n}' + (' (1 batch)' if n == per and per > 1 else ''), cid(owner, 'ls', e.id, n),
+                    style=1 if listed is not None and n == listed.want else 2, emoji='🛒') for n in amounts]
+    second = [button('Custom…', cid(owner, 'mo', 'shopping', e.id), emoji='✏️')]
+    if listed is not None:
+        second.append(button('Remove', cid(owner, 'ls', e.id, 0), style=4, emoji='✖️'))
+    second += [button('Recipe', cid(owner, 'wr', e.id, e.category, 1, ''), emoji='📋'), button('Shopping list', cid(owner, 'lv'), style=1, emoji='🛒')]
+    rows = [row(*first), row(*second), row(back_button(owner, 'lv'), button('Menu', cid(owner, 'mn', 'home'), emoji='🏠'))]
+    return with_crumb(message(m, shop.item_text(m, db, p, e.id, note), rows, 'goal'), crumb('craft', '🛒 Shopping list › ' + e.name))
+
+
 def uses_components(owner, rows_):
     buttons = [button(wb.clip(e.name, 80), cid(owner, 'wr', e.id, e.category, 1, ''), emoji='📋') for e in rows_[:5]]
     return ([row(*buttons)] if buttons else []) + [_menu_row(owner, ('bag', 'Bag'))]
@@ -1436,6 +1528,27 @@ def extra_view(m, db, p, owner, verb, args, values, name):
         return keep_item_message(m, db, p, owner, values[0] if values else (args[0] if args else ''))
     if verb == 'kv':
         return keep_message(m, db, p, owner)
+    if verb in {'lv', 'ls', 'lx'}:
+        from . import shopping_list as shop
+        note = ''
+        if verb == 'ls':
+            note = shop.set_entry(m, db, p, args[0] if args else '', args[1] if len(args) > 1 else '')
+        if verb == 'lx':
+            note = shop.clear(m, db, p, done_only=(args[0] if args else '') == 'done')
+        db.flush()
+        return shopping_message(m, db, p, owner, note)
+    if verb == 'li':
+        return shopping_item_message(m, db, p, owner, args[0] if args else '')
+    if verb == 'la':
+        from . import shopping_list as shop
+        recipe = args[0] if args else ''
+        if db.get(shop.ShoppingEntry, (p.channel_id, p.twitch_uid, recipe)) is not None:
+            return shopping_item_message(m, db, p, owner, recipe, '🛒 Already on your shopping list.')
+        note = shop.set_entry(m, db, p, recipe)
+        db.flush()
+        if not note.startswith('🛒 Added'):
+            return shopping_message(m, db, p, owner, note)
+        return shopping_item_message(m, db, p, owner, recipe, note + ' Choose how many you want to have.')
     if verb == 'fu':
         text, rows_ = more.uses_text(m, db, p, args[0])
         return message(m, text, uses_components(owner, rows_), 'catalog')
@@ -1475,7 +1588,12 @@ def extra_ticket(m, uid, name, action, kind, channel):
                 lines.append(m.seed_industries(channel, uid, name, 'buy', action['item'], min(25, amount), 'discord').body.decode())
                 amount -= 25
             db.expire_all()
-            return goal_message(m, db, p, uid, '\n'.join(lines) + '\n\n')
+            return (shopping_message if action.get('shop') else goal_message)(m, db, p, uid, '\n'.join(lines) + '\n\n')
+        if kind == 'shopbuy':
+            from . import shopping_list as shop
+            text = shop.buy_all(m, db, p, 'discord')
+            db.commit()
+            return shopping_message(m, db, p, uid, text)
     if kind == 'routine':
         text = more.start_routine(m, channel, uid, name, 'discord', action['id'])
         with m.SessionLocal() as db:

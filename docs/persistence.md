@@ -28,6 +28,8 @@ Inventory conversion occurs before account balances are combined. Account linkin
 
 Keep levels live in the additive `player_keep_levels_v1` table (world, citizen, canonical item key and amount; at most 25 per citizen), created at startup like the other additive tables. Item keys are stored canonically, so an old alias and its catalog item share one row. Linking keeps the target's levels; the source's levels for other items move across while the citizen stays within 25, and the rest are dropped.
 
+Shopping lists live in the additive `player_shopping_list_v1` table (world, citizen, recipe ID, the amount of its output wanted and when it was added; at most 10 per citizen, in the order added), created at startup like the other additive tables. Progress is not stored: an entry is done when the citizen owns that many. Linking keeps the target's entries; the source's entries for other recipes move across after them while the list stays within 10, and the rest are dropped.
+
 ## Rollback semantics
 
 The filesystem cleanup is independent of the database format. Earlier item conversion is not reversed by restoring older source files: a version that still expects separate legacy stock cannot safely interpret a converted save as though conversion never occurred. Queue records are additive, but an application without the worker will not process them. A data-aware rollback or a database snapshot is required when reversing persistent migrations, with the usual consequence that restoring a snapshot loses later changes.

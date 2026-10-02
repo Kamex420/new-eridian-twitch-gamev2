@@ -348,6 +348,10 @@ User level: Everyone | Global cooldown: 0s | User cooldown: 10s
 Response: $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/keep?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&k=YOUR_API_KEY&text=$(queryescape ${1:}))
 User level: Everyone | Global cooldown: 0s | User cooldown: 10s
 
+!shopping
+Response: $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/shopping?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&k=YOUR_API_KEY&text=$(queryescape ${1:}))
+User level: Everyone | Global cooldown: 0s | User cooldown: 10s
+
 !home
 Response: $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/home?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&k=YOUR_API_KEY)
 User level: Everyone | Global cooldown: 0s | User cooldown: 10s

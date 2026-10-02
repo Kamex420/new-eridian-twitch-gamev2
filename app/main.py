@@ -7514,7 +7514,7 @@ def queue_task_menu(query:str='',page:int=1,provider:str='twitch'):
     return platform_response(provider,text,text.replace('\n',' | '))
 
 
-from . import qol, presentation, menu, inbox, extras, keep_levels
+from . import qol, presentation, menu, inbox, extras, keep_levels, shopping_list
 game_menu=menu
 inbox.install(sys.modules[__name__])
 extras.install(sys.modules[__name__])
@@ -7809,6 +7809,14 @@ def autosell(channel:str,uid:str,name:str='Citizen',item:str='',provider:str='tw
 def keep_level(channel:str,uid:str,name:str='Citizen',text:str='',provider:str='twitch'):
     """Keep levels: blank lists them; '<item> <amount>' sets one (0 clears); 'restock' plans the first short item, 'restock go' starts it."""
     text=keep_levels.command(sys.modules[__name__],channel,uid,name,provider,text)
+    return platform_response(provider,text,text)
+
+
+@app.get('/api/v1/shopping')
+@game_transaction
+def shopping(channel:str,uid:str,name:str='Citizen',text:str='',provider:str='twitch'):
+    """Shopping list: blank sums it up; 'add <recipe> [amount]' (0 removes), 'remove <recipe>', 'clear [done]'; 'buy' shows the cost, 'buy confirm' buys every missing material Seed Industries sells."""
+    text=shopping_list.command(sys.modules[__name__],channel,uid,name,provider,text)
     return platform_response(provider,text,text)
 
 

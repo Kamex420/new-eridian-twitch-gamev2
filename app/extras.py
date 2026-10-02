@@ -340,6 +340,68 @@ def _machine(m, ctx, e):
     return (best[1], best[2]) if best else (None, None)
 
 
+class _Planner:
+    """What full_plan and list_plan share: one pool of what is available (what you own, less what the
+    plan has used, plus what its crafts leave over), the crafts in dependency order and the raw shortfalls."""
+
+    def __init__(self, ctx):
+        self.ctx, self.m = ctx, ctx.m
+        self.avail, self.raw, self.crafts = {}, defaultdict(int), []
+        self.opened = set(ctx.access)
+        self.used = defaultdict(int)          # raw materials the plan takes from what you own
+
+    def have(self, key):
+        return self.avail.setdefault(key, self.ctx.have(key))
+
+    def take(self, key, qty):
+        """Up to `qty` of `key` from the pool; returns how many it gave."""
+        use = min(self.have(key), qty)
+        self.avail[key] -= use
+        return use
+
+    def source(self, key, depth):
+        """The recipe that makes `key` here (the catalog's ranked route), or None when it is collected."""
+        route = s.ACQUISITION.get(key)
+        sub = wb.entry(self.m, route) if route else None
+        return sub if sub is not None and sub.inputs and key not in s.GATHER and depth < DEPTH else None
+
+    def make(self, entry, batches, depth, purpose=None):
+        """`batches` of `entry` after its ingredients, and first the machine its workstation needs."""
+        if depth < DEPTH and not any(t in self.opened for t in entry.tags):
+            key, machine = _machine(self.m, self.ctx, entry)
+            if machine is not None:
+                self.opened.update(s.machine_tags(key))
+                self.make(machine, 1, depth + 1, entry)
+        for key, n in entry.inputs.items():
+            self.require(key, n * batches, depth + 1)
+        self.crafts.append((entry, batches, purpose))
+
+    def require(self, key, qty, depth):
+        use = self.take(key, qty)
+        short = qty - use
+        sub = self.source(key, depth)
+        if sub is None:
+            self.used[key] += use
+        if short <= 0:
+            return
+        if sub is not None:
+            per = max(1, self.ctx.batch_size(sub))
+            count = math.ceil(short / per)
+            self.make(sub, count, depth)
+            self.avail[key] = self.avail.get(key, 0) + count * per - short
+        else:
+            self.raw[key] += short
+
+    def result(self):
+        merged = {}
+        for entry, batches, purpose in self.crafts:
+            if entry.id in merged:
+                merged[entry.id][1] += batches
+            else:
+                merged[entry.id] = [entry, batches, purpose]
+        return [tuple(x) for x in merged.values()], dict(self.raw), self.opened
+
+
 def full_plan(ctx, e):
     """Everything to make for one `e`, including the machines it needs (unlike plan, which only expands ingredients).
 
@@ -348,47 +410,33 @@ def full_plan(ctx, e):
     (recipe, batches, the recipe a machine is for or None), raw shortfalls {key: qty}, the
     station tags open once the planned machines are made). The goal itself is the last craft.
     """
-    m = ctx.m
-    avail, raw, crafts = {}, defaultdict(int), []
-    opened = set(ctx.access)
+    planner = _Planner(ctx)
+    planner.make(e, 1, 0)
+    return planner.result()
 
-    def have(key):
-        return avail.setdefault(key, ctx.have(key))
 
-    def make(entry, batches, depth, purpose=None):
-        if depth < DEPTH and not any(t in opened for t in entry.tags):
-            key, machine = _machine(m, ctx, entry)
-            if machine is not None:
-                opened.update(s.machine_tags(key))
-                make(machine, 1, depth + 1, entry)
-        for key, n in entry.inputs.items():
-            require(key, n * batches, depth + 1)
-        crafts.append((entry, batches, purpose))
+def list_plan(ctx, wanted):
+    """full_plan for several recipes at once, each wanted in an amount of its output (the shopping list).
 
-    def require(key, qty, depth):
-        use = min(have(key), qty)
-        avail[key] -= use
-        short = qty - use
-        if short <= 0:
-            return
-        route = s.ACQUISITION.get(key)
-        sub = wb.entry(m, route) if route else None
-        if sub is not None and sub.inputs and key not in s.GATHER and depth < DEPTH:
-            per = max(1, ctx.batch_size(sub))
-            count = math.ceil(short / per)
-            make(sub, count, depth)
-            avail[key] = avail.get(key, 0) + count * per - short
-        else:
-            raw[key] += short
-
-    make(e, 1, 0)
-    merged = {}
-    for entry, batches, purpose in crafts:
-        if entry.id in merged:
-            merged[entry.id][1] += batches
-        else:
-            merged[entry.id] = [entry, batches, purpose]
-    return [tuple(x) for x in merged.values()], dict(raw), opened
+    In list order each recipe's output comes from the shared pool first; what is short is made with
+    that recipe itself (never another route to the same item), and what a batch leaves over goes back
+    into the pool. Ingredients therefore count once against what you own, however many recipes need
+    them. Returns (crafts, raw shortfalls, opened stations as full_plan does, [(recipe, wanted,
+    batches of it planned)], {raw material: how many of what you own the plan uses})."""
+    planner, rows = _Planner(ctx), []
+    for e, want in wanted:
+        use = planner.take(e.output, want)
+        if planner.source(e.output, 0) is None:
+            planner.used[e.output] += use
+        short, batches = want - use, 0
+        if short > 0:
+            per = max(1, ctx.batch_size(e))
+            batches = math.ceil(short / per)
+            planner.make(e, batches, 0)
+            planner.avail[e.output] = planner.avail.get(e.output, 0) + batches * per - short
+        rows.append((e, want, batches))
+    crafts, raw, opened = planner.result()
+    return crafts, raw, opened, rows, {k: n for k, n in planner.used.items() if n or k in raw}
 
 
 def _locks(m, ctx, e, opened=None, ores=(), depth=0):
@@ -514,9 +562,9 @@ def _practice(m, ctx, main, branch, level, label, opened, ores, depth=0):
     return steps
 
 
-def _craft_steps(m, ctx, crafts, raw, opened, ores, depth=0):
+def _craft_steps(m, ctx, crafts, raw, opened, ores, depth=0, part='a part for your goal', listed=()):
     """A plan (see full_plan) as steps: collect the raw materials, then each machine and part after
-    whatever unlocks it."""
+    whatever unlocks it. `part` says what a part is for; recipes in `listed` are on the shopping list."""
     steps = []
     for key, qty in raw.items():
         steps += _collect(m, ctx, key, qty, ores)
@@ -524,7 +572,7 @@ def _craft_steps(m, ctx, crafts, raw, opened, ores, depth=0):
         steps += _locks(m, ctx, sub, opened, ores, depth)
         times = f' ×{count}' if count > 1 or machine_for is None else ''
         why = (f'the machine for {machine_for.name}: owning it opens its workstation' if machine_for is not None
-               else 'a part for your goal')
+               else 'on your shopping list' if sub.id in listed else part)
         if ctx.status(sub).code == 'ready':
             action = ({'do': 'craft', 'recipe': sub.id, 'back': [sub.category, 1, '']} if machine_for is not None
                       else {'do': 'queue', 'task': 'make:' + sub.id, 'count': min(10, count)})
@@ -594,6 +642,22 @@ def walkthrough(m, db, p, provider='discord'):
                            action={'do': 'craft', 'recipe': e.id, 'back': [e.category, 1, '']}, label='Craft'))
     else:
         steps.append(_step('❌', f'Craft {e.name}', 'the goal · after the steps above', view=('wr', e.id, e.category, 1, ''), label='Recipe'))
+    return e, _tidy(steps, p.sc)
+
+
+def list_walkthrough(m, ctx, wanted):
+    """The goal's walkthrough for the shopping list: every step still needed for all of `wanted`
+    ([(recipe, amount of its output)], see list_plan), in order, each with its button. Returns
+    (steps, list_plan's result)."""
+    plan = list_plan(ctx, wanted)
+    crafts, raw, opened, _, _ = plan
+    steps = _craft_steps(m, ctx, crafts, raw, opened, m.task_queue.ores(), part='a part for your shopping list',
+                         listed={e.id for e, _ in wanted})
+    return _tidy(steps, ctx.p.sc), plan
+
+
+def _tidy(steps, sc):
+    """Steps as buttons: one step per button, and spending steps you cannot afford show how to earn the SC."""
     # One step per button: a skill or station named twice is one step (the higher level).
     unique, seen = [], {}
     for st in steps:
@@ -613,7 +677,7 @@ def walkthrough(m, db, p, provider='discord'):
         seen[target] = st
         unique.append(st)
     # SC: spending steps you cannot afford yet show how to earn the rest.
-    left = p.sc
+    left = sc
     for st in unique:
         if not st['cost']:
             continue
@@ -621,7 +685,7 @@ def walkthrough(m, db, p, provider='discord'):
             st.update(detail=f"{st['detail']} · you need {st['cost'] - max(0, left)} more SC", action=None,
                       view=('mp', 'guidegoal', '=seed_coin'), label='Earn SC')
         left -= st['cost']
-    return e, unique
+    return unique
 
 
 def next_step(m, db, p, provider='discord'):

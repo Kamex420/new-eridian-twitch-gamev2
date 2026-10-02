@@ -24,6 +24,7 @@ DISCORD_ONLY = {
     '/api/v1/make': ('Crafting', '/make'), '/api/v1/craftmax': ('Crafting queues', '/queue'),
     '/api/v1/fetch': ('Fetching ingredients', '/make'), '/api/v1/favorite': ('Favourite recipes', '/make'),
     '/api/v1/target': ('Crafting goals', '/make'), '/api/v1/goal': ('Crafting goals', '/make'),
+    '/api/v1/shopping': ('Shopping lists', '/menu → Craft'),
     '/api/v1/recipes': ('Recipes', '/make'), '/api/v1/workshop': ('Workshops', '/workshop'), '/api/v1/uses': ('Item uses', '/find'),
     '/api/v1/queue': ('Queues', '/queue'), '/api/v1/queue-tasks': ('Queues', '/queue'), '/api/v1/routines': ('Routines', '/queue'),
     '/api/v1/routine': ('Routines', '/queue'), '/api/v1/again': ('Repeat last action', '/menu → Recent'),
@@ -167,7 +168,7 @@ TOPICS = {
             'Using beds, seats and clothing, and auto-recovering queues, are on Discord.',
     'other': '!seedling: your Seedling now. !diary: what it did while you were away. !vote 1-3: the colony vote. !challenge: the stream '
              'challenge. !recap: this week’s leaders. !find <word>: search. !meal: share a Pumpkin. Queues, favourites, goals, '
-             'auto-selling, keep levels, schedules and your Seedling’s look are on Discord.',
+             'shopping lists, auto-selling, keep levels, schedules and your Seedling’s look are on Discord.',
 }
 
 

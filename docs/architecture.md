@@ -20,7 +20,7 @@ The application now has one canonical Python package. Earlier releases stored im
 | `command_catalog.py`, `twitch_help.py` | Platform command definitions and help text |
 | `fun_systems.py`, `seasonal.py` | Supplemental activities and calendar flavor |
 | `inbox.py` | Private notifications: per-citizen inbox, popups after the next interaction, warnings and one-time tips |
-| `extras.py` | Planning and convenience: live countdowns, queue max, recent actions and `!again`, goals, plans and routines, item uses, welcome-back and reminders, auto-sell, undo, eat until full, `/find` and the remembered Workbench place |
+| `extras.py` | Planning and convenience: live countdowns, queue max, recent actions and `!again`, goals (and the planner the shopping list shares), plans and routines, item uses, welcome-back and reminders, auto-sell, undo, eat until full, `/find` and the remembered Workbench place |
 | `stream_overlay.py` | Stream highlights feed, overlay extras (leaders, working queues, festival, join tips) and the alerts, ticker, leaders, working, join and setup OBS pages |
 | `autonomy.py` | Autonomous Seedlings: schedules, the background worker that lets each Seedling act through ordinary commands, how it thinks a Work turn through (the goal's next step, then turns of collecting and training, with its reason kept and quoted), moods and their success modifier, thoughts, the diary, and the map/narrator overlay data |
 | `menu.py` | The /menu button tree: areas, their action and view buttons, choice lists and follow-up buttons on every reply |
@@ -30,6 +30,7 @@ The application now has one canonical Python package. Earlier releases stored im
 | `notice.py` | The fan-project notice (a free, unofficial fan project by Kamex, not affiliated with Klang Games): the card footer, Help → About, `!seed about`, the first guide panel, the pinned panel and the first welcome all use it. |
 | `qol.py` | Status view, favourites, follow-up queues, alert and auto-recovery preferences, recovery estimates, fetch plans, bulk selling, inventory search and fuzzy names |
 | `keep_levels.py` | Keep levels: how many of an item bulk and automatic selling always leaves, and restocking back up to it through the ordinary queue, craft queue or purchase |
+| `shopping_list.py` | Shopping list: up to 10 recipes in the amounts of their output wanted, planned together with the goal's planner and one shared pool (combined materials, Fetch next, Buy all missing) |
 
 ## Runtime boundaries
 
