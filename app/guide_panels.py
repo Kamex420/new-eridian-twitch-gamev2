@@ -184,7 +184,7 @@ PANELS = NEWCOMER_PANELS + [
          ('/queue → Queue next', 'Line up the next task to start when this one ends.'),
          ('➕ Add to plan', 'Chain more steps, even "sell all". Save a plan as a routine.')]),
       ('ALERTS', [
-          ('/settings → Alerts', 'Mention, DM, private, quiet or off.'),
+          ('/settings → Alerts', 'A DM by default. Or a channel mention, private, quiet or off.'),
           ('Pauses', 'Low needs or missing items pause a queue. It resumes by itself.')])],
      'QUEUE → WALK AWAY → GET PINGED → REPEAT'),
     ('Money & trade',

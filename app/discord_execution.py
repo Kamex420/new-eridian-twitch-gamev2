@@ -6,6 +6,7 @@ including shared society balances. Receipts intentionally do not store tokens.
 """
 import hashlib
 import json
+import os
 from sqlalchemy import Column, String, Text, DateTime
 from .db import Base
 
@@ -36,6 +37,16 @@ def execute(m,payload,command,uid,name,options):
             return result
 
 
+# Replies everyone in the channel sees: only moderator announcements. Every other reply is
+# private to the player, so the channel stays quiet (the activity feed sums up what players do,
+# and Share posts a card on purpose). DISCORD_PUBLIC_ACTIONS=true makes life and work replies
+# public again.
+SHARED_REPLIES={'eventstart','eventstop'}
+PUBLIC_ACTIONS=os.getenv('DISCORD_PUBLIC_ACTIONS','false').strip().lower() in {'1','true','yes','on'}
+
+
 def private_response(m,command,options):
+    if command in SHARED_REPLIES:return False
+    if not PUBLIC_ACTIONS:return True
     return command in m.DISCORD_PRIVATE_COMMANDS or command=='mine' or (
         command=='eat' and not options.get('food')) or (command=='use' and not options.get('item'))

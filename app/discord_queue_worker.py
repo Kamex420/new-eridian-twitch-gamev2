@@ -112,7 +112,8 @@ async def send_notice(m,client,notice):
         raise n.DeliveryError('A numeric Discord channel and player ID are required',permanent=True)
     data,mention=await asyncio.to_thread(payload,m,notice)
     if direct:
-        # Opted-in DMs; a closed inbox falls back to the channel mention below.
+        # Direct-message alerts. Closed DMs never fall back to the channel (it would fill it with
+        # pings): the alert waits privately in the player's Notifications instead.
         room=await direct_channel(client,notice.recipient)
         if room is not None:
             try:
@@ -121,8 +122,8 @@ async def send_notice(m,client,notice):
                     await room.send(**message_args(data,line,notice,dm=True))
                 return
             except (discord.Forbidden,discord.HTTPException):pass
-        if not str(channel_id).isdigit():
-            raise n.DeliveryError('Direct messages are closed and no game channel is configured',permanent=True)
+        await asyncio.to_thread(n.dm_closed,m,notice)
+        return
     channel=client.get_channel(int(channel_id)) or await client.fetch_channel(int(channel_id))
     if not isinstance(channel,(discord.TextChannel,discord.Thread)):
         raise n.DeliveryError('Queue alerts require a server text channel or thread; DMs are disabled',permanent=True)

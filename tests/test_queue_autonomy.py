@@ -182,7 +182,7 @@ def test_queue_remembers_origin_channel_across_requests():
     advance()
     with m.SessionLocal() as db:
         notice=db.query(n.Notice).one()
-        assert notice.message_channel=='123456' and notice.recipient=='u'
+        assert notice.message_channel==n.DM_PREFIX+'123456' and notice.recipient=='u'   # a DM by default; the origin channel is kept
     assert n.origin_channel.get()==''
 
 

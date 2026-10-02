@@ -229,7 +229,9 @@ def test_end_to_end_timer_posts_second_channel_message(monkeypatch):
     monkeypatch.setattr(w.Runtime,'login',login)
     with m.SessionLocal() as db:
         destination=db.query(n.Destination).one();destination.recipient='123';destination.message_channel='456'
-        db.query(q.TaskQueue).one().next_at=m.now()-timedelta(seconds=1);db.commit()
+        queue=db.query(q.TaskQueue).one();queue.next_at=m.now()-timedelta(seconds=1)
+        m.qol.prefs(db,queue.channel_id,queue.canonical_uid,create=True).alerts='mention'   # chose channel mentions
+        db.commit()
     with TestClient(m.app):assert sent.wait(8)
     assert len(bodies)==1 and not room.send.await_count
     assert layout_v2.text_of(bodies[0]).startswith('<@123> Your queue has finished.')

@@ -766,7 +766,7 @@ def choices(m, db, p, source, uid):
                 for k in source.split(':', 1)[1].split(',') if k in LEAVES]
     if source == 'alerts':
         pref = m.qol.prefs(db, p.channel_id, p.twitch_uid)
-        now = pref.alerts if pref is not None else 'mention'
+        now = pref.alerts if pref is not None and pref.alerts in m.qol.ALERT_MODES else m.qol.DEFAULT_ALERTS
         return [(f"{m.qol.ALERT_LABELS[k].capitalize()}{' (current)' if k == now else ''} — {d}", k) for k, d in m.qol.ALERT_MODES.items()]
     if source == 'popups':
         now = m.inbox.popup_mode(db, p.channel_id, p.twitch_uid)

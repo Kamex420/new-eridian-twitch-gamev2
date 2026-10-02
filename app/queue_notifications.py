@@ -105,7 +105,8 @@ def stopped(m,db,p,queue,kind,reason='',following=''):
         inbox.add(m,db,p.channel_id,p.twitch_uid,'queue',inbox_text(m,db,queue,kind,reason,following),seen=pinged)
         if pinged:
             target=dest.message_channel
-            if mode=='dm' and dest.provider=='discord':target=DM_PREFIX+(dest.message_channel or os.getenv('DISCORD_GAME_CHANNEL_ID',''))
+            # Direct messages for every alert except an explicit channel mention, so alerts never fill the channel.
+            if mode in {'dm','quiet'} and dest.provider=='discord':target=DM_PREFIX+(dest.message_channel or os.getenv('DISCORD_GAME_CHANNEL_ID',''))
             db.add(Notice(id=notice_id,provider=dest.provider,recipient=dest.recipient,
                           channel_id=p.channel_id,message_channel=target,content=content,next_at=m.now()))
             db.add(NoticeEvent(notice_id=notice_id,run_id=dest.run_id,kind=kind,created_at=m.now()))
@@ -116,6 +117,19 @@ def stopped(m,db,p,queue,kind,reason='',following=''):
 
 
 DM_PREFIX='dm|'
+
+
+def dm_closed(m,notice):
+    """The player's DMs are closed: keep the alert private instead of posting it in the game channel.
+    Its notification (saved when the alert was made) is marked unread, so it pops up privately the
+    next time they use a command or button."""
+    from . import inbox
+    with m.SessionLocal() as db:
+        uid=inbox._canonical(m,db,str(notice.recipient))
+        row=db.execute(select(inbox.InboxItem).where(inbox.InboxItem.channel_id==notice.channel_id,inbox.InboxItem.canonical_uid==uid,
+                                                     inbox.InboxItem.kind=='queue').order_by(inbox.InboxItem.id.desc())).scalars().first()
+        if row is not None:row.seen=0
+        db.commit()
 
 
 def inbox_text(m,db,queue,kind,reason='',following=''):
@@ -161,7 +175,7 @@ def renew(db,row):
 def delivery_status(db,queue,m=None):
     from . import qol
     mode=qol.alert_mode(db,queue.channel_id,queue.canonical_uid)
-    if mode=='off':return 'Queue alerts are off (/settings or !settings alerts mention turns them back on). Your results are saved here.'
+    if mode=='off':return 'Queue alerts are off (/settings or !settings alerts dm turns them back on). Your results are saved here.'
     dest=db.get(Destination,(queue.channel_id,queue.canonical_uid))
     notice=None
     if dest:
@@ -178,9 +192,9 @@ def delivery_status(db,queue,m=None):
         return 'Queue notification could not be delivered: '+reason+'. Your results are saved.'
     if notice:
         return 'Queue notification is waiting for delivery. Your results are saved.'
-    if mode=='quiet':return 'Quiet alerts: you will be notified when the queue finishes or stops, not when it pauses.'
+    if mode=='quiet':return 'Quiet alerts: a direct message when the queue finishes or stops, not when it pauses.'
     if mode=='private':return 'Private alerts: results appear only to you, the next time you use a command or button.'
-    if mode=='dm':return 'You will get a direct message when the queue pauses or stops (or a channel @mention if your DMs are closed).'
+    if mode=='dm':return 'You will get a direct message when the queue pauses or stops (in your Notifications instead if your DMs are closed).'
     return 'You will be @mentioned in the game channel when the queue pauses or stops, if delivery is configured.'
 
 

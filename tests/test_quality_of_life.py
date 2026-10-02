@@ -325,7 +325,7 @@ def _http():
     return SimpleNamespace(request=AsyncMock(return_value={'id': '1'}))
 
 
-def test_dm_delivery_sends_privately_and_falls_back_to_the_channel():
+def test_dm_delivery_sends_privately_and_closed_dms_stay_out_of_the_channel(monkeypatch):
     from app import layout_v2
     dm = MagicMock(spec=discord.DMChannel)
     dm.id = 789
@@ -338,13 +338,26 @@ def test_dm_delivery_sends_privately_and_falls_back_to_the_channel():
     assert route.url.endswith('/channels/789/messages') and not dm.send.await_count
     assert layout_v2.text_of(body).startswith('Your queue has finished.') and body['allowed_mentions']['users'] == []
 
+    # Closed DMs: nothing is posted in the channel; the alert waits, unread, in the player's Notifications.
+    enqueue(count=1)
+    advance()
+    with m.SessionLocal() as db:
+        notice = db.query(n.Notice).one()
+        uid = db.query(q.TaskQueue).one().canonical_uid
+        assert notice.message_channel.startswith(n.DM_PREFIX)                       # DM is the default
+        assert m.inbox.unread_count(db, notice.channel_id, uid) == 0                 # a DM counts as seen
+        row = SimpleNamespace(id=notice.id, recipient='123', message_channel=n.DM_PREFIX + '456',
+                              content=notice.content, channel_id=notice.channel_id)
+    monkeypatch.setattr(m.inbox, '_canonical', lambda m_, db_, discord_uid: uid)   # Discord user 123 is that citizen
     room = MagicMock(spec=discord.TextChannel)
     room.id = 456
     room.send = AsyncMock(return_value=SimpleNamespace(id=2))
     closed = SimpleNamespace(create_dm=AsyncMock(side_effect=discord.Forbidden(SimpleNamespace(status=403, reason='x'), 'closed')))
     client = SimpleNamespace(get_user=lambda _: closed, get_channel=lambda _: room, http=_http())
-    asyncio.run(w.send_notice(m, client, _notice(n.DM_PREFIX + '456')))
-    assert layout_v2.text_of(client.http.request.call_args.kwargs['json']).startswith('<@123> Your queue has finished.')
+    asyncio.run(w.send_notice(m, client, row))
+    assert not client.http.request.await_count and not room.send.await_count
+    with m.SessionLocal() as db:
+        assert m.inbox.unread_count(db, row.channel_id, uid) == 1
 
 
 def test_alert_buttons_reach_the_discord_view():
@@ -443,7 +456,35 @@ def test_tier_up_is_announced(monkeypatch):
 def test_settings_view_and_twitch_text():
     citizen()
     view = m.settings(W, '111', 'Kam', provider='discord').body.decode()
-    assert 'Alerts: channel mention' in view and 'Auto-recover: off' in view
+    assert 'Alerts: direct message' in view and 'Auto-recover: off' in view
     chat = m.settings('test', 'tw', provider='twitch', text='autorecover on').body.decode()
     assert 'Auto-recover on' in chat
     assert 'Nothing changed' in m.settings('test', 'tw', provider='twitch', text='volume 11').body.decode()
+
+
+def test_old_default_alerts_move_to_direct_messages_once():
+    from sqlalchemy import text
+    with m.SessionLocal() as db:
+        db.execute(text('DELETE FROM simulation_schema_versions WHERE version=:v'), {'v': qol.QUIET_MARKER})
+        qol.prefs(db, W, 'a', create=True).alerts = 'mention'          # the old default
+        db.commit()
+        assert qol.alert_mode(db, W, 'new') == 'dm'                     # the new default
+    qol.quiet_channel_once(m)
+    with m.SessionLocal() as db:
+        assert qol.alert_mode(db, W, 'a') == 'dm'
+        qol.prefs(db, W, 'a').alerts = 'mention'                        # chosen again afterwards: kept
+        db.commit()
+    qol.quiet_channel_once(m)
+    with m.SessionLocal() as db:
+        assert qol.alert_mode(db, W, 'a') == 'mention'
+
+
+def test_quiet_alerts_are_direct_messages_too():
+    enqueue(count=1)
+    with m.SessionLocal() as db:
+        queue = db.query(q.TaskQueue).one()
+        qol.prefs(db, queue.channel_id, queue.canonical_uid, create=True).alerts = 'quiet'
+        db.commit()
+    advance()
+    with m.SessionLocal() as db:
+        assert db.query(n.Notice).one().message_channel.startswith(n.DM_PREFIX)

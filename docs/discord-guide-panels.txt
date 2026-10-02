@@ -310,7 +310,7 @@ The Holidays panel's COMING UP part is worked out when the bot posts it; the cop
 [0mroutine.
 [1;36mALERTS
 [0;33m/settings → Alerts
-[0mMention, DM, private, quiet or off.
+[0mA DM by default. Or a channel mention, private, quiet or off.
 [0;33mPauses
 [0mLow needs or missing items pause a queue. It resumes by
 [0mitself.

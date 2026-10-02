@@ -425,7 +425,7 @@ commands.append(cmd('find','Search recipes, items, buttons and the handbook for 
     {'type':STRING,'name':'query','description':'A word or name, e.g. campfire, lumber or comfort','required':True,'max_length':60}]))
 commands.append(cmd('settings','Queue alerts and auto-recovery; leave options blank to view them',[
     {'type':STRING,'name':'alerts','description':'How queue alerts reach you','required':False,
-     'choices':[{'name':'Channel @mention (default)','value':'mention'},{'name':'Direct message','value':'dm'},
+     'choices':[{'name':'Direct message (default)','value':'dm'},{'name':'Channel @mention (everyone sees it)','value':'mention'},
                 {'name':'Private: only you see it, at your next command','value':'private'},
                 {'name':'Quiet: finish/stop only, no pause alerts','value':'quiet'},{'name':'Off: check /status','value':'off'}]},
     {'type':STRING,'name':'autorecover','description':'Paused queues try relax, games, cheapest food, comfort items or sleep','required':False,

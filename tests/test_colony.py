@@ -206,7 +206,7 @@ def test_legacy_save_migration_twice(tmp_path):
     values={row[1]:0 for row in columns}
     values.update(id=1,channel_id='old',twitch_uid='original',display_name='Veteran',job='farmer',sc=1234,farm_xp=97,created_at='2026-01-01 00:00:00',last_seen='2026-01-01 00:00:00',last_job_change=None)
     con.execute('INSERT INTO players ('+','.join(values)+') VALUES ('+','.join('?' for _ in values)+')',list(values.values()));con.commit();con.close()
-    code='from app import main as m; m.migrate_schema(); m.migrate_schema(); s=m.SessionLocal(); p=s.query(m.Player).one(); assert (p.sc,p.farm_xp,p.twitch_uid)==(1234,97,"original"); assert s.query(m.SimulationVersion).count()==1'
+    code='from app import main as m; m.migrate_schema(); m.migrate_schema(); s=m.SessionLocal(); p=s.query(m.Player).one(); assert (p.sc,p.farm_xp,p.twitch_uid)==(1234,97,"original"); assert sorted(v.version for v in s.query(m.SimulationVersion))==[7,8]'
     subprocess.run([sys.executable,'-c',code],env=os.environ|{'DATABASE_URL':'sqlite:///'+str(path)},check=True,capture_output=True)
 
 @pytest.mark.parametrize('command',list(m.DISCORD_OPTION_SCHEMA))

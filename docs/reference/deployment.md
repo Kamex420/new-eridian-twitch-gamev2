@@ -32,6 +32,8 @@ Set `DISCORD_WORLD_ID` to the Twitch channel's numeric ID (what StreamElements s
 
 `DISCORD_COMPONENTS_V2` (default `true`) sends every Discord message in Discord's newer layout (Components V2): command replies, button answers, Details pages, popups, notices, queue alerts, the activity feed, the weekly recap, the pinned game panel and the guide panels. Set it to `false` to send new messages as classic embeds again (the guide panels as their coloured text); messages already sent in the newer layout keep it when their buttons are pressed, because Discord cannot switch a message back. Changing it needs a restart, like every setting.
 
+The game keeps the Discord channel quiet. Command replies are private to the player except moderator event announcements; set `DISCORD_PUBLIC_ACTIONS=true` to make life and work replies (`/relax`, `/eat`, `/work`…) public again. Queue alerts go by direct message unless a player chooses channel mentions in `/settings`, and closed DMs wait in the player's Notifications rather than going to the channel. `FEED_SECONDS` (default `300`) sets how often the activity feed updates; it edits its own message when nobody has posted since, so a calm channel gets one growing message.
+
 `DISCORD_OWNER_USER_IDS` and `DISCORD_MOD_ROLE_IDS` control existing privileged functions. These values are environment configuration, not repository content. The game title defaults to New Eridian v2 and the society name to New Eridian.
 
 ## Keys

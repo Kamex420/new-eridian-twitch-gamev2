@@ -256,7 +256,7 @@ A queue repeats one task up to 10 times and keeps going while you are away.
 
 **Alerts**
 
-- `/settings → Alerts` Mention, DM, private, quiet or off.
+- `/settings → Alerts` A DM by default. Or a channel mention, private, quiet or off.
 - **Pauses:** Low needs or missing items pause a queue. It resumes by itself.
 
 **QUEUE → WALK AWAY → GET PINGED → REPEAT**

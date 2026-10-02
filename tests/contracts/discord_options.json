@@ -1467,12 +1467,12 @@
       "required": false,
       "choices": [
         {
-          "name": "Channel @mention (default)",
-          "value": "mention"
+          "name": "Direct message (default)",
+          "value": "dm"
         },
         {
-          "name": "Direct message",
-          "value": "dm"
+          "name": "Channel @mention (everyone sees it)",
+          "value": "mention"
         },
         {
           "name": "Private: only you see it, at your next command",

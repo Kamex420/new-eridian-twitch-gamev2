@@ -88,7 +88,7 @@ sources, workstation requirements and mining rules remain in Details.
 
 ### Queue pauses and stops
 
-Low Energy, Nutrition or Social pauses a queue and sends a channel @mention
+Low Energy, Nutrition or Social pauses a queue and sends an alert (a direct message by default)
 with the current value, required minimum and recovery command. Missing materials
 or access also pauses it. Remaining attempts are saved, and recovery automatically
 resumes the queue. Cooldown waits are not failures and do not produce pause alerts.
@@ -104,14 +104,13 @@ secondary materials and items consumed to zero. Permanent bonuses, routine world
 information and general instructions stay in their dedicated views. Recovery
 warnings and new injuries or milestones remain relevant to the current action.
 
-### Channel pings
+### Where alerts go
 
-When your queue completes or pauses, a separate message @mentions you in the
-same game channel. A pause message states the reason and recovery action.
-The queue timer continues without new chat messages. `/queue` shows delivery
-errors when the bot cannot send the alert; the original private command response
-is not the completion notification. Discord notification settings can affect
-push notifications even when the channel mention is delivered.
+When your queue completes or pauses, you get a direct message by default. If your DMs
+are closed, the alert waits privately in your Notifications instead; it is never posted
+in the game channel unless you choose channel mentions in `/settings`. `/queue` shows
+delivery errors when the bot cannot send the alert. The original private command
+response is not the completion notification.
 
 
 ## Production batch and resale update
@@ -159,7 +158,7 @@ With **auto-recover** on, a queue that would pause for low needs first runs whic
 
 ### Alerts
 
-`/settings alerts:` chooses channel mention (default), direct message (Discord only; closed DMs fall back to the channel mention), quiet (completion, cancellation and error alerts only) or off. Alert buttons: Repeat, Status and Queue, plus Recover now on need pauses.
+`/settings alerts:` chooses direct message (the default on Discord; closed DMs wait privately in Notifications instead of going to the channel), channel mention (posted in the game channel, where everyone sees it), quiet (a direct message for completion, cancellation and error alerts only) or off. Alert buttons: Repeat, Status and Queue, plus Recover now on need pauses.
 
 ### Inventory and selling
 

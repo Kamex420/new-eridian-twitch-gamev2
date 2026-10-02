@@ -9,7 +9,7 @@ from test_colony import m,reset
 from app import discord_deferred as d
 
 
-@pytest.mark.parametrize('command,private',[('mine',True),('queue',True),('farm',False),('make',True),('eat',True),('sleep',False)])
+@pytest.mark.parametrize('command,private',[('mine',True),('queue',True),('farm',True),('make',True),('eat',True),('sleep',True)])
 def test_acknowledges_without_running_database_work(monkeypatch,command,private):
     key=SigningKey.generate();monkeypatch.setattr(m,'DISCORD_PUBLIC_KEY',key.verify_key.encode().hex())
     monkeypatch.setattr(m,'DISCORD_GAME_CHANNEL_ID','')
@@ -51,3 +51,9 @@ def test_game_error_gets_an_error_reply(monkeypatch):
     assert len(delivered)==1
     assert 'Check /queue' in delivered[0][2]['content']
     assert 'private database details' not in str(delivered)
+
+
+def test_only_moderator_announcements_are_public_replies():
+    from app import discord_execution as x
+    assert not x.private_response(m,'eventstart',{}) and not x.private_response(m,'eventstop',{})
+    assert all(x.private_response(m,c,{}) for c in ('relax','eat','sleep','work','farm','recover','life','society','event','social'))

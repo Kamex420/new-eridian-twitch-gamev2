@@ -1,5 +1,12 @@
 # Release notes
 
+## A quieter game channel
+
+The game posts far less in the Discord channel, so nobody needs to mute it.
+- **Replies are private.** Life and work commands (`/relax`, `/eat`, `/work`, `/recover`…) now answer only the player who used them, like the menus already did. Moderator event announcements stay public, and Share still posts a card for everyone on purpose.
+- **Queue alerts come by direct message.** Pauses and finishes are a DM by default instead of a channel @mention. If a player's DMs are closed, the alert waits privately in their Notifications rather than going to the channel. Quiet alerts are DMs too. Anyone who wants channel mentions can still choose them in `/settings`; players still on the old default were moved to DMs once.
+- **The activity feed updates every 5 minutes instead of every minute.** It keeps editing one message while nobody else posts, and big moments (events, challenges, votes, tier-ups) still go out at once.
+
 ## Goals make everything themselves
 
 The goal no longer tells you to pay SC to unlock a workstation. When something on the way needs a workstation you cannot use yet, the goal walks you through crafting that station's machine (owning it opens the workstation), with every material and part the machine needs, all the way down. The steps run in the order you do them: collect the materials, craft each machine and part after its own ingredients, then craft the goal. The goal's header says which machine it needs. Unlocking for SC stays available in Workshops for anyone who prefers it.

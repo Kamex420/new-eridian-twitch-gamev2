@@ -25,7 +25,9 @@ from sqlalchemy import Column, String, Integer, Text, DateTime, select, update, 
 from .db import Base
 from . import layout_v2
 
-FEED_SECONDS = max(20, int(os.getenv('FEED_SECONDS', '60')))
+# How often the feed updates. It edits its own message when nobody else has posted since (edits do not
+# notify anyone), so a calm channel gets one message that grows; big moments go out at once.
+FEED_SECONDS = max(20, int(os.getenv('FEED_SECONDS', '300')))
 MAX_LINES = 15           # lines in one feed message before a new one starts
 KEEP_MINUTES = 30        # a feed message older than this is not edited any more
 FLUSH_LINES = 10         # lines added in one update; the rest are summed up

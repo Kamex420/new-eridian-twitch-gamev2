@@ -20,12 +20,14 @@ CLEAROUT_RESERVE = 20
 NEWCOMER_TIER = 3          # next-step hints on action cards below Tier 3
 MINING_SUCCESS_GUESS = 0.68  # base work success; fetch plans pad ore attempts by it
 ALERT_MODES = {
-    'mention': 'Channel @mention when a queue pauses or stops',
-    'dm': 'Direct message; falls back to the channel if your DMs are closed',
+    'dm': 'Direct message (the default); if your DMs are closed, it waits in your Notifications',
+    'mention': 'Channel @mention: posted in the game channel, where everyone sees it',
     'private': 'No ping; shown only to you, the next time you use a command or button',
-    'quiet': 'Only when a queue finishes or stops; no pause alerts',
+    'quiet': 'A direct message only when a queue finishes or stops; no pause alerts',
     'off': 'No alerts; check /status or /queue',
 }
+DEFAULT_ALERTS = 'dm'      # queue alerts never fill the game channel unless a player asks for channel mentions
+QUIET_MARKER = 8           # simulation_schema_versions row: old default (channel mention) moved to DM once
 ALERT_LABELS = {'mention': 'channel mention', 'dm': 'direct message', 'private': 'private popup', 'quiet': 'quiet (finish/stop only)', 'off': 'off'}
 INVENTORY_SORTS = ('quantity', 'name', 'value', 'category')
 INVENTORY_SHOWS = ('all', 'ready', 'favorites', 'sellable')
@@ -38,7 +40,7 @@ class Preferences(Base):
     channel_id = Column(String(64), primary_key=True)
     canonical_uid = Column(String(96), primary_key=True)
     favorites = Column(Text, nullable=False, default='[]')
-    alerts = Column(String(12), nullable=False, default='mention')
+    alerts = Column(String(12), nullable=False, default=DEFAULT_ALERTS)
     autorecover = Column(Integer, nullable=False, default=0)
     next_task = Column(String(96), nullable=False, default='')
     next_count = Column(Integer, nullable=False, default=0)
@@ -46,12 +48,30 @@ class Preferences(Base):
 
 def install(m):
     Preferences.__table__.create(m.engine, checkfirst=True)
+    quiet_channel_once(m)
+
+
+def quiet_channel_once(m):
+    """Once per database: citizens still on the old default alert (a channel @mention) move to the new
+    default (a direct message), so queue alerts stop filling the game channel. Anyone can choose
+    channel mentions again in /settings; this never runs a second time."""
+    from sqlalchemy import text as sql_text
+    from sqlalchemy.exc import IntegrityError
+    from .models import SimulationVersion
+    try:
+        with m.engine.begin() as conn:
+            if conn.execute(sql_text('SELECT version FROM simulation_schema_versions WHERE version=:v'), {'v': QUIET_MARKER}).first():
+                return
+            conn.execute(sql_text("UPDATE player_preferences_v1 SET alerts=:new WHERE alerts='mention'"), {'new': DEFAULT_ALERTS})
+            conn.execute(SimulationVersion.__table__.insert().values(version=QUIET_MARKER))
+    except IntegrityError:
+        pass                                   # another instance ran it at the same moment
 
 
 def prefs(db, channel, uid, create=False):
     row = db.get(Preferences, (channel, uid))
     if row is None and create:
-        row = Preferences(channel_id=channel, canonical_uid=uid, favorites='[]', alerts='mention',
+        row = Preferences(channel_id=channel, canonical_uid=uid, favorites='[]', alerts=DEFAULT_ALERTS,
                           autorecover=0, next_task='', next_count=0)
         db.add(row)
         db.flush()
@@ -60,7 +80,7 @@ def prefs(db, channel, uid, create=False):
 
 def alert_mode(db, channel, uid):
     row = prefs(db, channel, uid)
-    return row.alerts if row is not None and row.alerts in ALERT_MODES else 'mention'
+    return row.alerts if row is not None and row.alerts in ALERT_MODES else DEFAULT_ALERTS
 
 
 def autorecover_on(db, channel, uid):
