@@ -204,11 +204,15 @@ def test_map_page_keeps_every_layer_and_id():
                   'festive', 'civic', 'crowd', 'shades', 'tint', 'haze', 'lights', 'labels', 'tokens', 'fx',
                   'wrap', 'stage', 'map', 'tier', 'hol', 'fest', 'info', 'toast', 'stats', 'cap'):
         assert f'id="{layer}"' in page, layer
-    # the low-poly helpers: one light model shared by the ground, trees, rocks, water, the diorama's sides and the mountains
+    # the low-poly helpers: one light model shared by the ground, trees, rocks, water, the diorama's sides, the forest and the Kernel
     for helper in ('function shade(', 'function facetTile(', 'function lowPolyTree(', 'function facetRock(', 'function water(', 'function slab(',
-                   'function mountains(', 'const SUN=', 'function ranges('):
+                   'function forest(', 'function kernel(', 'function revolve(', 'const SUN=', 'function horizon('):
         assert helper in page, helper
     assert so.LOWPOLY_JS.strip() in page
+    # the colony's look: lawn plots between concrete sidewalks with orange and purple plot lines, modules, farms of soil beds
+    for part in ('function plots(', 'function plotLines(', 'function module_(', 'function domeHut(', 'function barrack(', 'function streetLamp(',
+                 'function stringLights(', 'function neon(', 'function plaza(', "class:'crop'", 'const LAWN=', 'CONCRETE=[', "PLOT=['#e48a40','#9270dc']"):
+        assert part in page, part
 
 
 def test_seedlings_are_drawn_a_little_smaller():
@@ -250,8 +254,10 @@ def run_lowpoly(quality):
           + so.LOWPOLY_JS + '\nconst count=f=>{const n=made.length;f();return made.length-n},r=rng("test"),g={};'
           'console.log(JSON.stringify({tile:count(()=>facetTile(g,2,3,["#7a9656","#8aa262"])),conifer:count(()=>lowPolyTree(g,100,100,r,"conifer")),'
           'broad:count(()=>lowPolyTree(g,100,100,r,"broad")),rock:count(()=>facetRock(g,100,100,5,r)),shrub:count(()=>shrub(g,100,100,4,r,"#55743a")),'
-          'water:count(()=>water(g,100,100,40,20)),slab:count(()=>slab(g,-1.4,21.4)),mountains:count(()=>mountains(g,g)),'
-          'snow:made.filter(e=>e.a["data-s"]).length,shades:["top","left","right"].map(f=>shade("#808080",f))}))')
+          'water:count(()=>water(g,100,100,40,20)),slab:count(()=>slab(g,-1.4,21.4)),forest:count(()=>forest(g,g)),'
+          'snow:made.filter(e=>e.a["data-s"]).length,kernel:count(()=>kernel(g)),'
+          'kparts:Object.fromEntries(["kring","kglow","kfoot","kdoor","kbody"].map(c=>[c,made.filter(e=>e.a.class===c).length])),'
+          'shades:["top","left","right"].map(f=>shade("#808080",f))}))')
     with tempfile.NamedTemporaryFile('w', suffix='.js', delete=False) as f:
         f.write(js)
     result = subprocess.run([node, f.name], capture_output=True, text=True)
@@ -264,16 +270,62 @@ def test_low_quality_draws_no_facets():
     assert "const FACETS=QUALITY!=='low',FINE=QUALITY==='high'" in page
     low, normal, high = run_lowpoly('low'), run_lowpoly('normal'), run_lowpoly('high')
     # low quality: one plain shape per tile, rock, shrub and pond, a single cone per conifer, three bands per side of the slab,
-    # one silhouette per mountain range and no snow, so the page stays as light as before
+    # two flat tree lines on the horizon and a plainer Kernel, so the page stays as light as before
     assert low['tile'] == 1 and low['rock'] == 1 and low['shrub'] == 1 and low['water'] == 2 and low['conifer'] == 4 and low['broad'] == 3
-    assert low['slab'] == 6 and low['mountains'] == 3 and low['snow'] == 0
-    assert normal['tile'] == 2 and high['tile'] == 4 and high['rock'] == 3 and high['water'] > 20 and high['slab'] > 40 and high['snow'] > 0
-    for key in ('tile', 'conifer', 'broad', 'rock', 'shrub', 'water', 'slab', 'mountains'):
+    assert low['slab'] == 6 and low['forest'] == 8 and low['kernel'] <= 25 and low['kernel'] < normal['kernel'] <= 70
+    assert normal['tile'] == 2 and high['tile'] == 4 and high['rock'] == 3 and high['water'] > 20 and high['slab'] > 40 and high['forest'] == 15
+    for key in ('tile', 'conifer', 'broad', 'rock', 'shrub', 'water', 'slab', 'forest', 'kernel'):
         assert high[key] >= normal[key] > low[key] or high[key] >= normal[key] == low[key] == 1, key
     # one sun on the upper left: tops are lightest, left walls in between, right walls darkest
     light = [sum(int(v) for v in c[4:-1].split(',')) for c in high['shades']]
     assert light[0] > light[1] > light[2]
 
+
+
+def test_the_mountains_are_gone_and_the_horizon_is_a_misty_forest():
+    page = map_page()
+    assert 'function mountains(' not in page and 'function ranges(' not in page and 'data-s' not in so.LOWPOLY_JS
+    assert 'id="mistg"' in page and "for(const id of ['mist0','mist1'])" in page and "'data-l':l,'data-k':k" in so.LOWPOLY_JS
+    for quality in ('low', 'normal', 'high'):
+        assert run_lowpoly(quality)['snow'] == 0, quality      # no snow caps on any path
+
+
+def test_the_kernel_stands_in_the_middle_with_its_ring_feet_and_door():
+    page = map_page()
+    assert "kernel(el('g',{id:'kernel'" in page and 'const KERNEL=[10.15,10.15]' in page
+    assert "LOOK={commons:['🌱','The Kernel','#8ff3ff']" in page and '⛲' not in page    # the label reads THE KERNEL (uppercased when drawn)
+    assert "const LABEL_AT={commons:[5,5]" in page and 'ROW_AT={commons:[12.5,12.5]}' in page   # its name floats behind the pod, its Seedlings gather in front
+    assert '.q-high #kernel .kring{animation:kpulse' in page and "kg.style.setProperty('--glow'" in page   # pulses on high quality, brighter at night
+    for quality in ('low', 'normal', 'high'):
+        parts = run_lowpoly(quality)['kparts']
+        assert parts['kfoot'] == 4 and parts['kdoor'] == 1 and parts['kbody'] == 1, (quality, parts)
+        assert parts['kring'] >= 5 and parts['kglow'] >= 2, (quality, parts)   # the ring's visible arc, the hatch lights and the glows
+    # the Kernel's middle stays free of buildings, and the walking paths reach its door
+    assert "if(key==='commons'&&(i>a&&i<a+5&&j>b&&j<b+5||busy.has(i+','+j)))continue" in page
+    assert "t.path=[KRAMP,...route('commons',k),[tx,ty]]" in page
+
+
+def test_only_seedlings_new_during_the_session_step_out_of_the_kernel():
+    import re, shutil, subprocess, pytest
+    page = map_page()
+    assert "if(fromKernel(s.id)){[t.x,t.y]=KDOOR;" in page and 'everSeen.add(s.id)' in page and 'spawnGlow()' in page
+    node = shutil.which('node')
+    if not node:
+        pytest.skip('node is not installed')
+    rule = re.search(r'^const fromKernel=.*?;', page, re.M).group(0)
+    js = ('let first=true;const everSeen=new Set();' + rule + 'const out=[fromKernel("a")];everSeen.add("a");first=false;'
+          'out.push(fromKernel("a"),fromKernel("b"));everSeen.add("b");out.push(fromKernel("b"));console.log(JSON.stringify(out))')
+    out = subprocess.run([node, '-e', js], capture_output=True, text=True)
+    # on the first render nobody spawns; later, someone already shown does not, a newcomer does, and only once
+    assert out.returncode == 0 and out.stdout.strip() == '[false,false,true,false]', (out.stdout, out.stderr[:300])
+
+
+def test_district_names_are_smaller_on_the_full_map_and_the_focus_option_is_offered():
+    page = map_page()
+    assert 'const LZ=CARD?1:.78' in page and 'z=LS*LZ' in page and "style:`font-size:${16*z}px`" in page
+    setup = client.get('/obs', params={'channel': 'test'}).text
+    assert 'data-p="focus"' in setup and "const FOCUS=CELLS[Q.get('focus')]" in page
+    assert 'Kernel' in dict((k, t) for k, _, t, *_ in so.SOURCES)['map']
 
 def test_every_panel_renders_and_the_setup_page_lists_it():
     setup = client.get('/obs', params={'channel': 'test'}).text

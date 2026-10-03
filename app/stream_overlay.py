@@ -388,9 +388,9 @@ setInterval(draw,EVERY);
 </script>""")
 
 
-# The map's low-poly look: one fixed sun high on the upper left shades every face the same way, so the ground, buildings,
-# trees, rocks, water and mountains read as one flat-shaded diorama. &quality=low keeps one plain shape for each instead
-# of its facets, so the page stays as light as before. Kept as its own block so a test can run it with Node.
+# The map's look: a tidy SEED-style colony as a low-poly diorama. One fixed sun high on the upper left shades every face the same
+# way (ground, buildings, trees, the Kernel and the forest horizon). &quality=low keeps one plain shape for each instead of its
+# facets, so the page stays light. Kept as its own block so a test can run it with Node.
 SEEDLING_SCALE = .72            # Seedling tokens on the full map, relative to their earlier size (the column card keeps 1.0)
 LOWPOLY_JS = r"""
 // ---- low-poly light: one fixed sun, high on the upper left, shades every face in the town alike
@@ -402,29 +402,30 @@ const blend=(a,b,t)=>{const x=rgbOf(a),y=rgbOf(b);return x.map((v,k)=>v+(y[k]-v)
 const lum=n=>{n=FACE[n]||n;const m=Math.hypot(n[0],n[1],n[2])||1;return .62+.48*Math.max(0,(n[0]*SUN[0]+n[1]*SUN[1]+n[2]*SUN[2])/m)};
 // shade(colour, facing, k): the colour of a face under the sun; facing is 'top', 'left', 'right', a normal [i,j,up] or a plain factor
 function shade(c,f,k=1){f=typeof f==='number'?f:lum(f);const v=rgbOf(c).map(x=>Math.max(0,Math.min(255,Math.round(x*f*k))));return `rgb(${v[0]},${v[1]},${v[2]})`}
-const normal=(a,b,c)=>{const u=a.map((v,k)=>b[k]-v),w=a.map((v,k)=>c[k]-v),n=[u[1]*w[2]-u[2]*w[1],u[2]*w[0]-u[0]*w[2],u[0]*w[1]-u[1]*w[0]];return n[2]<0?n.map(x=>-x):n};
+const cross=(u,w)=>[u[1]*w[2]-u[2]*w[1],u[2]*w[0]-u[0]*w[2],u[0]*w[1]-u[1]*w[0]],dot=(u,w)=>u[0]*w[0]+u[1]*w[1]+u[2]*w[2],minus=(u,w)=>u.map((v,k)=>v-w[k]);
+const normal=(a,b,c)=>{const n=cross(minus(b,a),minus(c,a));return n[2]<0?n.map(x=>-x):n};
 // A rounded shape's facet that points along a screen direction: un-projected onto the ground, tilted up the higher it sits.
 const toward=(ux,uy)=>{const m=Math.hypot(ux,uy)||1;ux/=m;uy/=m;const i=ux/TW+uy/TH,j=uy/TH-ux/TW,h=Math.hypot(i,j)||1;return [i/h,j/h,.8+.6*Math.max(0,-uy)]};
 const lift=(i,j,amp)=>rng('v'+Math.round(i*8)+','+Math.round(j*8))()*amp;   // corner heights: never drawn, they only tilt the facets
 // A facet is edged in its own colour, so neighbouring facets meet without hairline seams.
 const facet=(g,p,fill,a={})=>el('polygon',{points:pts(p),fill,stroke:fill,'stroke-width':.6,'stroke-linejoin':'round',...a},g);
-// One ground tile (or a w×d patch) as facets: two triangles, four on high quality, each tilted by seeded corner heights and
-// toned between the palette's two colours, so the ground reads as faceted terrain rather than noise.
-function facetTile(g,i,j,pal,o={}){const [c1,c2]=Array.isArray(pal)?pal:[pal,pal],w=o.w||1,d=o.d||1,amp=o.amp??5,r=rng((o.seed||'t')+':'+i+','+j),a={class:o.cls||'tile'};
-  const tone=()=>blend(c1,c2,r()),jit=()=>1+(r()-.5)*(o.vary??.06),V=p=>[p[0]*U,p[1]*U,lift(p[0],p[1],amp)],C=[[i,j],[i+w,j],[i+w,j+d],[i,j+d]];
+// A patch of ground (one tile, or w×d tiles, inset from its edges) as facets: two triangles, four on high quality, each tilted by
+// seeded corner heights and toned between the palette's two colours, so lawns and paving read as faceted, not flat.
+function facetTile(g,i,j,pal,o={}){const [c1,c2]=Array.isArray(pal)?pal:[pal,pal],w=o.w||1,d=o.d||1,e=o.inset||0,amp=o.amp??5,r=rng((o.seed||'t')+':'+i+','+j),a={class:o.cls||'tile'};
+  const tone=()=>blend(c1,c2,r()),jit=()=>1+(r()-.5)*(o.vary??.06),V=p=>[p[0]*U,p[1]*U,lift(p[0],p[1],amp)],C=[[i+e,j+e],[i+w-e,j+e],[i+w-e,j+d-e],[i+e,j+d-e]];
   if(!FACETS)return [facet(g,C.map(p=>iso(...p)),shade(tone(),'top',jit()),a)];
   const tri=q=>facet(g,q.map(p=>iso(...p)),shade(tone(),normal(...q.map(V)),jit()),a);
   if(FINE){const m=[i+w*(.5+(r()-.5)*.3),j+d*(.5+(r()-.5)*.3)];return C.map((p,k)=>tri([p,C[(k+1)%4],m]))}
   return r()<.5?[tri([C[0],C[1],C[2]]),tri([C[0],C[2],C[3]])]:[tri([C[0],C[1],C[3]]),tri([C[1],C[2],C[3]])]}
-// Low-poly trees: conifers are stacked cones, broadleaf trees a faceted crown; the shadow falls away from the sun.
-const PINE=['#3b6044','#446b4a','#33573f'],LEAF=['#5c8743','#6a9147','#78974c','#557c3d'],BARK='#5c4330';
-function lowPolyTree(g,x,y,r,kind){kind=kind||(r()<.45?'conifer':'broad');const k=.9+r()*.25,stem=(kind==='conifer'?4:8)*k;
-  el('ellipse',{cx:x+4*k,cy:y+1.2,rx:7*k,ry:2.6*k,fill:'rgba(0,0,0,.22)'},g);el('rect',{x:x-1.1,y:y-stem,width:2.2,height:stem,fill:BARK},g);
+// Low-poly trees: tall thin-trunked trees with a crown on top (the colony's own kind), broadleaf trees and conifers.
+const PINE=['#3b6044','#446b4a','#33573f'],LEAF=['#4f8a45','#5c9449','#6a9c4c','#477f42'],BARK='#6b5440';
+function lowPolyTree(g,x,y,r,kind){const v=r();kind=kind||(v<.5?'tall':v<.85?'broad':'conifer');const k=.9+r()*.25,stem=(kind==='conifer'?4:kind==='tall'?17+r()*9:8)*k;
+  el('ellipse',{cx:x+4*k,cy:y+1.2,rx:7*k,ry:2.6*k,fill:'rgba(0,0,0,.22)'},g);el('rect',{x:x-(kind==='tall'?.8:1.1),y:y-stem,width:kind==='tall'?1.6:2.2,height:stem,fill:BARK},g);
   if(kind==='conifer'){const c=PINE[Math.floor(r()*PINE.length)],h=24*k,w=7.5*k,tiers=FACETS?3:1;
     for(let t=0;t<tiers;t++){const yb=y-3*k-t*h*.26,top=tiers===1?y-h:yb-h*.5,ww=w*(1-t*.22),mid=[x+ww*.18,yb+1.2];
       facet(g,[[x-ww,yb],[x,top],mid],shade(c,toward(-1,-.3)));facet(g,[[x,top],[x+ww,yb],mid],shade(c,toward(1,-.3)))}
     return}
-  const c=LEAF[Math.floor(r()*LEAF.length)],cy=y-13*k,R=7*k,n=7,P=[...Array(n)].map((_,q)=>{const a=-Math.PI/2+q/n*Math.PI*2,s=R*(.85+r()*.3);return [x+Math.cos(a)*s,cy+Math.sin(a)*s*.92]});
+  const c=LEAF[Math.floor(r()*LEAF.length)],R=(kind==='tall'?6.2:7)*k,cy=y-stem-R*.75,n=7,P=[...Array(n)].map((_,q)=>{const a=-Math.PI/2+q/n*Math.PI*2,s=R*(.85+r()*.3);return [x+Math.cos(a)*s,cy+Math.sin(a)*s*.92]});
   if(!FACETS)return facet(g,P,shade(c,'top',.95));
   const m=[x-R*.2,cy-R*.25];P.forEach((p,q)=>{const b=P[(q+1)%n];facet(g,[m,p,b],shade(c,toward((p[0]+b[0])/2-x,(p[1]+b[1])/2-cy),1+(r()-.5)*.05))})}
 // A rock: a lit top, a left face and a shaded right face (one plain shape on low quality).
@@ -442,34 +443,90 @@ function water(g,x,y,rx,ry,o={}){const r=rng(o.seed||'water'),n=FINE?12:8,deep=o
   const inner=ring(.55,.25,true),c=[x+(r()-.5)*rx*.15,y+(r()-.5)*ry*.15],f=q=>facet(g,q,shade(r()<.22?blend(deep,hi,.45+r()*.4):blend(deep,hi,r()*.2),'top',1+(r()-.5)*.08));
   for(let k=0;k<n;k++){const k1=(k+1)%n;f([outer[k],outer[k1],inner[k]]);f([inner[k],outer[k1],inner[k1]]);f([c,inner[k],inner[k1]])}}
 // The town is a diorama: under its two front edges hang faces of topsoil, clay and bedrock, lit on the left and in shade on the right.
-const STRATA=[['#5e4a32',0],['#8c714f',.18],['#85817a',.5]];
+const STRATA=[['#4f3f2c',0],['#7a6347',.18],['#7f7d78',.5]];
 function slab(g,lo,hi,depth=34){const r=rng('slab'),segs=FACETS?9:1;
   for(const [a,b,side] of [[[lo,hi],[hi,hi],'left'],[[hi,hi],[hi,lo],'right']]){const A=iso(...a),B=iso(...b),P=s=>[A[0]+(B[0]-A[0])*s/segs,A[1]+(B[1]-A[1])*s/segs];
     const cut=[...STRATA.map(x=>x[1]),1].map((t,n)=>[...Array(segs+1)].map(()=>t*depth+(n===0?0:n===STRATA.length?r()*6:(r()-.5)*5)));   // straight along the top, ragged between strata
     STRATA.forEach(([c],n)=>{for(let s=0;s<segs;s++){const p=P(s),q=P(s+1);
       facet(g,[[p[0],p[1]+cut[n][s]],[q[0],q[1]+cut[n][s+1]],[q[0],q[1]+cut[n+1][s+1]],[p[0],p[1]+cut[n+1][s]]],shade(c,side,1+(FACETS?(r()-.5)*.12:0)))}})}}
-// Mountains behind the town: three faceted ranges, fainter with distance, snow on the highest peaks. sky() recolours each by the hour
-// from its data-l (range), data-k (how the face is lit) and data-s (snow).
-function mountains(far,near){const ranges=[[far,0,150,40,100,.06],[far,1,180,26,70,.1],[near,2,214,12,38,.14]];
-  for(const [g,l,base,lo,hi,c] of ranges){const r=rng('peaks'+l),peaks=[];
-    for(let x=-560;x<1540;x+=70+r()*80)peaks.push({x:x+(r()-.5)*30,h:lo+r()*(hi-lo),wl:70+r()*70,wr:70+r()*70,f:r(),m:r()});
-    const at=k=>({'data-l':l,'data-k':k.toFixed(3),'stroke-width':.5});
-    if(!FACETS){let d=`M-2000 2800L-2000 ${base}`;for(let x=-2000;x<=2960;x+=12){const y=Math.min(base,...peaks.map(p=>base-p.h*Math.max(0,1-(x<p.x?(p.x-x)/p.wl:(x-p.x)/p.wr))));d+=`L${x} ${y.toFixed(1)}`}
-      el('path',{d:d+'L2960 2800Z',...at(1-c*.4)},g);continue}
-    el('rect',{x:-2000,y:base-.5,width:4960,height:2800,...at(1-c*.3)},g);   // the land in front of this range
-    for(const p of peaks.sort((a,b)=>a.h-b.h)){const P=[p.x,base-p.h],Lb=[p.x-p.wl,base+.5],Rb=[p.x+p.wr,base+.5],F=[p.x+(p.f-.3)*p.wr*.5,base+.5];
-      const m1=[P[0]+(Lb[0]-P[0])*(.45+p.m*.2),P[1]+(Lb[1]-P[1])*(.45+p.m*.2)],m2=[P[0]+(Rb[0]-P[0])*.5,P[1]+(Rb[1]-P[1])*.5];
-      el('polygon',{points:pts([Lb,m1,F]),...at(1+c*.55)},g);el('polygon',{points:pts([m1,P,F]),...at(1+c)},g);
-      el('polygon',{points:pts([P,m2,F]),...at(1-c*.9)},g);el('polygon',{points:pts([m2,Rb,F]),...at(1-c*1.3)},g);
-      if(l<2&&p.h>hi*.62){const s=.2+r()*.1,on=(a,b,t)=>[a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t],SL=on(P,Lb,s),SF=on(P,F,s*1.35),SR=on(P,Rb,s*.85),J=on(SL,SF,.5);J[1]+=3;
-        el('polygon',{points:pts([SL,P,SF,J]),'data-s':1,...at(1.05)},g);el('polygon',{points:pts([P,SR,SF]),'data-s':1,...at(.82)},g)}}}}
+// The horizon: rows of tall, thin-trunked trees fading into teal mist. Each row is drawn as a few paths (trunks, the lit halves of the
+// crowns, their shaded halves), so hundreds of trees cost a handful of shapes. sky() recolours them by the hour from data-l (the row,
+// 0 farthest) and data-k (how that part is lit), and the mist bands through the mistg gradient. Low quality: two flat silhouettes.
+function forest(far,near){const rows=FACETS?[[far,0,158,44,72,11],[far,1,186,58,92,14],[near,2,216,74,118,18]]:[[far,1,182,54,88,15],[near,2,216,70,112,20]];
+  for(const [g,l,base,lo,hi,step] of rows){const r=rng('forest'+l),at=k=>({'data-l':l,'data-k':k});let trunks='',lit='',dark='';
+    el('rect',{x:-2000,y:base-.5,width:4960,height:2800,...at(.92)},g);   // the forest floor in front of this row
+    for(let x=-460;x<1420;x+=step*(.75+r()*.7)){const h=lo+r()*(hi-lo),R=step*(.42+r()*.28),tx=x+(r()-.5)*4,ty=base-h,tw=Math.max(.6,step*.045);
+      const P=[...Array(6)].map((_,q)=>{const a=-Math.PI/2+q/6*Math.PI*2,s=R*(.8+r()*.4);return [tx+Math.cos(a)*s,ty+Math.sin(a)*s*1.15]}),path=q=>'M'+q.map(p=>p[0].toFixed(1)+' '+p[1].toFixed(1)).join('L')+'Z';
+      trunks+=path([[tx-tw,base],[tx-tw,ty],[tx+tw,ty],[tx+tw,base]]);
+      if(FACETS){lit+=path([P[0],P[5],P[4],P[3]]);dark+=path([P[0],P[1],P[2],P[3]])}else lit+=path(P)}
+    el('path',{d:trunks,...at(.72)},g);el('path',{d:lit,...at(FACETS?1+.02*l:1)},g);if(FACETS)el('path',{d:dark,...at(.92-.04*l)},g);
+    el('rect',{x:-2000,y:base-hi*.55,width:4960,height:hi*.55+3,fill:'url(#mistg)',class:'mist'},g)}}   // mist lying low between the rows
+// ---- the Kernel: the colony's seed pod in the middle of the Commons, where every new Seedling steps out
+const VIEW=[.61,.61,.5];   // toward the viewer, on the world axes
+// An egg or a pod as facets: n segments around and bands up its height, each lit by the sun. Only the faces turned to the viewer are
+// drawn, so a convex shape needs no sorting. Its centre (i,j) is in tiles, R is its widest radius in tiles (at height fraction c), H its
+// height, col gives the colour at each height fraction and z0 how high its base sits. Returns its projection, for details drawn on it.
+function ovoid(g,i,j,R,H,col,o={}){const n=o.n||(FINE?14:FACETS?10:6),bands=o.bands||(FACETS?[0,.16,.34,.52,.68,.82,.93,1]:[0,.5,1]),c=o.c??.42,z0=o.z0||0,[cx,cy]=iso(i,j);
+  const rad=t=>R*Math.sqrt(Math.max(0,1-((t-c)/(t<c?(c||1):1-c))**2)),P=(a,t)=>[rad(t)*Math.cos(a),rad(t)*Math.sin(a),z0+t*H],W=p=>[p[0]*U,p[1]*U,p[2]];
+  const S=p=>[cx+(p[0]-p[1])*TW/2,cy+(p[0]+p[1])*TH/2-p[2]],rot=o.rot||0;
+  for(let b=0;b<bands.length-1;b++){const t0=bands[b],t1=bands[b+1],tm=(t0+t1)/2;
+    for(let k=0;k<n;k++){const a0=rot+k/n*Math.PI*2,a1=a0+Math.PI*2/n,am=(a0+a1)/2,q=[P(a0,t0),P(a1,t0),P(a1,t1),P(a0,t1)],w=q.map(W);
+      let nm=cross(minus(w[2],w[0]),minus(w[3],w[1]));if(dot(nm,[Math.cos(am)*U,Math.sin(am)*U,(tm-c)*H*2])<0)nm=nm.map(x=>-x);
+      if(dot(nm,VIEW)<=0)continue;facet(g,q.map(S),shade(col(tm),nm),o.cls?{class:o.cls}:{})}}
+  return {S,P,rad}}
+// A smooth body of revolution (the Kernel and its feet): unlike the faceted town it is drawn as a few gradient-filled outlines.
+// Its centre (i,j) is in tiles, R its widest radius in tiles (at height fraction c), H its height; heights below t0 are underground.
+function revolve(i,j,R,H,o={}){const c=o.c??.4,t0=o.t0||0,[cx,cy]=iso(i,j),rad=t=>R*Math.sqrt(Math.max(0,1-((t-c)/(t<c?(c||1):1-c))**2));
+  const P=(a,t)=>[rad(t)*Math.cos(a),rad(t)*Math.sin(a),(t-t0)*H],S=p=>[cx+(p[0]-p[1])*TW/2,cy+(p[0]+p[1])*TH/2-p[2]];
+  const N=(a,t)=>{const d=(rad(Math.min(1,t+.01))-rad(Math.max(0,t-.01)))/.02;return [Math.cos(a),Math.sin(a),-U*d/H]};   // the outward normal
+  const shape=(ta,tb,n=FACETS?32:16,m=FACETS?10:5)=>outline([...Array(n)].flatMap((_,k)=>[...Array(m+1)].map((_,q)=>S(P(k/n*Math.PI*2,ta+(tb-ta)*q/m)))));
+  return {S,P,rad,N,shape,seen:(a,t)=>dot(N(a,t),VIEW)>0}}
+// The convex outline of a set of screen points: the silhouette of a rounded shape.
+function outline(p){p=p.slice().sort((a,b)=>a[0]-b[0]||a[1]-b[1]);const x=(o,a,b)=>(a[0]-o[0])*(b[1]-o[1])-(a[1]-o[1])*(b[0]-o[0]),lo=[],hi=[];
+  for(const q of p){while(lo.length>1&&x(lo[lo.length-2],lo[lo.length-1],q)<=0)lo.pop();lo.push(q)}
+  for(const q of p.reverse()){while(hi.length>1&&x(hi[hi.length-2],hi[hi.length-1],q)<=0)hi.pop();hi.push(q)}
+  return lo.slice(0,-1).concat(hi.slice(0,-1))}
+const pathOf=p=>'M'+p.map(q=>q[0].toFixed(1)+' '+q[1].toFixed(1)).join('L')+'Z';
+// A smooth left-to-right gradient for a rounded surface, its stops taken from shade() round the shape, so it is lit like the town.
+function sheen(defs,id,c,up=0){const g=el('linearGradient',{id,x1:0,y1:0,x2:1,y2:0},defs);
+  for(const k of [3,2,1,0,-1]){const a=k*Math.PI/4,x=Math.cos(a)-Math.sin(a);el('stop',{offset:((x+Math.SQRT2)/(2*Math.SQRT2)).toFixed(3),'stop-color':shade(c,[Math.cos(a),Math.sin(a),up])},g)}
+  return `url(#${id})`}
+const KERNEL=[10.15,10.15],KDOOR=iso(10.95,10.95),KRAMP=iso(11.85,11.85);   // its centre (tiles), its doorway and the foot of its ramp (screen)
+function kernel(g){const [ki,kj]=KERNEL,R=1.38,H=76,t0=.12,F=Math.PI/4,defs=el('defs',{},g),[cx,cy]=iso(ki,kj),line=(p,a)=>el('polyline',{points:pts(p),fill:'none',...a},g);
+  el('ellipse',{cx:cx+10,cy:cy+6,rx:66,ry:27,fill:'rgba(0,0,0,.2)'},g);   // its shadow, away from the sun
+  // four rounded feet tucked under the body, at its sides either side of the door and behind
+  const foot=FACETS?sheen(defs,'kfootg','#848b8f',.3):shade('#848b8f','left'),shell=FACETS?sheen(defs,'kshellg','#b9bec1',.8):shade('#b9bec1','top');
+  for(const a of [F+Math.PI-1.2,F+Math.PI+1.2,F-1.25,F+1.25]){const P=revolve(ki+Math.cos(a)*R*.95,kj+Math.sin(a)*R*.95,.48,26,{c:.42,t0:.06});
+    el('path',{class:'kfoot',d:pathOf(P.shape(.06,1)),fill:foot},g);if(FACETS)el('path',{d:pathOf(P.shape(.6,1,16,4)),fill:shell},g)}   // each foot: a darker base under a pale shell
+  // the egg: a darker lower body and a paler cap, smooth, lit from the upper left, with a soft highlight on the cap
+  const E=revolve(ki,kj,R,H,{c:.4,t0}),seam=.58,ring=.8,run=(t,n=48)=>{const out=[];let cur=[];for(let k=0;k<=n;k++){const a=F-Math.PI+k/n*Math.PI*2;if(E.seen(a,t))cur.push(E.S(E.P(a,t)));else if(cur.length){out.push(cur);cur=[]}}if(cur.length)out.push(cur);return out};
+  el('path',{class:'kbody',d:pathOf(E.shape(t0,1)),fill:FACETS?sheen(defs,'kbodyg','#858c90',.1):shade('#858c90','left')},g);
+  el('path',{d:pathOf(E.shape(seam,1)),fill:FACETS?sheen(defs,'kcapg','#c2c7c9',.75):shade('#c2c7c9','top')},g);
+  for(const p of run(seam))line(p,{stroke:'#6a7175','stroke-width':1});   // the seam between them
+  if(FACETS){const hg=el('radialGradient',{id:'khig'},defs);el('stop',{offset:0,'stop-color':'#ffffff','stop-opacity':.45},hg);el('stop',{offset:1,'stop-color':'#ffffff','stop-opacity':0},hg);
+    const [hx,hy]=E.S(E.P(F+Math.PI/2+.25,.83));el('ellipse',{cx:hx,cy:hy,rx:16,ry:10,fill:'url(#khig)'},g)}
+  // the glowing band round the upper dome: bright where it faces us, hidden behind the dome (brighter at night, pulsing on high quality)
+  for(const p of run(ring)){line(p,{class:'kglow',stroke:'#5fe6ff','stroke-width':6,opacity:.35,'stroke-linecap':'round'});line(p,{class:'kring',stroke:'#9ff6ff','stroke-width':2.2,'stroke-linecap':'round'})}
+  // the hatch on top: a dark recessed circle in a pale lip, with small cyan lights
+  const top=(t,n=24)=>[...Array(n)].map((_,k)=>E.S(E.P(k/n*Math.PI*2,t)));el('path',{d:pathOf(top(.955)),fill:'#a7adb0'},g);el('path',{d:pathOf(top(.975)),fill:'#465054'},g);
+  for(let k=0;k<4;k++){const [x,y]=E.S(E.P(k*Math.PI/2,.965));el('circle',{class:'kring',cx:x,cy:y,r:1.1,fill:'#9ff6ff'},g)}
+  const [ex,ey]=E.S(E.P(F,t0+.36));el('path',{d:`M${ex} ${ey+3}L${ex} ${ey-1}M${ex} ${ey-1}q-3 -1 -3 -4q3 0 3 4M${ex} ${ey-1}q3 -1 3 -4q-3 0 -3 4`,fill:'#b7bdc0',stroke:'#b7bdc0','stroke-width':.7},g);   // the seed emblem
+  // the lit glass doorway between the front feet, and the pale ramp that comes down from it
+  const door=[E.P(F-.3,t0+.004),E.P(F+.3,t0+.004),E.P(F+.3,t0+.22),E.P(F,t0+.29),E.P(F-.3,t0+.22)].map(E.S);el('polygon',{class:'kdoor',points:pts(door),fill:'#c3f2fb',stroke:'#5a6266','stroke-width':1.2},g);
+  el('ellipse',{class:'kglow',cx:KDOOR[0],cy:KDOOR[1]-8,rx:10,ry:12,fill:'url(#kglowg)',opacity:.5},g);
+  const d0=E.rad(t0)+.03,d1=2.25,u=[Math.SQRT1_2,Math.SQRT1_2],wv=[.2,-.2],Q=(d,s,z)=>E.S([u[0]*d+wv[0]*s,u[1]*d+wv[1]*s,z]);
+  facet(g,[Q(d0,1,4),Q(d0,-1,4),Q(d1,-1,0),Q(d1,1,0)],shade('#d8dcd8','top'));
+  for(const f of FACETS?[.25,.5,.75]:[.5]){const d=d0+(d1-d0)*f,z=4*(1-f);line([Q(d,1,z),Q(d,-1,z)],{stroke:'#aeb4b0','stroke-width':.7})}
+  if(FACETS)for(const s of [1,-1])line([Q(d0,s*1.05,10),Q(d1-.1,s*1.05,5)],{stroke:'#eef1ee','stroke-width':.9});   // its handrails
+  return E}
 // ---- end of the low-poly helpers
 """
 
 PAGES['map'] = (r"""
-/* New Eridian as a living isometric town, built for broadcast (960×540 source recommended).
-   Districts fill with their own buildings as the society grows; Seedlings walk the streets
-   and talk; a camera drifts in on whoever is speaking; sky, weather and holidays show. */
+/* New Eridian as a living SEED-style colony, built for broadcast (960×540 source recommended): lawn plots between pale
+   sidewalks, flat-roofed modules, farms of soil beds, a misty forest horizon and the Kernel at the centre, where new Seedlings
+   step out. Districts fill with buildings as the society grows; Seedlings walk the streets and talk; a camera drifts in on
+   whoever is speaking; sky, weather and holidays show. */
 body{padding:0}.wrap{position:fixed;inset:0;overflow:hidden;background:#1d1a24}
 svg{position:absolute;inset:0;width:100%;height:100%;display:block}
 /* The scenery reaches past the 16:9 frame (overflow visible), so any source shape is filled edge to edge. */
@@ -542,6 +599,11 @@ svg{position:absolute;inset:0;width:100%;height:100%;display:block}
 .L-card .toast{left:.5em;right:.5em;max-width:none;text-align:center;font-size:clamp(11px,4.2vw,30px);white-space:normal}
 .q-low .smoke,.q-low .shade,.q-low .cloud,.q-low .shopper{display:none}.q-low .ripple,.q-low .beacon,.q-low .hook{animation:none}
 .q-high .dlabel{filter:drop-shadow(0 2px 3px rgba(0,0,0,.55))}
+/* The Kernel: its ring pulses softly on high quality and flares when a Seedling steps out; --glow (set by the hour) brightens it at night. */
+#kernel .kglow{opacity:var(--glow,.4);transition:opacity 2s}.q-high #kernel .kring{animation:kpulse 3.4s ease-in-out infinite}@keyframes kpulse{50%{opacity:.55}}
+#kernel.surge .kglow{opacity:1;transition:opacity .3s}#kernel.surge .kring{stroke-width:2.6}
+.spawn{transform-box:fill-box;transform-origin:center;animation:spawn 2s ease-out forwards}@keyframes spawn{0%{opacity:0;transform:scale(.3)}20%{opacity:1}100%{opacity:0;transform:scale(2)}}
+.q-high .neon{animation:neon 4s steps(1) infinite}@keyframes neon{0%,92%,96%{opacity:1}94%{opacity:.6}}
 .shimmer{animation:shimmer 3.2s ease-in-out infinite}@keyframes shimmer{0%,100%{opacity:0;transform:translateX(-4px)}50%{opacity:.85;transform:translateX(4px)}}
 .flag{animation:flag 1.4s ease-in-out infinite alternate;transform-box:fill-box;transform-origin:0 50%}@keyframes flag{from{transform:skewY(6deg) scaleX(.92)}to{transform:skewY(-6deg) scaleX(1)}}
 .toast{position:absolute;right:1.6vw;top:10.5vh;transform:translateY(-30%) scale(.9);transform-origin:100% 0;opacity:0;padding:.35em .9em;border-radius:.6em;z-index:4;white-space:nowrap;max-width:44vw;overflow:hidden;text-overflow:ellipsis;
@@ -562,6 +624,8 @@ svg{position:absolute;inset:0;width:100%;height:100%;display:block}
   <radialGradient id="glowdot"><stop offset="0" stop-color="#ffd98a" stop-opacity=".75"/><stop offset="1" stop-color="#ffd98a" stop-opacity="0"/></radialGradient>
   <radialGradient id="sung"><stop offset="0" stop-color="#fff6d8"/><stop offset=".35" stop-color="#ffe7a0" stop-opacity=".9"/><stop offset="1" stop-color="#ffcf6b" stop-opacity="0"/></radialGradient>
   <radialGradient id="shadeg"><stop offset="0" stop-color="#000" stop-opacity=".22"/><stop offset="1" stop-color="#000" stop-opacity="0"/></radialGradient>
+  <linearGradient id="mistg" x1="0" y1="0" x2="0" y2="1"><stop id="mist0" offset="0" stop-color="#9fd0c4" stop-opacity="0"/><stop id="mist1" offset="1" stop-color="#9fd0c4" stop-opacity=".8"/></linearGradient>
+  <radialGradient id="kglowg"><stop offset="0" stop-color="#9ff6ff" stop-opacity=".9"/><stop offset="1" stop-color="#5fe6ff" stop-opacity="0"/></radialGradient>
   <linearGradient id="aurorag" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#7ee3b0" stop-opacity="0"/><stop offset=".5" stop-color="#7ee3b0" stop-opacity=".45"/><stop offset="1" stop-color="#70ddff" stop-opacity="0"/></linearGradient>
  </defs>
  <rect x="-2000" y="-2000" width="4960" height="4540" fill="url(#sky)"/><g id="stars"></g><g id="aurora"></g><g id="sun"></g><g id="skyclouds"></g>
@@ -588,12 +652,12 @@ const ROAD=new Set([6,13]);
 const CELLS={spaceport_quarter:[0,0],research_block:[0,1],agricultural_district:[0,2],industrial_ward:[1,0],commons:[1,1],market_concourse:[2,1],frontier_edge:[2,0],residential_ring:[2,2],park:[1,2]};
 const cellTiles=(r,c)=>[r*7,c*7];   // top-left tile (i,j) of a 6×6 block
 const RESERVE=3;   // tiles kept free in every district for landmarks the colony votes to build (the Commons keeps one more for a season monument)
-const LOOK={commons:['⛲','Commons','#b8f4d0'],residential_ring:['🏠','Homes','#ffd27a'],agricultural_district:['🌾','Farms','#9be37e'],industrial_ward:['🏭','Industry','#ff9a76'],
+const LOOK={commons:['🌱','The Kernel','#8ff3ff'],residential_ring:['🏠','Homes','#ffd27a'],agricultural_district:['🌾','Farms','#9be37e'],industrial_ward:['🏭','Industry','#ff9a76'],
   research_block:['🔬','Research','#70ddff'],market_concourse:['🪙','Market','#ffd27a'],spaceport_quarter:['🚀','Spaceport','#bd91ff'],frontier_edge:['🧭','Frontier','#ff9ad5']};
-// Natural ground per district, as two tones its facets vary between: lawns, ploughed earth, gravel, paving, tarmac and dust.
-const GROUND={commons:['#c4bba6','#b3aa94'],residential_ring:['#7a9656','#8aa262'],agricultural_district:['#7a6143','#8b7150'],industrial_ward:['#8a867b','#7b776d'],
-  research_block:['#94a08c','#a3ab9c'],market_concourse:['#bba786','#a99677'],spaceport_quarter:['#8b8d90','#7c7e83'],frontier_edge:['#a3845a','#91764f'],park:['#66914a','#78a055'],
-  wild:['#7b7050','#6d6f4a'],ring:['#6f7a4b','#7e7553']};
+// The colony's ground: lawn green everywhere, pale concrete sidewalks and streets, brown soil beds on the farms, rougher meadow
+// where a district is not open yet and around the colony's edge. Districts differ by what stands on their plots, not by colour.
+const LAWN=['#55893f','#629448'],MEADOW=['#71894a','#7f9152'],RING=['#4c7a3b','#5a8642'],CONCRETE=['#cbcfc8','#c1c6c0'],SOIL='#6a4e36',
+  PLOT=['#e48a40','#9270dc'],KERB='rgba(84,92,88,.55)',ROOF=['#7a5638','#94724d','#86603f','#a98a5f'];   // plot lines: orange outside, purple inside
 const MOOD={Inspired:'#ffd27a',Content:'#7ee3b0',Tired:'#9aa3c7',Hungry:'#ffb36b',Lonely:'#8fb3ff',Uneasy:'#d6a4ff',Stressed:'#ff9a76',Miserable:'#ff7484'};
 const WEATHER_ICON={clear_skies:'☀️',good_growing:'🌧️',spore_drift:'🍃',dust_winds:'🌪️',busy_spaceport:'🚀',water_watch:'💧',quiet_cycle:'🌙',sensor_noise:'📡'};
 const wantCard=()=>Q.get('layout')==='card'||(Q.get('layout')!=='wide'&&(innerWidth<560||innerWidth/Math.max(1,innerHeight)<=1.3));
@@ -603,9 +667,11 @@ let relayout=null;addEventListener('resize',()=>{clearTimeout(relayout);relayout
 // A wide layout in a source that is not wide (e.g. 400×400 with &layout=wide): full-width caption, two-line header.
 const NARROW=!CARD&&(innerWidth<800||innerWidth/Math.max(1,innerHeight)<1.5);if(NARROW)document.body.classList.add('L-narrow');
 let LS=1,TS=1;   // card layout: label and Seedling scale so they stay readable in a small source
+const LZ=CARD?1:.78;   // district names are drawn about a fifth smaller on the full map, so they cover less of the town
 // Seedlings are smaller on the full map; the column card is already a miniature and keeps their original size.
 // The layout is fixed for the page's life (a resize that changes it reloads the page), so TOKEN never changes.
 const SEEDLING_SCALE=""" + repr(SEEDLING_SCALE) + r""",TOKEN=CARD?1:SEEDLING_SCALE,TK=()=>TOKEN*TS;   // TK() is the scale tokens end up at, with the card's own TS
+const FOCUS=CELLS[Q.get('focus')]?Q.get('focus'):'';   // &focus=commons (or any district): hold the camera close on it, for a preview or a fixed shot
 const QUALITY=['low','high'].includes(Q.get('quality'))?Q.get('quality'):'normal';document.body.classList.add('q-'+QUALITY);
 const SHOW_NAMES=Q.get('names')==='1',PER_PLACE=Number(Q.get('per')||(Q.get('layout')==='card'||innerWidth<560||innerWidth/Math.max(1,innerHeight)<=1.3?3:4)),CAMERA=Q.get('camera')!=='0',SECONDS=Number(Q.get('seconds')||7)*1000;
 // Holidays: colours, and what the town puts up for each.
@@ -621,62 +687,98 @@ const up=(p,h)=>p.map(([x,y])=>[x,y-h]);
 const vr=rng('lamps');
 """ + LOWPOLY_JS + r"""
 
-// ---- building parts (all drawn on a tile at i,j; w×d tiles; height h)
+// ---- building parts (all drawn on a tile at i,j; w×d tiles; height h). Everything is a box lit by shade(): left walls in light,
+// right walls in shade, with the colony's look: plain pale walls, flat roof slabs, warm window strips.
 const CASTERS=[];
-function box(g,i,j,w,d,h,color,opt={}){const [t,r,b,l]=diamond(i,j,w,d,opt.inset??.12),top=up([t,r,b,l],h);CASTERS.push([[t,r,b,l],h+(opt.roof==='pitched'?h*.4:0)]);
+function box(g,i,j,w,d,h,color,opt={}){const z=opt.z||0,base=diamond(i,j,w,d,opt.inset??.12),[t,r,b,l]=up(base,z),top=up([t,r,b,l],h);
+  if(!z&&!opt.noshadow)CASTERS.push([base,h+(opt.roof==='pitched'?h*.4:0)]);
   el('polygon',{points:pts([l,b,top[2],top[3]]),fill:shade(color,'left')},g);el('polygon',{points:pts([b,r,top[1],top[2]]),fill:shade(color,'right')},g);
   if(opt.roof==='pitched'){const rise=h*.55+6,apex=[(top[0][0]+top[2][0])/2,(top[0][1]+top[2][1])/2-rise],rc=opt.roofColor||'#9a5a44',s=rise/((1-2*(opt.inset??.12))*Math.min(w,d)*U/2);
     // four roof planes, each lit by its own slope: back-left, back-right, then the two in front
     for(const [p,n] of [[[top[3],top[0],apex],[-s,0,1]],[[top[0],top[1],apex],[0,-s,1]],[[top[3],top[2],apex],[0,s,1]],[[top[2],top[1],apex],[s,0,1]]])el('polygon',{points:pts(p),fill:shade(rc,n)},g)}
-  else el('polygon',{points:pts(top),fill:opt.topColor?shade(opt.topColor,'top'):shade(color,'top',1.08)},g);
-  if(opt.windows){const rows=Math.max(1,Math.floor(h/9)),cols=Math.max(1,Math.round(w*2));
-    for(let k=0;k<rows;k++)for(let c=0;c<cols;c++){const f=(c+.5)/cols,yy=h-6-k*9;
-      const L=[l[0]+(b[0]-l[0])*f,l[1]+(b[1]-l[1])*f-yy],R=[b[0]+(r[0]-b[0])*f,b[1]+(r[1]-b[1])*f-yy];
-      el('rect',{class:'win',x:L[0]-1.5,y:L[1]-2,width:3,height:3,fill:'#ffd98a',opacity:0,'data-v':vr().toFixed(3)},g);el('rect',{class:'win',x:R[0]-1.5,y:R[1]-2,width:3,height:3,fill:'#ffd98a',opacity:0,'data-v':vr().toFixed(3)},g)}}
+  else if(!opt.notop)el('polygon',{points:pts(top),fill:opt.topColor?shade(opt.topColor,'top'):shade(color,'top',1.08)},g);
+  // windows: a warm strip of glass on each wall per floor (or a pair of panes); cream by day, lit or dark at night (see liveTown)
+  if(opt.windows){const pair=opt.windows==='pair',rows=Math.max(1,Math.floor((h-2)/8));
+    for(let k=0;k<rows;k++){const lo=3+k*8,hi=lo+3.4;for(const [A,B] of [[l,b],[b,r]])for(const [f0,f1] of pair?[[.14,.42],[.58,.86]]:[[.16,.84]]){
+      const P=(f,y)=>[A[0]+(B[0]-A[0])*f,A[1]+(B[1]-A[1])*f-y],q=[P(f0,lo),P(f1,lo),P(f1,hi),P(f0,hi)];
+      el('polygon',{class:'win',points:pts(q),fill:'#ecdfac','data-v':vr().toFixed(3),'data-x':((q[0][0]+q[1][0])/2).toFixed(1),'data-y':((q[0][1]+q[2][1])/2).toFixed(1)},g)}}}
   return top}
 function centre(i,j,w=1,d=1){return iso(i+w/2,j+d/2)}
 function tree(g,i,j,r,kind){const [x,y]=centre(i+(r()-.5)*.5,j+(r()-.5)*.5);lowPolyTree(g,x,y,r,kind)}
+// A colony module: pale walls, a flat roof slab that overhangs a little, warm windows; on the roof a garden, a pool or solar panels.
+function module_(g,i,j,h,wall,roof,o={}){const w=o.w||1,d=o.d||1,e=o.inset??.16;box(g,i,j,w,d,h,wall,{windows:o.windows??true,inset:e,notop:true});
+  const top=box(g,i,j,w,d,2.6,roof,{inset:e-.05,z:h,noshadow:true}),patch=(c,k,ii=i,jj=j,ww=w,dd=d)=>facet(g,up(diamond(ii,jj,ww,dd,e+k),h+2.65),c);
+  if(o.garden)patch(shade('#7fb04f','top'),.12);
+  if(o.pool)patch('#8fd6e6',.22);
+  if(o.solar&&FACETS)for(const f of [0,.5])patch(shade('#3d4c66','top'),.1,i+f*w,j,w*.5,d);
+  return top}
+// A small white dome hut with a coloured door.
+function domeHut(g,i,j,door,c='#eceeed'){const E=ovoid(g,i+.5,j+.5,.34,10,()=>c,{c:0,n:FACETS?8:6,bands:FACETS?[0,.45,.8,1]:[0,1]});
+  const F=Math.PI/4;facet(g,[E.P(F-.32,0),E.P(F+.32,0),E.P(F+.32,.5),E.P(F-.32,.5)].map(E.S),door)}
+// A long barracks or greenhouse with a rounded roof, lying along i.
+function barrack(g,i,j,len,wid,h,c,glass){box(g,i,j,len,wid,h,c,{inset:.06,notop:true,windows:glass?false:'pair'});
+  const a=[i+.06,i+len-.06],b0=j+.06,b1=j+wid-.06,seg=FACETS?4:2,arc=k=>{const th=Math.PI*k/seg;return [b0+(b1-b0)*(1-Math.cos(th))/2,h+Math.sin(th)*wid*U*.32]};   // the vault, as strips
+  for(let k=0;k<seg;k++){const [j0,z0]=arc(k),[j1,z1]=arc(k+1),n=[0,-(z1-z0)/((j1-j0)*U||1),1],q=[up([iso(a[0],j0)],z0)[0],up([iso(a[1],j0)],z0)[0],up([iso(a[1],j1)],z1)[0],up([iso(a[0],j1)],z1)[0]];
+    facet(g,q,shade(glass?'#d5ece8':c,n),glass?{opacity:.92}:{})}
+  if(glass)for(const f of [.33,.66]){const x=i+len*f,q=[0,1,2,3,4].map(k=>{const th=Math.PI*k/4;return up([iso(x,b0+(b1-b0)*(1-Math.cos(th))/2)],h+Math.sin(th)*wid*U*.32)[0]});el('polyline',{points:pts(q),fill:'none',stroke:'#f4f7f6','stroke-width':.8},g)}}
 // A cylinder (tanks, silos): its lit and shaded halves, a darker foot and a pale lid.
 function drum(g,x,y,rx,h,c){el('ellipse',{cx:x,cy:y,rx,ry:rx/2,fill:shade(c,'right',.9)},g);
   if(FACETS){el('rect',{x:x-rx,y:y-h,width:rx,height:h,fill:shade(c,toward(-1,0))},g);el('rect',{x,y:y-h,width:rx,height:h,fill:shade(c,toward(1,0))},g)}
   else el('rect',{x:x-rx,y:y-h,width:2*rx,height:h,fill:shade(c,'left')},g);
   el('ellipse',{cx:x,cy:y-h,rx,ry:rx/2,fill:shade(c,'top',1.12)},g)}
-// Muted, weathered materials: terracotta, slate, moss, plum and ochre roofs over plaster, timber, metal and glass.
-const ROOFS=['#9a5a44','#56687e','#6a7d55','#7a5e70','#a8854a'];
+// Crates: a small stack of boxes.
+function crates(g,i,j,r){const C=['#a8743f','#c48a4a','#8b6a48','#d08a3a'];box(g,i+.2,j+.25,.32,.32,4,C[Math.floor(r()*4)],{inset:0});box(g,i+.55,j+.2,.28,.3,3.5,C[Math.floor(r()*4)],{inset:0});
+  box(g,i+.22,j+.27,.28,.28,3.4,C[Math.floor(r()*4)],{inset:.02,z:4,noshadow:true})}
+// A modern street lamp: a slim pole with an angled arm; its head lights up at night.
+function streetLamp(g,x,y,h=17,s=1,cls=''){el('polyline',{class:cls,points:pts([[x,y],[x,y-h],[x+4.5*s,y-h-2]]),fill:'none',stroke:'#dfe4e2','stroke-width':1.2,'stroke-linejoin':'round'},g);
+  el('circle',{class:(cls+' win lamp').trim(),cx:x+4.5*s,cy:y-h-1.4,r:1.5,fill:'#e3e8e8','data-v':'0'},g)}
+// String lights between posts: the bulbs are the dots of one dashed line, so a whole string costs one shape.
+function stringLights(g,P,cls='bulbs'){el('path',{d:'M'+P.map(p=>p[0].toFixed(1)+' '+(p[1]-12).toFixed(1)).join('L'),fill:'none',stroke:'#5b4a38','stroke-width':.5,class:cls+'-wire'},g);
+  for(const p of P)el('line',{x1:p[0],y1:p[1],x2:p[0],y2:p[1]-13,stroke:'#7a6248','stroke-width':1},g);
+  el('path',{class:cls,d:P.slice(1).map((p,k)=>{const q=P[k],mx=(p[0]+q[0])/2,my=(p[1]+q[1])/2-9;return `M${q[0]} ${q[1]-12}Q${mx} ${my} ${p[0]} ${p[1]-12}`}).join(''),fill:'none',stroke:'#f6ecc8','stroke-width':2,'stroke-linecap':'round','stroke-dasharray':'.1 3.4'},g)}
+// A parasol: a pole and a striped canopy.
+function parasol(g,x,y,c1='#f2c632',c2='#f7f5ec',h=11,rx=7){el('line',{x1:x,y1:y,x2:x,y2:y-h,stroke:'#d8dcd8','stroke-width':1},g);el('ellipse',{cx:x,cy:y-h,rx,ry:rx*.42,fill:c2},g);
+  el('path',{d:[0,2,4,6].map(k=>{const a0=k/8*Math.PI*2,a1=(k+1)/8*Math.PI*2;return `M${x} ${y-h-2}L${x+Math.cos(a0)*rx} ${y-h+Math.sin(a0)*rx*.42}L${x+Math.cos(a1)*rx} ${y-h+Math.sin(a1)*rx*.42}Z`}).join(''),fill:c1},g)}
+// A glowing purple neon panel on a building's left wall.
+function neon(g,i,j,h,inset=.16){const [t,r,b,l]=diamond(i,j,1,1,inset),P=(f,y)=>[l[0]+(b[0]-l[0])*f,l[1]+(b[1]-l[1])*f-y],q=[P(.22,h*.45),P(.62,h*.45),P(.62,h*.9),P(.22,h*.9)];
+  el('polygon',{class:'neon',points:pts(q),fill:'#b06cf0',stroke:'#e6c8ff','stroke-width':.8},g);if(FACETS)el('polygon',{class:'neon',points:pts(q),fill:'none',stroke:'#c78bff','stroke-width':4,opacity:.3},g)}
 const BUILD={
- residential_ring(g,i,j,r,n,level){if(n%7===6)return tree(g,i,j,r,'broad');
-   if(level>=6&&n%5===0)return box(g,i,j,1,1,26+r()*18,'#cfc8b8',{windows:true,topColor:'#8f959c'});           // apartments as the district grows
-   if(n%6===3){box(g,i,j,1,1,8,'#dcd5c6');const [x,y]=centre(i,j);el('ellipse',{cx:x,cy:y-12,rx:12,ry:9,fill:'url(#domeg)',stroke:'#e8f7ff','stroke-width':.8},g);return}
-   box(g,i,j,1,1,9+r()*5,'#ddd3bc',{roof:'pitched',roofColor:ROOFS[Math.floor(r()*ROOFS.length)],windows:true})},
- agricultural_district(g,i,j,r,n){if(n%9===4){box(g,i,j,1,1,11,'#8c4535',{roof:'pitched',roofColor:'#5a3a30'});return}
-   if(n%9===8){const [x,y]=centre(i,j);el('ellipse',{cx:x,cy:y-6,rx:15,ry:10,fill:'url(#domeg)',stroke:'#dff8ff','stroke-width':.8},g);return}
-   // a crop field: two facets that catch the light a little differently (recoloured as the crop ripens), with furrows across it
-   const [t,rr,b,l]=diamond(i,j,1,1,.04),v=r().toFixed(3),k=lum('top');
-   for(const [p,f] of FACETS?[[[t,rr,b],k*(1+(r()-.5)*.08)],[[t,b,l],k*(.93+(r()-.5)*.06)]]:[[[t,rr,b,l],k]]){const c=shade('#7d9a4a',f);facet(g,p,c,{class:'field','data-v':v,'data-k':f.toFixed(3)})}
-   for(let q=1;q<4;q++){const f=q/4;el('line',{class:'stripe',x1:t[0]+(l[0]-t[0])*f,y1:t[1]+(l[1]-t[1])*f,x2:rr[0]+(b[0]-rr[0])*f,y2:rr[1]+(b[1]-rr[1])*f,stroke:'#93ad5a','stroke-width':1.6},g)}},
- industrial_ward(g,i,j,r,n){if(n%5===2){const [x,y]=centre(i,j);drum(g,x,y,11,16,'#a2a7ad');return}
-   const top=box(g,i,j,1,1,14+r()*8,'#8d939b',{windows:true,topColor:'#6f757d'});const cx=top[1][0]-6,cy=top[1][1];
-   el('rect',{x:cx-2.5,y:cy-18,width:5,height:18,fill:'#5a5f66'},g);el('rect',{x:cx-2.5,y:cy-18,width:5,height:3,fill:'#a8564a'},g);
-   for(let k=0;k<2;k++)el('circle',{class:'smoke',cx:cx,cy:cy-22,r:4,fill:'#d8d3ca','data-v':r().toFixed(3),style:`animation-delay:-${(k*2.2+r()*2).toFixed(1)}s`},g)},
- research_block(g,i,j,r,n){if(n%6===0){box(g,i,j,1,1,8,'#dfe4e7');const [x,y]=centre(i,j);el('ellipse',{cx:x,cy:y-12,rx:9,ry:4,fill:'#eef1f3',stroke:'#93a6b5','stroke-width':1.2,transform:`rotate(-25 ${x} ${y-12})`},g);el('line',{x1:x,y1:y-12,x2:x+4,y2:y-22,stroke:'#93a6b5','stroke-width':1.5},g);return}
-   if(n%6===3){const [x,y]=centre(i,j);box(g,i,j,1,1,6,'#d6dce0');el('ellipse',{cx:x,cy:y-12,rx:13,ry:10,fill:'url(#domeg)',stroke:'#eaf8ff','stroke-width':.8},g);return}
-   box(g,i,j,1,1,16+r()*14,'#c9d3d9',{windows:true,topColor:'#5b8aa3'})},
- market_concourse(g,i,j,r,n){if(n===0){const top=box(g,i,j,1,1,20,'#d8c49a',{roof:'pitched',roofColor:'#a24b35',windows:true});const [x,y]=centre(i,j);flag(g,x,y-39,'#ffd27a');return}
-   const c=['#b65a4e','#c99a45','#5a88ab','#76995b','#8d6a9c'][Math.floor(r()*5)],top=box(g,i,j,1,1,6,'#cfc4ab',{topColor:c});
-   el('polygon',{points:pts(top),fill:'none',stroke:'#f4efe4','stroke-width':.8,'stroke-dasharray':'3 3'},g)},
- spaceport_quarter(g,i,j,r,n){if(n===0){box(g,i,j,1,1,40,'#c3cad3',{windows:true,topColor:'#5f6b80'});const [x,y]=centre(i,j);flag(g,x+8,y-44,'#bd91ff');el('circle',{class:'beacon',cx:x,cy:y-46,r:3,fill:'#ff5a5a'},g);return}
+ residential_ring(g,i,j,r,n,level){if(n%7===6)return tree(g,i,j,r);
+   if(level>=6&&n%5===0)return module_(g,i,j,20+r()*5,'#d9dcd8',ROOF[Math.floor(r()*ROOF.length)],{garden:true,pool:r()<.4});   // two-storey modules as the district grows
+   if(n%6===3)return domeHut(g,i,j,['#e07a3a','#4f8fd8','#d8b23c','#7ec36b'][Math.floor(r()*4)]);
+   module_(g,i,j,9+r()*4,['#dcdfdc','#cfd4d2','#e4e3dc'][Math.floor(r()*3)],ROOF[Math.floor(r()*ROOF.length)],{garden:r()<.2,windows:r()<.5?'pair':true})},
+ agricultural_district(g,i,j,r,n){if(n%9===4)return barrack(g,i,j+.18,1,.64,8,'#efe6d4');
+   if(n%9===8)return barrack(g,i,j+.18,1,.64,7,'#d6ece8',true);
+   if(n===2){const [x,y]=centre(i,j);return water(g,x,y,12,6,{seed:'farmpond',rim:'#8a7a5a'})}
+   if(n%9===6)return crates(g,i,j,r);
+   // a soil plot: a grid of brown beds, each with a row of crops (leafy greens, or vegetables that turn orange as they ripen)
+   const v=r().toFixed(3),veg=r()<.4?'1':'0',beds=FACETS?[[0,0],[.5,0],[0,.5],[.5,.5]]:[[0,0]],s=FACETS?.5:1;
+   for(const [di,dj] of beds){const [t,rr,b,l]=diamond(i+di,j+dj,s,s,FACETS?.045:.07);facet(g,[t,rr,b,l],shade(SOIL,'top',.94+r()*.12));
+     for(const f of FACETS?[.5]:[.33,.66])el('line',{class:'crop','data-v':v,'data-veg':veg,x1:t[0]+(l[0]-t[0])*f,y1:t[1]+(l[1]-t[1])*f,x2:rr[0]+(b[0]-rr[0])*f,y2:rr[1]+(b[1]-rr[1])*f,stroke:'#6aa547','stroke-width':2.4,'stroke-linecap':'round','stroke-dasharray':'.1 2.8'},g)}},
+ industrial_ward(g,i,j,r,n){if(n%5===2){const [x,y]=centre(i,j);drum(g,x-3,y+1,7,13,'#a7adb2');return drum(g,x+5,y-2,5,9,'#9aa1a6')}
+   const h=13+r()*7,top=module_(g,i,j,h,['#aab0b3','#9ea5a9','#b6babb'][Math.floor(r()*3)],r()<.5?'#7c8387':'#94724d',{solar:r()<.45,windows:'pair',inset:.1});const cx=top[1][0]-6,cy=top[1][1];
+   if(n%3===0){el('rect',{x:cx-2.5,y:cy-16,width:5,height:16,fill:'#5c6268'},g);el('rect',{x:cx-2.5,y:cy-16,width:5,height:3,fill:'#a8564a'},g);
+     for(let k=0;k<2;k++)el('circle',{class:'smoke',cx:cx,cy:cy-20,r:4,fill:'#d8d3ca','data-v':r().toFixed(3),style:`animation-delay:-${(k*2.2+r()*2).toFixed(1)}s`},g)}},
+ research_block(g,i,j,r,n){if(n%6===0){box(g,i,j,1,1,8,'#e3e7e8');const [x,y]=centre(i,j);el('ellipse',{cx:x,cy:y-12,rx:9,ry:4,fill:'#f2f4f5',stroke:'#93a6b5','stroke-width':1.2,transform:`rotate(-25 ${x} ${y-12})`},g);el('line',{x1:x,y1:y-12,x2:x+4,y2:y-22,stroke:'#93a6b5','stroke-width':1.5},g);return}
+   if(n%6===3){const [x,y]=centre(i,j);box(g,i,j,1,1,6,'#dfe4e6');el('ellipse',{cx:x,cy:y-12,rx:13,ry:10,fill:'url(#domeg)',stroke:'#eaf8ff','stroke-width':.8},g);return}
+   const h=16+r()*12;module_(g,i,j,h,'#e8ecec','#b9c0be',{garden:true,pool:r()<.3});if(n%3===1)neon(g,i,j,h)},
+ market_concourse(g,i,j,r,n){if(n===0){module_(g,i,j,16,'#e2ddd0','#a9845a',{garden:false});const [x,y]=centre(i,j);flag(g,x,y-24,'#ffd27a');return}
+   const c=['#c9614f','#e0a83c','#5a8fbe','#78a35c','#9370c4'][Math.floor(r()*5)],top=box(g,i,j,1,1,5,'#d9d4c6',{topColor:c,inset:.2});
+   el('polygon',{points:pts(top),fill:'none',stroke:'#f6f2e8','stroke-width':.8,'stroke-dasharray':'3 3'},g);
+   if(n%3===0){const [x,y]=centre(i+.3,j+.35);parasol(g,x,y,c,'#f6f3ea',10,6)}},
+ spaceport_quarter(g,i,j,r,n){if(n===0){box(g,i,j,1,1,40,'#dfe3e5',{windows:true,topColor:'#5f6b80'});const [x,y]=centre(i,j);flag(g,x+8,y-44,'#bd91ff');el('circle',{class:'beacon',cx:x,cy:y-46,r:3,fill:'#ff5a5a'},g);return}
    if(n===5){const [x,y]=centre(i,j),hull='#e6e9ec',fin='#b04a3c';   // a rocket on its pad: lit and shaded halves
      if(FACETS){el('polygon',{points:pts([[x-5,y-4],[x,y-4],[x,y-52],[x-5,y-40]]),fill:shade(hull,toward(-1,0))},g);el('polygon',{points:pts([[x,y-4],[x+5,y-4],[x+5,y-40],[x,y-52]]),fill:shade(hull,toward(1,0))},g)}
      else el('polygon',{points:pts([[x-5,y-4],[x+5,y-4],[x+5,y-40],[x,y-52],[x-5,y-40]]),fill:shade(hull,'left'),stroke:'#9aa3ad'},g);
      el('polygon',{points:pts([[x-5,y-4],[x-10,y+2],[x-5,y-16]]),fill:shade(fin,'left')},g);el('polygon',{points:pts([[x+5,y-4],[x+10,y+2],[x+5,y-16]]),fill:shade(fin,'right')},g);return}
-   if(n%3===1){const [t,rr,b,l]=diamond(i,j,1,1,.02);el('polygon',{points:pts([t,rr,b,l]),fill:'#5d6068'},g);const [x,y]=centre(i,j);
+   if(n%3===1){const [t,rr,b,l]=diamond(i,j,1,1,.04);el('polygon',{points:pts([t,rr,b,l]),fill:'#9fa5a6'},g);const [x,y]=centre(i,j);
      el('ellipse',{cx:x,cy:y,rx:12,ry:6,fill:'none',stroke:'#e8c766','stroke-width':1.6},g);el('text',{x:x,y:y+3,'text-anchor':'middle','font-size':8,'font-weight':900,fill:'#e8c766',transform:`scale(1 .6) translate(0 ${y/0.6-y})`},g).textContent='H';return}
-   box(g,i,j,1,1,10+r()*6,'#aab1bb',{windows:true,topColor:r()<.5?'#6f7f99':'#b87650'})},
+   module_(g,i,j,10+r()*6,'#c9ced2',r()<.5?'#a98a5f':'#7d8590',{solar:r()<.5,inset:.1})},
  frontier_edge(g,i,j,r,n){const [x,y]=centre(i,j);if(n%4===0){el('polygon',{points:pts([[x-9,y+2],[x,y-26],[x+9,y+2]]),fill:'none',stroke:'#6e5236','stroke-width':2.5},g);el('circle',{cx:x,cy:y-24,r:3.5,fill:'#b39a74'},g);return}
-   if(n%4===1){for(let k=0;k<3;k++)facetRock(g,x+(r()-.5)*16,y+(r()-.5)*6-1,3.5+r()*3.5,r,k%2?'#8f8576':'#7b7266');return}
-   if(n%4===2){el('polygon',{points:pts([[x-10,y+3],[x,y-12],[x+10,y+3]]),fill:shade('#d2c19c','left'),stroke:shade('#d2c19c','right',.85)},g);el('polygon',{points:pts([[x,y-12],[x+10,y+3],[x+4,y+5]]),fill:shade('#d2c19c','right')},g);return}
-   tree(g,i,j,r,r()<.7?'conifer':'broad')},
- commons(g,i,j,r,n){tree(g,i,j,r,r()<.25?'conifer':'broad')},
+   if(n%4===1)return crates(g,i,j,r);
+   if(n%4===2)return domeHut(g,i,j,'#d08a3a','#e4ddcc');
+   tree(g,i,j,r,r()<.6?'tall':'conifer')},
+ commons(g,i,j,r,n){tree(g,i,j,r,r()<.7?'tall':'broad')},
  park(g,i,j,r,n){tree(g,i,j,r)},
 };
 // Scaffolding and a crane stand where a new building is about to go up.
@@ -689,12 +791,13 @@ function scaffold(g,i,j,crane){const [t,r,b,l]=diamond(i,j,1,1,.15),h=22,c='#d4a
 
 // ---- terrain and streets, drawn once
 (function terrain(){const g=document.getElementById('ground'),lo=-1.4,hi=N+1.4;
-  mountains(document.getElementById('hills'),document.getElementById('hills2'));slab(g,lo,hi);
-  // the wild land around the town: one plain diamond on low quality, otherwise 2×2-tile facets that rise and fall a little more
-  if(!FACETS)facet(g,diamond(lo,lo,hi-lo,hi-lo),shade(GROUND.ring[0],'top'));
-  else{const E=[lo,...[...Array(N/2+1)].map((_,k)=>k*2),hi];for(let a=0;a<E.length-1;a++)for(let b=0;b<E.length-1;b++)if(!(E[a]>=0&&E[a+1]<=N&&E[b]>=0&&E[b+1]<=N))facetTile(g,E[a],E[b],GROUND.ring,{w:E[a+1]-E[a],d:E[b+1]-E[b],seed:'ring',amp:9,cls:'ring'})}
+  forest(document.getElementById('hills'),document.getElementById('hills2'));slab(g,lo,hi);
+  // the land around the colony: one plain diamond on low quality, otherwise 2×2-tile facets of rougher grass that rise and fall a little
+  if(!FACETS)facet(g,diamond(lo,lo,hi-lo,hi-lo),shade(RING[0],'top'));
+  else{const E=[lo,...[...Array(N/2+1)].map((_,k)=>k*2),hi];for(let a=0;a<E.length-1;a++)for(let b=0;b<E.length-1;b++)if(!(E[a]>=0&&E[a+1]<=N&&E[b]>=0&&E[b+1]<=N))facetTile(g,E[a],E[b],RING,{w:E[a+1]-E[a],d:E[b+1]-E[b],seed:'ring',amp:8,cls:'ring'})}
+  // its edge: shrubs, rocks and the colony's tall trees, kept off the front corner where the Homes stand
   const r=rng('wild');for(let k=0;k<50;k++){const i=-1.2+r()*(N+2.4),j=-1.2+r()*(N+2.4);if(i>-.2&&i<N+.2&&j>-.2&&j<N+.2)continue;const [x,y]=iso(i,j),v=r();
-    if(v<.6)shrub(g,x,y-1,3+r()*3,r,v<.3?'#55743a':'#687a42');else if(v<.8||!FACETS)facetRock(g,x,y-1,2.5+r()*3,r,'#7d776a');else lowPolyTree(g,x,y,r,'conifer')}
+    if(v<.45)shrub(g,x,y-1,3+r()*3,r,v<.25?'#4f7a3a':'#5f8442');else if(v<.62||!FACETS||i+j>2*N-4)facetRock(g,x,y-1,2.5+r()*3,r,'#8a877e');else lowPolyTree(g,x,y,r,r()<.75?'tall':'broad')}
   const s=document.getElementById('stars');const sr=rng('stars');for(let k=0;k<140;k++){const x=-500+sr()*1960,y=-360+sr()*600;el('circle',{class:sr()<.3?'twinkle':'',cx:x,cy:y,r:.6+sr()*1.3,fill:'#fff'},s)}
   const c=document.getElementById('skyclouds');for(let k=0;k<4;k++){const cg=el('g',{class:'cloud',style:`animation-duration:${150+k*40}s;animation-delay:-${k*55}s`},c),y=70+k*28;
     for(const [dx,dy,rx] of [[0,0,34],[26,-8,26],[-24,-4,22],[48,2,20]]){if(!FACETS){el('ellipse',{cx:dx,cy:y+dy,rx,ry:rx*.45,fill:'#fff',opacity:.8},cg);continue}
@@ -708,35 +811,52 @@ const PHASE_NEWS={Morning:'🌅 Dawn breaks over New Eridian',Day:'☀️ Full d
 const LAMPS=[];for(let s=0;s<N;s+=3)for(const k of [6,13]){LAMPS.push([k+.1,s+.1],[s+.1,k+.1])}
 function streets(d,tier){const g=document.getElementById('ground');g.querySelectorAll('.street').forEach(e=>e.remove());
   const unlocked=k=>k==='commons'||k==='park'||((d.districts||{})[k]||{}).unlocked;
+  // the streets are wide pale concrete paths; beside districts not open yet they are older and darker
   for(let i=0;i<N;i++)for(let j=0;j<N;j++){if(!(ROAD.has(i)||ROAD.has(j)))continue;
     const near=Object.entries(CELLS).some(([k,[r,c]])=>{const [a,b]=cellTiles(r,c);return unlocked(k)&&i>=a-1&&i<=a+6&&j>=b-1&&j<=b+6});
-    facetTile(g,i,j,near?(tier>=2?['#4c4f56','#56595f']:['#a08f6d','#94845f']):['#a89878','#9a8a6a'],{cls:'street',seed:'road',amp:1.5,vary:.04})}
+    facetTile(g,i,j,near?CONCRETE:['#b2b3a8','#a8aa9f'],{cls:'street',seed:'road',amp:1,vary:.035})}
   // kerbs along both sides of each street, broken at the crossings, so the streets always stand out from the districts
   for(const k of [6,13])for(const e of [k,k+1])for(const [s0,s1] of [[0,6],[7,13],[14,N]])for(const [a,b] of [[iso(e,s0),iso(e,s1)],[iso(s0,e),iso(s1,e)]])
-    el('line',{class:'street',x1:a[0],y1:a[1],x2:b[0],y2:b[1],stroke:'rgba(38,32,24,.38)','stroke-width':1.1},g);
-  if(tier>=2)for(const k of [6,13])for(let s=0;s<N;s++){if(ROAD.has(s))continue;const a=iso(k+.5,s+.15),b=iso(k+.5,s+.55),c=iso(s+.15,k+.5),e=iso(s+.55,k+.5);
-    el('line',{class:'street',x1:a[0],y1:a[1],x2:b[0],y2:b[1],stroke:'#e9d98a','stroke-width':1.2,opacity:.7},g);el('line',{class:'street',x1:c[0],y1:c[1],x2:e[0],y2:e[1],stroke:'#e9d98a','stroke-width':1.2,opacity:.7},g)}
-  for(const [i,j] of LAMPS){const [x,y]=iso(i,j);el('rect',{class:'street',x:x-.8,y:y-9,width:1.6,height:9,fill:'#3a3d44'},g);el('circle',{class:'street win lamp',cx:x,cy:y-10,r:1.8,fill:'#ffe6a3',opacity:0,'data-v':'0'},g)}}
+    el('line',{class:'street',x1:a[0],y1:a[1],x2:b[0],y2:b[1],stroke:KERB,'stroke-width':1.1},g);
+  if(tier>=2)for(const k of [6,13])for(let s=0;s<N;s++){if(ROAD.has(s))continue;const a=iso(k+.5,s+.15),b=iso(k+.5,s+.55),c=iso(s+.15,k+.5),e=iso(s+.55,k+.5);   // paving joints along the middle
+    el('line',{class:'street',x1:a[0],y1:a[1],x2:b[0],y2:b[1],stroke:'#e9ece8','stroke-width':1.1,opacity:.8},g);el('line',{class:'street',x1:c[0],y1:c[1],x2:e[0],y2:e[1],stroke:'#e9ece8','stroke-width':1.1,opacity:.8},g)}
+  for(const [i,j] of LAMPS){const [x,y]=iso(i,j);streetLamp(g,x,y,15,i<j?-1:1,'street')}}
 function flag(g,x,y,color){if(QUALITY!=='high')return;el('rect',{x:x-.6,y:y-14,width:1.2,height:14,fill:'#ddd'},g);el('polygon',{class:'flag',points:`${x+.6},${y-14} ${x+10},${y-11.5} ${x+.6},${y-9}`,fill:color},g)}
+// The ground of a district: lawn plots of 2×2 tiles between pale concrete sidewalks, each plot outlined in a thin orange and a thin
+// purple line. A district that is not open yet is plain meadow; the Park is all lawn; the Commons is the Kernel's square lawn plaza.
+function plots(g,a,b,key){facet(g,diamond(a,b,6,6),shade(CONCRETE[0],'top'),{class:'walk'});
+  for(let p=0;p<3;p++)for(let q=0;q<3;q++){const i=a+p*2,j=b+q*2;facetTile(g,i,j,LAWN,{w:2,d:2,inset:.13,seed:key+p+q,amp:3});
+    plotLines(g,i,j,2,2,.2)}}
+function plotLines(g,i,j,w,d,e){(FACETS?PLOT:PLOT.slice(0,1)).forEach((c,k)=>el('polygon',{class:'plotline',points:pts(diamond(i,j,w,d,e+k*.075)),fill:'none',stroke:c,'stroke-width':1,'stroke-linejoin':'round',opacity:.95},g))}
+// The Kernel's plaza: picnic tables with benches, a parasol, planters and lamps around the pod.
+function picnic(g,i,j){box(g,i-.45,j-.1,.9,.2,4.2,'#e9ece9',{inset:0});for(const dj of [-.36,.22])box(g,i-.45,j+dj,.9,.14,2.4,'#dde2df',{inset:0,noshadow:true})}
+function planter(g,i,j){box(g,i,j,.34,.34,3.2,'#d9dcd6',{inset:0,topColor:'#78a64a'});if(FACETS){const [x,y]=centre(i,j,.34,.34);shrub(g,x,y-3.2,2.4,rng('pl'+i+j),'#6aa547')}}
+function plaza(g,back){if(back){const [lx,ly]=iso(7.75,7.75);return streetLamp(g,lx,ly,17,1)}   // the lamp behind the pod, drawn before it
+  const [x,y]=iso(11.95,11.05);for(const [i,j] of [[11.6,8.75],[8.75,11.6]])picnic(g,i,j);parasol(g,x,y);
+  for(const [i,j] of [[12.15,10.95],[10.95,12.15]])planter(g,i,j);for(const [i,j,s] of [[12.3,8.4,1],[8.4,12.3,-1]]){const [lx,ly]=iso(i,j);streetLamp(g,lx,ly,17,s)}}
+// Whether a point lies inside the Kernel's outline on screen: decorations behind it there are hidden by the pod, so they are left out.
+const behindKernel=(x,y)=>{const [kx,ky]=iso(...KERNEL);return ((x-kx)/56)**2+((y-ky+36)/48)**2<1&&y<ky-4};
 function district(key,info,tier){const [r,c]=CELLS[key],[a,b]=cellTiles(r,c),city=document.getElementById('city');
   let dg=drawn[key];const unlocked=key==='commons'||key==='park'||info.unlocked,level=key==='commons'?2+tier*2:key==='park'?6:(info.level||1);
   if(!dg||dg.unlocked!==unlocked){if(dg){dg.ground.remove();dg.g.remove();if(!first)toast(`🎉 ${LOOK[key]?LOOK[key][1]:'The Park'} is open for building!`,key)}
     const G=document.getElementById('ground');dg=drawn[key]={unlocked,count:0,ground:G.insertBefore(el('g',{}),G.querySelector('.street')),g:el('g',{},city)};   // under the streets, kerbs and lamps
-    for(let i=a;i<a+6;i++)for(let j=b;j<b+6;j++)facetTile(dg.ground,i,j,unlocked?GROUND[key]:GROUND.wild,{seed:key});
-    if(key==='commons'){const [x,y]=centre(a+2,b+2,2,2),stone='#cfc6b2';water(dg.g,x,y,27,13.5,{seed:'fountain',rim:'#d3cbb7'});   // the fountain: a stone basin, a column and a cut-stone finial
-      el('ellipse',{class:'ripple',cx:x,cy:y,rx:22,ry:11,fill:'none',stroke:'#dff6ff','stroke-width':2},dg.g);
-      el('rect',{x:x-3,y:y-22,width:3,height:22,fill:shade(stone,'left')},dg.g);el('rect',{x,y:y-22,width:3,height:22,fill:shade(stone,'right')},dg.g);
-      const T=[x,y-33],B=[x,y-21],Lf=[x-6,y-27],Rt=[x+6,y-27],Cn=[x-1,y-28];
-      if(FACETS)[[Lf,T,Cn],[T,Rt,Cn],[Lf,Cn,B],[Cn,Rt,B]].forEach((p,q)=>facet(dg.g,p,shade('#9a917f',[toward(-1,-1),toward(1,-1),toward(-1,1),toward(1,1)][q])));
-      else facet(dg.g,[Lf,T,Rt,B],shade('#9a917f','left'))}
-    if(key==='park'){const [x,y]=centre(a+1,b+2,3,3);water(dg.ground,x,y,44,21,{seed:'pond',rim:'#a89c78'});
+    if(key==='commons'){facet(dg.ground,diamond(a,b,6,6),shade(CONCRETE[0],'top'),{class:'walk'});facetTile(dg.ground,a,b,LAWN,{w:6,d:6,inset:.32,seed:'plaza',amp:2});plotLines(dg.ground,a,b,6,6,.4);
+      plaza(el('g',{'data-depth':15.5},dg.g),true);kernel(el('g',{id:'kernel','data-depth':20.3},dg.g));plaza(el('g',{'data-depth':21},dg.g))}
+    else if(key==='park'){for(let p=0;p<3;p++)for(let q=0;q<3;q++)facetTile(dg.ground,a+p*2,b+q*2,LAWN,{w:2,d:2,seed:'park'+p+q,amp:4});
+      const [x,y]=centre(a+1,b+2,3,3);el('ellipse',{cx:x,cy:y,rx:58,ry:28,fill:'none',stroke:shade(CONCRETE[0],'top'),'stroke-width':5},dg.ground);water(dg.ground,x,y,44,21,{seed:'pond',rim:'#a89c78'});   // a path around the pond
       if(QUALITY==='high')for(let k=0;k<6;k++)el('line',{class:'shimmer',x1:x-30+k*11,y1:y-10+(k%3)*9,x2:x-22+k*11,y2:y-10+(k%3)*9,stroke:'#e8f8ff','stroke-width':1.4,'stroke-linecap':'round',style:`animation-delay:-${k*.55}s`},dg.g)}
+    else if(unlocked){plots(dg.ground,a,b,key);
+      if(key==='agricultural_district'&&FACETS)stringLights(dg.g,[iso(a+5.9,b+.3),iso(a+5.9,b+2),iso(a+5.9,b+3.9),iso(a+5.9,b+5.7)]);   // string lights along the farm's front path
+      if(key==='market_concourse'&&FACETS)stringLights(dg.g,[iso(a+.3,b+5.9),iso(a+2.1,b+5.9),iso(a+3.9,b+5.9),iso(a+5.7,b+5.9)])}
+    else for(let p=0;p<2;p++)for(let q=0;q<2;q++)facetTile(dg.ground,a+p*3,b+q*3,MEADOW,{w:3,d:3,seed:key+p+q,amp:5});
     if(!unlocked){for(const [di,dj] of [[.5,.5],[5.5,.5],[.5,5.5],[5.5,5.5]]){const [x,y]=iso(a+di,b+dj);el('polygon',{points:pts([[x-3,y],[x,y-12],[x+3,y]]),fill:'#f28b3c'},dg.g)}
-      const [x,y]=centre(a+3.5,b+3.5,1,1);el('rect',{x:x-14,y:y-20,width:28,height:14,rx:2,fill:'#d9c9a2',stroke:'#7a6446'},dg.g);el('rect',{x:x-1,y:y-6,width:2,height:8,fill:'#7a6446'},dg.g)}
-    // Tile order for new buildings: fixed per district, so growth only ever adds buildings.
-    const rr=rng('slots:'+key);dg.slots=[];for(let i=a;i<a+6;i++)for(let j=b;j<b+6;j++){if(key==='commons'&&i>=a+2&&i<a+4&&j>=b+2&&j<b+4)continue;if(key==='park'&&!(i===a||j===b||i===a+5||j===b+5))continue;dg.slots.push([i,j,rr()])}
+      const [x,y]=centre(a+3.5,b+3.5,1,1);el('rect',{x:x-14,y:y-20,width:28,height:14,rx:2,fill:'#e4e1d6',stroke:'#7d7a70'},dg.g);el('rect',{x:x-1,y:y-6,width:2,height:8,fill:'#7d7a70'},dg.g)}
+    // Tile order for new buildings: fixed per district, so growth only ever adds buildings. The Commons keeps its middle for the
+    // Kernel, and the front of the plaza (its ramp, tables and the Seedlings who gather there) free.
+    const rr=rng('slots:'+key),busy=new Set(['12,10','10,12','12,11','11,12','12,12','12,8','8,12']);dg.slots=[];
+    for(let i=a;i<a+6;i++)for(let j=b;j<b+6;j++){if(key==='commons'&&(i>a&&i<a+5&&j>b&&j<b+5||busy.has(i+','+j)))continue;if(key==='park'&&!(i===a||j===b||i===a+5||j===b+5))continue;dg.slots.push([i,j,rr()])}
     if(key!=='commons'&&key!=='park')dg.slots.sort((p,q)=>p[2]-q[2]);}
-  if(!first&&unlocked&&levels[key]&&level>levels[key]&&LOOK[key])toast(`🏗️ ${LOOK[key][1]} grew to LV ${level}`,key);
+  if(!first&&unlocked&&levels[key]&&level>levels[key]&&LOOK[key]&&key!=='commons')toast(`🏗️ ${LOOK[key][1]} grew to LV ${level}`,key);
   levels[key]=level;
   const want=!unlocked?0:key==='park'?dg.slots.length:key==='commons'?Math.min(dg.slots.length-RESERVE-1,4+tier*3):Math.min(dg.slots.length-RESERVE,3+level*3);
   if(want>dg.count){const add=dg.slots.slice(dg.count,want).map((s,n)=>[...s,dg.count+n]),grow=!first;dg.count=want;
@@ -748,29 +868,37 @@ function district(key,info,tier){const [r,c]=CELLS[key],[a,b]=cellTiles(r,c),cit
 let labelSig='';
 function labelsFor(d){const sig=JSON.stringify(Object.entries(d.districts||{}).map(([k,v])=>[k,v.unlocked,v.level,v.unlocks_at]));if(sig===labelSig)return;labelSig=sig;for(const k in rowShift)delete rowShift[k];   // rebuilt only when a district changes
   const labels=document.getElementById('labels');labels.innerHTML='';
-  for(const k in LOOK){const info=(d.districts||{})[k]||{unlocked:k==='commons',level:1},[x,y]=labelXY(k),[icon,short,color]=LOOK[k];
+  for(const k in LOOK){const info=(d.districts||{})[k]||{unlocked:k==='commons',level:1},[x,y]=labelXY(k),[icon,short,color]=LOOK[k],z=LS*LZ;
     const sub=CARD?'':k==='commons'?'':info.unlocked?`LV ${info.level}`:`AT ${String(info.unlocks_at||'').toUpperCase()}`,lab=el('g',{class:'dlabel'},labels);
-    const box_=el('rect',{y:y-12*LS,height:24*LS,rx:12*LS,fill:'rgba(8,13,39,.9)',stroke:color,'stroke-width':2*LS},lab),t=el('text',{y:y+LS,fill:color,style:`font-size:${16*LS}px`},lab);t.textContent=CARD?icon+(info.unlocked||k==='commons'?'':'🔒'):`${icon} ${short.toUpperCase()}`;
-    lab.dataset.key=k;const s=sub?el('text',{class:'lvl',y:y+1},lab):null;if(s)s.textContent=sub;const tw=t.getComputedTextLength(),sw=s?s.getComputedTextLength()+8:0,w=tw+sw+22*LS;
-    box_.setAttribute('x',x-w/2);box_.setAttribute('width',w);t.setAttribute('x',x-w/2+11*LS+tw/2);if(s)s.setAttribute('x',x+w/2-11-sw/2+4)}}
-function labelXY(k){const [r,c]=CELLS[k]||CELLS.commons,[a,b]=cellTiles(r,c);return iso(a+1.5,b+1.5)}
+    const box_=el('rect',{y:y-12*z,height:24*z,rx:12*z,fill:'rgba(8,13,39,.9)',stroke:color,'stroke-width':Math.max(1.4,2*z)},lab),t=el('text',{y:y+z,fill:color,style:`font-size:${16*z}px`},lab);t.textContent=CARD?icon+(info.unlocked||k==='commons'?'':'🔒'):`${icon} ${short.toUpperCase()}`;
+    lab.dataset.key=k;const s=sub?el('text',{class:'lvl',y:y+1,style:`font-size:${12*z}px`},lab):null;if(s)s.textContent=sub;const tw=t.getComputedTextLength(),sw=s?s.getComputedTextLength()+8*z:0,w=tw+sw+22*z;
+    box_.setAttribute('x',x-w/2);box_.setAttribute('width',w);t.setAttribute('x',x-w/2+11*z+tw/2);if(s)s.setAttribute('x',x+w/2-11*z-sw/2+4*z)}}
+// District names sit near the back of their district. The Kernel's name floats behind the pod so it never covers it, and the
+// Kernel's Seedlings gather at the foot of its ramp instead of under the name.
+const LABEL_AT={commons:[5,5],research_block:[1.5,10.3],industrial_ward:[10.3,1.5]},ROW_AT={commons:[12.5,12.5]};   // Research and Industry step aside for it
+function labelXY(k){if(LABEL_AT[k])return iso(...LABEL_AT[k]);const [r,c]=CELLS[k]||CELLS.commons,[a,b]=cellTiles(r,c);return iso(a+1.5,b+1.5)}
 
 // ---- the town reacts to the society: crops, smoke, lit windows and market crowds
 let litSig='',crowdSig='';
 function liveTown(d){const st=d.stats||{},pop=d.population||0,ds=d.districts||{},here=k=>latest.filter(s=>s.place===k).length;
   const ratio=(st.food||0)/Math.max(1,pop*20),ripe=Math.max(0,Math.min(1,(ratio-.6)/1.6)),dry=ratio<.35,wet=weatherKey==='good_growing';
-  document.querySelectorAll('.field').forEach(f=>{const v=+f.dataset.v,c=dry&&!wet?['#a08c5e','#b39f70']:v<ripe?['#c8a85a','#d9bc6e']:wet?['#6d9445','#82a856']:['#7d9a4a','#93ad5a'];
-    if(f.dataset.c!==c[0]){f.dataset.c=c[0];const fill=shade(c[0],+f.dataset.k||1);f.setAttribute('fill',fill);f.setAttribute('stroke',fill);f.parentNode.querySelectorAll('.stripe').forEach(s=>s.setAttribute('stroke',c[1]))}});
+  document.querySelectorAll('.crop').forEach(f=>{const v=+f.dataset.v,c=dry&&!wet?'#a5925e':v<ripe?(f.dataset.veg==='1'?'#e4772a':'#d8b44c'):wet?'#4f9a3a':'#6aa547';
+    if(f.dataset.c!==c){f.dataset.c=c;f.setAttribute('stroke',c)}});
+  const kg=document.getElementById('kernel');if(kg)kg.style.setProperty('--glow',(.4+.6*Math.min(1,darkness*1.4)).toFixed(2));
+  document.querySelectorAll('.bulbs').forEach(b=>{b.setAttribute('stroke',darkness>.3?'#ffe28a':'#f6ecc8');b.setAttribute('stroke-width',darkness>.3?2.6:2)});
   const smokeF=Math.min(1,.15+((ds.industrial_ward||{}).level||1)/16+here('industrial_ward')*.2);
   document.querySelectorAll('.smoke').forEach(s=>{s.style.display=+s.dataset.v<smokeF?'':'none'});
   const litF=Math.min(1,.3+pop/50)*Math.max(0,Math.min(1,(darkness-.2)/.4)),sig=litF.toFixed(2)+':'+document.querySelectorAll('.win').length;
-  if(sig!==litSig){litSig=sig;const lights=document.getElementById('lights');lights.innerHTML='';
-    document.querySelectorAll('.win').forEach((w,n)=>{const on=+w.dataset.v<litF;w.setAttribute('opacity',on?.95:0);
-      const lamp=w.classList.contains('lamp');if(on&&QUALITY!=='low'&&(lamp||n%3===0)){if(QUALITY==='high'&&n%4===0){const bx=+w.getAttribute('x')||+w.getAttribute('cx'),by=+w.getAttribute('y')||+w.getAttribute('cy');el('circle',{cx:bx,cy:by,r:16,fill:'url(#glowdot)',opacity:.35},lights)}const x=+w.getAttribute('x')||+w.getAttribute('cx'),y=+w.getAttribute('y')||+w.getAttribute('cy');if(lamp)el('ellipse',{cx:x,cy:y+11,rx:15,ry:7,fill:'url(#glowdot)',opacity:.8},lights);el('circle',{cx:x+1.5,cy:y+1.5,r:6,fill:'url(#glowdot)'},lights)}})}
+  if(sig!==litSig){litSig=sig;const lights=document.getElementById('lights'),dark=darkness>.3;lights.innerHTML='';
+    // windows are warm cream by day; after dark the lit ones glow and the rest are dark glass. Lamp heads light up at night.
+    document.querySelectorAll('.win').forEach((w,n)=>{const on=+w.dataset.v<litF,lamp=w.classList.contains('lamp');
+      w.setAttribute('fill',lamp?(on?'#ffe6a3':'#e3e8e8'):on?'#ffd98a':dark?'#333b49':'#ecdfac');w.setAttribute('opacity',lamp&&!on&&w.tagName==='rect'?0:.95);
+      if(on&&QUALITY!=='low'&&(lamp||n%3===0)){const x=+(w.dataset.x||w.getAttribute('cx')||w.getAttribute('x')),y=+(w.dataset.y||w.getAttribute('cy')||w.getAttribute('y'));
+        if(QUALITY==='high'&&n%4===0)el('circle',{cx:x,cy:y,r:16,fill:'url(#glowdot)',opacity:.35},lights);if(lamp)el('ellipse',{cx:x,cy:y+15,rx:15,ry:7,fill:'url(#glowdot)',opacity:.8},lights);el('circle',{cx:x+1.5,cy:y+1.5,r:6,fill:'url(#glowdot)'},lights)}})}
   const market=(ds.market_concourse||{}).unlocked?Math.min(14,2+here('market_concourse')*2+(d.market&&d.market.primary?2:0)+Math.floor(((ds.market_concourse||{}).level||1)/2)):0;
   const party=(festival?8:0)+(voteFest?10:0),csig=market+':'+party;
   if(csig!==crowdSig){crowdSig=csig;const g=document.getElementById('crowd');g.innerHTML='';
-    const people=(k,n,seed)=>{const [r,c]=CELLS[k],[a,b]=cellTiles(r,c),rr=rng(seed);for(let q=0;q<n;q++){const [x,y]=iso(a+1+Math.floor(rr()*5)+.02,b+1+Math.floor(rr()*5)+.5+rr()*.3);
+    const people=(k,n,seed)=>{const [r,c]=CELLS[k],[a,b]=cellTiles(r,c),rr=rng(seed);for(let q=0;q<n;q++){let i,j;do{i=a+1+Math.floor(rr()*5)+.02;j=b+1+Math.floor(rr()*5)+.5+rr()*.3}while(k==='commons'&&Math.hypot(i-KERNEL[0],j-KERNEL[1])<2);const [x,y]=iso(i,j);
       const p=el('g',{class:'shopper',style:`animation-delay:-${(rr()*1.1).toFixed(2)}s`},g);el('rect',{x:x-2.5,y:y-9,width:5,height:7,rx:2,fill:['#e0564f','#4fa3e0','#7ec36b','#f2b441','#b86fd6'][Math.floor(rr()*5)]},p);el('circle',{cx:x,cy:y-11.5,r:2.4,fill:['#f1c9a5','#c68a5a','#8d5a3b'][Math.floor(rr()*3)]},p)}};
     people('market_concourse',market,'shoppers');people('commons',party,'party')}}
 
@@ -778,7 +906,7 @@ function liveTown(d){const st=d.stats||{},pop=d.population||0,ds=d.districts||{}
 const tokens=document.getElementById('tokens'),live={};let latest=[];
 const SKIN=['#f1c9a5','#e0ac7e','#c68a5a','#8d5a3b','#5e3b26'],HAIR=['#2b1d14','#5a3a22','#b07a3a','#e2c27a','#7a2a1a','#c9c9d6'];
 const rowShift={};
-function home(k,i,n){const [x,y]=labelXY(k),yy=y+12*LS+48*TK(),key=k+':'+n+':'+LS.toFixed(2)+':'+TS.toFixed(2);
+function home(k,i,n){const [lx,ly]=labelXY(k),[x,yy]=ROW_AT[k]?iso(...ROW_AT[k]):[lx,ly+12*LS*LZ+48*TK()],key=k+':'+n+':'+LS.toFixed(2)+':'+TS.toFixed(2);
   if(!(key in rowShift)){const half=(n-1)/2*30*TK()+14*TK(),extra=12*TK()+2+34*Math.max(.85,TK()),rects=[...document.querySelectorAll('#labels .dlabel')].filter(g=>g.dataset.key!==k).map(g=>{const r=g.querySelector('rect');return [+r.getAttribute('x'),+r.getAttribute('y'),+r.getAttribute('x')+(+r.getAttribute('width')),+r.getAttribute('y')+(+r.getAttribute('height'))]});
     // overlap area between the row (people, feet and the +N badge) and every other district name; pick the nearest shift with the least
     // The row stays inside its own district: a small sideways nudge or a step down the block, never into a neighbour.
@@ -856,10 +984,14 @@ setInterval(idle,2600);
 function seedlings(list){const groups={};for(const s of list)(groups[s.place]=groups[s.place]||[]).push(s);const seen=new Set();document.querySelectorAll('.more').forEach(e=>e.remove());
   for(const k in groups){const all=groups[k].sort((a,b)=>(isNew(b)-isNew(a))||(a.id<b.id?-1:1)),n=Math.min(all.length,PER_PLACE),extra=all.length-n;
     all.forEach((s,i)=>{seen.add(s.id);const [tx,ty]=home(k,Math.min(i,n-1),n);let t=live[s.id];
-      if(!t){t=live[s.id]=figure(s);t.id=s.id;t.x=tx;t.y=ty;t.place=k;t.g.setAttribute('transform',place_(tx,ty))}
+      if(!t){t=live[s.id]=figure(s);t.id=s.id;t.place=k;
+        // A Seedling new to this session steps out of the Kernel's door, waits a moment in its glow, then walks down the ramp
+        // to its place. Those already here when the page opens are simply placed, so loading never starts a parade.
+        if(fromKernel(s.id)){[t.x,t.y]=KDOOR;t.path=[KRAMP,...route('commons',k),[tx,ty]];t.wait=performance.now()+1400;spawnGlow()}else{t.x=tx;t.y=ty}
+        t.g.setAttribute('transform',place_(t.x,t.y))}
       else if(t.lookSig!==JSON.stringify(s.look||{})){const old=t;t=live[s.id]=figure(s);Object.assign(t,{id:s.id,x:old.x,y:old.y,place:old.place,path:old.path});   // a new look: redraw in place
         t.g.setAttribute('transform',old.g.getAttribute('transform'));old.g.remove()}
-      t.hidden=i>=n;t.s=s;const hk=s.hat||(s.look&&s.look.nohat?'':s.job);if(t.job!==hk){t.job=hk;hat(t.g.querySelector('.hat'),hk)}t.g.querySelector('.shirt').setAttribute('fill',(s.look&&s.look.outfit)||MOOD[s.mood]||'#b8f4d0');t.g.querySelector('.ini').textContent=(s.name||'?').slice(0,1).toUpperCase();
+      everSeen.add(s.id);t.hidden=i>=n;t.s=s;const hk=s.hat||(s.look&&s.look.nohat?'':s.job);if(t.job!==hk){t.job=hk;hat(t.g.querySelector('.hat'),hk)}t.g.querySelector('.shirt').setAttribute('fill',(s.look&&s.look.outfit)||MOOD[s.mood]||'#b8f4d0');t.g.querySelector('.ini').textContent=(s.name||'?').slice(0,1).toUpperCase();
       t.g.querySelector('.label').setAttribute('y',13+(i%2)*11);   // neighbours' names alternate height so they never overlap
       t.g.querySelector('.label').textContent=SHOW_NAMES?(s.badge?s.badge+' ':'')+(s.name.length>8?s.name.slice(0,7)+'…':s.name):'';t.g.querySelector('.act').textContent=s.emoji||'';
       if(t.place!==k){t.path=[...route(t.place,k),[tx,ty]];t.place=k;t.g.style.display='';hushBubble(t)}else if(!t.path.length&&(Math.abs(t.x-tx)>1||Math.abs(t.y-ty)>1))t.path=[[tx,ty]];
@@ -869,10 +1001,17 @@ function seedlings(list){const groups={};for(const s of list)(groups[s.place]=gr
       el('rect',{x:0,y:-11,width:34,height:22,rx:11,fill:'#6b3fd1',stroke:'#fff','stroke-width':2},m);el('text',{x:17,y:0},m).textContent='+'+extra}}
   for(const id in live)if(!seen.has(id)){live[id].g.remove();delete live[id]}
   walk()}
+const everSeen=new Set();   // every Seedling this page has shown, so only newcomers step out of the Kernel
+const fromKernel=id=>!first&&!everSeen.has(id);   // new during this session: not on the first render, and never shown before
+// The Kernel's welcome: a ring of cyan light spreads from its doorway and the pod's own ring flares.
+function spawnGlow(){const [x,y]=KDOOR,g=el('g',{class:'spawn'});tokens.insertBefore(g,tokens.firstChild);   // behind every Seedling
+  el('circle',{cx:x,cy:y-12,r:22,fill:'url(#kglowg)'},g);el('ellipse',{cx:x,cy:y,rx:16,ry:7,fill:'none',stroke:'#8ff3ff','stroke-width':2},g);
+  const k=document.getElementById('kernel');if(k){k.classList.add('surge');setTimeout(()=>k.classList.remove('surge'),1800)}setTimeout(()=>g.remove(),2100)}
 let walking=false,lastT=0;
 function walk(){if(walking)return;walking=true;lastT=performance.now();requestAnimationFrame(stepAll)}
 function stepAll(now){const dt=Math.min(.1,(now-lastT)/1000);lastT=now;let any=false;
-  for(const id in live){const t=live[id];if(!t.path.length){if(t.g.classList.contains('walking')){t.g.classList.remove('walking');face(t,0,0)}continue}any=true;t.g.classList.add('walking');t.g.style.display='';
+  for(const id in live){const t=live[id];if(!t.path.length){if(t.g.classList.contains('walking')){t.g.classList.remove('walking');face(t,0,0)}continue}any=true;t.g.style.display='';
+    if(t.wait){if(now<t.wait)continue;t.wait=0}t.g.classList.add('walking');
     let left=46*dt;while(left>0&&t.path.length){const [px,py]=t.path[0],dx=px-t.x,dy=py-t.y,dist=Math.hypot(dx,dy);face(t,dx,dy);if(dist<=left){t.x=px;t.y=py;left-=dist;t.path.shift()}else{t.x+=dx/dist*left;t.y+=dy/dist*left;left=0}}
     t.g.setAttribute('transform',place_(t.x,t.y));if(id===speaking)dropBubbleIfHidden(t);if(!t.path.length&&t.hidden&&!t.g.querySelector('.bubble'))t.g.style.display='none'}
   sortTokens();if(any)requestAnimationFrame(stepAll);else walking=false}
@@ -902,10 +1041,10 @@ function speak(t,line){document.querySelectorAll('.bubble').forEach(b=>b.remove(
     const [hx1,hy1]=toScreen(t.x,t.y-38*z),ex=Math.max(l,Math.min(r,hx1)),ey=Math.max(tp,Math.min(bt,hy1));
     const steps=Math.max(3,Math.ceil(Math.hypot(hx1-ex,hy1-ey)/4));for(let i=1;i<steps;i++){const f=i/steps,px=ex+(hx1-ex)*f,py=ey+(hy1-ey)*f;if(walls.some(q=>px>q.l-1&&px<q.r+1&&py>q.t-1&&py<q.b+1)){c+=8000;break}}
     const off=(Math.max(0,4-l)+Math.max(0,r-956))*(bt-tp)*9+(Math.max(0,band[0]+2-tp)+Math.max(0,bt-536))*(r-l)*9;c+=off+(off>0?60000:0);   // off the frame loses to any spot on screen
-    const [hx,hy]=toScreen(t.x,t.y-38*z),cx=(l+r)/2,cy=(tp+bt)/2;return c+Math.hypot(cx-hx,cy-hy)*2.2};   // strongly prefer short tails   // prefer spots close to the speaker
+    const [hx,hy]=toScreen(t.x,t.y-38*z),cx=(l+r)/2,cy=(tp+bt)/2,tail=Math.hypot(cx-hx,cy-hy);return c+tail*2.2+Math.max(0,tail-70)*45+(tail>90?20000:0)};   // long tails cost more than crossing a name, and past 90 units they are ruled out   // strongly prefer short tails   // prefer spots close to the speaker
   // Candidate spots all around the head: above (at several heights), to either side, and below the feet.
   const head=-38*z/k,spots=[];
-  for(let lift=0;lift<=160;lift+=10)for(const f of [0,-.25,.25,-.5,.5,-.75,.75])spots.push([-w/2+f*w,head-8-h-lift]);
+  for(let lift=0;lift<=100;lift+=10)for(const f of [0,-.25,.25,-.5,.5,-.75,.75])spots.push([-w/2+f*w,head-8-h-lift]);
   for(const dy of [-30,0,30])spots.push([14*z/k,head-h/2+dy],[-14*z/k-w,head-h/2+dy]);
   for(const f of [0,-.4,.4])spots.push([-w/2+f*w,10*z/k]);
   let best=spots[0],bestCost=Infinity;for(const sp of spots){const c=cost(sp[0],sp[1]);if(c<bestCost){best=sp;bestCost=c}}
@@ -938,7 +1077,8 @@ let HOME={x:480,y:254,s:1.1,px:480,py:290},CAM=HOME,band=[50,534];
 // The wide shot is sized so every building fits below the header and inside the frame.
 function fitHome(){try{const c=document.getElementById('city').getBBox();BOUNDS.top=Math.min(c.height?c.y:OY,OY)-4}catch(e){}
   band=[Math.max(4,vb(document.querySelector('.head')).b+6),NARROW?Math.min(534,vb(document.getElementById('cap')).t-6):534];const s=Math.min(944/(BOUNDS.right-BOUNDS.left),(band[1]-band[0])/(BOUNDS.bottom-BOUNDS.top));
-  const next={x:(BOUNDS.left+BOUNDS.right)/2,y:(BOUNDS.top+BOUNDS.bottom)/2,s,px:480,py:(band[0]+band[1])/2};
+  let next={x:(BOUNDS.left+BOUNDS.right)/2,y:(BOUNDS.top+BOUNDS.bottom)/2,s,px:480,py:(band[0]+band[1])/2};
+  if(FOCUS){const [r,c]=CELLS[FOCUS],[a,b]=cellTiles(r,c),[fx,fy]=FOCUS==='commons'?iso(...KERNEL):iso(a+3,b+3);next={x:fx,y:fy-(FOCUS==='commons'?20:8),s:s*(CARD?1.6:2.5),px:480,py:next.py}}   // held on one district
   if(Math.abs(next.s-HOME.s)>.002||Math.abs(next.y-HOME.y)>.5||Math.abs(next.py-HOME.py)>.5){const wasHome=CAM===HOME;HOME=next;if(wasHome)apply(HOME)}
   if(CARD){const ppu=Math.min(svgEl.clientWidth/960,svgEl.clientHeight/540)*HOME.s,ls=Math.min(2.2,Math.max(1,13/(16*ppu))),ts=Math.min(1.8,Math.max(1,21/(38*ppu)));
     if(Math.abs(ls-LS)>.02||Math.abs(ts-TS)>.02){LS=ls;TS=ts;labelSig='';if(lastData){labelsFor(lastData);tidyLabels();seedlings(latest);for(const id in live)live[id].g.setAttribute('transform',place_(live[id].x,live[id].y))}}
@@ -952,7 +1092,7 @@ function tidyLabels(){const walls=panels();document.querySelectorAll('.dlabel').
   const [l,t]=toScreen(x,y),[rr,b]=toScreen(x+(+r.getAttribute('width')),y+(+r.getAttribute('height')));
   const cut=l<2||rr>958||t<0||b>540||walls.some(q=>Math.min(rr,q.r)-Math.max(l,q.l)>0&&Math.min(b,q.b)-Math.max(t,q.t)>0);
   g.style.opacity=cut?0:1;g.dataset.hidden=cut?'1':''})}
-function look(x,y,s){if(!CAMERA||x==null)return apply(HOME);
+function look(x,y,s){if(!CAMERA||x==null||FOCUS)return apply(HOME);
   const hw=480/s,hh=(band[1]-band[0])/2/s;x=Math.max(BOUNDS.left+hw,Math.min(BOUNDS.right-hw,x));y=Math.max(BOUNDS.top+hh,Math.min(BOUNDS.bottom-hh,y));
   apply({x,y,s,px:480,py:(band[0]+band[1])/2})}
 const toScreen=(x,y)=>[CAM.px+(x-CAM.x)*CAM.s,CAM.py+(y-CAM.y)*CAM.s];
@@ -965,27 +1105,30 @@ function nextToast(){const t=document.getElementById('toast'),item=toasts.shift(
 // ---- sky, weather and holidays
 let weatherKey='',festival=null,fxSig='',fireworks=null;
 // ---- time of day: the light follows the Avesta hour (0–24) continuously, not just the four phase names.
-// Keys: hour, sky top, sky middle, sky horizon, far hills, near hills, light over the town, darkness 0–1, stars 0–1.
-const LIGHT=[[0,'#1b2150','#3d3a6e','#5a4a72','#26223e','#1e1a32','rgba(24,28,88,.40)',.72,.55],
-  [2,'#3a4488','#d98a92','#f4bc98','#5a4a60','#46394e','rgba(255,140,150,.16)',.32,.12],[4.5,'#6fa2da','#f5d6a8','#f2caa0','#7f7a5e','#68604c','rgba(255,196,130,.10)',.06,0],
-  [7,'#5f9ed8','#bfe0f4','#d6e6ee','#76826f','#5a6b47','rgba(0,0,0,0)',0,0],[13,'#5a9ad6','#bfe0f4','#d6e6ee','#76826f','#5a6b47','rgba(0,0,0,0)',0,0],
-  [15.5,'#6a98d0','#f2d9a8','#f0c690','#7a7552','#62603f','rgba(255,176,90,.12)',0,0],[17.5,'#4a3f7a','#f08a5a','#f7ae6a','#5a4050','#463040','rgba(255,106,58,.22)',.22,.08],
-  [19,'#241c4a','#8a4a7a','#c26a6a','#2e2440','#241c34','rgba(64,40,120,.40)',.6,.45],[21,'#060a1f','#18204a','#1d2450','#15182c','#101224','rgba(6,12,52,.54)',1,1],
-  [24,'#1b2150','#3d3a6e','#5a4a72','#26223e','#1e1a32','rgba(24,28,88,.40)',.72,.55]];
+// Keys: hour, sky top, sky middle, sky horizon, the mist on the far trees, the near forest, light over the town, darkness 0–1, stars 0–1.
+// By day the air is a soft teal; the mist turns gold at dawn, pink at dusk and blue at night.
+const LIGHT=[[0,'#1b2150','#3d3a6e','#4a4f78','#25324e','#121a2c','rgba(24,28,88,.40)',.72,.55],
+  [2,'#3a4488','#c98a96','#e7b39c','#6a5872','#2e2a3e','rgba(255,140,150,.16)',.32,.12],[4.5,'#6fa2da','#f0d6aa','#f2d2a4','#d9bd8e','#4c5a40','rgba(255,196,130,.10)',.06,0],
+  [7,'#5f9fb4','#94c8bf','#a3cfc5','#5f9c8d','#264d3c','rgba(0,0,0,0)',0,0],[13,'#5c9cb2','#92c6bd','#a1cdc3','#5f9c8d','#264d3c','rgba(0,0,0,0)',0,0],
+  [15.5,'#6a9ab8','#d6d6aa','#d8cca0','#8fa98a','#2f503c','rgba(255,176,90,.12)',0,0],[17.5,'#4a3f7a','#ef9a74','#f2a98a','#dc9aa6','#4d3f4f','rgba(255,106,58,.22)',.22,.08],
+  [19,'#241c4a','#8a4a7a','#b8687a','#7a5a88','#2c2440','rgba(64,40,120,.40)',.6,.45],[21,'#060a1f','#18204a','#1d2450','#1f2b4a','#0e1526','rgba(6,12,52,.54)',1,1],
+  [24,'#1b2150','#3d3a6e','#4a4f78','#25324e','#121a2c','rgba(24,28,88,.40)',.72,.55]];
 const PREVIEW_HOUR={Morning:3,Day:10.5,Evening:17,Night:22};
 const rgba=c=>c[0]==='#'?[parseInt(c.slice(1,3),16),parseInt(c.slice(3,5),16),parseInt(c.slice(5,7),16),1]:c.match(/[\d.]+/g).map(Number);
 const mix=(a,b,t)=>{const x=rgba(a),y=rgba(b),v=x.map((n,k)=>n+(y[k]-n)*t);return `rgba(${v[0]|0},${v[1]|0},${v[2]|0},${v[3].toFixed(3)})`};
 function lightAt(hour){hour=((hour%24)+24)%24;let k=0;while(k<LIGHT.length-2&&LIGHT[k+1][0]<=hour)k++;const A=LIGHT[k],B=LIGHT[k+1],t=(hour-A[0])/(B[0]-A[0]);
   return {sky:[1,2,3].map(n=>mix(A[n],B[n],t)),hills:[mix(A[4],B[4],t),mix(A[5],B[5],t)],tint:mix(A[6],B[6],t),dark:A[7]+(B[7]-A[7])*t,stars:A[8]+(B[8]-A[8])*t}}
-let darkness=0,shadowSig='',rangeSig='';
-// The mountain ranges take the light of the hour: the far range fades into the horizon, every face keeps its own shading, snow stays pale.
-function ranges(L,veil){const far=veil(mix(L.sky[2],L.hills[0],.5),['#9aa3ad','#c9ab84']),col=[far,veil(L.hills[0],['#7d858f','#b0916a']),veil(L.hills[1],['#626a72','#977a58'])],snow=.82-.5*L.dark,sig=col.join()+snow.toFixed(2);
-  if(sig===rangeSig)return;rangeSig=sig;
-  document.querySelectorAll('#hills [data-l],#hills2 [data-l]').forEach(p=>{const c=col[+p.dataset.l],f=shade(p.dataset.s?blend(c,'#f1f4f7',snow):c,+p.dataset.k);p.setAttribute('fill',f);p.setAttribute('stroke',f)})}
+let darkness=0,shadowSig='',horizonSig='';
+// The forest horizon takes the light of the hour: the farthest row dissolves into the mist, the nearest stays a deep green, and the
+// mist itself is teal by day, gold at dawn, pink at dusk and blue at night. Rain greys it and dust browns it.
+function horizon(L,veil){const mist=veil(L.hills[0],['#a9b4b6','#cfae84']),col=[veil(mix(L.hills[0],L.sky[2],.22),['#b4bec0','#d6b88e']),veil(mix(L.hills[0],L.hills[1],.5),['#87918f','#a88d68']),veil(L.hills[1],['#59625f','#7c6748'])],sig=col.join()+mist;
+  if(sig===horizonSig)return;horizonSig=sig;
+  document.querySelectorAll('#hills [data-l],#hills2 [data-l]').forEach(p=>p.setAttribute('fill',shade(col[+p.dataset.l],+p.dataset.k)));
+  for(const id of ['mist0','mist1'])document.getElementById(id).setAttribute('stop-color',mist)}
 function sky(hour,wkey){const L=lightAt(hour),grey=wkey==='good_growing'||wkey==='water_watch',dust=wkey==='dust_winds',day=1-L.dark;darkness=L.dark;
   const veil=(c,to)=>grey?mix(c,to[0],.55*day):dust?mix(c,to[1],.5*day):c;   // rain greys the sky and the ranges, dust browns them
   ['sky0','sky1','sky2'].forEach((id,n)=>document.getElementById(id).setAttribute('stop-color',veil(L.sky[n],[['#6f7885','#aab2bc','#bcc3cb'][n],['#a8835a','#dcbb8c','#e6c89a'][n]])));
-  ranges(L,veil);
+  horizon(L,veil);
   document.getElementById('stars').style.opacity=L.stars.toFixed(2);document.getElementById('tint').setAttribute('fill',L.tint);
   // The sun rises on the left, crosses the sky and sets on the right; the moon follows at night.
   const sun=document.getElementById('sun');sun.innerHTML='';const h=((hour%24)+24)%24;
@@ -997,7 +1140,7 @@ function sky(hour,wkey){const L=lightAt(hour),grey=wkey==='good_growing'||wkey==
   document.getElementById('skyclouds').style.opacity=(grey?1:.15+.55*day).toFixed(2);
   document.getElementById('shades').style.display=L.dark>.3||grey?'none':'';
   const au=document.getElementById('aurora');au.innerHTML='';if(L.dark>.6&&wkey==='sensor_noise')for(let k=0;k<3;k++)el('path',{d:`M0 ${120+k*18} Q240 ${60+k*25} 480 ${110+k*14} T960 ${90+k*20}`,stroke:'url(#aurorag)','stroke-width':14-k*3,fill:'none',opacity:.8},au);
-  document.getElementById('haze').setAttribute('fill',dust?'rgba(214,170,110,.16)':wkey==='water_watch'?'rgba(120,130,150,.10)':'transparent');
+  document.getElementById('haze').setAttribute('fill',dust?'rgba(214,170,110,.16)':wkey==='water_watch'?'rgba(120,130,150,.10)':`rgba(120,200,190,${(.07*day).toFixed(3)})`);   // a soft teal haze by day
   shadows(up_,grey?0:Math.max(0,1-L.dark*2.2))}
 // Buildings cast shadows away from the town's one sun (the upper left), so they agree with the lit faces: long at dawn and dusk, short at noon.
 function hull(p){p=p.slice().sort((a,b)=>a[0]-b[0]||a[1]-b[1]);const cross=(o,a,b)=>(a[0]-o[0])*(b[1]-o[1])-(a[1]-o[1])*(b[0]-o[0]),lo=[],hi=[];
@@ -1030,27 +1173,29 @@ function fireworksOff(){if(fireworks){clearInterval(fireworks);fireworks=null}do
 function fireworksOn(pal){const fx=document.getElementById('fx');const pop=()=>{const x=150+Math.random()*660,y=80+Math.random()*130,c=pal[Math.floor(Math.random()*pal.length)],b=el('g',{class:'burst'},fx);
   for(let k=0;k<16;k++){const a=k/16*Math.PI*2,d=34+Math.random()*16;el('circle',{cx:x,cy:y,r:2.4,fill:c,style:`--dx:${(Math.cos(a)*d).toFixed(1)}px;--dy:${(Math.sin(a)*d+10).toFixed(1)}px`},b)}
   el('circle',{cx:x,cy:y,r:30,fill:'url(#glowdot)',opacity:.35},b);setTimeout(()=>b.remove(),1600)};pop();fireworks=setInterval(pop,QUALITY==='low'?2600:1100)}
-// Decorations: bunting along the streets, lanterns or pumpkins by the lamps, and a centrepiece on the square in front of the Commons.
+// Decorations: bunting along the streets, lanterns or pumpkins by the lamps, and a centrepiece on the crossing beside the Kernel's plaza
+// (its own doorstep stays clear for the Seedlings who step out of it).
+const FEST_AT=[13.5,6.5];
 function decorate(g,theme,pal,dark){const r=rng('fest:'+theme);
-  for(const k of [6,13])for(let s=0;s+3<N;s+=3)for(const [a,b] of [[[k+.1,s+.1],[k+.1,s+3.1]],[[s+.1,k+.1],[s+3.1,k+.1]]]){const [x1,y1]=iso(...a),[x2,y2]=iso(...b),mx=(x1+x2)/2,my=(y1+y2)/2+5;
+  for(const k of [6,13])for(let s=0;s+3<N;s+=3)for(const [a,b] of [[[k+.1,s+.1],[k+.1,s+3.1]],[[s+.1,k+.1],[s+3.1,k+.1]]]){const [x1,y1]=iso(...a),[x2,y2]=iso(...b),mx=(x1+x2)/2,my=(y1+y2)/2+5;if(behindKernel(mx,my-10))continue;
     el('path',{d:`M${x1} ${y1-10} Q${mx} ${my-10} ${x2} ${y2-10}`,stroke:'rgba(40,30,30,.6)','stroke-width':.8,fill:'none'},g);
     for(let q=1;q<6;q++){const t=q/6,x=(1-t)*(1-t)*x1+2*(1-t)*t*mx+t*t*x2,y=(1-t)*(1-t)*(y1-10)+2*(1-t)*t*(my-10)+t*t*(y2-10),c=pal[q%pal.length];
       if(dark)el('circle',{cx:x,cy:y+1,r:4,fill:'url(#glowdot)'},g);el(dark?'circle':'polygon',dark?{cx:x,cy:y+1,r:1.8,fill:c}:{points:`${x-2.5},${y} ${x+2.5},${y} ${x},${y+5}`,fill:c},g)}}
-  const lamp=(i,j,f)=>{const [x,y]=iso(i,j);f(x,y)};
+  const lamp=(i,j,f)=>{const [x,y]=iso(i,j);if(!behindKernel(x,y-5))f(x,y)};
   if(theme==='halloween'||theme==='feast')for(const [i,j] of LAMPS)lamp(i+.35,j+.35,(x,y)=>pumpkin(g,x,y,5,dark&&theme==='halloween'));
   if(theme==='feast')for(let q=0;q<10;q++){const [x,y]=iso(1+r()*4.5,15+r()*4.5);el('rect',{x:x-6,y:y-6,width:12,height:6,rx:1.5,fill:'#e2c25a',stroke:'#a8862e'},g)}
-  const [x,y]=iso(13.5,13.5),c=el('g',{},g);
+  const [si,sj]=FEST_AT,[x,y]=iso(si,sj),c=el('g',{},g);
   if(theme==='christmas'){el('rect',{x:x-3,y:y-8,width:6,height:8,fill:'#6b4a2e'},c);[[34,-8],[27,-24],[19,-38]].forEach(([w,o])=>{const b=y+o,t=b-26,m=[x+w*.15,b+2];facet(c,[[x-w,b],[x,t],m],shade('#2f7a45',toward(-1,-.3)));facet(c,[[x,t],[x+w,b],m],shade('#2f7a45',toward(1,-.3)))});
     for(let q=0;q<14;q++){const t=r(),yy=y-10-t*52,xx=x+(r()-.5)*(34*(1-t)+4)*1.6;if(dark)el('circle',{cx:xx,cy:yy,r:5,fill:'url(#glowdot)'},c);el('circle',{cx:xx,cy:yy,r:2.2,fill:pal[q%3]},c)}
     el('polygon',{points:star(x,y-66,7,3),fill:'#ffd35a',stroke:'#fff3b0'},c);[[-22,'#e0303a'],[18,'#2d5bd8'],[-6,'#ffd35a']].forEach(([dx,f])=>{el('rect',{x:x+dx,y:y-6,width:10,height:8,fill:f},c);el('rect',{x:x+dx+4,y:y-6,width:2,height:8,fill:'#fff'},c)})}
   if(theme==='halloween'){pumpkin(c,x,y,20,dark);pumpkin(c,x-26,y+6,9,dark);pumpkin(c,x+26,y+6,8,dark);el('rect',{x:x+34,y:y-40,width:2,height:40,fill:'#6b4a2e'},c);el('rect',{x:x+26,y:y-32,width:18,height:2,fill:'#6b4a2e'},c);el('circle',{cx:x+35,cy:y-44,r:5,fill:'#e2c27a'},c);el('polygon',{points:`${x+28},${y-47} ${x+42},${y-47} ${x+35},${y-56}`,fill:'#2b2b2b'},c)}
-  if(theme==='feast'){box(c,12.6,12.9,1.8,.6,6,'#8a5a32',{topColor:'#f4efe4'});for(let q=0;q<5;q++){const [px,py]=iso(12.8+q*.35,13.2);el('circle',{cx:px,cy:py-7,r:2.5,fill:pal[q%3]},c)}pumpkin(c,x-24,y+8,8,false);pumpkin(c,x+26,y+8,7,false)}
+  if(theme==='feast'){box(c,si-.9,sj-.6,1.8,.6,6,'#8a5a32',{topColor:'#f4efe4'});for(let q=0;q<5;q++){const [px,py]=iso(si-.7+q*.35,sj-.3);el('circle',{cx:px,cy:py-7,r:2.5,fill:pal[q%3]},c)}pumpkin(c,x-24,y+8,8,false);pumpkin(c,x+26,y+8,7,false)}
   if(theme==='flag'){el('rect',{x:x-1.5,y:y-70,width:3,height:70,fill:'#d6d6d6'},c);const fx=x+1.5,fy=y-70;for(let q=0;q<7;q++)el('rect',{x:fx,y:fy+q*3.4,width:40,height:3.4,fill:q%2?'#ffffff':'#d9303a'},c);el('rect',{x:fx,y:fy,width:17,height:13.6,fill:'#2d5bd8'},c);
     for(let q=0;q<6;q++)el('circle',{cx:fx+3+(q%3)*5.5,cy:fy+3.5+Math.floor(q/3)*6,r:.9,fill:'#fff'},c)}
   if(theme==='valentine'){el('path',{d:heart(x,y-50,26),fill:'none',stroke:'#ff5a8a','stroke-width':6},c);el('path',{d:heart(x,y-50,26),fill:'none',stroke:'#ffb3c8','stroke-width':2},c);for(let q=0;q<8;q++)el('circle',{cx:x+(r()-.5)*50,cy:y+(r()-.5)*10,r:2.5,fill:q%2?'#ff5a8a':'#e0303a'},c)}
   if(theme==='newyear'){el('rect',{x:x-1.5,y:y-64,width:3,height:64,fill:'#c9d3ff'},c);if(dark)el('circle',{cx:x,cy:y-70,r:18,fill:'url(#glowdot)'},c);el('circle',{cx:x,cy:y-70,r:9,fill:'#dfe6ff',stroke:'#ffd35a','stroke-width':2},c);
     const yr=new Date(Date.now()+(festival.days_to_holiday>0?festival.days_to_holiday:0)*864e5+864e5*2).getFullYear();sign(c,x,y-16,`HAPPY ${yr}!`,'#ffd35a')}
-  if(theme==='grill'){box(c,13.2,13.2,.6,.4,7,'#333a44',{topColor:'#555'});el('circle',{class:'smoke',cx:x,cy:y-14,r:4,fill:'#d8d3ca'},c);sign(c,x,y-26,"HAPPY FATHER'S DAY",'#8fd3ff')}
+  if(theme==='grill'){box(c,si-.3,sj-.3,.6,.4,7,'#333a44',{topColor:'#555'});el('circle',{class:'smoke',cx:x,cy:y-14,r:4,fill:'#d8d3ca'},c);sign(c,x,y-26,"HAPPY FATHER'S DAY",'#8fd3ff')}
   if(theme==='labor')sign(c,x,y-20,'THANK YOU, WORKERS!','#ffb000')}
 function pumpkin(g,x,y,s,lit){el('ellipse',{cx:x,cy:y-s*.55,rx:s,ry:s*.62,fill:'#e8701a',stroke:'#a8480e','stroke-width':Math.max(.6,s/10)},g);el('ellipse',{cx:x,cy:y-s*.55,rx:s*.45,ry:s*.62,fill:'none',stroke:'#c55a12','stroke-width':Math.max(.6,s/12)},g);
   el('rect',{x:x-s*.08,y:y-s*1.35,width:s*.16,height:s*.3,fill:'#4a6a2a'},g);
@@ -1087,9 +1232,9 @@ const LM={greenhouse_expansion:['#dff3e6','#3f9a5a'],spaceport_pad:['#c3cad3','#
   recreation_hall:['#f2e2c4','#c2544a'],deepway_terminal:['#a9aeb5','#5a5f66'],community_kitchen:['#f4e6cf','#d9771f'],clinic_expansion:['#f6f6f2','#e0303a'],fire_station:['#e8d8c8','#b8302a']};
 let voteFest='',decorSig='';const marks={};
 function placeFor(p){const info=((lastData&&lastData.districts)||{})[p];return !CELLS[p]||p==='park'?'commons':p==='commons'||!info||info.unlocked?p:'commons'}
-function landmark(g,i,j,x){const [wall,roof]=LM[x.key]||['#e9e2cf','#8a5aa8'];box(g,i,j,1,1,20,wall,{roof:'pitched',roofColor:roof,windows:true});
-  const [cx,cy]=centre(i,j),m=el('g',{},g);el('circle',{cx,cy:cy-54,r:8.5,fill:'#fff8e6',stroke:roof,'stroke-width':2},m);
-  el('text',{x:cx,y:cy-53.5,'text-anchor':'middle','dominant-baseline':'central','font-size':10},m).textContent=x.emoji;flag(g,cx+9,cy-38,roof)}
+function landmark(g,i,j,x){const [wall,roof]=LM[x.key]||['#e9e2cf','#8a5aa8'];module_(g,i,j,20,wall,roof,{garden:true,inset:.1});   // a colony module, roofed in the landmark's colour
+  const [cx,cy]=centre(i,j),m=el('g',{},g);el('circle',{cx,cy:cy-38,r:8.5,fill:'#fff8e6',stroke:roof,'stroke-width':2},m);
+  el('text',{x:cx,y:cy-37.5,'text-anchor':'middle','dominant-baseline':'central','font-size':10},m).textContent=x.emoji;flag(g,cx+9,cy-24,roof)}
 function site(g,i,j,b){scaffold(g,i,j,true);const [cx,cy]=centre(i,j),w=36,h=13,yy=cy+5;el('rect',{x:cx-w/2,y:yy,width:w,height:h,rx:3,fill:'rgba(8,13,39,.92)',stroke:'#f2b441','stroke-width':1},g);
   el('rect',{x:cx-w/2+2,y:yy+h-3.6,width:Math.max(1,(w-4)*Math.min(1,b.percent/100)),height:2,rx:1,fill:'#f2b441'},g);
   el('text',{x:cx,y:yy+4.8,'text-anchor':'middle','dominant-baseline':'central','font-size':7.5,'font-weight':900,fill:'#fff'},g).textContent=`${b.emoji} ${b.percent}%`}
@@ -1115,7 +1260,7 @@ function decorate2(se){const decor=(se&&se.decor)||[],colour=(se&&se.colour)||'#
   const g=document.getElementById('civic');g.innerHTML='';const [cr,cc]=CELLS.commons,[a,b]=cellTiles(cr,cc),[x1,y1]=centre(a+3,b+3);
   const cols=voteFest?['#ffd35a','#ff5a8a','#70ddff','#7ee3b0']:[colour,'#fff8e6'];
   if(decor.includes('banners')||voteFest)for(const k of ['research_block','industrial_ward','market_concourse','park']){const [r,c]=CELLS[k],[a2,b2]=cellTiles(r,c),[x2,y2]=centre(a2+3,b2+3);
-    bunting(g,x1,y1-36,x1+(x2-x1)*.62,y1+(y2-y1)*.62-30,cols)}
+    bunting(g,x1,y1-66,x1+(x2-x1)*.62,y1+(y2-y1)*.62-30,cols)}   // from above the Kernel's top
   if(decor.includes('lanterns'))for(const k in LOOK){const [x,y]=labelXY(k);for(const dx of [-46,46]){el('line',{x1:x+dx,y1:y+14,x2:x+dx,y2:y-12,stroke:'#4a3a2e','stroke-width':1.3},g);
     el('rect',{x:x+dx-2.8,y:y-18,width:5.6,height:7,rx:2,fill:'#c2302a',stroke:'#7a1a1a','stroke-width':.6},g);el('rect',{class:'win lamp',x:x+dx-1.4,y:y-16.5,width:2.8,height:4,fill:'#ffd98a',opacity:0,'data-v':'0.05'},g)}}
   litSig=''}
@@ -1395,7 +1540,7 @@ def page(panel, channel):
 # Every OBS source, with a sensible Browser Source size.
 SOURCES = [
     ('hub', 'Hub (rotating)', 'Everything in one panel: society, stats, today, the live event, the stream challenge, the colony vote, the season, project and story, market, leaders, working now, Seedlings, news and how to join. Rotates every 12 seconds; a live event or stream challenge shows every other slide. Adapts to any source shape: a side column (340×176 compact, 340×440 tall) or a band under the game (1440×120 strip).', 640, 360, '&seconds=12 · &slides=society,event,news · &layout=compact|tall|strip|wide to force a layout'),
-    ('map', 'Avesta map', 'New Eridian as a living low-poly diorama: faceted ground, trees, water and mountains lit by one sun. Buildings go up (with scaffolding and a crane) as the society grows, Seedlings walk the streets and talk in speech bubbles, the camera drifts in on whoever is speaking, the sky and weather follow Avesta, the town decorates itself for holidays, voted festivals and season milestones, and projects the colony votes for are built as landmarks. Keep it at least a quarter of the screen, or use it as a card in a side column (340×250 or taller), where the caption sits below the town.', 960, 540, '&layout=card forces the column card · &quality=high (finer facets, glows, water shimmer, flags) or low (flat shapes, lighter for slower PCs) · &stats=1 adds the society stat panel · &camera=0 fixed wide shot · &names=1 · &per=6 · &seconds=7 · preview: &hour=18 &holiday=christmas &weather=dust_winds'),
+    ('map', 'Avesta map', 'New Eridian as a living SEED-style colony, drawn as a low-poly diorama: lawn plots between pale sidewalks, flat-roofed modules with warm windows, farms of soil beds, and a misty forest on the horizon. The Kernel stands at the centre, and every new citizen\'s Seedling steps out of its door. Buildings go up (with scaffolding and a crane) as the society grows, Seedlings walk the streets and talk in speech bubbles, the camera drifts in on whoever is speaking, the sky and weather follow Avesta, the town decorates itself for holidays, voted festivals and season milestones, and projects the colony votes for are built as landmarks. Keep it at least a quarter of the screen, or use it as a card in a side column (340×250 or taller), where the caption sits below the town.', 960, 540, '&layout=card forces the column card · &quality=high (finer facets, glows, a pulsing Kernel, flags) or low (flat shapes, lighter for slower PCs) · &stats=1 adds the society stat panel · &camera=0 fixed wide shot · &focus=commons holds the camera on the Kernel (or any district) · &names=1 · &per=6 · &seconds=7 · preview: &hour=18 &holiday=christmas &weather=dust_winds'),
     ('ticker', 'News ticker', 'A TV-style lower third: every item has a coloured section tag (Event, Challenge, Vote, Weather, News, Society, Today, Market, Holiday, Project, At work, Report, Rumor, Season, Join) and the Avesta clock sits on the right.', 1920, 56, '&speed=80 · works at any height'),
     ('alerts', 'Live alerts', 'Animated pop-up for joins, level ups, achievements, trophies, finished queues, events, stream challenges, colony votes, seasons and society milestones. Transparent when idle.', 700, 220, '&test=1 shows demo alerts · &sound=1 plays a chime · &seconds=7 · &hide=queue,join'),
     ('challenge', 'Stream challenge bar', 'The live stream challenge as a goal bar: it slides in when a challenge starts ("Dust storm! Everyone repair the walls"), counts down with a shared progress bar and the top helper, celebrates the result, then slides away. Transparent when nothing is running. Challenges only happen while the stream is live.', 900, 110, '&test=1 shows a demo challenge'),
@@ -1428,6 +1573,8 @@ _HOLIDAY_PICK = [('', 'Live (automatic)'), ('newyear', 'New Year'), ('valentine'
                  ('independence', 'Independence Day'), ('labor', 'Labor Day'), ('halloween', 'Halloween'), ('thanksgiving', 'Thanksgiving'), ('christmas', 'Christmas')]
 _WEATHER_PICK = [('', 'Live (automatic)'), ('clear_skies', 'Clear skies'), ('good_growing', 'Rain (good growing)'), ('spore_drift', 'Siro spores'), ('dust_winds', 'Dust winds'),
                  ('busy_spaceport', 'Busy spaceport'), ('water_watch', 'Overcast (water watch)'), ('quiet_cycle', 'Quiet (fireflies)'), ('sensor_noise', 'Sensor noise')]
+_FOCUS_PICK = [('', 'The whole town'), ('commons', 'The Kernel'), ('residential_ring', 'Homes'), ('agricultural_district', 'Farms'), ('industrial_ward', 'Industry'),
+               ('research_block', 'Research'), ('market_concourse', 'Market'), ('spaceport_quarter', 'Spaceport'), ('frontier_edge', 'Frontier'), ('park', 'Park')]
 OPTIONS = {
     'hub': [dict(p='layout', label='Layout', kind='select', choices=[('', 'Automatic'), ('compact', 'Compact (small box)'), ('tall', 'Tall (column)'), ('wide', 'Wide (16:9)'), ('strip', 'Strip (one row)')]),
             dict(p='seconds', label='Seconds per slide', kind='number', default=12, min=4, max=120, step=1),
@@ -1441,7 +1588,8 @@ OPTIONS = {
             dict(p='seconds', label='Seconds per caption', kind='number', default=7, min=3, max=60, step=1),
             dict(p='hour', label='Preview: time of day (0–24)', kind='number', default='', min=0, max=23.9, step=.5, blank='Live', preview=True),
             dict(p='weather', label='Preview: weather', kind='select', choices=_WEATHER_PICK, preview=True),
-            dict(p='holiday', label='Preview: holiday', kind='select', choices=_HOLIDAY_PICK, preview=True)],
+            dict(p='holiday', label='Preview: holiday', kind='select', choices=_HOLIDAY_PICK, preview=True),
+            dict(p='focus', label='Hold the camera on', kind='select', choices=_FOCUS_PICK)],
     'challenge': [dict(p='test', label='Preview: demo challenge', kind='check', default=False, on='1', preview=True)],
     'ticker': [dict(p='speed', label='Scroll speed (px/s)', kind='number', default=80, min=20, max=400, step=10)],
     'alerts': [dict(p='seconds', label='Seconds on screen', kind='number', default=7, min=3, max=60, step=1),

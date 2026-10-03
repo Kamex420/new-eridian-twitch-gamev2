@@ -1,5 +1,30 @@
 # Release notes
 
+## The Avesta map as a SEED-style colony, with the Kernel at its heart
+
+`/obs/map` now looks like a tidy SEED colony, still drawn as a low-poly diorama lit by one sun. Every district, route, label, holiday, festival, landmark, construction site and time of day works as before. No OBS changes are needed.
+- **Lawns and sidewalks.** Each district is laid out in lawn plots between pale concrete sidewalks, and every plot is outlined by a thin orange line and a thin purple one. The streets are wide concrete paths with kerbs and modern street lamps, each a slim pole with an angled arm. A district that is not open yet is plain meadow.
+- **Colony buildings.** The buildings are pale, flat-roofed modules with warm cream window strips, which glow at night, and brown or tan roofs. Some have roof gardens or pools.
+  - **Homes:** modules and small white dome huts with coloured doors.
+  - **Industry:** grey halls with solar panels, tanks and chimneys.
+  - **Research:** white blocks with roof gardens and purple neon panels.
+  - **Market:** stalls with parasols and string lights.
+  - **Spaceport:** its tower, rocket and landing pads, in the new materials.
+  - **Frontier:** sparser, with tall trees, crates and dome huts.
+  - **Farms:** grids of brown soil beds with rows of crops that turn gold or orange as they ripen, long rounded barracks and glass greenhouses, a small pond, crates and string lights.
+- **The Kernel.** The Commons fountain is replaced by the Kernel, a large smooth grey seed pod in the middle of a lawn plaza.
+  - **The pod:** a darker body under a pale cap, a glowing cyan band round its dome, a dark hatch on top with small cyan lights, and four rounded feet.
+  - **Its door:** a lit glass doorway with a seed emblem above it and a pale ramp coming down.
+  - **The plaza:** picnic tables, a parasol, planters and lamps.
+  - **Its light:** the band glows brighter at night and pulses softly on `&quality=high`.
+  - **Its label:** "THE KERNEL" floats behind the pod, so it never covers it.
+- **Seedlings step out of the Kernel.** When someone joins while the map is open, their Seedling appears in the Kernel's doorway in a ring of cyan light. It waits a moment, then walks down the ramp and along the streets to its place. Seedlings already in town when the map opens are simply shown in their places.
+- **A misty forest horizon.** The snowy mountains are replaced by rows of tall, thin-trunked trees fading into mist. The mist is teal by day, gold at dawn, pink at dusk and blue at night. Rain greys it and dust browns it.
+- **Smaller district names.** On the full map the names are about a fifth smaller, so they cover less of the town. The column card keeps its own size.
+- **New option: `&focus=commons`, or any district.** It holds the camera close on the Kernel or that district. It is on the setup page as "Hold the camera on".
+- **Speech bubbles stay near their speaker.** A bubble no longer floats far above with a long tail across the district names.
+- **The page stays light.** With twelve Seedlings at Outpost tier, the town (`#world`) has 2,330 shapes on normal quality, 2,706 on high and 1,566 on low. The pre-low-poly map had 1,739.
+
 ## The Avesta map as a low-poly diorama, smaller Seedlings, and an up-to-date overlay
 
 `/obs/map` keeps every district, building and feature, with a new look. No OBS changes are needed.
