@@ -2651,7 +2651,7 @@ def craft_legacy(db,p,channel,recipe,provider,life):
         add_quality_gear(db,p,recipe,quality)
         p._practice_quality={"Standard":1.0,"Fine":1.15,"Excellent":1.3,"Masterwork":1.5}.get(quality,1.1)
         rewards=craft_reward(db,p,society(db,channel),"quality",recipe)
-        craft_record(db,p,recipe,quality)
+        craft_record(db,p,recipe,quality);extras.goal_crafted(sys.modules[__name__],db,p,recipe)
         spend_life_for_action(life,"make")
         tier=QUALITY_TIERS[quality]
         effects=[]
@@ -2681,7 +2681,7 @@ def craft_legacy(db,p,channel,recipe,provider,life):
     if missing:return out("⚙️ Still needed: "+", ".join(missing)+". Nothing spent."+missing_material_sources(db,p,costs,provider))
     for key,amount in costs.items():material_change(db,p,key,-amount)
     material_change(db,p,recipe,1)
-    rewards=craft_reward(db,p,society_state,"core",recipe);craft_record(db,p,recipe)
+    rewards=craft_reward(db,p,society_state,"core",recipe);craft_record(db,p,recipe);extras.goal_crafted(sys.modules[__name__],db,p,recipe)
     spend_life_for_action(life,"make");db.commit();system_notes=craft_system_notes(db,p,society_state)
     goal_note=progress_daily(db,p,"make")+goal_progress(db,p,"make","fabrication",crafted=True)+tutorial_advance(db,p,"craft")
     milestone=achieve(db,p);determination_note=determination_clear(db,p,"fabrication")
@@ -5340,7 +5340,8 @@ def action(action:str,channel:str,uid:str,name:str="Citizen",msg:str="",provider
             if not passed(.72):return fail(f"{cfg['label']} did not succeed. All task materials were kept.")
             for key,qty in cfg['cost'].items():material_change(db,p,key,-qty)
             for key,qty in cfg['output'].items():material_change(db,p,key,qty)
-            if action in MERGED_TRAINING:craft_record(db,p,MERGED_TRAINING[action])
+            if action in MERGED_TRAINING:   # a training task that runs a catalog recipe crafts it (a Seedling's too)
+                craft_record(db,p,MERGED_TRAINING[action]);extras.goal_crafted(sys.modules[__name__],db,p,MERGED_TRAINING[action])
             shared=colony_state(db,channel);old_infrastructure=shared.infrastructure
             for key,qty in cfg['shared'].items():setattr(shared,key,min(100,getattr(shared,key)+qty) if key=='mood' else getattr(shared,key)+qty)
             housing_gain=shared.infrastructure//5-old_infrastructure//5
@@ -7713,8 +7714,9 @@ def target(channel:str,uid:str,name:str='Citizen',recipe:str='',provider:str='tw
             if found is None:
                 found,note,suggestions=qol.fuzzy_recipe(module,db,p,wanted)
                 if found is None:return out('🎯 No recipe called that.'+qol.did_you_mean(suggestions)+' Nothing changed.')
-            text=(note+' ' if note else '')+extras.set_goal(module,db,p,found.id);db.commit()
-            return platform_response(provider,text+'\n\n'+extras.goal_text(module,db,p,provider),text+' '+extras.goal_text(module,db,p,provider))
+            text,plan=extras.start_goal(module,db,p,found.id,provider)
+            text=(note+' ' if note else '')+text;goal=extras.goal_text(module,db,p,provider,plan);db.commit()   # planned once
+            return platform_response(provider,text+'\n\n'+goal,text+' '+goal)
         text=extras.goal_text(module,db,p,provider);db.commit()
         return platform_response(provider,text,text)
 

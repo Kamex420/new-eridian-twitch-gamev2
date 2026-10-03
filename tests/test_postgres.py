@@ -98,6 +98,32 @@ with m.SessionLocal() as db:
     assert [(r.recipe_id, r.want) for r in shopping_list._rows(db, W, keeper)] == [(campfire, 3), (plate, 30)]
     assert shopping_list._rows(db, W, 'pg-src') == []
 
+# Goal progress: the additive table, the start stored when the route sets a goal, the progress line, the one ready note,
+# completion by the craft itself, and the account-linking merge (a key change).
+from app import extras
+goal_params = lambda **x: params('goalpg', provider='discord', **x)
+assert '0 of 2 steps done' in client.get('/api/v1/target', params=goal_params(recipe='campfire')).text
+with m.SessionLocal() as db:
+    p = m.player(db, W, 'discord', 'goalpg', 'Citizengoalpg')[1]
+    goaler = p.twitch_uid
+    found = db.get(extras.GoalProgress, (W, goaler))
+    assert (found.recipe_id, found.start_steps, found.ready_alerted) == (campfire, 2, 0)
+    m.material_change(db, p, lumber, 2 - m.material_amount(db, p, lumber)); db.commit()
+    assert extras.goal_text(m, db, p, 'twitch').startswith('🎯 Goal Campfire 1/2 steps | Next: Craft Campfire')
+    assert extras.goal_ready_check(m, db, p) and not extras.goal_ready_check(m, db, p); db.commit()
+assert 'CRAFTING COMPLETE' in client.get('/api/v1/make', params=goal_params(recipe='campfire')).text
+with m.SessionLocal() as db:
+    assert extras.goal_entry(m, db, m.player(db, W, 'discord', 'goalpg', 'Citizengoalpg')[1]) is None
+    assert db.get(extras.GoalProgress, (W, goaler)) is None
+    db.add_all([extras.GoalProgress(channel_id=W, canonical_uid=uid, recipe_id=rid, start_steps=n, set_at=m.now(), ready_alerted=0)
+                for uid, rid, n in (('pg-goal-src', plate, 7), ('pg-goal-other', campfire, 2))])
+    db.commit()
+    extras.merge(db, W, 'pg-goal-src', goaler); db.commit()             # the target has none: the source's row moves
+    moved = db.get(extras.GoalProgress, (W, goaler))
+    assert (moved.recipe_id, moved.start_steps) == (plate, 7) and db.get(extras.GoalProgress, (W, 'pg-goal-src')) is None
+    extras.merge(db, W, 'pg-goal-other', goaler); db.commit()           # both have one: the target's wins
+    assert db.get(extras.GoalProgress, (W, goaler)).recipe_id == plate and db.get(extras.GoalProgress, (W, 'pg-goal-other')) is None
+
 # Quiet hours: the two additive tables, DM alerts held without spending an attempt, then released by two workers at
 # once as one summary (one conditional claim per row, so neither worker can send what the other claimed).
 import asyncio, json

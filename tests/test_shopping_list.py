@@ -510,7 +510,7 @@ def test_an_entrys_screen_changes_its_amount_or_removes_it():
     citizen(lumber=0)
     add(CAMPFIRE.id, 1)
     item = press(ui.cid('111', 'li', CAMPFIRE.id))['data']
-    assert ['Want 1', 'Want 2', 'Want 5', 'Want 10', 'Custom…', 'Remove', 'Recipe', 'Shopping list', 'Back', 'Menu'] == labels(item)
+    assert ['Want 1', 'Want 2', 'Want 5', 'Want 10', 'Custom…', 'Remove', 'Recipe', 'Shopping list', 'Set as goal', 'Back', 'Menu'] == labels(item)
     assert find(item, 'Want 1')['style'] == 1 and rows_ok(item) and assert_valid(v2.convert(ui.tidy(dict(item))))
     assert 'want 5 Campfire (was 1' in text_of(press(find(item, 'Want 5')['custom_id'])['data']) and listed() == [(CAMPFIRE.id, 5)]
     form = press(find(item, 'Custom…')['custom_id'])
@@ -612,7 +612,8 @@ def test_the_goal_walkthrough_is_the_same_as_before_the_planner_was_shared():
         assert e.id == 'ore_scanner'
         assert [(st['mark'], st['name'], st['detail'], st['label'], st['action'], st['view']) for st in steps] == ORE_SCANNER_STEPS
         assert all(st['cost'] == 0 for st in steps) and [(st['name'], st['size']) for st in steps if st['size']] == [('Reach Harvesting Lv 3', 3), ('Do Water Treatment ×8', 8)]
-        assert extras.goal_text(m, db, p, 'twitch') == ('🎯 Goal Ore Scanner 0/3 ingredients | Next: Mine Hematite Ore ×3 (need 2) | '
+        # Only the progress part changed since e1b2583: steps done since the goal was set (0 of these 19), not direct ingredients.
+        assert extras.goal_text(m, db, p, 'twitch') == ('🎯 Goal Ore Scanner 0/19 steps | Next: Mine Hematite Ore ×3 (need 2) | '
                                                        'Then: Gather Lumber ×3 → Gather Stone ×4 → Gather Clay ×1 | !target clear')
         # The goal and a one-entry shopping list share the planner: the same crafts and raw materials.
         ctx = wb.Context(m, db, p)

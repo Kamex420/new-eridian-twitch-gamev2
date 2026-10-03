@@ -171,7 +171,10 @@ def craft(m,db,p,key,provider):
     rare_output=next((k for k in r['outputs'] if k in cp.RARE),None)
     if rare_output:
         bonus=int(any(m.material_amount(db,p,k)>0 and key in recipes for k,recipes in MACHINE_RECIPES.items()))
-        return cp.rare_gather(m,db,p,rare_output,provider,bonus)
+        before=m.material_amount(db,p,rare_output)
+        result=cp.rare_gather(m,db,p,rare_output,provider,bonus)
+        if m.material_amount(db,p,rare_output)>before:m.extras.goal_crafted(m,db,p,key);db.commit()   # the third step recovers the ore
+        return result
     missing=m.craft_missing_materials(db,p,r['inputs'])
     if missing:
         hints=[f'• {item_label(k)}: {source_hint(k,provider)}' for k,n in r['inputs'].items() if m.material_amount(db,p,k)<n]
@@ -201,7 +204,8 @@ def craft(m,db,p,key,provider):
     from . import practice
     found=practice.find(m,db,p,*(line or ('fabrication',None)))
     life=m.life_state(db,p);m.spend_life_for_action(life,'make')
-    p.actions+=1;p.successes+=1;m.craft_record(db,p,key);db.commit()
+    # Every successful catalog craft (button, chat, queue attempt) passes here: crafting the goal completes it.
+    p.actions+=1;p.successes+=1;m.craft_record(db,p,key);m.extras.goal_crafted(m,db,p,key);db.commit()
     return ('✅ CRAFTING COMPLETE\n\nOUTPUT\n'+ '\n'.join(f"• {item_label(k)} ×{v}" for k,v in outputs.items())+
       '\n\nUSED\n'+(m.requirement_text(r['inputs']) or 'No ingredients')+'\n\nPRACTICE\n'+', '.join(xp)+(f'\n{found}' if found else '')+
       '\n\nWorkshop: '+(cp.STATIONS[chosen]['name'] if chosen else station(r))+(' · Owned workstation: +1 practice per trained skill included.' if workshop_bonus else '')+'\n'+need_cost(2)+mining_detail)
