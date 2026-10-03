@@ -393,6 +393,8 @@ def run_one(m,channel,uid):
                         if delta>0:gained[key]=gained.get(key,0)+delta
                         elif delta<0:used[key]=used.get(key,0)-delta
                     totals.gained=json.dumps(gained);totals.used=json.dumps(used)
+                    from . import extras
+                    extras.goal_ready_check(m,db,p)   # the goal's one ready note, when this attempt brought in what it lacked
                 row.state='completed' if row.remaining==0 else ('running' if attempted or cooldown_wait.get()>0 else 'paused')
                 row.result=result[:4000]
                 if row.remaining and attempted:

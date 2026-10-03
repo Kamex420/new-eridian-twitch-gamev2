@@ -113,10 +113,17 @@ def test_goal_tracks_next_step_in_view_status_and_twitch():
 
 
 def test_goal_clears_itself_when_crafted():
+    # The goal completes where the craft happens (extras.goal_crafted), not from a receipt's text: goal_completed is kept
+    # only for compatibility and does nothing. tests/test_goal_refine.py covers queues, Seedlings and failed attempts.
     citizen()
     db, p = player()
     extras.set_goal(m, db, p, CAMPFIRE.id)
+    db.commit()
     extras.goal_completed(m, db, p, f'CRAFTING COMPLETE — {CAMPFIRE.name}')
+    assert extras.goal_entry(m, db, p) is not None
+    db.close()
+    assert 'CRAFTING COMPLETE' in m.make(W, '111', 'Kam', CAMPFIRE.id, 'discord').body.decode()
+    db, p = player()
     assert extras.goal_entry(m, db, p) is None
     assert any('Goal complete' in i.text for i in db.query(inbox.InboxItem))
     db.close()

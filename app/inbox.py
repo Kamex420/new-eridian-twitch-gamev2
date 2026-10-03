@@ -10,7 +10,9 @@ time that citizen uses any command or button. Each player chooses what pops up:
 
 Warnings are raised when the information is actually needed (a queue that will
 run out of Energy or ingredients, a first mining failure, low Comfort), rather
-than being repeated in every reply. `/menu` → Notifications lists recent items.
+than being repeated in every reply. The goal adds one 🎯 note when it can be
+crafted (extras.goal_ready_check, checked after each command and queue attempt).
+`/menu` → Notifications lists recent items.
 """
 import json
 import logging
@@ -24,7 +26,7 @@ POPUP_MODES = {'important': 'Queue results, pauses and warnings', 'all': 'Everyt
                'off': 'Nothing pops up; check Notifications in /menu'}
 KEEP = 40            # notifications kept per citizen
 POPUP_LIMIT = 5      # items in one popup; the rest wait in the inbox
-ICONS = {'queue': '⏱️', 'warning': '⚠️', 'tip': '💡', 'milestone': '🏆', 'info': '📬'}
+ICONS = {'queue': '⏱️', 'warning': '⚠️', 'tip': '💡', 'milestone': '🏆', 'info': '📬', 'goal': '🎯'}
 
 # One-time explanations shown the first time a situation happens.
 TIPS = {
@@ -233,5 +235,5 @@ def after_command(m, discord_uid, name, command, options, result):
             tip(m, db, channel, uid, 'sleep_wait')
         if m.life_state(db, p).comfort < m.COMFORT_SLOW:
             tip(m, db, channel, uid, 'comfort_low')
-        m.extras.goal_completed(m, db, p, text)
+        m.extras.goal_ready_check(m, db, p)       # crafting the goal completes it where the craft happens (extras.goal_crafted)
         db.commit()

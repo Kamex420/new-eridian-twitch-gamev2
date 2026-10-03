@@ -5,7 +5,8 @@
 * Recent actions — the last ten things you did, each one tap to repeat;
   `!again` repeats your last Twitch action.
 * Goal — pin a recipe; the whole ingredient tree is tracked and "Fetch next"
-  works through it.
+  works through it. Progress counts the steps done since it was set, a private
+  note says once when it can be crafted, and crafting it completes it.
 * Plans and routines — queue several steps (including "sell all" steps) and
   save them under a name to start again later.
 * What can I make with this? — recipes that use an item, ready ones first.
@@ -14,7 +15,7 @@
 * Auto-sell, undo, eat until full, /find and "remember my place".
 
 Everything runs through the existing game functions: the same gates, costs,
-cooldowns and receipts apply. New state lives in three additive tables.
+cooldowns and receipts apply. New state lives in four additive tables.
 """
 import json
 import math
@@ -47,6 +48,18 @@ class Extras(Base):
     last_sale = Column(Text, nullable=False, default='')
 
 
+class GoalProgress(Base):
+    """The goal's progress: its walkthrough's step count when it was set, and whether the ready note went out.
+    A missing row (a goal set before progress was kept) is created the first time the goal is shown or checked."""
+    __tablename__ = 'player_goal_progress_v1'
+    channel_id = Column(String(64), primary_key=True)
+    canonical_uid = Column(String(96), primary_key=True)
+    recipe_id = Column(String(64), nullable=False)
+    start_steps = Column(Integer, nullable=False, default=0)
+    set_at = Column(DateTime(timezone=True), nullable=False)
+    ready_alerted = Column(Integer, nullable=False, default=0)
+
+
 class RecentAction(Base):
     __tablename__ = 'player_recent_actions_v1'
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -70,7 +83,7 @@ class Routine(Base):
 
 
 def install(m):
-    for table in (Extras, RecentAction, Routine):
+    for table in (Extras, GoalProgress, RecentAction, Routine):
         table.__table__.create(m.engine, checkfirst=True)
 
 
@@ -85,6 +98,13 @@ def row(db, channel, uid, create=False):
 
 
 def merge(db, channel, source, target):
+    # The goal's progress: the target's row wins, the source's moves when the target has none.
+    moving = db.get(GoalProgress, (channel, source))
+    if moving is not None:
+        if db.get(GoalProgress, (channel, target)) is None:
+            moving.canonical_uid = target
+        else:
+            db.delete(moving)
     src = db.get(Extras, (channel, source))
     if src is None:
         return
@@ -287,17 +307,72 @@ def goal_entry(m, db, p):
 
 
 def set_goal(m, db, p, recipe):
+    return start_goal(m, db, p, recipe)[0]
+
+
+def start_goal(m, db, p, recipe, provider='discord'):
+    """Pin `recipe` as the goal and count its progress from its walkthrough now. Returns (message, walkthrough's
+    (goal, steps)) so the screen that follows needs no second plan; (refusal, None) for an unknown recipe. Setting
+    the goal it already is keeps its progress and ready note."""
     e = wb.entry(m, recipe) if recipe else None
     if e is None:
-        return 'That recipe is not available. Nothing changed.'
-    row(db, p.channel_id, p.twitch_uid, create=True).goal = e.id
-    return f'🎯 Goal set: **{e.name}**. /status and the Goal view track everything still needed.'
+        return 'That recipe is not available. Nothing changed.', None
+    found = row(db, p.channel_id, p.twitch_uid, create=True)
+    kept = found.goal == e.id and _progress(db, p, e) is not None
+    found.goal = e.id
+    db.flush()
+    plan = walkthrough(m, db, p, provider)
+    if not kept:
+        # Already craftable when set: the screen says so, so no ready note follows.
+        _new_progress(m, db, p, e, len(plan[1]), wb.Context(m, db, p, provider).status(e).code == 'ready')
+    return f'🎯 Goal set: **{e.name}**. /status and the Goal view track everything still needed.', plan
 
 
 def clear_goal(db, p):
     found = row(db, p.channel_id, p.twitch_uid)
     if found is not None:
         found.goal = ''
+    counted = db.get(GoalProgress, (p.channel_id, p.twitch_uid))
+    if counted is not None:
+        db.delete(counted)
+        db.flush()
+
+
+def _progress(db, p, e):
+    """The goal's progress row, or None (none yet, or one left from another goal)."""
+    found = db.get(GoalProgress, (p.channel_id, p.twitch_uid))
+    return found if found is not None and found.recipe_id == e.id else None
+
+
+def _new_progress(m, db, p, e, start=0, alerted=None):
+    """Start counting `e`'s progress from `start` steps. alerted=None: a goal set before progress was kept, whose ready
+    note the old reminder may already have sent."""
+    if alerted is None:
+        found = row(db, p.channel_id, p.twitch_uid)
+        alerted = found is not None and json.loads(found.reminded or '{}').get('goal') == e.id
+    counted = db.get(GoalProgress, (p.channel_id, p.twitch_uid))
+    if counted is None:
+        counted = GoalProgress(channel_id=p.channel_id, canonical_uid=p.twitch_uid)
+        db.add(counted)
+    counted.recipe_id, counted.start_steps, counted.set_at, counted.ready_alerted = e.id, start, m.now(), int(bool(alerted))
+    db.flush()
+    return counted
+
+
+def progress(m, db, p, e, remaining):
+    """(steps done, steps in all) since the goal was set: done = start − remaining. When more steps remain than at the
+    start (materials were spent), the start rises to match, so done never goes below 0."""
+    found = _progress(db, p, e) or _new_progress(m, db, p, e)
+    if remaining > found.start_steps:
+        found.start_steps = remaining
+    return max(0, found.start_steps - remaining), found.start_steps
+
+
+def progress_bar(done, total, width=10):
+    filled = round(width * done / max(1, total))
+    if 0 < done < total:
+        filled = min(width - 1, max(1, filled))       # started shows, unfinished never looks full
+    return '█' * filled + '░' * (width - filled)
 
 
 # The /training skill that raises a recipe's skill, by main skill (seed_content.SKILLS).
@@ -688,35 +763,43 @@ def _tidy(steps, sc):
     return unique
 
 
-def next_step(m, db, p, provider='discord'):
+def step_line(st):
+    """A step in a few words: its name and the first part of its detail."""
+    return st['name'] + (f" ({st['detail'].split(' · ')[0]})" if st['detail'] else '')
+
+
+def next_step(m, db, p, provider='discord', steps=None):
     """(description, action) for the goal's next step; action is a ticket action dict, or None when the
-    step is done somewhere else (training, the colony, earning SC: see walkthrough)."""
-    _, steps = walkthrough(m, db, p, provider)
+    step is done somewhere else (training, the colony, earning SC: see walkthrough). `steps`: the walkthrough's,
+    when the caller has them."""
+    if steps is None:
+        _, steps = walkthrough(m, db, p, provider)
     if not steps:
         return '', None
-    first = steps[0]
-    return first['name'] + (f" ({first['detail'].split(' · ')[0]})" if first['detail'] else ''), first['action']
+    return step_line(steps[0]), steps[0]['action']
 
 
-def goal_text(m, db, p, provider='discord'):
-    e, steps = walkthrough(m, db, p, provider)
+def goal_text(m, db, p, provider='discord', plan=None):
+    """The goal screen (or the chat line): steps done since it was set, then every step. `plan`: walkthrough's
+    (goal, steps) when the caller already has them, so the goal is planned once per screen."""
+    e, steps = plan if plan is not None else walkthrough(m, db, p, provider)
     if e is None:
         how = 'Open a recipe and press 🎯 Set goal.' if provider == 'discord' else '!target <recipe name> sets one.'
         return f'🎯 No goal yet. {how} The goal then walks you through every step, with a button for each.'
-    ctx = wb.Context(m, db, p, provider)
-    total = len(e.inputs) or 1
-    covered = sum(1 for k, n in e.inputs.items() if ctx.have(k) >= n)
+    done, total = progress(m, db, p, e, len(steps))
+    unit = 'step' if total == 1 else 'steps'
     if provider != 'discord':
-        step, _ = next_step(m, db, p, provider)
         later = ' → '.join(st['name'] for st in steps[1:4])
-        return f'🎯 Goal {e.name} {covered}/{total} ingredients | Next: {step}' + (f' | Then: {later}' if later else '') + ' | !target clear'
+        return (f'🎯 Goal {e.name} {done}/{total} {unit} | Next: {next_step(m, db, p, provider, steps)[0]}'
+                + (f' | Then: {later}' if later else '') + ' | !target clear')
+    ctx = wb.Context(m, db, p, provider)
     status = ctx.status(e)
     state = f'{status.emoji} {status.short}'
     if status.code == 'station':
         _, machine = _machine(m, ctx, e)
         if machine is not None:
             state = f'🔑 needs a {machine.name}: made in the steps below'
-    lines = [f'🎯 GOAL — {e.name.upper()}', f'{"█" * covered}{"░" * (total - covered)} {covered}/{total} ingredients ready · {state}',
+    lines = [f'🎯 GOAL — {e.name.upper()}', f'{progress_bar(done, total)} {done} of {total} {unit} done · {state}',
              '', f'STEPS · {len(steps)} TO GO' if len(steps) != 1 else 'LAST STEP']
     for i, st in enumerate(steps[:STEPS_SHOWN], 1):
         lines.append(f"`{i}` {st['mark']} {st['name']}" + (f" — {'next · ' if i == 1 else ''}{st['detail']}" if st['detail'] else ''))
@@ -1036,22 +1119,45 @@ def touch(m, db, p):
             reminded['daily'] = day_key
     except Exception:
         pass
-    goal = goal_entry(m, db, p)
-    if goal is not None and wb.Context(m, db, p).status(goal).code == 'ready' and reminded.get('goal') != goal.id:
-        reminded['goal'] = goal.id
-        inbox.add(m, db, p.channel_id, p.twitch_uid, 'milestone', f'🎯 **Your goal {goal.name} is ready to craft!** /menu → Craft → Goal.')
+    goal_ready_check(m, db, p)
     found.reminded = json.dumps(reminded)
     found.last_seen = now
 
 
-def goal_completed(m, db, p, text):
-    """Clear the goal when it was just crafted and celebrate once."""
-    goal = goal_entry(m, db, p)
-    if goal is None or 'CRAFTING COMPLETE' not in text or goal.name not in text:
-        return
+def goal_ready_check(m, db, p):
+    """Once per goal setting, a private 🎯 note when the goal can be crafted (ingredients, workstation, tier and skill
+    all met). Reads the goal's status only, never its walkthrough: it runs after interactive commands, on each Discord
+    interaction and after each queue attempt. Returns True when the note was added."""
+    e = goal_entry(m, db, p)
+    if e is None:
+        return False
+    found = _progress(db, p, e) or _new_progress(m, db, p, e)
+    if found.ready_alerted or wb.Context(m, db, p).status(e).code != 'ready':
+        return False
+    found.ready_alerted = 1
     from . import inbox
+    inbox.add(m, db, p.channel_id, p.twitch_uid, 'goal', f'**Your goal {e.name} is ready to craft.** /menu → Craft → Goal.')
+    return True
+
+
+def goal_crafted(m, db, p, recipe_id):
+    """A craft of `recipe_id` just succeeded: a button, a queue attempt, chat or a Seedling's training task. When it is
+    the goal, the goal is complete: it is cleared with its progress, and one 🎯 milestone goes to the inbox. Called
+    where the craft is recorded, so a failed or refused attempt never completes a goal. Returns True then."""
+    found = row(db, p.channel_id, p.twitch_uid)
+    if found is None or not found.goal or found.goal != recipe_id:
+        return False
+    e = wb.entry(m, recipe_id)
     clear_goal(db, p)
-    inbox.add(m, db, p.channel_id, p.twitch_uid, 'milestone', f'🎯 **Goal complete: {goal.name}!** Pick a new one from any recipe.')
+    from . import inbox
+    inbox.add(m, db, p.channel_id, p.twitch_uid, 'milestone', f'🎯 **Goal complete: {e.name if e else recipe_id}!** Pick a new one from any recipe.')
+    return True
+
+
+def goal_completed(m, db, p, text):
+    """Kept for compatibility; does nothing. The goal completes where the craft happens (goal_crafted), never because a
+    receipt mentions its name."""
+    return None
 
 
 # ---------------------------------------------------------------- remember my place

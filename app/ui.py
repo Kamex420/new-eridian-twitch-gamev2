@@ -1215,14 +1215,15 @@ def step_button(m, owner, step, first=False):
     return None
 
 
-def goal_message(m, db, p, owner, note=''):
-    """The goal walkthrough: every step still needed, each with its button (beside it in the newer layout)."""
+def goal_message(m, db, p, owner, note='', plan=None):
+    """The goal walkthrough: progress, every step still needed, each with its button (beside it in the newer layout),
+    and 🛒 to the shopping list. `plan`: walkthrough's (goal, steps) when already made; the goal is planned once."""
     from . import extras as more
-    text = more.goal_text(m, db, p)
+    e, steps = plan if plan is not None else more.walkthrough(m, db, p)
+    text = more.goal_text(m, db, p, plan=(e, steps))
     if note:
         head, _, rest = text.partition('\n')
         text = head + '\n' + note + rest
-    e, steps = more.walkthrough(m, db, p)
     if e is None:
         return message(m, text, goal_components(m, db, p, owner), 'goal')
     buttons, items, used = [], [], set()
@@ -1233,12 +1234,22 @@ def goal_message(m, db, p, owner, note=''):
             buttons.append(b)
             items.append({'match': st['name'], 'button': b})
     recipe = ('wr', e.id, e.category, 1, '')
-    tools = [button('Refresh', cid(owner, 'gv'), emoji='🔄'), button('Clear goal', cid(owner, 'gc'), style=4, emoji='✖️')]
+    tools = [goal_shopping_button(db, p, owner, e), button('Refresh', cid(owner, 'gv'), emoji='🔄'),
+             button('Clear goal', cid(owner, 'gc'), style=4, emoji='✖️')]
     if not any(st['view'] == recipe for st in steps[:more.STEPS_SHOWN]):
         tools.insert(0, button('Goal recipe', cid(owner, *recipe), emoji='📋'))
     rows = [row(*buttons[i:i + 5]) for i in range(0, min(len(buttons), 10), 5)] + [row(*tools), _menu_row(owner, ('craft', 'Craft'))]
     from .menu import crumb
     return with_crumb(message(m, text, rows, 'goal', items), crumb('craft', '🎯 Goal'))
+
+
+def goal_shopping_button(db, p, owner, e):
+    """🛒 Add to shopping list (one batch, then its entry), or the entry when the goal is already listed."""
+    from . import shopping_list as shop
+    listed = db.get(shop.ShoppingEntry, (p.channel_id, p.twitch_uid, e.id))
+    if listed is not None:
+        return button(f'On shopping list · want {listed.want}', cid(owner, 'li', e.id), emoji='🛒')
+    return button('Add to shopping list', cid(owner, 'la', e.id), emoji='🛒')
 
 
 def with_goal_button(data, owner, verb='gv', label='Goal', emoji='🎯'):
@@ -1437,8 +1448,8 @@ def shopping_message(m, db, p, owner, note=''):
 
 
 def shopping_item_message(m, db, p, owner, recipe_id, note=''):
-    """One entry: how many to have (one, two, five or ten batches), Custom…, Remove, its recipe and the list. Changing the
-    list spends nothing, so no tickets."""
+    """One entry: how many to have (one, two, five or ten batches), Custom…, Remove, its recipe, the list and 🎯 Set as
+    goal (or 🎯 Goal when it is the goal). Changing the list or the goal spends nothing, so no tickets."""
     from . import shopping_list as shop
     from .menu import crumb
     e = wb.entry(m, recipe_id)
@@ -1453,6 +1464,10 @@ def shopping_item_message(m, db, p, owner, recipe_id, note=''):
     if listed is not None:
         second.append(button('Remove', cid(owner, 'ls', e.id, 0), style=4, emoji='✖️'))
     second += [button('Recipe', cid(owner, 'wr', e.id, e.category, 1, ''), emoji='📋'), button('Shopping list', cid(owner, 'lv'), style=1, emoji='🛒')]
+    from . import extras
+    goal = extras.goal_entry(m, db, p)
+    second.append(button('Goal', cid(owner, 'gv'), emoji='🎯') if goal is not None and goal.id == e.id
+                  else button('Set as goal', cid(owner, 'gs', e.id), emoji='🎯'))
     rows = [row(*first), row(*second), row(back_button(owner, 'lv'), button('Menu', cid(owner, 'mn', 'home'), emoji='🏠'))]
     return with_crumb(message(m, shop.item_text(m, db, p, e.id, note), rows, 'goal'), crumb('craft', '🛒 Shopping list › ' + e.name))
 
@@ -1527,14 +1542,15 @@ def extra_view(m, db, p, owner, verb, args, values, name):
         from . import force_merge
         return force_merge.view(m, db, p, owner, verb, args, values)
     if verb in {'gv', 'gs', 'gc'}:
-        note = ''
+        note, plan = '', None
         if verb == 'gs':
-            note = more.set_goal(m, db, p, args[0] if args else '') + '\n\n'
+            note, plan = more.start_goal(m, db, p, args[0] if args else '')
+            note += '\n\n'
         if verb == 'gc':
             more.clear_goal(db, p)
             note = '🎯 Goal cleared.\n\n'
         db.flush()
-        return goal_message(m, db, p, owner, note)
+        return goal_message(m, db, p, owner, note, plan)
     if verb in {'pv', 'pc', 'rd'}:
         note = ''
         if verb == 'pc':
