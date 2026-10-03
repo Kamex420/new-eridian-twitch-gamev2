@@ -190,3 +190,167 @@ def test_every_overlay_script_parses():
                 f.write(script)
             result = subprocess.run([node, '--check', f.name], capture_output=True, text=True)
             assert result.returncode == 0, (panel, i, result.stderr[:400])
+
+
+# ---------------------------------------------------------------- the low-poly map, smaller Seedlings and an up-to-date overlay
+
+def map_page():
+    return client.get('/obs/map', params={'channel': 'test'}).text
+
+
+def test_map_page_keeps_every_layer_and_id():
+    page = map_page()
+    for layer in ('sky0', 'sky1', 'sky2', 'stars', 'aurora', 'sun', 'skyclouds', 'hills', 'hills2', 'world', 'ground', 'shadows', 'city',
+                  'festive', 'civic', 'crowd', 'shades', 'tint', 'haze', 'lights', 'labels', 'tokens', 'fx',
+                  'wrap', 'stage', 'map', 'tier', 'hol', 'fest', 'info', 'toast', 'stats', 'cap'):
+        assert f'id="{layer}"' in page, layer
+    # the low-poly helpers: one light model shared by the ground, trees, rocks, water, the diorama's sides and the mountains
+    for helper in ('function shade(', 'function facetTile(', 'function lowPolyTree(', 'function facetRock(', 'function water(', 'function slab(',
+                   'function mountains(', 'const SUN=', 'function ranges('):
+        assert helper in page, helper
+    assert so.LOWPOLY_JS.strip() in page
+
+
+def test_seedlings_are_drawn_a_little_smaller():
+    assert so.SEEDLING_SCALE == .72 and .7 <= so.SEEDLING_SCALE <= .75
+    page = map_page()
+    assert 'const SEEDLING_SCALE=0.72,TOKEN=CARD?1:SEEDLING_SCALE,TK=()=>TOKEN*TS' in page
+    # tokens, their row spacing, the +N bubble and the speech bubble's head offsets all follow the token scale
+    assert 'scale(${TK().toFixed(3)})' in page and '30*TK()' in page and 'Math.max(.85,z)' in page and 'const head=-38*z/k' in page
+
+
+
+def test_the_column_card_keeps_seedlings_at_their_original_size():
+    """The full map draws Seedlings at 0.72; the card (forced with &layout=card or picked from the size) keeps 1.0."""
+    import re, shutil, subprocess
+    page = map_page()
+    line = re.search(r'^const SEEDLING_SCALE=.*$', page, re.M).group(0).split('   //')[0]
+    assert 'TOKEN=CARD?1:SEEDLING_SCALE' in line and 'TK=()=>TOKEN*TS' in line
+    assert page.index('const CARD=wantCard()') < page.index('const SEEDLING_SCALE=')   # the layout is known before the scale
+    assert 'if(wantCard()!==CARD' in page and 'location.reload()' in page                # a resize that changes it reloads the page
+    # nothing sizes a token from SEEDLING_SCALE directly: rows, the +N badge and bubbles all go through TK()
+    assert page.count('SEEDLING_SCALE') == 3 and page.count('TK()') >= 10
+    assert '.L-card .token .ini{font-size:11px}.L-card .token .label{font-size:11px;stroke-width:3.5px}' in page
+    node = shutil.which('node')
+    if node:
+        for card, ts, want in ((True, 1, 1), (False, 1, .72), (True, 1.5, 1.5)):
+            out = subprocess.run([node, '-e', f'const CARD={str(card).lower()};let TS={ts};{line};console.log(TK())'], capture_output=True, text=True)
+            assert out.returncode == 0 and abs(float(out.stdout) - want) < 1e-9, (card, ts, out.stdout, out.stderr[:200])
+
+def run_lowpoly(quality):
+    """Run the map's low-poly helpers in Node with a stand-in for the SVG, and count the shapes each one draws."""
+    import json, re, shutil, subprocess, tempfile, pytest
+    node = shutil.which('node')
+    if not node:
+        pytest.skip('node is not installed')
+    page = map_page()
+    rng_src = re.search(r'^function rng\(seed\).*$', page, re.M).group(0)
+    js = (f'const QUALITY={json.dumps(quality)};const made=[];const el=(t,a,p)=>{{const e={{t,a:a||{{}}}};made.push(e);return e}};'
+          'const pts=p=>p.map(q=>q.join(",")).join(" ");' + rng_src + '\nconst N=20,TW=38,TH=19,OX=480,OY=64;const iso=(i,j)=>[OX+(i-j)*TW/2,OY+(i+j)*TH/2];\n'
+          + so.LOWPOLY_JS + '\nconst count=f=>{const n=made.length;f();return made.length-n},r=rng("test"),g={};'
+          'console.log(JSON.stringify({tile:count(()=>facetTile(g,2,3,["#7a9656","#8aa262"])),conifer:count(()=>lowPolyTree(g,100,100,r,"conifer")),'
+          'broad:count(()=>lowPolyTree(g,100,100,r,"broad")),rock:count(()=>facetRock(g,100,100,5,r)),shrub:count(()=>shrub(g,100,100,4,r,"#55743a")),'
+          'water:count(()=>water(g,100,100,40,20)),slab:count(()=>slab(g,-1.4,21.4)),mountains:count(()=>mountains(g,g)),'
+          'snow:made.filter(e=>e.a["data-s"]).length,shades:["top","left","right"].map(f=>shade("#808080",f))}))')
+    with tempfile.NamedTemporaryFile('w', suffix='.js', delete=False) as f:
+        f.write(js)
+    result = subprocess.run([node, f.name], capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr[:400]
+    return json.loads(result.stdout)
+
+
+def test_low_quality_draws_no_facets():
+    page = map_page()
+    assert "const FACETS=QUALITY!=='low',FINE=QUALITY==='high'" in page
+    low, normal, high = run_lowpoly('low'), run_lowpoly('normal'), run_lowpoly('high')
+    # low quality: one plain shape per tile, rock, shrub and pond, a single cone per conifer, three bands per side of the slab,
+    # one silhouette per mountain range and no snow, so the page stays as light as before
+    assert low['tile'] == 1 and low['rock'] == 1 and low['shrub'] == 1 and low['water'] == 2 and low['conifer'] == 4 and low['broad'] == 3
+    assert low['slab'] == 6 and low['mountains'] == 3 and low['snow'] == 0
+    assert normal['tile'] == 2 and high['tile'] == 4 and high['rock'] == 3 and high['water'] > 20 and high['slab'] > 40 and high['snow'] > 0
+    for key in ('tile', 'conifer', 'broad', 'rock', 'shrub', 'water', 'slab', 'mountains'):
+        assert high[key] >= normal[key] > low[key] or high[key] >= normal[key] == low[key] == 1, key
+    # one sun on the upper left: tops are lightest, left walls in between, right walls darkest
+    light = [sum(int(v) for v in c[4:-1].split(',')) for c in high['shades']]
+    assert light[0] > light[1] > light[2]
+
+
+def test_every_panel_renders_and_the_setup_page_lists_it():
+    setup = client.get('/obs', params={'channel': 'test'}).text
+    listed = {key: (w, h) for key, title, text, w, h, params in so.SOURCES}
+    assert so.PANELS <= set(listed)
+    for key, (w, h) in listed.items():
+        page = client.get(f'/obs/{key}', params={'channel': 'test'})
+        assert page.status_code == 200 and '/api/v1/overlay' in page.text and '<script>' in page.text, key
+        assert f'data-key="{key}" data-w="{w}" data-h="{h}"' in setup, key
+    assert 'low-poly' in dict((k, t) for k, _, t, *_ in so.SOURCES)['map']
+
+
+def _commands():
+    import re
+    from pathlib import Path
+    from app import command_catalog
+    text = (Path(__file__).parent.parent / 'integrations' / 'twitch' / 'ALL_COMMANDS.txt').read_text()
+    return set(re.findall(r'^(![a-z0-9_]+)\s*$', text, re.M)), {'/' + c['name'] for c in command_catalog.commands}
+
+
+def _named(text):
+    import re
+    return re.findall(r'(?<![\w/])([!/][a-z][a-z0-9_]*)', text)
+
+
+def test_every_command_the_join_tips_name_exists(monkeypatch):
+    twitch, discord = _commands()
+    seen = []
+    for lite in (False, True):
+        monkeypatch.setattr(m.twitch_lite, 'ENABLED', lite)
+        m._overlay_cache.clear()
+        join = overlay()['join']
+        for command, text in join['tips'] + [join['queue']]:
+            for name in _named(command):
+                assert name in (twitch if name[0] == '!' else discord), (lite, command)
+                seen.append(name)
+    assert '!start' in seen and '/menu' in seen and '/queue' in seen and '!shopping' in seen
+
+
+def test_overlay_pages_only_name_commands_that_exist():
+    """Hints written into the pages themselves (the ticker's vote and season, the working panel, the Hub, demo alerts)."""
+    import re
+    twitch, discord = _commands()
+    for name, (css, body) in so.PAGES.items():
+        for command in re.findall(r'(?:<b>|<code>|<b style="[^"]*">|[Tt]ype |with |\[\')(![a-z]+)', body):
+            assert command in twitch, (name, command)
+
+
+def test_newest_discord_features_are_named_but_never_shown_as_data(monkeypatch):
+    import json
+    from app import keep_levels, shopping_list, quiet_hours
+    monkeypatch.setattr(m.twitch_lite, 'ENABLED', True)
+    seed(uid='u', provider='twitch', name='Kamex')
+    with m.SessionLocal() as db:
+        p = db.query(m.Player).filter_by(twitch_uid='u').one()
+        assert 'Nothing changed' not in quiet_hours.set_hours(m, db, p, 'Europe/Berlin', '22:00', '07:00')
+        key, problem = keep_levels.find_item(m, 'Iron Nails')
+        assert key and 'Nothing changed' not in keep_levels.set_level(m, db, p, key, 37)
+        assert 'Added to your shopping list' in shopping_list.add_typed(m, db, p, 'campfire', 3)
+        db.commit()
+        assert keep_levels.levels(db, p.channel_id, p.twitch_uid) and shopping_list.entries(db, p)
+    data = overlay()
+    tips = ' '.join(t[1] for t in data['join']['tips'])
+    assert 'Shopping list' in tips and 'Keep levels' in tips and 'Quiet hours' in tips
+    page = client.get('/obs/join', params={'channel': 'test'}).text
+    assert 'shopping lists, keep levels and quiet hours on Discord' in page
+    def keys(v):
+        if isinstance(v, dict):
+            for k, x in v.items():
+                yield k
+                yield from keys(x)
+        elif isinstance(v, list):
+            for x in v:
+                yield from keys(x)
+    names = ' '.join(keys(data)).lower()
+    for private in ('quiet', 'keep', 'shopping', 'merge', 'zone'):
+        assert private not in names, private
+    text = json.dumps({k: v for k, v in data.items() if k != 'join'}).lower()
+    for private in ('europe/berlin', 'quiet hours', 'keep level', 'shopping list', 'force merge'):
+        assert private not in text, private

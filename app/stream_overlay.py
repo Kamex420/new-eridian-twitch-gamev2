@@ -1,16 +1,20 @@
-"""Stream overlay extras: live highlight alerts, a news ticker, leaders, who is working, and a join card.
+"""Stream overlay: the highlights feed, the overlay extras and every OBS page except the older single panels.
 
 The game records notable moments in a small public feed (`stream_highlights_v1`):
-a new citizen, a level up, an achievement, a finished queue, an event starting or
-ending, a society tier or project milestone. `/api/v1/overlay` includes the feed
-and a few summaries; the OBS panels below poll it like the existing panels do.
+a new citizen, a level up, an achievement or trophy, a finished queue, an event,
+stream challenge, colony vote or season, a society tier or project milestone.
+`/api/v1/overlay` includes the feed and a few summaries; the OBS panels below poll it.
 
+  /obs/hub       one rotating panel with every slide (society, event, challenge, vote, season, news, how to join...)
+  /obs/map       the Avesta map: New Eridian as a low-poly diorama where Seedlings walk, talk and the town grows
+  /obs/ticker    a TV-style news crawl along the bottom of the stream
   /obs/alerts    animated pop-up for each new highlight (transparent when idle)
-  /obs/ticker    a scrolling news crawl along the bottom of the stream
+  /obs/challenge the live stream challenge as a goal bar (transparent when none is running)
   /obs/leaders   top contributors and today's most active citizens
   /obs/working   citizens with queues running right now, with progress
   /obs/join      how to play from chat, rotating tips (and a Discord invite)
-  /obs           setup page: every panel with its URL, size and a live preview
+  /obs/narrator  New Eridian News: a typed report for each Seedling step
+  /obs           setup page: every panel with its URL, size, options and a live preview
 
 Only public information appears: names, actions and society numbers that the
 activity feed already shows. Nothing from a citizen's inventory is exposed.
@@ -162,10 +166,13 @@ def extra(m, db, source_ids, world):
                      ['!gather lumber', 'Collect materials'], ['!make campfire', 'Craft at the Workbench'],
                      ['!craftmax lumber', 'Queue up to 10 gathers and watch them run'], ['!status', 'Needs, queue and your next step'],
                      ['!find <word>', 'Search recipes, items and help'], ['!target <recipe>', 'Pin a goal and track it'],
-                     ['!again', 'Repeat your last action'], ['!seed', 'Every command, by topic']]}
+                     ['!shopping add <recipe>', 'Plan several recipes together: what is missing, buy it all'],
+                     ['!keep <item> <n>', 'Selling always leaves you that many'],
+                     ['!again', 'Repeat your last action'], ['!seed', 'Every command, by topic']],
+            'queue': ['!craftmax lumber', 'to work while you watch']}   # the working panel's hint when no queue runs
     from . import twitch_lite
     if twitch_lite.ENABLED:
-        join['tips'] = twitch_lite.join_tips()
+        join['tips'], join['queue'] = twitch_lite.join_tips(), ['/queue', 'on Discord to run up to 10 tasks while you watch']
     from . import autonomy
     return {'highlights': highlights, 'leaders': leaders, 'working': working, 'festival': festival, 'join': join,
             **autonomy.overlay_data(m, db, source_ids)}
@@ -354,10 +361,10 @@ body{padding:4px}.list{display:flex;flex-direction:column;gap:8px;margin-top:11p
 <section class="card"><div style="display:flex;justify-content:space-between"><div class="eyebrow">⏱️ Working right now</div><span class="muted" id="n" style="font-size:12px"></span></div><div class="list" id="list"></div></section>
 <script>
 let shape='';
-poll(d=>{const w=d.working||[];document.getElementById('n').textContent=w.length?w.length+' queue'+(w.length>1?'s':''):'';
-  const next=JSON.stringify(w.map(x=>[x.name,x.task,x.total,x.state]));const list=document.getElementById('list');
+poll(d=>{const w=d.working||[],q=(d.join&&d.join.queue)||['!craftmax lumber','to work while you watch'];document.getElementById('n').textContent=w.length?w.length+' queue'+(w.length>1?'s':''):'';
+  const next=JSON.stringify([q,w.map(x=>[x.name,x.task,x.total,x.state])]);const list=document.getElementById('list');
   if(next!==shape){shape=next;list.innerHTML=w.length?w.map((x,i)=>`<div class="job ${x.state==='paused'?'paused':''}" style="animation-delay:${i*50}ms"><div class="top"><span class="who">${esc(x.name)}</span><span class="task">${esc(x.task)}${x.state==='paused'?' · paused':''}</span><span class="count"></span></div><div class="bar"><i style="width:0"></i></div></div>`).join('')
-    :'<div class="muted" style="font-size:14px">No queues running. Type <b style="color:var(--green2)">!craftmax lumber</b> to work while you watch.</div>'}
+    :`<div class="muted" style="font-size:14px">No queues running. ${q[0][0]==='/'?'Use':'Type'} <b style="color:var(--green2)">${esc(q[0])}</b> ${esc(q[1])}.</div>`}
   // Progress updates in place, so bars glide instead of the list redrawing.
   list.querySelectorAll('.job').forEach((el,i)=>{const x=w[i];el.querySelector('.count').textContent=x.done+'/'+x.total;requestAnimationFrame(()=>el.querySelector('.bar i').style.width=(x.total?Math.round(x.done/x.total*100):0)+'%')})},3500);
 </script>""")
@@ -376,10 +383,88 @@ h1{margin:2px 0 0;font-family:var(--font-display);font-size:26px;color:var(--ivo
 let tips=[],i=0;const EVERY=Number(Q.get('seconds')||7)*1000;
 function draw(){if(!tips.length)return;const t=tips[i%tips.length];const c=document.getElementById('cmd');c.innerHTML=`<code>${esc(t[0])}</code><span>${esc(t[1])}</span>`;c.classList.remove('swap');void c.offsetWidth;c.classList.add('swap');
   document.getElementById('dots').innerHTML=tips.map((_,k)=>`<i class="${k===i%tips.length?'on':''}"></i>`).join('');i++}
-poll(d=>{const j=d.join||{};const first=!tips.length;tips=j.tips||[];document.getElementById('discord').innerHTML=j.discord?`<div class="discord">Buttons, crafting and more on Discord: <b>${esc(j.discord.replace(/^https?:\/\//,''))}</b></div>`:'';if(first)draw()},30000);
+poll(d=>{const j=d.join||{};const first=!tips.length;tips=j.tips||[];document.getElementById('discord').innerHTML=j.discord?`<div class="discord">Crafting, queues, shopping lists, keep levels and quiet hours on Discord: <b>${esc(j.discord.replace(/^https?:\/\//,''))}</b></div>`:'';if(first)draw()},30000);
 setInterval(draw,EVERY);
 </script>""")
 
+
+# The map's low-poly look: one fixed sun high on the upper left shades every face the same way, so the ground, buildings,
+# trees, rocks, water and mountains read as one flat-shaded diorama. &quality=low keeps one plain shape for each instead
+# of its facets, so the page stays as light as before. Kept as its own block so a test can run it with Node.
+SEEDLING_SCALE = .72            # Seedling tokens on the full map, relative to their earlier size (the column card keeps 1.0)
+LOWPOLY_JS = r"""
+// ---- low-poly light: one fixed sun, high on the upper left, shades every face in the town alike
+const FACETS=QUALITY!=='low',FINE=QUALITY==='high',U=21;   // U: a tile's side in world units, for slopes
+const SUN=(()=>{const v=[-.55,.45,1],m=Math.hypot(...v);return v.map(x=>x/m)})();   // toward the sun, on the world axes +i, +j and up
+const FACE={top:[0,0,1],left:[0,1,0],right:[1,0,0]};   // the walls a viewer sees: the left one faces +j, the right one +i
+const rgbOf=c=>Array.isArray(c)?c:c[0]==='#'?[1,3,5].map(k=>parseInt(c.slice(k,k+2),16)):c.match(/[\d.]+/g).slice(0,3).map(Number);
+const blend=(a,b,t)=>{const x=rgbOf(a),y=rgbOf(b);return x.map((v,k)=>v+(y[k]-v)*t)};
+const lum=n=>{n=FACE[n]||n;const m=Math.hypot(n[0],n[1],n[2])||1;return .62+.48*Math.max(0,(n[0]*SUN[0]+n[1]*SUN[1]+n[2]*SUN[2])/m)};
+// shade(colour, facing, k): the colour of a face under the sun; facing is 'top', 'left', 'right', a normal [i,j,up] or a plain factor
+function shade(c,f,k=1){f=typeof f==='number'?f:lum(f);const v=rgbOf(c).map(x=>Math.max(0,Math.min(255,Math.round(x*f*k))));return `rgb(${v[0]},${v[1]},${v[2]})`}
+const normal=(a,b,c)=>{const u=a.map((v,k)=>b[k]-v),w=a.map((v,k)=>c[k]-v),n=[u[1]*w[2]-u[2]*w[1],u[2]*w[0]-u[0]*w[2],u[0]*w[1]-u[1]*w[0]];return n[2]<0?n.map(x=>-x):n};
+// A rounded shape's facet that points along a screen direction: un-projected onto the ground, tilted up the higher it sits.
+const toward=(ux,uy)=>{const m=Math.hypot(ux,uy)||1;ux/=m;uy/=m;const i=ux/TW+uy/TH,j=uy/TH-ux/TW,h=Math.hypot(i,j)||1;return [i/h,j/h,.8+.6*Math.max(0,-uy)]};
+const lift=(i,j,amp)=>rng('v'+Math.round(i*8)+','+Math.round(j*8))()*amp;   // corner heights: never drawn, they only tilt the facets
+// A facet is edged in its own colour, so neighbouring facets meet without hairline seams.
+const facet=(g,p,fill,a={})=>el('polygon',{points:pts(p),fill,stroke:fill,'stroke-width':.6,'stroke-linejoin':'round',...a},g);
+// One ground tile (or a w×d patch) as facets: two triangles, four on high quality, each tilted by seeded corner heights and
+// toned between the palette's two colours, so the ground reads as faceted terrain rather than noise.
+function facetTile(g,i,j,pal,o={}){const [c1,c2]=Array.isArray(pal)?pal:[pal,pal],w=o.w||1,d=o.d||1,amp=o.amp??5,r=rng((o.seed||'t')+':'+i+','+j),a={class:o.cls||'tile'};
+  const tone=()=>blend(c1,c2,r()),jit=()=>1+(r()-.5)*(o.vary??.06),V=p=>[p[0]*U,p[1]*U,lift(p[0],p[1],amp)],C=[[i,j],[i+w,j],[i+w,j+d],[i,j+d]];
+  if(!FACETS)return [facet(g,C.map(p=>iso(...p)),shade(tone(),'top',jit()),a)];
+  const tri=q=>facet(g,q.map(p=>iso(...p)),shade(tone(),normal(...q.map(V)),jit()),a);
+  if(FINE){const m=[i+w*(.5+(r()-.5)*.3),j+d*(.5+(r()-.5)*.3)];return C.map((p,k)=>tri([p,C[(k+1)%4],m]))}
+  return r()<.5?[tri([C[0],C[1],C[2]]),tri([C[0],C[2],C[3]])]:[tri([C[0],C[1],C[3]]),tri([C[1],C[2],C[3]])]}
+// Low-poly trees: conifers are stacked cones, broadleaf trees a faceted crown; the shadow falls away from the sun.
+const PINE=['#3b6044','#446b4a','#33573f'],LEAF=['#5c8743','#6a9147','#78974c','#557c3d'],BARK='#5c4330';
+function lowPolyTree(g,x,y,r,kind){kind=kind||(r()<.45?'conifer':'broad');const k=.9+r()*.25,stem=(kind==='conifer'?4:8)*k;
+  el('ellipse',{cx:x+4*k,cy:y+1.2,rx:7*k,ry:2.6*k,fill:'rgba(0,0,0,.22)'},g);el('rect',{x:x-1.1,y:y-stem,width:2.2,height:stem,fill:BARK},g);
+  if(kind==='conifer'){const c=PINE[Math.floor(r()*PINE.length)],h=24*k,w=7.5*k,tiers=FACETS?3:1;
+    for(let t=0;t<tiers;t++){const yb=y-3*k-t*h*.26,top=tiers===1?y-h:yb-h*.5,ww=w*(1-t*.22),mid=[x+ww*.18,yb+1.2];
+      facet(g,[[x-ww,yb],[x,top],mid],shade(c,toward(-1,-.3)));facet(g,[[x,top],[x+ww,yb],mid],shade(c,toward(1,-.3)))}
+    return}
+  const c=LEAF[Math.floor(r()*LEAF.length)],cy=y-13*k,R=7*k,n=7,P=[...Array(n)].map((_,q)=>{const a=-Math.PI/2+q/n*Math.PI*2,s=R*(.85+r()*.3);return [x+Math.cos(a)*s,cy+Math.sin(a)*s*.92]});
+  if(!FACETS)return facet(g,P,shade(c,'top',.95));
+  const m=[x-R*.2,cy-R*.25];P.forEach((p,q)=>{const b=P[(q+1)%n];facet(g,[m,p,b],shade(c,toward((p[0]+b[0])/2-x,(p[1]+b[1])/2-cy),1+(r()-.5)*.05))})}
+// A rock: a lit top, a left face and a shaded right face (one plain shape on low quality).
+function facetRock(g,x,y,s,r,c='#8a8276'){const T=[x+(r()-.5)*s*.4,y-s*(.8+r()*.35)],TL=[x-s*.62,y-s*.55],TR=[x+s*.6,y-s*.6],L=[x-s,y],R=[x+s*(.85+r()*.3),y-s*.05],F=[x+(r()-.5)*s*.3,y+s*.32],M=[x-s*.1,y-s*.35];
+  if(!FACETS)return facet(g,[L,TL,T,TR,R,F],shade(c,'left'));
+  facet(g,[TL,T,TR,M],shade(c,'top',.98+r()*.06));facet(g,[L,TL,M,F],shade(c,'left'));facet(g,[M,TR,R,F],shade(c,'right'))}
+// A shrub: a squat crown, its lit half and its shaded half.
+function shrub(g,x,y,s,r,c){const P=[[x-s,y],[x-s*.7,y-s*.8],[x+(r()-.5)*s*.3,y-s*1.15],[x+s*.75,y-s*.75],[x+s,y]],m=[x-s*.1,y-s*.5];
+  if(!FACETS)return facet(g,P,shade(c,'left'));facet(g,[P[0],P[1],P[2],m],shade(c,toward(-1,-1)));facet(g,[m,P[2],P[3],P[4],P[0]],shade(c,toward(1,-.2)))}
+// Water: a faceted surface (a ring of triangles around a centre fan) in deep and light blues, a few catching the sun, inside a shore rim.
+function water(g,x,y,rx,ry,o={}){const r=rng(o.seed||'water'),n=FINE?12:8,deep=o.deep||'#3b6a82',hi=o.hi||'#8ab8c8',rim=o.rim||'#b1a585';
+  const ring=(f,j,half)=>[...Array(n)].map((_,k)=>{const a=(k+(half?.5:0))/n*Math.PI*2,q=f*(1+(r()-.5)*j);return [x+Math.cos(a)*rx*q,y+Math.sin(a)*ry*q]});
+  facet(g,ring(1.13,.05),shade(rim,'top'),{stroke:shade(rim,'right'),'stroke-width':1.6});   // the shore
+  const outer=ring(1,.05);if(!FACETS)return facet(g,outer,shade(deep,'top'));
+  const inner=ring(.55,.25,true),c=[x+(r()-.5)*rx*.15,y+(r()-.5)*ry*.15],f=q=>facet(g,q,shade(r()<.22?blend(deep,hi,.45+r()*.4):blend(deep,hi,r()*.2),'top',1+(r()-.5)*.08));
+  for(let k=0;k<n;k++){const k1=(k+1)%n;f([outer[k],outer[k1],inner[k]]);f([inner[k],outer[k1],inner[k1]]);f([c,inner[k],inner[k1]])}}
+// The town is a diorama: under its two front edges hang faces of topsoil, clay and bedrock, lit on the left and in shade on the right.
+const STRATA=[['#5e4a32',0],['#8c714f',.18],['#85817a',.5]];
+function slab(g,lo,hi,depth=34){const r=rng('slab'),segs=FACETS?9:1;
+  for(const [a,b,side] of [[[lo,hi],[hi,hi],'left'],[[hi,hi],[hi,lo],'right']]){const A=iso(...a),B=iso(...b),P=s=>[A[0]+(B[0]-A[0])*s/segs,A[1]+(B[1]-A[1])*s/segs];
+    const cut=[...STRATA.map(x=>x[1]),1].map((t,n)=>[...Array(segs+1)].map(()=>t*depth+(n===0?0:n===STRATA.length?r()*6:(r()-.5)*5)));   // straight along the top, ragged between strata
+    STRATA.forEach(([c],n)=>{for(let s=0;s<segs;s++){const p=P(s),q=P(s+1);
+      facet(g,[[p[0],p[1]+cut[n][s]],[q[0],q[1]+cut[n][s+1]],[q[0],q[1]+cut[n+1][s+1]],[p[0],p[1]+cut[n+1][s]]],shade(c,side,1+(FACETS?(r()-.5)*.12:0)))}})}}
+// Mountains behind the town: three faceted ranges, fainter with distance, snow on the highest peaks. sky() recolours each by the hour
+// from its data-l (range), data-k (how the face is lit) and data-s (snow).
+function mountains(far,near){const ranges=[[far,0,150,40,100,.06],[far,1,180,26,70,.1],[near,2,214,12,38,.14]];
+  for(const [g,l,base,lo,hi,c] of ranges){const r=rng('peaks'+l),peaks=[];
+    for(let x=-560;x<1540;x+=70+r()*80)peaks.push({x:x+(r()-.5)*30,h:lo+r()*(hi-lo),wl:70+r()*70,wr:70+r()*70,f:r(),m:r()});
+    const at=k=>({'data-l':l,'data-k':k.toFixed(3),'stroke-width':.5});
+    if(!FACETS){let d=`M-2000 2800L-2000 ${base}`;for(let x=-2000;x<=2960;x+=12){const y=Math.min(base,...peaks.map(p=>base-p.h*Math.max(0,1-(x<p.x?(p.x-x)/p.wl:(x-p.x)/p.wr))));d+=`L${x} ${y.toFixed(1)}`}
+      el('path',{d:d+'L2960 2800Z',...at(1-c*.4)},g);continue}
+    el('rect',{x:-2000,y:base-.5,width:4960,height:2800,...at(1-c*.3)},g);   // the land in front of this range
+    for(const p of peaks.sort((a,b)=>a.h-b.h)){const P=[p.x,base-p.h],Lb=[p.x-p.wl,base+.5],Rb=[p.x+p.wr,base+.5],F=[p.x+(p.f-.3)*p.wr*.5,base+.5];
+      const m1=[P[0]+(Lb[0]-P[0])*(.45+p.m*.2),P[1]+(Lb[1]-P[1])*(.45+p.m*.2)],m2=[P[0]+(Rb[0]-P[0])*.5,P[1]+(Rb[1]-P[1])*.5];
+      el('polygon',{points:pts([Lb,m1,F]),...at(1+c*.55)},g);el('polygon',{points:pts([m1,P,F]),...at(1+c)},g);
+      el('polygon',{points:pts([P,m2,F]),...at(1-c*.9)},g);el('polygon',{points:pts([m2,Rb,F]),...at(1-c*1.3)},g);
+      if(l<2&&p.h>hi*.62){const s=.2+r()*.1,on=(a,b,t)=>[a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t],SL=on(P,Lb,s),SF=on(P,F,s*1.35),SR=on(P,Rb,s*.85),J=on(SL,SF,.5);J[1]+=3;
+        el('polygon',{points:pts([SL,P,SF,J]),'data-s':1,...at(1.05)},g);el('polygon',{points:pts([P,SR,SF]),'data-s':1,...at(.82)},g)}}}}
+// ---- end of the low-poly helpers
+"""
 
 PAGES['map'] = (r"""
 /* New Eridian as a living isometric town, built for broadcast (960×540 source recommended).
@@ -392,8 +477,11 @@ svg{position:absolute;inset:0;width:100%;height:100%;display:block}
 .vig{position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse at 50% 50%,transparent 62%,rgba(0,0,0,.45))}
 #world{transition:transform 2.8s cubic-bezier(.45,.05,.3,1)}
 .token .shirt{stroke:#0b0f24;stroke-width:2}
-.token .ini{font:900 11px var(--font-body);fill:#08101f;text-anchor:middle;dominant-baseline:central}
-.token .label{font:800 11px var(--font-body);fill:#fffaf0;text-anchor:middle;paint-order:stroke;stroke:#060816;stroke-width:3.5px}
+/* On the full map tokens are drawn at SEEDLING_SCALE, so the initial and the name are a little larger inside them to read at 1080p.
+   The card keeps tokens at their original size, with the original text. */
+.token .ini{font:900 12px var(--font-body);fill:#08101f;text-anchor:middle;dominant-baseline:central}
+.token .label{font:800 13.5px var(--font-body);fill:#fffaf0;text-anchor:middle;paint-order:stroke;stroke:#060816;stroke-width:4px}
+.L-card .token .ini{font-size:11px}.L-card .token .label{font-size:11px;stroke-width:3.5px}
 .token.walking .leg{animation:step .32s ease-in-out infinite alternate}.token.walking .leg.r{animation-delay:-.32s}
 .token.walking .bod{animation:bob .32s ease-in-out infinite alternate}
 .token .arm{transform-box:fill-box;transform-origin:50% 10%}.token.walking .arm.l{animation:swing-l .32s ease-in-out infinite alternate}.token.walking .arm.r{animation:swing-l .32s ease-in-out infinite alternate-reverse}
@@ -477,7 +565,7 @@ svg{position:absolute;inset:0;width:100%;height:100%;display:block}
   <linearGradient id="aurorag" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#7ee3b0" stop-opacity="0"/><stop offset=".5" stop-color="#7ee3b0" stop-opacity=".45"/><stop offset="1" stop-color="#70ddff" stop-opacity="0"/></linearGradient>
  </defs>
  <rect x="-2000" y="-2000" width="4960" height="4540" fill="url(#sky)"/><g id="stars"></g><g id="aurora"></g><g id="sun"></g><g id="skyclouds"></g>
- <path id="hills" fill="#39344a" opacity=".85"/><path id="hills2" fill="#2f2b3d" opacity=".95"/>
+ <g id="hills"></g><g id="hills2"></g>
  <g id="world" style="transform:translate(480px,282px) scale(1.15) translate(-480px,-254px)">
   <g id="ground"></g><path id="shadows" fill="#141428" opacity="0" style="transition:opacity 4s"/><g id="city"></g><g id="festive"></g><g id="civic"></g><g id="crowd"></g><g id="shades"></g>
   <rect id="tint" x="-600" y="-400" width="2160" height="1400" fill="transparent" style="pointer-events:none;transition:fill 4s"/>
@@ -502,7 +590,10 @@ const cellTiles=(r,c)=>[r*7,c*7];   // top-left tile (i,j) of a 6×6 block
 const RESERVE=3;   // tiles kept free in every district for landmarks the colony votes to build (the Commons keeps one more for a season monument)
 const LOOK={commons:['⛲','Commons','#b8f4d0'],residential_ring:['🏠','Homes','#ffd27a'],agricultural_district:['🌾','Farms','#9be37e'],industrial_ward:['🏭','Industry','#ff9a76'],
   research_block:['🔬','Research','#70ddff'],market_concourse:['🪙','Market','#ffd27a'],spaceport_quarter:['🚀','Spaceport','#bd91ff'],frontier_edge:['🧭','Frontier','#ff9ad5']};
-const GROUND={commons:'#b9b1a0',residential_ring:'#7f9a5a',agricultural_district:'#6d8c46',industrial_ward:'#8a8578',research_block:'#9aa3a8',market_concourse:'#b5a88c',spaceport_quarter:'#8e8f93',frontier_edge:'#8b7355',park:'#5f8a45',wild:'#6f6446'};
+// Natural ground per district, as two tones its facets vary between: lawns, ploughed earth, gravel, paving, tarmac and dust.
+const GROUND={commons:['#c4bba6','#b3aa94'],residential_ring:['#7a9656','#8aa262'],agricultural_district:['#7a6143','#8b7150'],industrial_ward:['#8a867b','#7b776d'],
+  research_block:['#94a08c','#a3ab9c'],market_concourse:['#bba786','#a99677'],spaceport_quarter:['#8b8d90','#7c7e83'],frontier_edge:['#a3845a','#91764f'],park:['#66914a','#78a055'],
+  wild:['#7b7050','#6d6f4a'],ring:['#6f7a4b','#7e7553']};
 const MOOD={Inspired:'#ffd27a',Content:'#7ee3b0',Tired:'#9aa3c7',Hungry:'#ffb36b',Lonely:'#8fb3ff',Uneasy:'#d6a4ff',Stressed:'#ff9a76',Miserable:'#ff7484'};
 const WEATHER_ICON={clear_skies:'☀️',good_growing:'🌧️',spore_drift:'🍃',dust_winds:'🌪️',busy_spaceport:'🚀',water_watch:'💧',quiet_cycle:'🌙',sensor_noise:'📡'};
 const wantCard=()=>Q.get('layout')==='card'||(Q.get('layout')!=='wide'&&(innerWidth<560||innerWidth/Math.max(1,innerHeight)<=1.3));
@@ -512,6 +603,9 @@ let relayout=null;addEventListener('resize',()=>{clearTimeout(relayout);relayout
 // A wide layout in a source that is not wide (e.g. 400×400 with &layout=wide): full-width caption, two-line header.
 const NARROW=!CARD&&(innerWidth<800||innerWidth/Math.max(1,innerHeight)<1.5);if(NARROW)document.body.classList.add('L-narrow');
 let LS=1,TS=1;   // card layout: label and Seedling scale so they stay readable in a small source
+// Seedlings are smaller on the full map; the column card is already a miniature and keeps their original size.
+// The layout is fixed for the page's life (a resize that changes it reloads the page), so TOKEN never changes.
+const SEEDLING_SCALE=""" + repr(SEEDLING_SCALE) + r""",TOKEN=CARD?1:SEEDLING_SCALE,TK=()=>TOKEN*TS;   // TK() is the scale tokens end up at, with the card's own TS
 const QUALITY=['low','high'].includes(Q.get('quality'))?Q.get('quality'):'normal';document.body.classList.add('q-'+QUALITY);
 const SHOW_NAMES=Q.get('names')==='1',PER_PLACE=Number(Q.get('per')||(Q.get('layout')==='card'||innerWidth<560||innerWidth/Math.max(1,innerHeight)<=1.3?3:4)),CAMERA=Q.get('camera')!=='0',SECONDS=Number(Q.get('seconds')||7)*1000;
 // Holidays: colours, and what the town puts up for each.
@@ -521,58 +615,68 @@ const HOLIDAYS={'New Year':['🎆',['#ffd35a','#c9d3ff','#ff5ad1'],'newyear'],"V
   'Christmas':['🎄',['#e0303a','#2fa84f','#ffd35a'],'christmas']};
 function previewHoliday(){const q=(Q.get('holiday')||'').toLowerCase().replace(/[^a-z]/g,'');if(!q)return null;const name=Object.keys(HOLIDAYS).find(n=>n.toLowerCase().replace(/[^a-z]/g,'').startsWith(q));
   return name?{name,emoji:HOLIDAYS[name][0],days_to_holiday:Number(Q.get('days')||0)}:null}
-function shade(hex,f){const n=parseInt(hex.slice(1),16),r=n>>16,g=n>>8&255,b=n&255,c=v=>Math.max(0,Math.min(255,Math.round(v*f)));return `rgb(${c(r)},${c(g)},${c(b)})`}
 function diamond(i,j,w=1,h=1,inset=0){const a=iso(i+inset,j+inset),b=iso(i+w-inset,j+inset),c=iso(i+w-inset,j+h-inset),d=iso(i+inset,j+h-inset);return [a,b,c,d]}
 const pts=p=>p.map(q=>q.join(',')).join(' ');
 const up=(p,h)=>p.map(([x,y])=>[x,y-h]);
 const vr=rng('lamps');
+""" + LOWPOLY_JS + r"""
 
 // ---- building parts (all drawn on a tile at i,j; w×d tiles; height h)
 const CASTERS=[];
 function box(g,i,j,w,d,h,color,opt={}){const [t,r,b,l]=diamond(i,j,w,d,opt.inset??.12),top=up([t,r,b,l],h);CASTERS.push([[t,r,b,l],h+(opt.roof==='pitched'?h*.4:0)]);
-  el('polygon',{points:pts([l,b,top[2],top[3]]),fill:shade(color,.72)},g);el('polygon',{points:pts([b,r,top[1],top[2]]),fill:shade(color,.9)},g);
-  if(opt.roof==='pitched'){const apex=[(top[0][0]+top[2][0])/2,(top[0][1]+top[2][1])/2-h*.55-6];const rc=opt.roofColor||'#a8543e';
-    el('polygon',{points:pts([top[3],top[0],apex]),fill:shade(rc,1.05)},g);el('polygon',{points:pts([top[0],top[1],apex]),fill:shade(rc,1.15)},g);
-    el('polygon',{points:pts([top[3],top[2],apex]),fill:shade(rc,.78)},g);el('polygon',{points:pts([top[2],top[1],apex]),fill:shade(rc,.95)},g)}
-  else el('polygon',{points:pts(top),fill:opt.topColor||shade(color,1.12)},g);
+  el('polygon',{points:pts([l,b,top[2],top[3]]),fill:shade(color,'left')},g);el('polygon',{points:pts([b,r,top[1],top[2]]),fill:shade(color,'right')},g);
+  if(opt.roof==='pitched'){const rise=h*.55+6,apex=[(top[0][0]+top[2][0])/2,(top[0][1]+top[2][1])/2-rise],rc=opt.roofColor||'#9a5a44',s=rise/((1-2*(opt.inset??.12))*Math.min(w,d)*U/2);
+    // four roof planes, each lit by its own slope: back-left, back-right, then the two in front
+    for(const [p,n] of [[[top[3],top[0],apex],[-s,0,1]],[[top[0],top[1],apex],[0,-s,1]],[[top[3],top[2],apex],[0,s,1]],[[top[2],top[1],apex],[s,0,1]]])el('polygon',{points:pts(p),fill:shade(rc,n)},g)}
+  else el('polygon',{points:pts(top),fill:opt.topColor?shade(opt.topColor,'top'):shade(color,'top',1.08)},g);
   if(opt.windows){const rows=Math.max(1,Math.floor(h/9)),cols=Math.max(1,Math.round(w*2));
     for(let k=0;k<rows;k++)for(let c=0;c<cols;c++){const f=(c+.5)/cols,yy=h-6-k*9;
       const L=[l[0]+(b[0]-l[0])*f,l[1]+(b[1]-l[1])*f-yy],R=[b[0]+(r[0]-b[0])*f,b[1]+(r[1]-b[1])*f-yy];
       el('rect',{class:'win',x:L[0]-1.5,y:L[1]-2,width:3,height:3,fill:'#ffd98a',opacity:0,'data-v':vr().toFixed(3)},g);el('rect',{class:'win',x:R[0]-1.5,y:R[1]-2,width:3,height:3,fill:'#ffd98a',opacity:0,'data-v':vr().toFixed(3)},g)}}
   return top}
 function centre(i,j,w=1,d=1){return iso(i+w/2,j+d/2)}
-function tree(g,i,j,r){const [x,y]=centre(i+(r()-.5)*.5,j+(r()-.5)*.5);el('ellipse',{cx:x+3,cy:y+2,rx:6,ry:3,fill:'rgba(0,0,0,.25)'},g);
-  el('rect',{x:x-1.2,y:y-8,width:2.4,height:8,fill:'#6b4a2e'},g);el('circle',{class:'leaf',cx:x,cy:y-12,r:6+r()*2,fill:r()<.5?'#4f8a3c':'#3f7a34'},g);el('circle',{cx:x-2,cy:y-14,r:3,fill:'#6aa84f',opacity:.7},g)}
-const ROOFS=['#a8543e','#3f6fa8','#5a8a4a','#8a5aa8','#b88a3a'];
+function tree(g,i,j,r,kind){const [x,y]=centre(i+(r()-.5)*.5,j+(r()-.5)*.5);lowPolyTree(g,x,y,r,kind)}
+// A cylinder (tanks, silos): its lit and shaded halves, a darker foot and a pale lid.
+function drum(g,x,y,rx,h,c){el('ellipse',{cx:x,cy:y,rx,ry:rx/2,fill:shade(c,'right',.9)},g);
+  if(FACETS){el('rect',{x:x-rx,y:y-h,width:rx,height:h,fill:shade(c,toward(-1,0))},g);el('rect',{x,y:y-h,width:rx,height:h,fill:shade(c,toward(1,0))},g)}
+  else el('rect',{x:x-rx,y:y-h,width:2*rx,height:h,fill:shade(c,'left')},g);
+  el('ellipse',{cx:x,cy:y-h,rx,ry:rx/2,fill:shade(c,'top',1.12)},g)}
+// Muted, weathered materials: terracotta, slate, moss, plum and ochre roofs over plaster, timber, metal and glass.
+const ROOFS=['#9a5a44','#56687e','#6a7d55','#7a5e70','#a8854a'];
 const BUILD={
- residential_ring(g,i,j,r,n,level){if(n%7===6)return tree(g,i,j,r);
-   if(level>=6&&n%5===0)return box(g,i,j,1,1,26+r()*18,'#d9d2c3',{windows:true,topColor:'#9aa0a8'});           // apartments as the district grows
-   if(n%6===3){box(g,i,j,1,1,8,'#e6e0d4',{topColor:'#e6e0d4'});const [x,y]=centre(i,j);el('ellipse',{cx:x,cy:y-12,rx:12,ry:9,fill:'url(#domeg)',stroke:'#e8f7ff','stroke-width':.8},g);return}
-   box(g,i,j,1,1,9+r()*5,'#e9e2cf',{roof:'pitched',roofColor:ROOFS[Math.floor(r()*ROOFS.length)],windows:true})},
- agricultural_district(g,i,j,r,n){if(n%9===4){box(g,i,j,1,1,11,'#9c3b2e',{roof:'pitched',roofColor:'#6b2a22'});return}
+ residential_ring(g,i,j,r,n,level){if(n%7===6)return tree(g,i,j,r,'broad');
+   if(level>=6&&n%5===0)return box(g,i,j,1,1,26+r()*18,'#cfc8b8',{windows:true,topColor:'#8f959c'});           // apartments as the district grows
+   if(n%6===3){box(g,i,j,1,1,8,'#dcd5c6');const [x,y]=centre(i,j);el('ellipse',{cx:x,cy:y-12,rx:12,ry:9,fill:'url(#domeg)',stroke:'#e8f7ff','stroke-width':.8},g);return}
+   box(g,i,j,1,1,9+r()*5,'#ddd3bc',{roof:'pitched',roofColor:ROOFS[Math.floor(r()*ROOFS.length)],windows:true})},
+ agricultural_district(g,i,j,r,n){if(n%9===4){box(g,i,j,1,1,11,'#8c4535',{roof:'pitched',roofColor:'#5a3a30'});return}
    if(n%9===8){const [x,y]=centre(i,j);el('ellipse',{cx:x,cy:y-6,rx:15,ry:10,fill:'url(#domeg)',stroke:'#dff8ff','stroke-width':.8},g);return}
-   const [t,rr,b,l]=diamond(i,j,1,1,.04);el('polygon',{class:'field','data-v':r().toFixed(3),points:pts([t,rr,b,l]),fill:'#7fa543'},g);
-   for(let k=1;k<4;k++){const f=k/4;el('line',{class:'stripe',x1:t[0]+(l[0]-t[0])*f,y1:t[1]+(l[1]-t[1])*f,x2:rr[0]+(b[0]-rr[0])*f,y2:rr[1]+(b[1]-rr[1])*f,stroke:'#95bb52','stroke-width':2},g)}},
- industrial_ward(g,i,j,r,n){if(n%5===2){const [x,y]=centre(i,j);el('ellipse',{cx:x,cy:y,rx:11,ry:5.5,fill:'#6d737b'},g);el('rect',{x:x-11,y:y-16,width:22,height:16,fill:'#9aa1a9'},g);el('ellipse',{cx:x,cy:y-16,rx:11,ry:5.5,fill:'#c3c9cf'},g);return}
+   // a crop field: two facets that catch the light a little differently (recoloured as the crop ripens), with furrows across it
+   const [t,rr,b,l]=diamond(i,j,1,1,.04),v=r().toFixed(3),k=lum('top');
+   for(const [p,f] of FACETS?[[[t,rr,b],k*(1+(r()-.5)*.08)],[[t,b,l],k*(.93+(r()-.5)*.06)]]:[[[t,rr,b,l],k]]){const c=shade('#7d9a4a',f);facet(g,p,c,{class:'field','data-v':v,'data-k':f.toFixed(3)})}
+   for(let q=1;q<4;q++){const f=q/4;el('line',{class:'stripe',x1:t[0]+(l[0]-t[0])*f,y1:t[1]+(l[1]-t[1])*f,x2:rr[0]+(b[0]-rr[0])*f,y2:rr[1]+(b[1]-rr[1])*f,stroke:'#93ad5a','stroke-width':1.6},g)}},
+ industrial_ward(g,i,j,r,n){if(n%5===2){const [x,y]=centre(i,j);drum(g,x,y,11,16,'#a2a7ad');return}
    const top=box(g,i,j,1,1,14+r()*8,'#8d939b',{windows:true,topColor:'#6f757d'});const cx=top[1][0]-6,cy=top[1][1];
-   el('rect',{x:cx-2.5,y:cy-18,width:5,height:18,fill:'#5a5f66'},g);el('rect',{x:cx-2.5,y:cy-18,width:5,height:3,fill:'#c2544a'},g);
+   el('rect',{x:cx-2.5,y:cy-18,width:5,height:18,fill:'#5a5f66'},g);el('rect',{x:cx-2.5,y:cy-18,width:5,height:3,fill:'#a8564a'},g);
    for(let k=0;k<2;k++)el('circle',{class:'smoke',cx:cx,cy:cy-22,r:4,fill:'#d8d3ca','data-v':r().toFixed(3),style:`animation-delay:-${(k*2.2+r()*2).toFixed(1)}s`},g)},
- research_block(g,i,j,r,n){if(n%6===0){box(g,i,j,1,1,8,'#e9eef2');const [x,y]=centre(i,j);el('ellipse',{cx:x,cy:y-12,rx:9,ry:4,fill:'#f5f8fa',stroke:'#9fb3c4','stroke-width':1.2,transform:`rotate(-25 ${x} ${y-12})`},g);el('line',{x1:x,y1:y-12,x2:x+4,y2:y-22,stroke:'#9fb3c4','stroke-width':1.5},g);return}
-   if(n%6===3){const [x,y]=centre(i,j);box(g,i,j,1,1,6,'#dfe6ec');el('ellipse',{cx:x,cy:y-12,rx:13,ry:10,fill:'url(#domeg)',stroke:'#eaf8ff','stroke-width':.8},g);return}
-   box(g,i,j,1,1,16+r()*14,'#cfdfe9',{windows:true,topColor:'#4f9fc4'})},
- market_concourse(g,i,j,r,n){if(n===0){const top=box(g,i,j,1,1,20,'#e2cfa4',{roof:'pitched',roofColor:'#b8452f',windows:true});const [x,y]=centre(i,j);flag(g,x,y-39,'#ffd27a');return}
-   const c=['#e0564f','#f2b441','#4fa3e0','#7ec36b','#b86fd6'][Math.floor(r()*5)],top=box(g,i,j,1,1,6,'#d9cfb8',{topColor:c});
-   el('polygon',{points:pts(top),fill:'none',stroke:'#fff','stroke-width':.8,'stroke-dasharray':'3 3'},g)},
+ research_block(g,i,j,r,n){if(n%6===0){box(g,i,j,1,1,8,'#dfe4e7');const [x,y]=centre(i,j);el('ellipse',{cx:x,cy:y-12,rx:9,ry:4,fill:'#eef1f3',stroke:'#93a6b5','stroke-width':1.2,transform:`rotate(-25 ${x} ${y-12})`},g);el('line',{x1:x,y1:y-12,x2:x+4,y2:y-22,stroke:'#93a6b5','stroke-width':1.5},g);return}
+   if(n%6===3){const [x,y]=centre(i,j);box(g,i,j,1,1,6,'#d6dce0');el('ellipse',{cx:x,cy:y-12,rx:13,ry:10,fill:'url(#domeg)',stroke:'#eaf8ff','stroke-width':.8},g);return}
+   box(g,i,j,1,1,16+r()*14,'#c9d3d9',{windows:true,topColor:'#5b8aa3'})},
+ market_concourse(g,i,j,r,n){if(n===0){const top=box(g,i,j,1,1,20,'#d8c49a',{roof:'pitched',roofColor:'#a24b35',windows:true});const [x,y]=centre(i,j);flag(g,x,y-39,'#ffd27a');return}
+   const c=['#b65a4e','#c99a45','#5a88ab','#76995b','#8d6a9c'][Math.floor(r()*5)],top=box(g,i,j,1,1,6,'#cfc4ab',{topColor:c});
+   el('polygon',{points:pts(top),fill:'none',stroke:'#f4efe4','stroke-width':.8,'stroke-dasharray':'3 3'},g)},
  spaceport_quarter(g,i,j,r,n){if(n===0){box(g,i,j,1,1,40,'#c3cad3',{windows:true,topColor:'#5f6b80'});const [x,y]=centre(i,j);flag(g,x+8,y-44,'#bd91ff');el('circle',{class:'beacon',cx:x,cy:y-46,r:3,fill:'#ff5a5a'},g);return}
-   if(n===5){const [x,y]=centre(i,j);el('polygon',{points:pts([[x-5,y-4],[x+5,y-4],[x+5,y-40],[x,y-52],[x-5,y-40]]),fill:'#eef1f4',stroke:'#9aa3ad'},g);el('polygon',{points:pts([[x-5,y-4],[x-10,y+2],[x-5,y-16]]),fill:'#c24b3c'},g);el('polygon',{points:pts([[x+5,y-4],[x+10,y+2],[x+5,y-16]]),fill:'#c24b3c'},g);return}
+   if(n===5){const [x,y]=centre(i,j),hull='#e6e9ec',fin='#b04a3c';   // a rocket on its pad: lit and shaded halves
+     if(FACETS){el('polygon',{points:pts([[x-5,y-4],[x,y-4],[x,y-52],[x-5,y-40]]),fill:shade(hull,toward(-1,0))},g);el('polygon',{points:pts([[x,y-4],[x+5,y-4],[x+5,y-40],[x,y-52]]),fill:shade(hull,toward(1,0))},g)}
+     else el('polygon',{points:pts([[x-5,y-4],[x+5,y-4],[x+5,y-40],[x,y-52],[x-5,y-40]]),fill:shade(hull,'left'),stroke:'#9aa3ad'},g);
+     el('polygon',{points:pts([[x-5,y-4],[x-10,y+2],[x-5,y-16]]),fill:shade(fin,'left')},g);el('polygon',{points:pts([[x+5,y-4],[x+10,y+2],[x+5,y-16]]),fill:shade(fin,'right')},g);return}
    if(n%3===1){const [t,rr,b,l]=diamond(i,j,1,1,.02);el('polygon',{points:pts([t,rr,b,l]),fill:'#5d6068'},g);const [x,y]=centre(i,j);
-     el('ellipse',{cx:x,cy:y,rx:12,ry:6,fill:'none',stroke:'#f6d365','stroke-width':1.6},g);el('text',{x:x,y:y+3,'text-anchor':'middle','font-size':8,'font-weight':900,fill:'#f6d365',transform:`scale(1 .6) translate(0 ${y/0.6-y})`},g).textContent='H';return}
-   box(g,i,j,1,1,10+r()*6,'#aab1bb',{windows:true,topColor:r()<.5?'#6f7f99':'#c9774a'})},
- frontier_edge(g,i,j,r,n){const [x,y]=centre(i,j);if(n%4===0){el('polygon',{points:pts([[x-9,y+2],[x,y-26],[x+9,y+2]]),fill:'none',stroke:'#7a5a3a','stroke-width':2.5},g);el('circle',{cx:x,cy:y-24,r:3.5,fill:'#c0a27a'},g);return}
-   if(n%4===1){for(let k=0;k<5;k++)el('circle',{cx:x+(r()-.5)*16,cy:y+(r()-.5)*7-3,r:3+r()*3.5,fill:k%2?'#8a8070':'#6f6658'},g);return}
-   if(n%4===2){el('polygon',{points:pts([[x-10,y+3],[x,y-12],[x+10,y+3]]),fill:'#d7c7a3',stroke:'#a8946c'},g);el('polygon',{points:pts([[x,y-12],[x+10,y+3],[x+4,y+5]]),fill:'#b9a680'},g);return}
-   tree(g,i,j,r)},
- commons(g,i,j,r,n){tree(g,i,j,r)},
+     el('ellipse',{cx:x,cy:y,rx:12,ry:6,fill:'none',stroke:'#e8c766','stroke-width':1.6},g);el('text',{x:x,y:y+3,'text-anchor':'middle','font-size':8,'font-weight':900,fill:'#e8c766',transform:`scale(1 .6) translate(0 ${y/0.6-y})`},g).textContent='H';return}
+   box(g,i,j,1,1,10+r()*6,'#aab1bb',{windows:true,topColor:r()<.5?'#6f7f99':'#b87650'})},
+ frontier_edge(g,i,j,r,n){const [x,y]=centre(i,j);if(n%4===0){el('polygon',{points:pts([[x-9,y+2],[x,y-26],[x+9,y+2]]),fill:'none',stroke:'#6e5236','stroke-width':2.5},g);el('circle',{cx:x,cy:y-24,r:3.5,fill:'#b39a74'},g);return}
+   if(n%4===1){for(let k=0;k<3;k++)facetRock(g,x+(r()-.5)*16,y+(r()-.5)*6-1,3.5+r()*3.5,r,k%2?'#8f8576':'#7b7266');return}
+   if(n%4===2){el('polygon',{points:pts([[x-10,y+3],[x,y-12],[x+10,y+3]]),fill:shade('#d2c19c','left'),stroke:shade('#d2c19c','right',.85)},g);el('polygon',{points:pts([[x,y-12],[x+10,y+3],[x+4,y+5]]),fill:shade('#d2c19c','right')},g);return}
+   tree(g,i,j,r,r()<.7?'conifer':'broad')},
+ commons(g,i,j,r,n){tree(g,i,j,r,r()<.25?'conifer':'broad')},
  park(g,i,j,r,n){tree(g,i,j,r)},
 };
 // Scaffolding and a crane stand where a new building is about to go up.
@@ -584,13 +688,19 @@ function scaffold(g,i,j,crane){const [t,r,b,l]=diamond(i,j,1,1,.15),h=22,c='#d4a
     const hook=el('g',{class:'hook'},g);el('line',{x1:x-14,y1:y-61,x2:x-14,y2:y-36,stroke:'#333','stroke-width':1},hook);el('rect',{x:x-19,y:y-36,width:10,height:6,fill:'#9c3b2e'},hook)}}
 
 // ---- terrain and streets, drawn once
-(function terrain(){const g=document.getElementById('ground');
-  const hill=(id,base,amp,seed)=>{const r=rng(seed);let d=`M-2000 ${base}`;for(let x=-2000;x<=2960;x+=40)d+=` L${x} ${base-amp*r()}`;document.getElementById(id).setAttribute('d',d+' L2960 2600 L-2000 2600 Z')};hill('hills',160,60,'h1');hill('hills2',205,45,'h2');
-  el('polygon',{points:pts(diamond(-1.4,-1.4,N+2.8,N+2.8)),fill:'#5e5638',stroke:'#4a4330','stroke-width':3},g);
-  const r=rng('wild');for(let k=0;k<50;k++){const i=-1.2+r()*(N+2.4),j=-1.2+r()*(N+2.4);if(i>-.2&&i<N+.2&&j>-.2&&j<N+.2)continue;const [x,y]=iso(i,j);el('circle',{cx:x,cy:y-3,r:2.5+r()*3.5,fill:r()<.6?'#4f7a3a':'#6e6552'},g)}
+(function terrain(){const g=document.getElementById('ground'),lo=-1.4,hi=N+1.4;
+  mountains(document.getElementById('hills'),document.getElementById('hills2'));slab(g,lo,hi);
+  // the wild land around the town: one plain diamond on low quality, otherwise 2×2-tile facets that rise and fall a little more
+  if(!FACETS)facet(g,diamond(lo,lo,hi-lo,hi-lo),shade(GROUND.ring[0],'top'));
+  else{const E=[lo,...[...Array(N/2+1)].map((_,k)=>k*2),hi];for(let a=0;a<E.length-1;a++)for(let b=0;b<E.length-1;b++)if(!(E[a]>=0&&E[a+1]<=N&&E[b]>=0&&E[b+1]<=N))facetTile(g,E[a],E[b],GROUND.ring,{w:E[a+1]-E[a],d:E[b+1]-E[b],seed:'ring',amp:9,cls:'ring'})}
+  const r=rng('wild');for(let k=0;k<50;k++){const i=-1.2+r()*(N+2.4),j=-1.2+r()*(N+2.4);if(i>-.2&&i<N+.2&&j>-.2&&j<N+.2)continue;const [x,y]=iso(i,j),v=r();
+    if(v<.6)shrub(g,x,y-1,3+r()*3,r,v<.3?'#55743a':'#687a42');else if(v<.8||!FACETS)facetRock(g,x,y-1,2.5+r()*3,r,'#7d776a');else lowPolyTree(g,x,y,r,'conifer')}
   const s=document.getElementById('stars');const sr=rng('stars');for(let k=0;k<140;k++){const x=-500+sr()*1960,y=-360+sr()*600;el('circle',{class:sr()<.3?'twinkle':'',cx:x,cy:y,r:.6+sr()*1.3,fill:'#fff'},s)}
   const c=document.getElementById('skyclouds');for(let k=0;k<4;k++){const cg=el('g',{class:'cloud',style:`animation-duration:${150+k*40}s;animation-delay:-${k*55}s`},c),y=70+k*28;
-    for(const [dx,dy,rx] of [[0,0,34],[26,-8,26],[-24,-4,22],[48,2,20]])el('ellipse',{cx:dx,cy:y+dy,rx,ry:rx*.45,fill:'#fff',opacity:.8},cg)}
+    for(const [dx,dy,rx] of [[0,0,34],[26,-8,26],[-24,-4,22],[48,2,20]]){if(!FACETS){el('ellipse',{cx:dx,cy:y+dy,rx,ry:rx*.45,fill:'#fff',opacity:.8},cg);continue}
+      // a low-poly puff: a sunlit upper half and a greyer underside
+      const P=[...Array(6)].map((_,q)=>[dx+Math.cos(q/6*Math.PI*2+.3)*rx,y+dy+Math.sin(q/6*Math.PI*2+.3)*rx*.45]);
+      el('polygon',{points:pts([P[3],P[4],P[5],P[0]]),fill:'#fbfcfd',opacity:.85},cg);el('polygon',{points:pts([P[0],P[1],P[2],P[3]]),fill:'#d9dfe6',opacity:.85},cg)}}
   const sh=document.getElementById('shades');for(let k=0;k<3;k++){el('ellipse',{class:'shade',cx:300+k*120,cy:180+k*60,rx:120,ry:55,fill:'url(#shadeg)',style:`animation-duration:${80+k*25}s;animation-delay:-${k*30}s`},sh)}})();
 
 const drawn={},levels={};let night=false,lastTier=-1,first=true,lastPhase='';
@@ -600,7 +710,10 @@ function streets(d,tier){const g=document.getElementById('ground');g.querySelect
   const unlocked=k=>k==='commons'||k==='park'||((d.districts||{})[k]||{}).unlocked;
   for(let i=0;i<N;i++)for(let j=0;j<N;j++){if(!(ROAD.has(i)||ROAD.has(j)))continue;
     const near=Object.entries(CELLS).some(([k,[r,c]])=>{const [a,b]=cellTiles(r,c);return unlocked(k)&&i>=a-1&&i<=a+6&&j>=b-1&&j<=b+6});
-    el('polygon',{class:'street',points:pts(diamond(i,j)),fill:near?(tier>=2?'#4a4d55':'#6a6250'):'#7a6c4e',stroke:near?'rgba(255,255,255,.05)':'none'},g)}
+    facetTile(g,i,j,near?(tier>=2?['#4c4f56','#56595f']:['#a08f6d','#94845f']):['#a89878','#9a8a6a'],{cls:'street',seed:'road',amp:1.5,vary:.04})}
+  // kerbs along both sides of each street, broken at the crossings, so the streets always stand out from the districts
+  for(const k of [6,13])for(const e of [k,k+1])for(const [s0,s1] of [[0,6],[7,13],[14,N]])for(const [a,b] of [[iso(e,s0),iso(e,s1)],[iso(s0,e),iso(s1,e)]])
+    el('line',{class:'street',x1:a[0],y1:a[1],x2:b[0],y2:b[1],stroke:'rgba(38,32,24,.38)','stroke-width':1.1},g);
   if(tier>=2)for(const k of [6,13])for(let s=0;s<N;s++){if(ROAD.has(s))continue;const a=iso(k+.5,s+.15),b=iso(k+.5,s+.55),c=iso(s+.15,k+.5),e=iso(s+.55,k+.5);
     el('line',{class:'street',x1:a[0],y1:a[1],x2:b[0],y2:b[1],stroke:'#e9d98a','stroke-width':1.2,opacity:.7},g);el('line',{class:'street',x1:c[0],y1:c[1],x2:e[0],y2:e[1],stroke:'#e9d98a','stroke-width':1.2,opacity:.7},g)}
   for(const [i,j] of LAMPS){const [x,y]=iso(i,j);el('rect',{class:'street',x:x-.8,y:y-9,width:1.6,height:9,fill:'#3a3d44'},g);el('circle',{class:'street win lamp',cx:x,cy:y-10,r:1.8,fill:'#ffe6a3',opacity:0,'data-v':'0'},g)}}
@@ -608,11 +721,15 @@ function flag(g,x,y,color){if(QUALITY!=='high')return;el('rect',{x:x-.6,y:y-14,w
 function district(key,info,tier){const [r,c]=CELLS[key],[a,b]=cellTiles(r,c),city=document.getElementById('city');
   let dg=drawn[key];const unlocked=key==='commons'||key==='park'||info.unlocked,level=key==='commons'?2+tier*2:key==='park'?6:(info.level||1);
   if(!dg||dg.unlocked!==unlocked){if(dg){dg.ground.remove();dg.g.remove();if(!first)toast(`🎉 ${LOOK[key]?LOOK[key][1]:'The Park'} is open for building!`,key)}
-    dg=drawn[key]={unlocked,count:0,ground:el('g',{},document.getElementById('ground')),g:el('g',{},city)};
-    for(let i=a;i<a+6;i++)for(let j=b;j<b+6;j++)el('polygon',{class:'tile',points:pts(diamond(i,j,1,1,.02)),fill:unlocked?shade(GROUND[key],.95+((i+j)%2)*.06):shade(GROUND.wild,.95+((i*j)%3)*.04)},dg.ground);
-    if(key==='commons'){const [x,y]=centre(a+2,b+2,2,2);el('ellipse',{cx:x,cy:y,rx:30,ry:15,fill:'#3f7fa0',stroke:'#dfe9ea','stroke-width':3},dg.g);
-      el('ellipse',{class:'ripple',cx:x,cy:y,rx:22,ry:11,fill:'none',stroke:'#dff6ff','stroke-width':2},dg.g);el('rect',{x:x-3,y:y-22,width:6,height:22,fill:'#cfc6b2'},dg.g);el('circle',{cx:x,cy:y-26,r:6,fill:'#8e8676'},dg.g)}
-    if(key==='park'){const [x,y]=centre(a+1,b+2,3,3);el('ellipse',{cx:x,cy:y,rx:46,ry:22,fill:'#3d7ea0',stroke:'#9fd0e0','stroke-width':2,opacity:.95},dg.ground);
+    const G=document.getElementById('ground');dg=drawn[key]={unlocked,count:0,ground:G.insertBefore(el('g',{}),G.querySelector('.street')),g:el('g',{},city)};   // under the streets, kerbs and lamps
+    for(let i=a;i<a+6;i++)for(let j=b;j<b+6;j++)facetTile(dg.ground,i,j,unlocked?GROUND[key]:GROUND.wild,{seed:key});
+    if(key==='commons'){const [x,y]=centre(a+2,b+2,2,2),stone='#cfc6b2';water(dg.g,x,y,27,13.5,{seed:'fountain',rim:'#d3cbb7'});   // the fountain: a stone basin, a column and a cut-stone finial
+      el('ellipse',{class:'ripple',cx:x,cy:y,rx:22,ry:11,fill:'none',stroke:'#dff6ff','stroke-width':2},dg.g);
+      el('rect',{x:x-3,y:y-22,width:3,height:22,fill:shade(stone,'left')},dg.g);el('rect',{x,y:y-22,width:3,height:22,fill:shade(stone,'right')},dg.g);
+      const T=[x,y-33],B=[x,y-21],Lf=[x-6,y-27],Rt=[x+6,y-27],Cn=[x-1,y-28];
+      if(FACETS)[[Lf,T,Cn],[T,Rt,Cn],[Lf,Cn,B],[Cn,Rt,B]].forEach((p,q)=>facet(dg.g,p,shade('#9a917f',[toward(-1,-1),toward(1,-1),toward(-1,1),toward(1,1)][q])));
+      else facet(dg.g,[Lf,T,Rt,B],shade('#9a917f','left'))}
+    if(key==='park'){const [x,y]=centre(a+1,b+2,3,3);water(dg.ground,x,y,44,21,{seed:'pond',rim:'#a89c78'});
       if(QUALITY==='high')for(let k=0;k<6;k++)el('line',{class:'shimmer',x1:x-30+k*11,y1:y-10+(k%3)*9,x2:x-22+k*11,y2:y-10+(k%3)*9,stroke:'#e8f8ff','stroke-width':1.4,'stroke-linecap':'round',style:`animation-delay:-${k*.55}s`},dg.g)}
     if(!unlocked){for(const [di,dj] of [[.5,.5],[5.5,.5],[.5,5.5],[5.5,5.5]]){const [x,y]=iso(a+di,b+dj);el('polygon',{points:pts([[x-3,y],[x,y-12],[x+3,y]]),fill:'#f28b3c'},dg.g)}
       const [x,y]=centre(a+3.5,b+3.5,1,1);el('rect',{x:x-14,y:y-20,width:28,height:14,rx:2,fill:'#d9c9a2',stroke:'#7a6446'},dg.g);el('rect',{x:x-1,y:y-6,width:2,height:8,fill:'#7a6446'},dg.g)}
@@ -642,8 +759,8 @@ function labelXY(k){const [r,c]=CELLS[k]||CELLS.commons,[a,b]=cellTiles(r,c);ret
 let litSig='',crowdSig='';
 function liveTown(d){const st=d.stats||{},pop=d.population||0,ds=d.districts||{},here=k=>latest.filter(s=>s.place===k).length;
   const ratio=(st.food||0)/Math.max(1,pop*20),ripe=Math.max(0,Math.min(1,(ratio-.6)/1.6)),dry=ratio<.35,wet=weatherKey==='good_growing';
-  document.querySelectorAll('.field').forEach(f=>{const v=+f.dataset.v,c=dry&&!wet?['#a08a52','#b59d62']:v<ripe?['#c9a64a','#dcbc5c']:wet?['#6f9c3a','#86b54a']:['#7fa543','#95bb52'];
-    if(f.getAttribute('fill')!==c[0]){f.setAttribute('fill',c[0]);f.parentNode.querySelectorAll('.stripe').forEach(s=>s.setAttribute('stroke',c[1]))}});
+  document.querySelectorAll('.field').forEach(f=>{const v=+f.dataset.v,c=dry&&!wet?['#a08c5e','#b39f70']:v<ripe?['#c8a85a','#d9bc6e']:wet?['#6d9445','#82a856']:['#7d9a4a','#93ad5a'];
+    if(f.dataset.c!==c[0]){f.dataset.c=c[0];const fill=shade(c[0],+f.dataset.k||1);f.setAttribute('fill',fill);f.setAttribute('stroke',fill);f.parentNode.querySelectorAll('.stripe').forEach(s=>s.setAttribute('stroke',c[1]))}});
   const smokeF=Math.min(1,.15+((ds.industrial_ward||{}).level||1)/16+here('industrial_ward')*.2);
   document.querySelectorAll('.smoke').forEach(s=>{s.style.display=+s.dataset.v<smokeF?'':'none'});
   const litF=Math.min(1,.3+pop/50)*Math.max(0,Math.min(1,(darkness-.2)/.4)),sig=litF.toFixed(2)+':'+document.querySelectorAll('.win').length;
@@ -661,14 +778,14 @@ function liveTown(d){const st=d.stats||{},pop=d.population||0,ds=d.districts||{}
 const tokens=document.getElementById('tokens'),live={};let latest=[];
 const SKIN=['#f1c9a5','#e0ac7e','#c68a5a','#8d5a3b','#5e3b26'],HAIR=['#2b1d14','#5a3a22','#b07a3a','#e2c27a','#7a2a1a','#c9c9d6'];
 const rowShift={};
-function home(k,i,n){const [x,y]=labelXY(k),yy=y+12*LS+48*TS,key=k+':'+n+':'+LS.toFixed(2)+':'+TS.toFixed(2);
-  if(!(key in rowShift)){const half=(n-1)/2*30*TS+14*TS,extra=40,rects=[...document.querySelectorAll('#labels .dlabel')].filter(g=>g.dataset.key!==k).map(g=>{const r=g.querySelector('rect');return [+r.getAttribute('x'),+r.getAttribute('y'),+r.getAttribute('x')+(+r.getAttribute('width')),+r.getAttribute('y')+(+r.getAttribute('height'))]});
+function home(k,i,n){const [x,y]=labelXY(k),yy=y+12*LS+48*TK(),key=k+':'+n+':'+LS.toFixed(2)+':'+TS.toFixed(2);
+  if(!(key in rowShift)){const half=(n-1)/2*30*TK()+14*TK(),extra=12*TK()+2+34*Math.max(.85,TK()),rects=[...document.querySelectorAll('#labels .dlabel')].filter(g=>g.dataset.key!==k).map(g=>{const r=g.querySelector('rect');return [+r.getAttribute('x'),+r.getAttribute('y'),+r.getAttribute('x')+(+r.getAttribute('width')),+r.getAttribute('y')+(+r.getAttribute('height'))]});
     // overlap area between the row (people, feet and the +N badge) and every other district name; pick the nearest shift with the least
     // The row stays inside its own district: a small sideways nudge or a step down the block, never into a neighbour.
-    const cost=(dx,dy)=>rects.reduce((c,[l,t,r,b])=>c+Math.max(0,Math.min(r+4,x+dx+half+extra)-Math.max(l-4,x+dx-half))*Math.max(0,Math.min(b+2,yy+dy+6*TS)-Math.max(t-2,yy+dy-46*TS)),0);
+    const cost=(dx,dy)=>rects.reduce((c,[l,t,r,b])=>c+Math.max(0,Math.min(r+4,x+dx+half+extra)-Math.max(l-4,x+dx-half))*Math.max(0,Math.min(b+2,yy+dy+6*TK())-Math.max(t-2,yy+dy-46*TK())),0);
     let best=[0,0],bestC=Infinity;for(const dy of [0,10,20,30])for(let dx=0;dx<=48;dx+=8)for(const d of dx?[-dx,dx]:[0]){const c=cost(d,dy)+Math.abs(d)*.6+dy*.8;if(c<bestC){bestC=c;best=[d,dy]}}rowShift[key]=best}
-  const [sx,sy]=rowShift[key];return [x+sx+(i-(n-1)/2)*30*TS,yy+sy]}
-const place_=(x,y)=>`translate(${x.toFixed?x.toFixed(1):x},${y.toFixed?y.toFixed(1):y})`+(TS!==1?` scale(${TS.toFixed(2)})`:'');
+  const [sx,sy]=rowShift[key];return [x+sx+(i-(n-1)/2)*30*TK(),yy+sy]}
+const place_=(x,y)=>`translate(${x.toFixed?x.toFixed(1):x},${y.toFixed?y.toFixed(1):y}) scale(${TK().toFixed(3)})`;
 function roadFor(r,other){return r===0?6:r===2?13:(other===2?13:6)}
 function route(from,to){if(from===to||!CELLS[from]||!CELLS[to])return [];const [ra,ca]=CELLS[from],[rb,cb]=CELLS[to],IA=roadFor(ra,rb),IB=roadFor(rb,ra),ja=ca*7+3,jb=cb*7+3;
   let p;if(IA===IB)p=[[IA+.5,ja],[IA+.5,jb]];else{const J=[6,13].sort((x,y)=>Math.abs(ja-x)+Math.abs(jb-x)-Math.abs(ja-y)-Math.abs(jb-y))[0];p=[[IA+.5,ja],[IA+.5,J+.5],[IB+.5,J+.5],[IB+.5,jb]]}
@@ -748,7 +865,8 @@ function seedlings(list){const groups={};for(const s of list)(groups[s.place]=gr
       if(t.place!==k){t.path=[...route(t.place,k),[tx,ty]];t.place=k;t.g.style.display='';hushBubble(t)}else if(!t.path.length&&(Math.abs(t.x-tx)>1||Math.abs(t.y-ty)>1))t.path=[[tx,ty]];
       else if(t.path.length)t.path[t.path.length-1]=[tx,ty];
       if(!t.path.length)t.g.style.display=t.hidden?'none':''});
-    if(extra>0){const [x,y]=home(k,n-1,n),m=el('g',{class:'more'},tokens);el('rect',{x:x+14,y:y-30,width:36,height:22,rx:11,fill:'#6b3fd1',stroke:'#fff','stroke-width':2},m);el('text',{x:x+32,y:y-19},m).textContent='+'+extra}}
+    if(extra>0){const [x,y]=home(k,n-1,n),z=TK(),b=Math.max(.85,z),m=el('g',{class:'more',transform:`translate(${(x+12*z+2).toFixed(1)},${(y-17*z).toFixed(1)}) scale(${b.toFixed(3)})`},tokens);
+      el('rect',{x:0,y:-11,width:34,height:22,rx:11,fill:'#6b3fd1',stroke:'#fff','stroke-width':2},m);el('text',{x:17,y:0},m).textContent='+'+extra}}
   for(const id in live)if(!seen.has(id)){live[id].g.remove();delete live[id]}
   walk()}
 let walking=false,lastT=0;
@@ -768,33 +886,33 @@ function speak(t,line){document.querySelectorAll('.bubble').forEach(b=>b.remove(
   // The whole line, word-wrapped. The bubble tries above the head, higher up, then to either side,
   // and takes the first spot that covers no district name, panel or bar and stays on screen.
   // No bubble for a speaker the camera cannot see (off-frame, or behind a bar or panel); the caption still names them.
-  if(CARD||t.path.length||t.hidden)return;const [hx0,hy0]=toScreen(t.x,t.y-30),walls0=panels();if(hx0<10||hx0>950||hy0<band[0]||hy0>536||walls0.some(q=>hx0>q.l&&hx0<q.r&&hy0>q.t&&hy0<q.b))return;
+  if(CARD||t.path.length||t.hidden)return;const z=TK(),[hx0,hy0]=toScreen(t.x,t.y-30*z),walls0=panels();if(hx0<10||hx0>950||hy0<band[0]||hy0>536||walls0.some(q=>hx0>q.l&&hx0<q.r&&hy0>q.t&&hy0<q.b))return;
   const b=el('g',{class:'bubble'},t.g),pop=el('g',{class:'pop'},b),tx=el('text',{},pop),MAX=200,LH=15,rows=[];let cur='';
   const width=str=>{tx.textContent=str;return tx.getComputedTextLength()};
   for(const word of line.split(/\s+/)){const next=cur?cur+' '+word:word;if(cur&&width(next)>MAX){rows.push(cur);cur=word}else cur=next}if(cur)rows.push(cur);
-  const w=Math.max(...rows.map(width))+20,h=rows.length*LH+10,k=Math.min(1,1.25/CAM.s);tx.textContent='';b.setAttribute('transform',`scale(${k.toFixed(3)})`);
+  const w=Math.max(...rows.map(width))+20,h=rows.length*LH+10,k=Math.min(1,1.25/CAM.s);tx.textContent='';b.setAttribute('transform',`scale(${(k/z).toFixed(3)})`);
   const walls=panels();
   document.querySelectorAll('.dlabel').forEach(g=>{if(g.dataset.hidden)return;const r=g.querySelector('rect');const x=+r.getAttribute('x'),y=+r.getAttribute('y'),[l,tp]=toScreen(x,y),[rr,bt]=toScreen(x+(+r.getAttribute('width')),y+(+r.getAttribute('height')));walls.push({l,t:tp,r:rr,b:bt})});
   const cost=(bx,by)=>{const [l,tp]=toScreen(t.x+bx*k,t.y+by*k),[r,bt]=toScreen(t.x+(bx+w)*k,t.y+(by+h)*k);let c=0;
     for(const q of walls){const ox=Math.min(r,q.r)-Math.max(l,q.l),oy=Math.min(bt,q.b)-Math.max(tp,q.t);if(ox>-3&&oy>-3)c+=6000+Math.max(0,ox)*Math.max(0,oy)*4}
     // it should not sit on other Seedlings either (a lighter penalty: names and panels matter most)
-    for(const o of Object.values(live)){if(o===t||o.g.style.display==='none')continue;const [ox,oy]=toScreen(o.x,o.y-20*TS),hw=11*CAM.s*TS,hh=22*CAM.s*TS;
+    for(const o of Object.values(live)){if(o===t||o.g.style.display==='none')continue;const [ox,oy]=toScreen(o.x,o.y-20*z),hw=11*CAM.s*z,hh=22*CAM.s*z;
       const ix=Math.min(r,ox+hw)-Math.max(l,ox-hw),iy=Math.min(bt,oy+hh)-Math.max(tp,oy-hh);if(ix>0&&iy>0)c+=1500+ix*iy}
     // the tail must not cross a name or panel either
-    const [hx1,hy1]=toScreen(t.x,t.y-38),ex=Math.max(l,Math.min(r,hx1)),ey=Math.max(tp,Math.min(bt,hy1));
+    const [hx1,hy1]=toScreen(t.x,t.y-38*z),ex=Math.max(l,Math.min(r,hx1)),ey=Math.max(tp,Math.min(bt,hy1));
     const steps=Math.max(3,Math.ceil(Math.hypot(hx1-ex,hy1-ey)/4));for(let i=1;i<steps;i++){const f=i/steps,px=ex+(hx1-ex)*f,py=ey+(hy1-ey)*f;if(walls.some(q=>px>q.l-1&&px<q.r+1&&py>q.t-1&&py<q.b+1)){c+=8000;break}}
     const off=(Math.max(0,4-l)+Math.max(0,r-956))*(bt-tp)*9+(Math.max(0,band[0]+2-tp)+Math.max(0,bt-536))*(r-l)*9;c+=off+(off>0?60000:0);   // off the frame loses to any spot on screen
-    const [hx,hy]=toScreen(t.x,t.y-38),cx=(l+r)/2,cy=(tp+bt)/2;return c+Math.hypot(cx-hx,cy-hy)*2.2};   // strongly prefer short tails   // prefer spots close to the speaker
+    const [hx,hy]=toScreen(t.x,t.y-38*z),cx=(l+r)/2,cy=(tp+bt)/2;return c+Math.hypot(cx-hx,cy-hy)*2.2};   // strongly prefer short tails   // prefer spots close to the speaker
   // Candidate spots all around the head: above (at several heights), to either side, and below the feet.
-  const head=-38/k,spots=[];
-  for(let lift=0;lift<=160;lift+=20)for(const f of [0,-.25,.25,-.5,.5,-.75,.75])spots.push([-w/2+f*w,head-8-h-lift]);
-  for(const dy of [-30,0,30])spots.push([14/k,head-h/2+dy],[-14/k-w,head-h/2+dy]);
-  for(const f of [0,-.4,.4])spots.push([-w/2+f*w,10/k]);
+  const head=-38*z/k,spots=[];
+  for(let lift=0;lift<=160;lift+=10)for(const f of [0,-.25,.25,-.5,.5,-.75,.75])spots.push([-w/2+f*w,head-8-h-lift]);
+  for(const dy of [-30,0,30])spots.push([14*z/k,head-h/2+dy],[-14*z/k-w,head-h/2+dy]);
+  for(const f of [0,-.4,.4])spots.push([-w/2+f*w,10*z/k]);
   let best=spots[0],bestCost=Infinity;for(const sp of spots){const c=cost(sp[0],sp[1]);if(c<bestCost){best=sp;bestCost=c}}
   const [bx,by]=best;
   rows.forEach((r,k2)=>{const ts=el('tspan',{x:bx+10,y:by+5+LH/2+k2*LH},tx);ts.textContent=r});
   // The tail leaves the bubble at the edge point nearest the speaker's head.
-  const H=by>0?[0,-2/k]:[0,head],P=[Math.max(bx+10,Math.min(bx+w-10,H[0])),Math.max(by,Math.min(by+h,H[1]))],flat=P[1]===by||P[1]===by+h&&!(P[0]===bx||P[0]===bx+w);
+  const H=by>0?[0,-2*z/k]:[0,head],P=[Math.max(bx+10,Math.min(bx+w-10,H[0])),Math.max(by,Math.min(by+h,H[1]))],flat=P[1]===by||P[1]===by+h&&!(P[0]===bx||P[0]===bx+w);
   const side=H[1]>by+h?'b':H[1]<by?'t':H[0]<bx?'l':'r',base=side==='b'||side==='t'?[[P[0]-6,side==='b'?by+h:by],[P[0]+6,side==='b'?by+h:by]]:[[side==='l'?bx:bx+w,P[1]-6],[side==='l'?bx:bx+w,P[1]+6]];
   const tip=[H[0]+(P[0]-H[0])*.12,H[1]+(P[1]-H[1])*.12];
   pop.insertBefore(el('rect',{x:bx,y:by,width:w,height:h,rx:9,fill:'#fffdf5',stroke:'#171230','stroke-width':1.6}),tx);
@@ -808,7 +926,7 @@ function speak(t,line){document.querySelectorAll('.bubble').forEach(b=>b.remove(
 // A Seedling that sets off walking stops talking: its bubble fades rather than drifting into names or off the frame.
 function hushBubble(t){const b=t.g.querySelector('.bubble');if(!b||b.dataset.leaving)return;b.dataset.leaving='1';b.animate([{opacity:1},{opacity:0}],{duration:400,fill:'forwards'}).onfinish=()=>b.remove()}
 // A speaker who walks out of the shot (or behind a bar) takes the bubble with them.
-function dropBubbleIfHidden(t){const b=t.g.querySelector('.bubble');if(!b||b.dataset.leaving)return;const [x,y]=toScreen(t.x,t.y-30);
+function dropBubbleIfHidden(t){const b=t.g.querySelector('.bubble');if(!b||b.dataset.leaving)return;const [x,y]=toScreen(t.x,t.y-30*TK());
   if(x<10||x>950||y<band[0]||y>536||panels().some(q=>x>q.l&&x<q.r&&y>q.t&&y<q.b)){b.dataset.leaving='1';b.animate([{opacity:1},{opacity:0}],{duration:400,fill:'forwards'}).onfinish=()=>b.remove()}}
 
 // ---- the camera: a wide shot, drifting in on whoever is talking and on new buildings
@@ -850,7 +968,7 @@ let weatherKey='',festival=null,fxSig='',fireworks=null;
 // Keys: hour, sky top, sky middle, sky horizon, far hills, near hills, light over the town, darkness 0–1, stars 0–1.
 const LIGHT=[[0,'#1b2150','#3d3a6e','#5a4a72','#26223e','#1e1a32','rgba(24,28,88,.40)',.72,.55],
   [2,'#3a4488','#d98a92','#f4bc98','#5a4a60','#46394e','rgba(255,140,150,.16)',.32,.12],[4.5,'#6fa2da','#f5d6a8','#f2caa0','#7f7a5e','#68604c','rgba(255,196,130,.10)',.06,0],
-  [7,'#5f9ed8','#bfe0f4','#d6e6ee','#6d7f5a','#58694a','rgba(0,0,0,0)',0,0],[13,'#5a9ad6','#bfe0f4','#d6e6ee','#6d7f5a','#58694a','rgba(0,0,0,0)',0,0],
+  [7,'#5f9ed8','#bfe0f4','#d6e6ee','#76826f','#5a6b47','rgba(0,0,0,0)',0,0],[13,'#5a9ad6','#bfe0f4','#d6e6ee','#76826f','#5a6b47','rgba(0,0,0,0)',0,0],
   [15.5,'#6a98d0','#f2d9a8','#f0c690','#7a7552','#62603f','rgba(255,176,90,.12)',0,0],[17.5,'#4a3f7a','#f08a5a','#f7ae6a','#5a4050','#463040','rgba(255,106,58,.22)',.22,.08],
   [19,'#241c4a','#8a4a7a','#c26a6a','#2e2440','#241c34','rgba(64,40,120,.40)',.6,.45],[21,'#060a1f','#18204a','#1d2450','#15182c','#101224','rgba(6,12,52,.54)',1,1],
   [24,'#1b2150','#3d3a6e','#5a4a72','#26223e','#1e1a32','rgba(24,28,88,.40)',.72,.55]];
@@ -859,11 +977,15 @@ const rgba=c=>c[0]==='#'?[parseInt(c.slice(1,3),16),parseInt(c.slice(3,5),16),pa
 const mix=(a,b,t)=>{const x=rgba(a),y=rgba(b),v=x.map((n,k)=>n+(y[k]-n)*t);return `rgba(${v[0]|0},${v[1]|0},${v[2]|0},${v[3].toFixed(3)})`};
 function lightAt(hour){hour=((hour%24)+24)%24;let k=0;while(k<LIGHT.length-2&&LIGHT[k+1][0]<=hour)k++;const A=LIGHT[k],B=LIGHT[k+1],t=(hour-A[0])/(B[0]-A[0]);
   return {sky:[1,2,3].map(n=>mix(A[n],B[n],t)),hills:[mix(A[4],B[4],t),mix(A[5],B[5],t)],tint:mix(A[6],B[6],t),dark:A[7]+(B[7]-A[7])*t,stars:A[8]+(B[8]-A[8])*t}}
-let darkness=0,shadowSig='';
+let darkness=0,shadowSig='',rangeSig='';
+// The mountain ranges take the light of the hour: the far range fades into the horizon, every face keeps its own shading, snow stays pale.
+function ranges(L,veil){const far=veil(mix(L.sky[2],L.hills[0],.5),['#9aa3ad','#c9ab84']),col=[far,veil(L.hills[0],['#7d858f','#b0916a']),veil(L.hills[1],['#626a72','#977a58'])],snow=.82-.5*L.dark,sig=col.join()+snow.toFixed(2);
+  if(sig===rangeSig)return;rangeSig=sig;
+  document.querySelectorAll('#hills [data-l],#hills2 [data-l]').forEach(p=>{const c=col[+p.dataset.l],f=shade(p.dataset.s?blend(c,'#f1f4f7',snow):c,+p.dataset.k);p.setAttribute('fill',f);p.setAttribute('stroke',f)})}
 function sky(hour,wkey){const L=lightAt(hour),grey=wkey==='good_growing'||wkey==='water_watch',dust=wkey==='dust_winds',day=1-L.dark;darkness=L.dark;
-  const veil=(c,to)=>grey?mix(c,to[0],.55*day):dust?mix(c,to[1],.5*day):c;
+  const veil=(c,to)=>grey?mix(c,to[0],.55*day):dust?mix(c,to[1],.5*day):c;   // rain greys the sky and the ranges, dust browns them
   ['sky0','sky1','sky2'].forEach((id,n)=>document.getElementById(id).setAttribute('stop-color',veil(L.sky[n],[['#6f7885','#aab2bc','#bcc3cb'][n],['#a8835a','#dcbb8c','#e6c89a'][n]])));
-  document.getElementById('hills').setAttribute('fill',L.hills[0]);document.getElementById('hills2').setAttribute('fill',L.hills[1]);
+  ranges(L,veil);
   document.getElementById('stars').style.opacity=L.stars.toFixed(2);document.getElementById('tint').setAttribute('fill',L.tint);
   // The sun rises on the left, crosses the sky and sets on the right; the moon follows at night.
   const sun=document.getElementById('sun');sun.innerHTML='';const h=((hour%24)+24)%24;
@@ -877,13 +999,13 @@ function sky(hour,wkey){const L=lightAt(hour),grey=wkey==='good_growing'||wkey==
   const au=document.getElementById('aurora');au.innerHTML='';if(L.dark>.6&&wkey==='sensor_noise')for(let k=0;k<3;k++)el('path',{d:`M0 ${120+k*18} Q240 ${60+k*25} 480 ${110+k*14} T960 ${90+k*20}`,stroke:'url(#aurorag)','stroke-width':14-k*3,fill:'none',opacity:.8},au);
   document.getElementById('haze').setAttribute('fill',dust?'rgba(214,170,110,.16)':wkey==='water_watch'?'rgba(120,130,150,.10)':'transparent');
   shadows(up_,grey?0:Math.max(0,1-L.dark*2.2))}
-// Buildings cast shadows away from the sun: long and to the right at sunrise, short at noon, long and to the left at sunset.
+// Buildings cast shadows away from the town's one sun (the upper left), so they agree with the lit faces: long at dawn and dusk, short at noon.
 function hull(p){p=p.slice().sort((a,b)=>a[0]-b[0]||a[1]-b[1]);const cross=(o,a,b)=>(a[0]-o[0])*(b[1]-o[1])-(a[1]-o[1])*(b[0]-o[0]),lo=[],hi=[];
   for(const q of p){while(lo.length>1&&cross(lo[lo.length-2],lo[lo.length-1],q)<=0)lo.pop();lo.push(q)}for(const q of p.reverse()){while(hi.length>1&&cross(hi[hi.length-2],hi[hi.length-1],q)<=0)hi.pop();hi.push(q)}
   return lo.slice(0,-1).concat(hi.slice(0,-1))}
 function shadows(sunT,strength){const path=document.getElementById('shadows');if(sunT==null||strength<=0||QUALITY==='low'){path.setAttribute('opacity',0);return}
   const sig=sunT.toFixed(2)+':'+CASTERS.length;path.setAttribute('opacity',(.42*strength).toFixed(2));if(sig===shadowSig)return;shadowSig=sig;
-  const elev=Math.max(.12,Math.sin(Math.PI*sunT)),len=Math.min(2.6,.6/elev),dx=-(sunT*2-1)*len*1.1,dy=.3*len+.15;
+  const elev=Math.max(.12,Math.sin(Math.PI*sunT)),len=Math.min(2.6,.6/elev),dx=.95*len,dy=.18*len+.08;   // always away from the sun on the upper left
   path.setAttribute('d',CASTERS.map(([base,h])=>'M'+hull(base.concat(base.map(([x,y])=>[x+dx*h,y+dy*h]))).map(q=>q[0].toFixed(1)+' '+q[1].toFixed(1)).join('L')+'Z').join(''))}
 function particles(kind,n,make){if(QUALITY==='low')return;for(let k=0;k<n;k++){const p=document.createElement('i');p.className='particle';make(p,k);document.getElementById('wrap').appendChild(p)}}
 function effects(phase){const pal=festival&&HOLIDAYS[festival.name]?HOLIDAYS[festival.name][1]:null,dark=darkness>.3;
@@ -918,7 +1040,7 @@ function decorate(g,theme,pal,dark){const r=rng('fest:'+theme);
   if(theme==='halloween'||theme==='feast')for(const [i,j] of LAMPS)lamp(i+.35,j+.35,(x,y)=>pumpkin(g,x,y,5,dark&&theme==='halloween'));
   if(theme==='feast')for(let q=0;q<10;q++){const [x,y]=iso(1+r()*4.5,15+r()*4.5);el('rect',{x:x-6,y:y-6,width:12,height:6,rx:1.5,fill:'#e2c25a',stroke:'#a8862e'},g)}
   const [x,y]=iso(13.5,13.5),c=el('g',{},g);
-  if(theme==='christmas'){el('rect',{x:x-3,y:y-8,width:6,height:8,fill:'#6b4a2e'},c);[[34,-8,'#2a7a40'],[27,-24,'#2f8a4a'],[19,-38,'#3aa05a']].forEach(([w,o,f])=>el('polygon',{points:`${x-w},${y+o} ${x+w},${y+o} ${x},${y+o-26}`,fill:f},c));
+  if(theme==='christmas'){el('rect',{x:x-3,y:y-8,width:6,height:8,fill:'#6b4a2e'},c);[[34,-8],[27,-24],[19,-38]].forEach(([w,o])=>{const b=y+o,t=b-26,m=[x+w*.15,b+2];facet(c,[[x-w,b],[x,t],m],shade('#2f7a45',toward(-1,-.3)));facet(c,[[x,t],[x+w,b],m],shade('#2f7a45',toward(1,-.3)))});
     for(let q=0;q<14;q++){const t=r(),yy=y-10-t*52,xx=x+(r()-.5)*(34*(1-t)+4)*1.6;if(dark)el('circle',{cx:xx,cy:yy,r:5,fill:'url(#glowdot)'},c);el('circle',{cx:xx,cy:yy,r:2.2,fill:pal[q%3]},c)}
     el('polygon',{points:star(x,y-66,7,3),fill:'#ffd35a',stroke:'#fff3b0'},c);[[-22,'#e0303a'],[18,'#2d5bd8'],[-6,'#ffd35a']].forEach(([dx,f])=>{el('rect',{x:x+dx,y:y-6,width:10,height:8,fill:f},c);el('rect',{x:x+dx+4,y:y-6,width:2,height:8,fill:'#fff'},c)})}
   if(theme==='halloween'){pumpkin(c,x,y,20,dark);pumpkin(c,x-26,y+6,9,dark);pumpkin(c,x+26,y+6,8,dark);el('rect',{x:x+34,y:y-40,width:2,height:40,fill:'#6b4a2e'},c);el('rect',{x:x+26,y:y-32,width:18,height:2,fill:'#6b4a2e'},c);el('circle',{cx:x+35,cy:y-44,r:5,fill:'#e2c27a'},c);el('polygon',{points:`${x+28},${y-47} ${x+42},${y-47} ${x+35},${y-56}`,fill:'#2b2b2b'},c)}
@@ -1011,7 +1133,7 @@ function welcomeNew(d){const joins=(d.highlights||[]).filter(h=>h.kind==='join')
   lastJoin=Math.max(lastJoin,top)}
 function greet(who,tries=0){const s=latest.find(x=>x.name.toLowerCase()===who.toLowerCase());const t=s&&live[s.id];if(!t)return;
   if(t.path.length||t.hidden){if(tries<12)setTimeout(()=>greet(who,tries+1),700);return}   // wait until they reach their spot
-  lockUntil=Date.now()+9000;look(t.x,t.y-24,CARD?2.4:1.9);speaking=s.id;
+  lockUntil=Date.now()+9000;look(t.x,t.y-24*TK(),CARD?2.4:1.9);speaking=s.id;
   setTimeout(()=>speak(t,'Hi everyone! I just moved in. 👋'),1600)}
 
 // ---- captions: each Seedling in turn, with something new to say
@@ -1021,7 +1143,7 @@ function caption(){const cap=document.getElementById('cap'),pool=latest.filter(s
   cap.classList.add('hide');setTimeout(()=>{cap.innerHTML=`<span class="mood">${esc(s.mood_emoji||'🙂')}</span><div class="text"><div class="top"><span class="who">${s.badge?esc(s.badge)+' ':''}${esc(s.name)}</span> · <span class="what">${esc(place[0])} ${esc(s.activity)}</span></div>${line?`<div class="said">“${esc(line)}”</div>`:''}</div>`;cap.classList.remove('hide');tidyLabels()},450);
   said[s.id]=idx+1;const t=live[s.id];speaking=s.id;
   if(Date.now()>=lockUntil){capTick++;const closeUp=CARD?capTick%4!==0:capTick%2===1;   // a small card stays close up, with a look at the whole town every fourth turn
-    if(t&&!t.path.length&&closeUp)look(t.x,t.y-24,CARD?2.4:1.9);else look()}
+    if(t&&!t.path.length&&closeUp)look(t.x,t.y-24*TK(),CARD?2.4:1.9);else look()}
   speak(t,line)}
 setInterval(caption,SECONDS);
 poll(d=>{try{
@@ -1156,7 +1278,7 @@ const SLIDES=[
  ['seedlings','🌱 Seedlings',d=>(d.seedlings||[]).length,d=>{const s=d.seedlings.slice(0,5);return `<div class="list">${s.map(x=>`<div class="row"><span>${esc(x.mood_emoji)}</span><span class="grow"><b>${esc(x.name)}</b> · ${esc(x.activity)} <span class="sub">· ${esc(x.place_name)}</span></span></div>`).join('')}</div>${d.seedlings.length>5?`<div class="sub">${d.seedlings.length} Seedlings out on Avesta</div>`:''}`}],
  ['news','📰 News',d=>(d.narration||[]).length,d=>`<div class="list">${d.narration.slice(0,3).map(x=>`<div><div class="row"><span class="tag">${esc(x.desk||'COLONY')}</span><span class="grow big">${esc(x.emoji)} ${esc(x.headline||'')}</span></div><div class="sub">${esc((x.text||'').split(' — ').slice(-1)[0])}</div></div>`).join('')}</div>`],
  ['join','🌱 Play from chat',d=>d.join,d=>{const t=(d.join.tips||[]).slice(0,4);return `<h2>Join New Eridian</h2><div class="list">${t.map(x=>`<div class="row"><code>${esc(x[0])}</code><span class="grow sub">${esc(x[1])}</span></div>`).join('')}</div>
-   ${d.join.discord?`<div class="sub">Buttons, crafting and more on Discord: <b>${esc(d.join.discord.replace(/^https?:\/\//,''))}</b></div>`:''}`}],
+   ${d.join.discord?`<div class="sub">Crafting, queues, shopping lists, keep levels and quiet hours on Discord: <b>${esc(d.join.discord.replace(/^https?:\/\//,''))}</b></div>`:''}`}],
 ];
 // The same slides laid out in one horizontal band for the 'strip' layout.
 const T=(label,value,extra='')=>`<div class="tile"><small>${label}</small><b>${value}</b>${extra}</div>`;
@@ -1273,14 +1395,14 @@ def page(panel, channel):
 # Every OBS source, with a sensible Browser Source size.
 SOURCES = [
     ('hub', 'Hub (rotating)', 'Everything in one panel: society, stats, today, the live event, the stream challenge, the colony vote, the season, project and story, market, leaders, working now, Seedlings, news and how to join. Rotates every 12 seconds; a live event or stream challenge shows every other slide. Adapts to any source shape: a side column (340×176 compact, 340×440 tall) or a band under the game (1440×120 strip).', 640, 360, '&seconds=12 · &slides=society,event,news · &layout=compact|tall|strip|wide to force a layout'),
-    ('map', 'Avesta map', 'New Eridian as a living town: buildings go up (with scaffolding and a crane) as the society grows, Seedlings walk the streets and talk in speech bubbles, the camera drifts in on whoever is speaking, the sky and weather follow Avesta, the town decorates itself for holidays, voted festivals and season milestones, and projects the colony votes for are built as landmarks. Keep it at least a quarter of the screen, or use it as a card in a side column (340×250 or taller), where the caption sits below the town.', 960, 540, '&layout=card forces the column card · &quality=high (glows, water, flags) or low (lighter for slower PCs) · &stats=1 adds the society stat panel · &camera=0 fixed wide shot · &names=1 · &per=6 · &seconds=7 · preview: &hour=18 &holiday=christmas &weather=dust_winds'),
-    ('ticker', 'News ticker', 'A TV-style lower third: every item has a coloured section tag (Event, Weather, News, Society, Today, Market, Holiday, Project, Report, Join) and the Avesta clock sits on the right.', 1920, 56, '&speed=80 · works at any height'),
-    ('alerts', 'Live alerts', 'Animated pop-up for joins, level ups, achievements, events and milestones. Transparent when idle.', 700, 220, '&test=1 shows demo alerts · &sound=1 plays a chime · &seconds=7 · &hide=queue,join'),
+    ('map', 'Avesta map', 'New Eridian as a living low-poly diorama: faceted ground, trees, water and mountains lit by one sun. Buildings go up (with scaffolding and a crane) as the society grows, Seedlings walk the streets and talk in speech bubbles, the camera drifts in on whoever is speaking, the sky and weather follow Avesta, the town decorates itself for holidays, voted festivals and season milestones, and projects the colony votes for are built as landmarks. Keep it at least a quarter of the screen, or use it as a card in a side column (340×250 or taller), where the caption sits below the town.', 960, 540, '&layout=card forces the column card · &quality=high (finer facets, glows, water shimmer, flags) or low (flat shapes, lighter for slower PCs) · &stats=1 adds the society stat panel · &camera=0 fixed wide shot · &names=1 · &per=6 · &seconds=7 · preview: &hour=18 &holiday=christmas &weather=dust_winds'),
+    ('ticker', 'News ticker', 'A TV-style lower third: every item has a coloured section tag (Event, Challenge, Vote, Weather, News, Society, Today, Market, Holiday, Project, At work, Report, Rumor, Season, Join) and the Avesta clock sits on the right.', 1920, 56, '&speed=80 · works at any height'),
+    ('alerts', 'Live alerts', 'Animated pop-up for joins, level ups, achievements, trophies, finished queues, events, stream challenges, colony votes, seasons and society milestones. Transparent when idle.', 700, 220, '&test=1 shows demo alerts · &sound=1 plays a chime · &seconds=7 · &hide=queue,join'),
     ('challenge', 'Stream challenge bar', 'The live stream challenge as a goal bar: it slides in when a challenge starts ("Dust storm! Everyone repair the walls"), counts down with a shared progress bar and the top helper, celebrates the result, then slides away. Transparent when nothing is running. Challenges only happen while the stream is live.', 900, 110, '&test=1 shows a demo challenge'),
     ('leaders', 'Leaders', 'Top contributors, the most active citizens today and live event leaders.', 620, 330, ''),
     ('working', 'Working now', 'Everyone with a queue running, with live progress bars.', 460, 330, ''),
-    ('join', 'How to play', 'Rotating chat commands so new viewers can join. Set DISCORD_INVITE_URL to show your invite.', 520, 220, '&seconds=7'),
-    ('narrator', 'News', 'New Eridian News: a live report for every Seedling step, with what they gathered, earned or restored.', 640, 300, '&lines=3 · &seconds=10'),
+    ('join', 'How to play', 'Rotating chat commands so new viewers can join, and where to find the full game on Discord. Set DISCORD_INVITE_URL to show your invite.', 520, 220, '&seconds=7'),
+    ('narrator', 'News', 'New Eridian News: a live report for every Seedling step, with what they gathered, made, practised, earned or restored.', 640, 300, '&lines=3 · &seconds=10'),
     ('society', 'Society', "Name, tier, Avesta day and today's condition.", 420, 220, ''),
     ('today', 'Today', 'The daily directive and community stats.', 420, 280, ''),
     ('event', 'Event', 'The live society event with its countdown.', 520, 180, ''),
@@ -1311,7 +1433,7 @@ OPTIONS = {
             dict(p='seconds', label='Seconds per slide', kind='number', default=12, min=4, max=120, step=1),
             dict(p='slides', label='Slides to show (none ticked = all)', kind='multi', choices=_HUB_SLIDES)],
     'map': [dict(p='layout', label='Layout', kind='select', choices=[('', 'Automatic'), ('card', 'Card (side column)'), ('wide', 'Wide (full map)')]),
-            dict(p='quality', label='Quality', kind='select', choices=[('', 'Normal'), ('high', 'High (glows, water, flags)'), ('low', 'Low (lighter for slower PCs)')]),
+            dict(p='quality', label='Quality', kind='select', choices=[('', 'Normal'), ('high', 'High (finer facets, glows, flags)'), ('low', 'Low (flat shapes, for slower PCs)')]),
             dict(p='camera', label='Camera close-ups', kind='check', default=True, off='0'),
             dict(p='names', label='Names under Seedlings', kind='check', default=False, on='1'),
             dict(p='stats', label='Society stats panel', kind='check', default=False, on='1'),

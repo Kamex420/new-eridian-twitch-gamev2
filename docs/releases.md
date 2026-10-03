@@ -1,5 +1,20 @@
 # Release notes
 
+## The Avesta map as a low-poly diorama, smaller Seedlings, and an up-to-date overlay
+
+`/obs/map` keeps every district, building and feature, with a new look. No OBS changes are needed.
+- **One sun.** A fixed sun high on the upper left lights every face the same way: tops are lightest, left walls in between, right walls darkest. Roofs are shaded plane by plane, and cast shadows fall away from that sun, long at dawn and dusk and short at noon.
+- **Faceted ground.** Each tile is two triangles (four on `&quality=high`), tilted and toned a little by seed, in natural colours for each district: lawns for the Homes and the Park, ploughed earth and wheat for the Farms, dusty ochre and stone for the Frontier, pale paving for the Commons, gravel, tarmac and sandstone elsewhere. Kerbs line every street, so streets and district edges stay easy to read.
+- **A diorama.** The town stands on a slab of land with topsoil, clay and bedrock along its two front edges. Behind it, three ranges of faceted mountains fade with distance, the highest with snow, and take the colour of the sky at every hour, in rain and in dust.
+- **Trees, rocks and water.** Conifers are stacked cones and broadleaf trees faceted crowns, lit on one side. Rocks and shrubs are faceted, and the pond and the fountain are faceted water inside a shore rim. Buildings use muted plaster, timber, metal and glass.
+- **Seedlings are a little smaller on the full map**, at 72% of their earlier size, so they no longer stand as tall as the houses. Initials and names are drawn slightly larger inside them, and the "+N" badge does not shrink below 85%, so all three stay readable at 1080p. Walking, waving and speech bubbles follow the new size. The column card (`&layout=card`, or picked automatically for a narrow source) is already a miniature, so it keeps Seedlings at their original size.
+- **`&quality=low` stays light.** It draws one plain shape per tile, tree, rock and pond, and one silhouette per mountain range, so the town has about as many shapes as before (1,743 against 1,739 with twelve Seedlings). Normal quality has about 1.5 times as many (2,548) and high quality about twice as many (3,466).
+
+Every overlay panel was checked in a browser: all of them load without errors at their recommended sizes. Out-of-date text is fixed:
+- **The Working panel** suggested `!craftmax lumber` when no queue was running. On Twitch lite (the default), that command only points to Discord, so the panel now says to use `/queue` on Discord. With the full game on Twitch it still suggests `!craftmax lumber`.
+- **How to play** (the Join panel and the Hub's join slide) adds the newest Discord features: a tip for `/menu` (Craft → Shopping list, Bag → Keep levels, Settings → Quiet hours), and the Discord line now names shopping lists, keep levels and quiet hours. With the full game on Twitch, the tips add `!shopping add <recipe>` and `!keep <item> <n>`. These are only named: nobody's quiet hours, keep levels or shopping list ever appear on stream.
+- **The setup page** now lists every tag the ticker shows, including Challenge, Vote, Season, At work and Rumor, and every kind of live alert, including trophies, finished queues, stream challenges, colony votes and seasons. It also describes the map's new look and quality options.
+
 ## Back goes to the screen you were just on
 
 - **Every menu screen has ◀️ Back next to 🏠 Menu**, always the last two buttons.

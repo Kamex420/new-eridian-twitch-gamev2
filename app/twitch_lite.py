@@ -189,4 +189,5 @@ def join_tips():
             ['!mine hematite', 'Mine ore'], ['!farm', 'Work a job for SC and XP'], ['!relax', '+Energy and +Comfort'],
             ['!status', 'Needs and your next step'], ['!vote 1', "Vote on the colony's next project"],
             ['!seedling', 'Your Seedling on the map'], ['!challenge', 'Join the stream challenge'],
-            ['Discord', 'Crafting, queues, trading and more: ' + invite()]]
+            ['Discord', 'Crafting, queues, trading and more: ' + invite()],
+            ['Discord /menu', 'Craft → Shopping list · Bag → Keep levels · Settings → Quiet hours']]
