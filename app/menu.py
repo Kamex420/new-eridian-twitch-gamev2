@@ -28,7 +28,7 @@ AREAS = {
              ['work', 'craft', 'life', 'trade', 'community', 'me', 'status', 'inbox', 'recent', 'help', 'mod']),
     'recent': ('🔁', 'Recent actions', 'Your last ten actions. Tap one to do it again.', []),
     'work': ('⛏️', 'Work', 'Gather and mine materials, do your trade, train your skills and run queues.',
-             ['gather', 'mine', 'w_rare', 'farming', 'science', 'logistics', 'frontier', 'training', 'trainskill', 'repair', 'gearrepair', 'queue']),
+             ['gather', 'mine', 'w_rare', 'farming', 'science', 'logistics', 'frontier', 'trainskill', 'repair', 'gearrepair', 'queue']),
     'farming': ('🌾', 'Farming', 'Tend, harvest and water the fields.', ['w_farm_tend', 'w_farm_harvest', 'w_farm_irrigate', 'w_farm_hydroponics']),
     'science': ('🔬', 'Research', 'Scans and research.', ['w_scan', 'w_research', 'w_field_analysis']),
     'logistics': ('📦', 'Logistics', 'Cargo, deliveries and the spaceport.', ['w_cargo', 'w_delivery', 'w_spaceport', 'w_expedite']),
@@ -63,15 +63,15 @@ AREAS = {
               ['lk_view', 'lk_skin', 'lk_hair', 'lk_hair_colour', 'lk_outfit', 'lk_accessory', 'lk_headwear', 'lk_attitude', 'lk_catchphrase']),
     'account': ('🔗', 'Account', 'Create your citizen, or link your Twitch citizen: type !link in Twitch chat, then enter the code here.',
                 ['start', 'link']),
-    'mod': ('🛡️', 'Moderator', 'Events, the moderator log, account lookups and the channel panels. Moderators only.',
+    'mod': ('🛡️', 'Moderator', 'Events, the moderator log, account lookups and the channel panels. Game owner only.',
             ['m_eventstart', 'm_eventstop', 'm_chalstart', 'm_chalstop', 'm_live', 'm_recap', 'm_recappost', 'm_feed', 'm_modlog', 'm_lookup', 'm_force',
              'm_guidepanels', 'm_menupanel', 'h_moderator']),
 }
-# Areas only moderators see on the Home screen.
+# Areas only the game owner sees on the Home screen (moderator tools are owner-only).
 MOD_AREAS = {'mod'}
 # Leaves only owners see and can use (Force merge: the screens and its ticket check ownership again every time).
 OWNER_ONLY = {'m_force'}
-# Commands a menu button may only run for moderators (linklookup: owners).
+# Commands a menu button may only run for the game owner (the Discord IDs in DISCORD_OWNER_USER_IDS).
 MOD_COMMANDS = {'eventstart', 'eventstop', 'modlog', 'guidepanels', 'menupanel', 'linklookup',
                 'challengestart', 'challengestop', 'liveon', 'liveoff', 'liveauto', 'recappreview', 'recappost', 'feedhere', 'feedoff'}
 
@@ -113,9 +113,9 @@ WORK = [('farm_tend', 'Tend fields', '🌱'), ('farm_harvest', 'Harvest', '🎃'
         ('spaceport', 'Spaceport', '🚀'), ('expedite', 'Expedite', '⚡'), ('scout', 'Scout', '🧭'), ('survey', 'Survey', '🗺️')]
 for _task, _label, _emoji in WORK:
     leaf('w_' + _task, _label, _emoji, 'do', 'work', {'task': _task}, hint='')
-leaf('training', 'Training', '🎓', 'view', 'training', hint='skills, branches and what each task trains')
-leaf('trainskill', 'Train a skill', '🎯', 'pick', 'training', pick='field:training:skill', then='view', option='skill',
-     hint='one skill: its tasks and what they need')
+# One button for training: every skill with its level, then a skill's tasks, each with its own Start button.
+leaf('trainskill', 'Train skills', '🎓', 'pick', 'training', pick='skills', then='view', option='skill',
+     hint='pick a skill to see every task that trains it, each with a Start button')
 leaf('repair', 'Repair society', '🔧', 'do', 'repair', {'target': 'society'}, hint='fix settlement systems (Engineering)')
 leaf('gearrepair', 'Repair gear', '🪛', 'pick', 'repair', {'target': 'gear'}, pick='gear', then='do', option='item',
      hint='restore a quality tool with Iron Nails')
@@ -556,7 +556,7 @@ def nav(owner, area, up=None):
 
 
 def children_of(m, area, ctx=None):
-    """An area's buttons: moderator tools only for moderators, and (given a citizen) only what they can use now."""
+    """An area's buttons: moderator tools only for the game owner, and (given a citizen) only what they can use now."""
     keys = AREAS[area][3]
     if area == 'home' and not ui.is_moderator(m):
         keys = [k for k in keys if k not in MOD_AREAS]
@@ -758,6 +758,9 @@ def choices(m, db, p, source, uid):
         rows = db.execute(m.select(m.PlayerTitle).where(m.PlayerTitle.channel_id == p.channel_id,
                                                         m.PlayerTitle.canonical_uid == p.twitch_uid)).scalars().all()
         return [(m.TITLE_DEFS.get(r.title_key, r.title_key.replace('_', ' ').title()), r.title_key) for r in rows]
+    if source == 'skills':
+        return [(f'{label} — Lv {level} · {ready} of {total} task{"s" if total != 1 else ""} ready now', hub)
+                for hub, label, level, ready, total in m.training_skills(db, p)]
     if source.startswith('field:'):
         _, command, field = source.split(':', 2)
         return [(c['name'], c['value']) for f in m.DISCORD_OPTION_SCHEMA.get(command, []) if f['name'] == field for c in f.get('choices', [])]
@@ -861,6 +864,10 @@ def options_for(key, value=None):
 
 # ---------------------------------------------------------------- navigation (spends nothing)
 
+# Buttons on older messages for leaves merged into another: Training (a skill list) is now Train skills.
+MERGED = {'training': ('mk', 'trainskill')}
+
+
 def navigate(m, db, p, owner, verb, args, values, name):
     """Handle mn/mv/mk/mp controls. Returns message data, or None when the choice must run as an action."""
     if verb == 'mn':
@@ -875,6 +882,8 @@ def navigate(m, db, p, owner, verb, args, values, name):
             return ui.message(m, text, rows, 'menu', items)
         return area_message(m, db, p, owner, area)
     key = args[0] if args else ''
+    if key in MERGED and verb in {'mv', 'mk'}:
+        verb, key = MERGED[key]
     if key not in LEAVES:
         return ui.message(m, 'That button is no longer available. Here is the menu.', area_components(m, owner, 'home', context(m, owner, db, p)), 'menu')
     item = LEAVES[key]
@@ -897,6 +906,8 @@ def navigate(m, db, p, owner, verb, args, values, name):
             return amount_view(m, db, p, owner, key, value)
         if then == 'view':
             command, options = options_for(key, value)
+            if key == ui.TRAIN_PICK:
+                options.update(ui.training_options(value))      # 'medicine~2': the skill's second page of tasks
             return show(m, db, p, owner, command, options, area, name, key)
         if then == 'leaf' and value in LEAVES and LEAVES[value]['kind'] == 'view':
             command, options = options_for(value)
@@ -1022,7 +1033,7 @@ def _denied(m, command):
         return ''
     if command == 'linklookup':
         return '' if ui.is_owner(m) else '⛔ Owner access is required for linked-account lookup.'
-    return '' if ui.is_moderator(m) else '⛔ Moderator access is required for this tool.'
+    return '' if ui.is_moderator(m) else '⛔ Only the game owner can use this tool.'
 
 
 def show(m, db, p, owner, command, options, area, name, key=''):
@@ -1099,12 +1110,16 @@ def after_command(m, command, options, uid):
     return ui.row(*[b for b in buttons if b])
 
 
+# Replies whose own rows already lead on (a skill's Start buttons and its pages): only Again / area / Menu under them.
+OWN_ROWS = {'training'}
+
+
 def after_rows(m, command, options, uid, room=2):
     """Rows under a slash reply: the area's most-used buttons, then Again / area / Menu."""
     last = after_command(m, command, options, uid)
-    if room < 2:
-        return [last]
     legacy = m.discord_legacy_route(command, options)[0]
+    if room < 2 or legacy in OWN_ROWS:
+        return [last]
     area = COMMAND_AREA.get(legacy, 'home')
     visible = with_context(m, uid, lambda c: children_of(m, area, c))
     keys = [k for k in visible if k not in MOD_AREAS and not (k in LEAVES and LEAVES[k]['cmd'] == legacy and LEAVES[k]['kind'] != 'pick')]

@@ -2,7 +2,7 @@
 
 Run from the repository root:  python integrations/twitch/build_all_commands.py
 Every command that acts as a player carries k=YOUR_API_KEY (the TWITCH_API_KEY set on Railway);
-moderator commands carry key=YOUR_MOD_KEY (MOD_KEY) and come last. The commands are entered in the
+moderator commands carry key=YOUR_MOD_KEY (MOD_KEY), are for the broadcaster only and come last. The commands are entered in the
 dashboard, never typed in Twitch chat, because chat is public and the keys would be seen by everyone.
 """
 from pathlib import Path
@@ -104,7 +104,8 @@ ADMIN = [('!sirostart', 'admin/event/siro/on', ''), ('!siroend', 'admin/event/si
          ('!chstop', 'admin/challenge', '&action=stop')]
 
 
-LEVELS = {100: 'Everyone', 500: 'Moderator'}
+LEVELS = {100: 'Everyone', 500: 'Moderator', 1500: 'Broadcaster'}
+OWNER = 1500   # moderator tools are the channel owner's alone (main.TWITCH_OWNER_LEVEL)
 
 
 def block(command, response, level, cd, usercd):
@@ -141,11 +142,12 @@ def build():
     for command, path, arg in DISCORD_ONLY:
         extra = ('&mode=catalog' if path == 'seed-supplies' else '') + (ARG(arg) if arg else '')
         out.append(block(command, api(path, extra), 100, 0, 10) + '\n')
-    out += ['', '# ==== MODERATOR COMMANDS: add these last, with user level Moderator. Replace YOUR_MOD_KEY with your MOD_KEY. ====',
+    out += ['', '# ==== MODERATOR COMMANDS: add these last, with user level Broadcaster. Replace YOUR_MOD_KEY with your MOD_KEY. ====',
+            '# Only the broadcaster can use them: the game refuses anyone below StreamElements level 1500, Twitch moderators included.',
             '# !eventstart <siro|food|mining|delivery|market|water|machine|spaceport> · !eventstop ends whatever event is running',
             '# !live on|off|auto · !chstart [dust_storm|harvest_rush|ore_seam|lumber_drive|...] · !chstop', '']
     for command, path, extra in ADMIN:
-        out.append(block(command, api(path, extra, who=MOD), 500, 5, 5) + '\n')
+        out.append(block(command, api(path, extra, who=MOD), OWNER, 5, 5) + '\n')
     return '\n'.join(out).rstrip() + '\n'
 
 

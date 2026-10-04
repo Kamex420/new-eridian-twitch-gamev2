@@ -239,7 +239,7 @@ commands = [
         "type":STRING,"name":"player","description":"Select a player or enter a provider ID","required":False,"autocomplete":True
     }]),
 
-    cmd("eventstart","Start a society event (moderators only)",[{
+    cmd("eventstart","Start a society event (game owner only)",[{
         "type":STRING,"name":"event","description":"Event","required":True,
         "choices":[
             {"name":"Siro Bloom","value":"siro"},{"name":"Food Crisis","value":"food"},
@@ -248,8 +248,8 @@ commands = [
             {"name":"Infrastructure Breakdown","value":"machine"},{"name":"Spaceport Rush","value":"spaceport"}
         ]
     }]),
-    cmd("eventstop","Cancel the active event without penalty (moderators only)"),
-    cmd("modlog","View moderator event-control records (moderators only)"),
+    cmd("eventstop","Cancel the active event without penalty (game owner only)"),
+    cmd("modlog","View moderator event-control records (game owner only)"),
 
     # Clear work actions. Redundant legacy Discord commands are intentionally omitted.
     cmd("farm","Farming hub: tend, harvest, irrigate, or run hydroponics with a Small Water Filter",[

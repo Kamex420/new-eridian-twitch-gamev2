@@ -143,4 +143,4 @@ def test_a_skill_level_is_walked_through_its_training_task_and_what_that_task_ne
     assert processing < fabricator < chem < names.index('Craft Nitric Acid')
     assert not [n for n in names if n.startswith(('Buy ', 'Unlock '))]                     # made, never bought or unlocked
     text = m.training(W, '111', 'Kam', 'processing', '', 'discord').body.decode()
-    assert 'Chemistry — makes Antiseptics at the Medical Fabricator' in text                # the list says what the task makes
+    assert '**Chemistry** — makes Antiseptics at the Medical Fabricator' in text                # the list says what the task makes

@@ -397,74 +397,75 @@ Response: $(customapi https://new-eridian-twitch-game-production.up.railway.app/
 User level: Everyone | Global cooldown: 0s | User cooldown: 10s
 
 
-# ==== MODERATOR COMMANDS: add these last, with user level Moderator. Replace YOUR_MOD_KEY with your MOD_KEY. ====
+# ==== MODERATOR COMMANDS: add these last, with user level Broadcaster. Replace YOUR_MOD_KEY with your MOD_KEY. ====
+# Only the broadcaster can use them: the game refuses anyone below StreamElements level 1500, Twitch moderators included.
 # !eventstart <siro|food|mining|delivery|market|water|machine|spaceport> · !eventstop ends whatever event is running
 # !live on|off|auto · !chstart [dust_storm|harvest_rush|ore_seam|lumber_drive|...] · !chstop
 
 !sirostart
 Response: $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/admin/event/siro/on?channel=$(channel.provider_id)&level=$(sender.level)&key=YOUR_MOD_KEY)
-User level: Moderator | Global cooldown: 5s | User cooldown: 5s
+User level: Broadcaster | Global cooldown: 5s | User cooldown: 5s
 
 !siroend
 Response: $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/admin/event/siro/off?channel=$(channel.provider_id)&level=$(sender.level)&key=YOUR_MOD_KEY)
-User level: Moderator | Global cooldown: 5s | User cooldown: 5s
+User level: Broadcaster | Global cooldown: 5s | User cooldown: 5s
 
 !foodcrisis
 Response: $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/admin/event/food/on?channel=$(channel.provider_id)&level=$(sender.level)&key=YOUR_MOD_KEY)
-User level: Moderator | Global cooldown: 5s | User cooldown: 5s
+User level: Broadcaster | Global cooldown: 5s | User cooldown: 5s
 
 !foodclear
 Response: $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/admin/event/food/off?channel=$(channel.provider_id)&level=$(sender.level)&key=YOUR_MOD_KEY)
-User level: Moderator | Global cooldown: 5s | User cooldown: 5s
+User level: Broadcaster | Global cooldown: 5s | User cooldown: 5s
 
 !miningboom
 Response: $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/admin/event/mining/on?channel=$(channel.provider_id)&level=$(sender.level)&key=YOUR_MOD_KEY)
-User level: Moderator | Global cooldown: 5s | User cooldown: 5s
+User level: Broadcaster | Global cooldown: 5s | User cooldown: 5s
 
 !miningclear
 Response: $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/admin/event/mining/off?channel=$(channel.provider_id)&level=$(sender.level)&key=YOUR_MOD_KEY)
-User level: Moderator | Global cooldown: 5s | User cooldown: 5s
+User level: Broadcaster | Global cooldown: 5s | User cooldown: 5s
 
 !deliverysurge
 Response: $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/admin/event/delivery/on?channel=$(channel.provider_id)&level=$(sender.level)&key=YOUR_MOD_KEY)
-User level: Moderator | Global cooldown: 5s | User cooldown: 5s
+User level: Broadcaster | Global cooldown: 5s | User cooldown: 5s
 
 !deliveryclear
 Response: $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/admin/event/delivery/off?channel=$(channel.provider_id)&level=$(sender.level)&key=YOUR_MOD_KEY)
-User level: Moderator | Global cooldown: 5s | User cooldown: 5s
+User level: Broadcaster | Global cooldown: 5s | User cooldown: 5s
 
 !marketboom
 Response: $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/admin/event/market/on?channel=$(channel.provider_id)&level=$(sender.level)&key=YOUR_MOD_KEY)
-User level: Moderator | Global cooldown: 5s | User cooldown: 5s
+User level: Broadcaster | Global cooldown: 5s | User cooldown: 5s
 
 !marketclear
 Response: $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/admin/event/market/off?channel=$(channel.provider_id)&level=$(sender.level)&key=YOUR_MOD_KEY)
-User level: Moderator | Global cooldown: 5s | User cooldown: 5s
+User level: Broadcaster | Global cooldown: 5s | User cooldown: 5s
 
 !eventstart
 Response: $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/admin/event/$(1)/on?channel=$(channel.provider_id)&level=$(sender.level)&key=YOUR_MOD_KEY)
-User level: Moderator | Global cooldown: 5s | User cooldown: 5s
+User level: Broadcaster | Global cooldown: 5s | User cooldown: 5s
 
 !eventstop
 Response: $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/admin/event/siro/off?channel=$(channel.provider_id)&level=$(sender.level)&key=YOUR_MOD_KEY)
-User level: Moderator | Global cooldown: 5s | User cooldown: 5s
+User level: Broadcaster | Global cooldown: 5s | User cooldown: 5s
 
 !nextday
 Response: $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/admin/day/next?channel=$(channel.provider_id)&level=$(sender.level)&key=YOUR_MOD_KEY)
-User level: Moderator | Global cooldown: 5s | User cooldown: 5s
+User level: Broadcaster | Global cooldown: 5s | User cooldown: 5s
 
 !modlog
 Response: $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/admin/modlog?channel=$(channel.provider_id)&level=$(sender.level)&key=YOUR_MOD_KEY)
-User level: Moderator | Global cooldown: 5s | User cooldown: 5s
+User level: Broadcaster | Global cooldown: 5s | User cooldown: 5s
 
 !live
 Response: $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/admin/live?channel=$(channel.provider_id)&level=$(sender.level)&key=YOUR_MOD_KEY&state=$(queryescape $(1)))
-User level: Moderator | Global cooldown: 5s | User cooldown: 5s
+User level: Broadcaster | Global cooldown: 5s | User cooldown: 5s
 
 !chstart
 Response: $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/admin/challenge?channel=$(channel.provider_id)&level=$(sender.level)&key=YOUR_MOD_KEY&action=start&event=$(queryescape ${1:}))
-User level: Moderator | Global cooldown: 5s | User cooldown: 5s
+User level: Broadcaster | Global cooldown: 5s | User cooldown: 5s
 
 !chstop
 Response: $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/admin/challenge?channel=$(channel.provider_id)&level=$(sender.level)&key=YOUR_MOD_KEY&action=stop)
-User level: Moderator | Global cooldown: 5s | User cooldown: 5s
+User level: Broadcaster | Global cooldown: 5s | User cooldown: 5s

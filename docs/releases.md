@@ -1,5 +1,13 @@
 # Release notes
 
+## Moderator tools are the owner's alone, and one Train skills button with a Start for every task
+
+- **Only the game owner can use moderator tools.** On Discord that is the accounts in `DISCORD_OWNER_USER_IDS`: events, stream challenges, live on/off, the recap, the activity feed, the guide and game panels, the moderator log and account lookup. Administrator, Manage Server, Manage Messages and `DISCORD_MOD_ROLE_IDS` roles no longer grant them, and `DISCORD_MOD_ROLE_IDS` is no longer read. Anyone else who tries is told so, with the Discord ID to add if it is the owner on another account.
+- **On Twitch, only the broadcaster.** The StreamElements moderator commands (`!eventstart`, `!nextday`, `!live`, `!chstart`, `!modlog`…) need StreamElements level 1500 (Broadcaster) as well as `MOD_KEY`; Twitch moderators (500) and super moderators (1000) are refused. In the StreamElements dashboard, set each of these commands' user level to **Broadcaster** (`integrations/twitch/ALL_COMMANDS.txt` lists them). The level arrives in the URL, so `MOD_KEY` staying secret is what keeps this owner-only: anyone who can edit your StreamElements commands can read it.
+- **One training button.** Work had **Training** (the skills and their levels) and **Train a skill** (pick a skill, then its tasks). They are now one button, **Train skills**: every skill with its level and how many of its tasks are ready now, each with a Train button. Training buttons on older messages open it too.
+- **Every task has a Start button.** Some skills lost Start buttons to Discord's 40-component limit: Processing showed 7 of its 8, and Medicine (13 tasks) showed none. A skill's tasks now come in pages of up to 8 with Previous / Next, and every task on a page has Start beside it. In the classic layout the Start buttons are in the rows below. `/training skill:` shows the same screen.
+- **What trains the skill comes first.** Ready tasks (✅) lead the list, then tasks missing items (❌), then locked ones (🔒). Under the title, a line gives your level and how many tasks can train the skill now, or says that nothing is ready yet. A Start button is green only when its task can run, workstation locks included.
+
 ## The Avesta map as a SEED-style colony, with the Kernel at its heart
 
 `/obs/map` now looks like a tidy SEED colony, still drawn as a low-poly diorama lit by one sun. Every district, route, label, holiday, festival, landmark, construction site and time of day works as before. No OBS changes are needed.

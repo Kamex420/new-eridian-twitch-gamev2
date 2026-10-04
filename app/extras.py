@@ -390,7 +390,7 @@ def _step(mark, name, detail='', action=None, view=None, label='', cost=0):
 
 def _train(skill_label, level, current, hub):
     return _step('🔒', f'Reach {skill_label} Lv {level}', f'you are Lv {current} · each training task gives practice',
-                 view=('mp', 'trainskill', '=' + hub) if hub else ('mv', 'training'), label='Train')
+                 view=('mp', 'trainskill', '=' + hub) if hub else ('mk', 'trainskill'), label='Train')
 
 
 def _machine(m, ctx, e):

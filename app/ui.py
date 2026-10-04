@@ -75,7 +75,7 @@ def is_owner(m):
     payload = INTERACTION.get()
     return bool(payload) and m._discord_is_owner(payload)
 TICKET_HOURS = 24
-PANEL_COMMANDS = {'make', 'mine', 'gather', 'queue', 'status', 'seedindustries', 'menu', 'find', 'seedling', 'seedlingstep'}
+PANEL_COMMANDS = {'make', 'mine', 'gather', 'queue', 'status', 'seedindustries', 'menu', 'find', 'seedling', 'seedlingstep', 'training'}
 
 
 class UiTicket(Base):
@@ -309,29 +309,65 @@ def category_items(ctx, owner, category, page, station=''):
     return items, [cid(owner, 'sr', category, page, st)]
 
 
-def training_items(m, db, p, owner, hub):
-    """Each task of one skill with a Start button beside it; the button does the task once."""
-    items = []
-    for key, cfg in m.SEED_TASKS.items():
-        if cfg['hub'] != hub:
-            continue
-        ready = m.training_choice_label(db, p, key, cfg)[:1] == '✅'
-        ticket = issue(m, owner, {'do': 'train', 'skill': hub, 'task': key})
-        items.append({'match': cfg['label'], 'button': button('Start', cid(owner, 't', ticket), style=3 if ready else 2)})
-    return items
+TRAIN_PICK = 'trainskill'      # the menu's one training button: pick a skill, then Start any of its tasks
+
+
+def training_value(hub, page=1):
+    """What a training screen's buttons carry: the skill, plus its page after '~' past the first."""
+    return hub if int(page or 1) <= 1 else f'{hub}~{int(page)}'
+
+
+def training_options(value):
+    """{'skill', 'page'} from a training button's value ('medicine' or 'medicine~2')."""
+    hub, _, page = str(value or '').partition('~')
+    return {'skill': hub.strip().lower(), 'page': int(page) if page.isdigit() else 1}
+
+
+def training_skills_message(m, db, p, owner, text):
+    """Every training skill with a Train button beside it (its level and how many of its tasks are ready
+    are in the line); the old layout gets the same choices as a dropdown."""
+    pick = cid(owner, 'mp', TRAIN_PICK)
+    skills = m.training_skills(db, p)
+    items = [{'match': f'**{label}**', 'button': pick_button(pick, hub, 'Train', style=3 if ready else 2)}
+             for hub, label, level, ready, total in skills]
+    menu = select(pick, 'Choose a skill to train', [option(label, hub, f'Lv {level} · {ready} of {total} tasks ready now', '✅' if ready else None)
+                                                   for hub, label, level, ready, total in skills])
+    return message(m, text, [menu], 'training', [i for i in items if i['button']], [pick])
+
+
+def training_message(m, db, p, owner, hub, page, text):
+    """One skill's tasks, the ones that train it now first, each with its own Start button (green when ready).
+
+    Every task on the page has a Start button: beside its line in the newer layout and, for the old layout,
+    in the rows below too (the newer layout drops each copy it shows beside a line). Skills with more tasks
+    than fit beside their lines on one card get Previous / Next pages."""
+    tasks = m.training_tasks(db, p, hub, 'discord')
+    page, pages, shown = m.training_page_of(tasks, page)
+    items, starts = [], []
+    for t in shown:
+        style = 3 if t['status'] == '✅' else 2
+        custom_id = cid(owner, 't', issue(m, owner, {'do': 'train', 'skill': hub, 'task': t['key']}))
+        items.append({'match': f"**{t['cfg']['label']}**", 'button': button('Start', custom_id, style=style)})
+        starts.append(button(t['cfg']['label'], custom_id, style=style, emoji='▶️'))
+    rows = [row(*starts[i:i + 5]) for i in range(0, len(starts), 5)]
+    pick = cid(owner, 'mp', TRAIN_PICK)
+    controls = []
+    if pages > 1:
+        before = pick_button(pick, training_value(hub, page - 1), 'Previous') if page > 1 else None
+        after = pick_button(pick, training_value(hub, page + 1), 'Next') if page < pages else None
+        if before:
+            before['emoji'] = {'name': '◀️'}
+        if after:
+            after['emoji'] = {'name': '▶️'}
+        controls += [before, button(f'Page {page}/{pages}', cid(owner, 'tg', hub, page), disabled=True), after]
+    controls.append(button('All skills', cid(owner, 'mk', TRAIN_PICK), emoji='🎓'))
+    rows.append(row(*controls))
+    return message(m, text, rows, 'training', items)
 
 
 def list_items(m, owner, command, options, name='Citizen'):
-    """(items, replaces) for list views that are not panels, else (None, ()). See with_items."""
-    command, options = m.discord_legacy_route(command, options or {})
-    if command == 'training' and options.get('skill') and not options.get('task'):
-        hub = str(options['skill']).lower().strip()
-        if hub in m.SEED_HUBS:
-            with m.SessionLocal() as db:
-                p = _player(m, db, owner, name)
-                items = training_items(m, db, p, owner, hub)
-                db.commit()
-            return items, ()
+    """(items, replaces) for list views that are not panels, else (None, ()). See with_items.
+    A skill's training tasks are a panel now (training_message), with their Start buttons in place."""
     return None, ()
 
 
@@ -585,6 +621,17 @@ def slash_panel(m, command, uid, name, options, result):
         return None
     with m.SessionLocal() as db:
         p = _player(m, db, uid, name)
+        if command == 'training':
+            if options.get('task'):
+                return None                       # a task was done: the usual result card
+            hub = str(options.get('skill') or '').lower().strip()
+            if hub not in m.SEED_HUBS:
+                return training_skills_message(m, db, p, uid, result)
+            try:
+                page = max(1, int(options.get('page') or 1))
+            except (TypeError, ValueError):
+                page = 1
+            return training_message(m, db, p, uid, hub, page, result)
         if command == 'make':
             ctx = wb.Context(m, db, p)
             category = wb.normalize_category(options.get('category')) or ''

@@ -1,5 +1,6 @@
 """Every command reachable by buttons: amounts, pages, pop-up forms, the public panel and moderator tools."""
 import json
+import pytest
 from test_colony import m, reset
 from test_workbench_ui import citizen, press, controls, W, LUMBER
 from app import ui, menu
@@ -121,17 +122,41 @@ def test_public_panel_opens_each_citizens_own_private_menu():
     assert 'Open your own menu' in text_of(ui.handle_component(m, payload))
 
 
-def test_moderator_tools_are_hidden_and_refused_for_players():
+def test_moderator_tools_are_hidden_and_refused_for_players(monkeypatch):
     citizen()
-    assert 'Moderator' not in labels(press(ui.cid('111', 'mn', 'home'))['data'])
+    monkeypatch.setattr(m, 'DISCORD_OWNER_USER_IDS', {'111'})                 # the game owner
+    citizen('222')
+    assert 'Moderator' not in labels(press(ui.cid('222', 'mn', 'home'), uid='222')['data'])
     assert 'Moderator' in labels(moderator_press(ui.cid('111', 'mn', 'home'))['data'])
-    denied = press(ui.cid('111', 'mv', 'm_modlog'))['data']
-    assert 'Moderator access is required' in text_of(denied)
+    denied = moderator_press(ui.cid('222', 'mv', 'm_modlog'), uid='222')['data']    # Manage Server, but not the owner
+    assert 'Only the game owner' in text_of(denied)
     assert 'No moderator actions' in text_of(moderator_press(ui.cid('111', 'mv', 'm_modlog'))['data'])
     confirm = moderator_press(ui.cid('111', 'mp', 'm_eventstart'), values=['food'])['data']
     started = moderator_press(button(confirm, 'Confirm')['custom_id'])['data']
-    assert 'Moderator access' not in text_of(started)
+    assert 'Only the game owner' not in text_of(started)
     assert 'could not be posted' in m._discord_call_internal('menupanel', '111', 'Kam', {}, 'i')
+
+
+@pytest.mark.parametrize('permissions', [str(0x8), str(0x20), str(0x2000), '0'])
+def test_server_moderators_and_admins_who_are_not_the_owner_get_no_moderator_tools(monkeypatch, permissions):
+    """Administrator, Manage Server, Manage Messages or a moderator role no longer open moderator tools: only the owner IDs do."""
+    citizen('222')
+    monkeypatch.setattr(m, 'DISCORD_OWNER_USER_IDS', {'111'})
+    payload = {'type': 3, 'data': {'custom_id': ui.cid('222', 'mn', 'home'), 'values': []},
+               'member': {'user': {'id': '222', 'username': 'Mod'}, 'permissions': permissions, 'roles': ['999']}, 'message': {'flags': 64}}
+    assert not m._discord_is_moderator(payload)
+    assert 'Moderator' not in labels(ui.handle_component(m, payload)['data'])
+    for leaf in ('m_modlog', 'm_live', 'm_recap'):
+        payload['data']['custom_id'] = ui.cid('222', 'mv', leaf)
+        assert 'Only the game owner' in text_of(ui.handle_component(m, payload)['data']), leaf
+    payload['data'] = {'custom_id': ui.cid('222', 'mp', 'm_eventstart'), 'values': ['food']}
+    confirm = ui.handle_component(m, payload)['data']
+    payload['data'] = {'custom_id': button(confirm, 'Confirm')['custom_id'], 'values': []}
+    assert 'Only the game owner' in text_of(ui.handle_component(m, payload)['data'])          # pressing Confirm starts nothing
+    with m.SessionLocal() as db:
+        assert not m.world(db, W).active_event
+    owner = dict(payload, member={'user': {'id': '111', 'username': 'Kam'}, 'permissions': '0'})
+    assert m._discord_is_moderator(owner)                                        # the owner needs no server permission
 
 
 def test_slash_replies_offer_the_areas_next_buttons():

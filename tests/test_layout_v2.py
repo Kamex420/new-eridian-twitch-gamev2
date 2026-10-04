@@ -279,6 +279,89 @@ def test_a_skills_tasks_each_get_a_start_button():
     assert {'Again', 'Tasks', 'Menu'} <= {c['label'] for c in v2.controls(result)}
 
 
+def _skill_pages(hub, slash=False, monkeypatch=None):
+    """Every page of one skill's tasks: (tasks named on it, its message data), through the menu or /training."""
+    pages, sent = [], []
+    if slash:
+        monkeypatch.setattr(deferred, 'edit_original', lambda app, token, data: sent.append(data))
+    total = m.training_pages(sum(1 for c in m.SEED_TASKS.values() if c['hub'] == hub))
+    for page in range(1, total + 1):
+        if slash and page == 1:
+            payload = {'id': f'{hub}-{page}', 'application_id': 'a', 'token': 't', 'channel_id': '5', 'member': {'user': {'id': '111', 'username': 'Kam'}}}
+            deferred.finish(m, payload, 'training', '111', 'Kam', {'skill': hub})
+            data = sent[-1]
+        else:
+            with m.SessionLocal() as db:
+                data = menu.navigate(m, db, db.query(m.Player).one(), '111', 'mp', ['trainskill'], [ui.training_value(hub, page)], 'Kam')
+                db.commit()
+        with m.SessionLocal() as db:
+            p = db.query(m.Player).one()
+            named = [t['cfg']['label'] for t in m.training_page_of(m.training_tasks(db, p, hub, 'discord'), page)[2]]
+        pages.append((named, data))
+    return pages
+
+
+@pytest.mark.parametrize('slash', [False, True])
+def test_every_way_to_train_every_skill_has_a_start_button_beside_it(monkeypatch, slash):
+    """Medicine has 13 tasks and Processing 8: before, some (or all) of them lost their Start button to Discord's
+    40-component limit. Now each skill's tasks come in pages, and every task on a page gets its Start button."""
+    citizen()
+    for hub in m.SEED_HUBS:
+        seen = []
+        for named, data in _skill_pages(hub, slash, monkeypatch):
+            out = v2.convert(data)
+            assert assert_valid(out), hub
+            beside = {s['components'][0]['content'].split('\n')[0]: s['accessory'] for s in sections(out)}
+            assert len(beside) == len(named), (hub, named)
+            for label in named:
+                line = next(k for k in beside if f'**{label}**' in k)
+                assert beside[line]['label'] == 'Start' and beside[line]['custom_id'].startswith('ne|111|t|'), (hub, label)
+            assert not [c for c in v2.controls(out) if c.get('label') in named]       # no leftover copies in the rows
+            # The old layout has no buttons beside lines: every Start is in the rows instead.
+            assert {c.get('label') for r in data['components'] for c in r['components']} >= set(named), hub
+            assert len(data['components']) <= 5
+            seen += named
+        assert sorted(seen) == sorted(c['label'] for c in m.SEED_TASKS.values() if c['hub'] == hub)
+
+
+def test_a_skills_ready_tasks_lead_and_pages_move_between_its_tasks():
+    citizen()
+    with m.SessionLocal() as db:
+        p = db.query(m.Player).one()
+        for key in ('herbs', 'flaxa'):
+            m.material_change(db, p, m.item_identity.canonical(key), 5)
+        db.commit()
+        p = db.query(m.Player).one()
+        marks = [t['status'] for t in m.training_tasks(db, p, 'medicine', 'discord')]
+    assert marks == sorted(marks, key=lambda x: m.TRAINING_ORDER[x])                # ready, then missing items, then locked
+    (first, page_one), (second, page_two) = _skill_pages('medicine')
+    assert len(first) == m.TRAINING_PAGE and len(first) + len(second) == 13 and not set(first) & set(second)
+    after = next(c for c in v2.controls(v2.convert(page_one)) if c.get('label') == 'Next')
+    moved = press(after['custom_id'])
+    assert all(f'**{label}**' in v2.text_of(v2.convert(moved['data'])) for label in second)
+    back = next(c for c in v2.controls(v2.convert(page_two)) if c.get('label') == 'Previous')
+    assert f'**{first[0]}**' in v2.text_of(v2.convert(press(back['custom_id'])['data']))
+    lead = v2.text_of(v2.convert(page_one)).split('\n')
+    assert any(line.startswith('Lv 1 · ') for line in lead)                      # the level and what is ready, up top
+
+
+def test_one_training_button_lists_every_skill_with_its_level_and_a_train_button():
+    citizen()
+    work = v2.convert(press(ui.cid('111', 'mn', 'work'))['data'])
+    names = [c.get('label') for c in v2.controls(work)]
+    assert names.count('Train skills') == 1 and 'Train a skill' not in names and 'Training' not in names
+    assert sum(1 for k in menu.AREAS['work'][3] if k in menu.LEAVES and menu.LEAVES[k]['cmd'] == 'training') == 1
+    skills = v2.convert(press(ui.cid('111', 'mk', 'trainskill'))['data'])
+    assert assert_valid(skills)
+    found = sections(skills)
+    assert len(found) == len(m.SEED_HUBS) and all(s['accessory']['label'] == 'Train' for s in found)
+    assert '**Medicine** — Lv 1 · ' in v2.text_of(skills) and 'tasks ready now' in v2.text_of(skills)
+    medicine = next(s['accessory'] for s in found if '**Medicine**' in s['components'][0]['content'])
+    assert '🎓 Train Medicine' in v2.text_of(v2.convert(press(medicine['custom_id'])['data']))
+    old = press(ui.cid('111', 'mv', 'training'))['data']                          # a Training button on an older message
+    assert 'Train Skills' in v2.text_of(v2.convert(old))
+
+
 
 # ---------------------------------------------------------------- where messages leave for Discord
 

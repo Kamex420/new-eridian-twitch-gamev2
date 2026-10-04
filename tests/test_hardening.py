@@ -11,11 +11,14 @@ W = m.DISCORD_WORLD_ID
 def test_moderator_commands_take_the_moderator_key_and_merges_still_need_the_admin_key(monkeypatch):
     monkeypatch.setattr(m, 'ADMIN_KEY', 'admin-secret')
     monkeypatch.setattr(m, 'MOD_KEY', 'mod-secret')
-    started = client.get('/api/v1/admin/event/siro/on', params={'channel': W, 'level': 500, 'key': 'mod-secret'}).text
+    started = client.get('/api/v1/admin/event/siro/on', params={'channel': W, 'level': 1500, 'key': 'mod-secret'}).text
     assert 'STARTED' in started
-    assert 'Invalid' in client.get('/api/v1/admin/event/siro/off', params={'channel': W, 'level': 500, 'key': 'wrong'}).text
+    assert 'Invalid' in client.get('/api/v1/admin/event/siro/off', params={'channel': W, 'level': 1500, 'key': 'wrong'}).text
     # ADMIN_KEY keeps working for moderator commands added before MOD_KEY existed.
-    assert 'Invalid' not in client.get('/api/v1/admin/event/siro/off', params={'channel': W, 'level': 500, 'key': 'admin-secret'}).text
+    assert 'Invalid' not in client.get('/api/v1/admin/event/siro/off', params={'channel': W, 'level': 1500, 'key': 'admin-secret'}).text
+    # Owner only: a Twitch moderator (StreamElements level 500) with the right key is still refused.
+    for path in ('/api/v1/admin/event/food/on', '/api/v1/admin/day/next', '/api/v1/admin/modlog', '/api/v1/admin/live', '/api/v1/admin/challenge', '/api/v1/admin/recap'):
+        assert 'Only the game owner' in client.get(path, params={'channel': W, 'level': 500, 'key': 'mod-secret'}).text, path
     merge = client.get('/api/v1/admin/merge', params={'channel': W, 'keep': 'a', 'merge': 'b', 'key': 'mod-secret'})
     assert merge.status_code == 403
     assert client.get('/api/v1/admin/duplicates', params={'channel': W, 'key': 'mod-secret'}).status_code == 403

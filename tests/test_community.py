@@ -214,8 +214,10 @@ def test_live_only_with_chatters_or_a_moderator():
         le._chatters.clear(); le.set_live(m, db, 'on')
         assert le.is_live(m, db)
     denied = client.get('/api/v1/admin/live', params={'state': 'on', 'level': 100, 'key': 'test-admin-key'}).text
-    assert 'Moderator' in denied
-    ok = client.get('/api/v1/admin/live', params={'state': 'auto', 'level': 500, 'key': 'test-admin-key'}).text
+    assert 'Only the game owner' in denied
+    moderator = client.get('/api/v1/admin/live', params={'state': 'on', 'level': 500, 'key': 'test-admin-key'}).text
+    assert 'Only the game owner' in moderator                    # a Twitch moderator is not the channel owner
+    ok = client.get('/api/v1/admin/live', params={'state': 'auto', 'level': 1500, 'key': 'test-admin-key'}).text
     assert 'automatic' in ok
 
 
@@ -242,7 +244,7 @@ def gather_lumber(uid, name='Nova', n=1):
 def test_chat_fills_the_goal_and_everyone_who_helped_is_paid(monkeypatch):
     monkeypatch.setattr(trophies, 'check', lambda *a, **k: [])      # trophy rewards would blur the exact payouts
     call('/api/v1/start', uid='a', name='Ann'); call('/api/v1/start', uid='b', name='Bo')
-    started = client.get('/api/v1/admin/challenge', params={'action': 'start', 'event': 'lumber_drive', 'level': 500, 'key': 'test-admin-key'}).text
+    started = client.get('/api/v1/admin/challenge', params={'action': 'start', 'event': 'lumber_drive', 'level': 1500, 'key': 'test-admin-key'}).text
     assert 'Lumber Drive' in started and 'Goal' in started
     with m.SessionLocal() as db:
         row = le.active(m, db); row.goal = 3; db.commit()
@@ -271,7 +273,7 @@ def test_chat_fills_the_goal_and_everyone_who_helped_is_paid(monkeypatch):
 def test_time_running_out_still_thanks_the_helpers_and_seedlings_do_not_count(monkeypatch):
     monkeypatch.setattr(trophies, 'check', lambda *a, **k: [])
     call('/api/v1/start', uid='a', name='Ann')
-    client.get('/api/v1/admin/challenge', params={'action': 'start', 'event': 'lumber_drive', 'level': 500, 'key': 'test-admin-key'})
+    client.get('/api/v1/admin/challenge', params={'action': 'start', 'event': 'lumber_drive', 'level': 1500, 'key': 'test-admin-key'})
     token = m.autonomy.ACTING.set(True)
     try:
         gather_lumber('a', 'Ann')
@@ -294,11 +296,11 @@ def test_time_running_out_still_thanks_the_helpers_and_seedlings_do_not_count(mo
 def test_stopping_a_challenge_and_its_status_views():
     call('/api/v1/start')
     assert 'No stream challenge' in call('/api/v1/challenge')
-    client.get('/api/v1/admin/challenge', params={'action': 'start', 'event': 'dust_storm', 'level': 500, 'key': 'test-admin-key'})
+    client.get('/api/v1/admin/challenge', params={'action': 'start', 'event': 'dust_storm', 'level': 1500, 'key': 'test-admin-key'})
     chat = call('/api/v1/challenge')
     assert chat.startswith('🌪️ Dust Storm: 0/') and len(chat.encode()) <= 200
     assert 'STREAM CHALLENGE: DUST STORM' in call('/api/v1/challenge', provider='discord')
-    stopped = client.get('/api/v1/admin/challenge', params={'action': 'stop', 'level': 500, 'key': 'test-admin-key'}).text
+    stopped = client.get('/api/v1/admin/challenge', params={'action': 'stop', 'level': 1500, 'key': 'test-admin-key'}).text
     assert 'stopped' in stopped
     with m.SessionLocal() as db:
         assert db.query(le.Challenge).one().state == 'cancelled'

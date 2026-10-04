@@ -34,19 +34,19 @@ Set `DISCORD_WORLD_ID` to the Twitch channel's numeric ID (what StreamElements s
 
 The game keeps the Discord channel quiet. Command replies are private to the player except moderator event announcements; set `DISCORD_PUBLIC_ACTIONS=true` to make life and work replies (`/relax`, `/eat`, `/work`…) public again. Queue alerts go by direct message unless a player chooses channel mentions in `/settings`, and closed DMs wait in the player's Notifications rather than going to the channel. `FEED_SECONDS` (default `1200`, 20 minutes) sets how often the activity feed updates; big moments (events, stream challenges, votes, tier-ups) still post at once; it edits its own message when nobody has posted since, so a calm channel gets one growing message.
 
-`DISCORD_OWNER_USER_IDS` and `DISCORD_MOD_ROLE_IDS` control existing privileged functions. These values are environment configuration, not repository content. The game title defaults to New Eridian v2 and the society name to New Eridian.
+`DISCORD_OWNER_USER_IDS` lists the game owner's Discord accounts. Moderator tools (events, stream challenges, live, the recap, the activity feed, the guide and game panels, the moderator log, account lookup and Force merge) are owner-only: server permissions and roles do not grant them, and `DISCORD_MOD_ROLE_IDS` is no longer read. On Twitch the same tools need StreamElements level 1500 (the broadcaster) and `MOD_KEY`. These values are environment configuration, not repository content. The game title defaults to New Eridian v2 and the society name to New Eridian.
 
 ## Keys
 
 | Variable | Used by | Where it goes |
 | --- | --- | --- |
 | `TWITCH_API_KEY` | Every StreamElements command that acts as a player (`k=`) | Railway and the StreamElements dashboard |
-| `MOD_KEY` | StreamElements moderator commands: events, next day, live, challenges, recap, modlog (`key=`) | Railway and the StreamElements dashboard |
+| `MOD_KEY` | StreamElements moderator commands, for the broadcaster only (user level Broadcaster): events, next day, live, challenges, recap, modlog (`key=`) | Railway and the StreamElements dashboard |
 | `ADMIN_KEY` | Admin tools only: `/api/v1/admin/duplicates`, `/api/v1/admin/merge`, the routine step | Railway only; never in StreamElements |
 
 Enter the commands in the StreamElements dashboard (Chatbot → Chat commands → Custom commands), never by typing `!command add` in Twitch chat: chat is public and copied by chat-log sites, so a key typed there is public. If a key has been pasted in chat, set new values on Railway and update the commands. `ADMIN_KEY` still works for moderator commands added before `MOD_KEY` existed. Request logs replace `k=` and `key=` values with `***`.
 
-The owner can also merge two characters without any key: `/menu` → Moderator → **Force merge** (visible and usable only to the Discord IDs in `DISCORD_OWNER_USER_IDS`; moderators who are not owners do not see it). Choose the character to keep, then the one merged into it, check the preview and press Confirm merge. It is the same merge as `/api/v1/admin/merge` and `/link`, is irreversible, and is recorded in the moderator log as `owner <Discord ID> via /menu`.
+The owner can also merge two characters without any key: `/menu` → Moderator → **Force merge** (visible and usable only to the Discord IDs in `DISCORD_OWNER_USER_IDS`, like every moderator tool). Choose the character to keep, then the one merged into it, check the preview and press Confirm merge. It is the same merge as `/api/v1/admin/merge` and `/link`, is irreversible, and is recorded in the moderator log as `owner <Discord ID> via /menu`.
 
 Without `TWITCH_API_KEY` anyone can call the game API as any Twitch player; the startup log and `/health` warn about it.
 

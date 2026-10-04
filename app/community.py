@@ -279,14 +279,15 @@ def _routes(m):
             return PlainTextResponse(text)
 
     def mod_ok(key, level):
-        return m.valid_mod_key(key) and level >= 500
+        # Owner-only: MOD_KEY and the broadcaster's StreamElements level (see main.twitch_owner_ok).
+        return m.twitch_owner_ok(key, level)
 
     @app.get('/api/v1/admin/live')
     @tx
     def admin_live(channel: str = '', state: str = '', level: int = 0, key: str = ''):
-        """!live on|off|auto for moderators (StreamElements passes the level and the admin key)."""
+        """!live on|off|auto for the channel owner (StreamElements passes the level and the moderator key)."""
         if not mod_ok(key, level):
-            return m.out('⛔ Moderator access required.')
+            return m.out(m.OWNER_ONLY_TEXT)
         with m.SessionLocal() as db:
             text = live_events.set_live(m, db, state, 'StreamElements moderator')
             m.audit_moderator(db, m.DISCORD_WORLD_ID, 'StreamElements level ' + str(level), 'live', state or 'view')
@@ -296,9 +297,9 @@ def _routes(m):
     @app.get('/api/v1/admin/challenge')
     @tx
     def admin_challenge(channel: str = '', action: str = 'start', event: str = '', level: int = 0, key: str = ''):
-        """!challenge start [name] / !challenge stop for moderators."""
+        """!challenge start [name] / !challenge stop for the channel owner."""
         if not mod_ok(key, level):
-            return m.out('⛔ Moderator access required.')
+            return m.out(m.OWNER_ONLY_TEXT)
         with m.SessionLocal() as db:
             if str(action).casefold() == 'stop':
                 text = live_events.cancel(m, db, 'a moderator')
@@ -313,9 +314,9 @@ def _routes(m):
     @app.get('/api/v1/admin/recap')
     @tx
     def admin_recap(channel: str = '', action: str = 'preview', level: int = 0, key: str = ''):
-        """Preview or post the weekly recap now (moderators)."""
+        """Preview or post the weekly recap now (channel owner)."""
         if not mod_ok(key, level):
-            return m.out('⛔ Moderator access required.')
+            return m.out(m.OWNER_ONLY_TEXT)
         with m.SessionLocal() as db:
             if action == 'post':
                 ok, text = recap.post(m, db, force=True)

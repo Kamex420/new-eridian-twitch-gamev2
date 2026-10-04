@@ -35,6 +35,18 @@ def valid_mod_key(value):
     ADMIN_KEY (character merges) never has to be stored in the chat bot. ADMIN_KEY still works for older commands."""
     return bool(MOD_KEY and secrets.compare_digest(str(value).encode(),MOD_KEY.encode())) or valid_admin_key(value)
 
+# StreamElements user level of the channel's broadcaster (Twitch moderators are 500, super moderators 1000).
+TWITCH_OWNER_LEVEL=1500
+
+def twitch_owner_ok(key,level):
+    """Moderator tools on Twitch are the channel owner's alone: the StreamElements command must carry MOD_KEY
+    and be run by the broadcaster. The level comes from the URL, so MOD_KEY staying secret is what makes it hold."""
+    try:level=int(level)
+    except (TypeError,ValueError):level=0
+    return valid_mod_key(key) and level>=TWITCH_OWNER_LEVEL
+
+OWNER_ONLY_TEXT="⛔ Only the game owner can use moderator tools (owner access required)."
+
 import logging
 _SECRET_QUERY=re.compile(r'([?&](?:k|key)=)[^&\s"]*')
 
@@ -54,7 +66,6 @@ DISCORD_GAME_CHANNEL_ID=os.getenv("DISCORD_GAME_CHANNEL_ID","")
 DISCORD_WORLD_ID=os.getenv("DISCORD_WORLD_ID","new-eridian")
 os.environ.setdefault("DISCORD_WORLD_ID_ON_START",DISCORD_WORLD_ID)   # what Railway set; a world merge can change the one in use
 AVESTA_DAY_SECONDS=max(3600,int(os.getenv("AVESTA_DAY_SECONDS","21600")))
-DISCORD_MOD_ROLE_IDS={x.strip() for x in os.getenv("DISCORD_MOD_ROLE_IDS","").split(",") if x.strip()}
 _OWNER_RAW=os.getenv("DISCORD_OWNER_USER_IDS","")
 DISCORD_OWNER_USER_IDS=set(re.findall(r"\d{15,25}",_OWNER_RAW))
 def parse_discord_emoji_map(raw):
@@ -5181,8 +5192,8 @@ def admin_merge(keep:str,merge:str,channel:str="",key:str="",confirm:int=0):
 def admin_event(event:str,state:str,channel:str,level:int=0,key:str=""):
     if not valid_mod_key(key):
         return out("⛔ Invalid game-admin key.")
-    if level<500:
-        return out("⛔ Moderator access required.")
+    if not twitch_owner_ok(key,level):
+        return out(OWNER_ONLY_TEXT)
     if event not in EVENTS or state not in {"on","off"}:
         return out("⛔ Unknown event.")
     with SessionLocal() as db:
@@ -5195,8 +5206,8 @@ def admin_event(event:str,state:str,channel:str,level:int=0,key:str=""):
 @app.get("/api/v1/admin/day/next")
 @game_transaction
 def next_day(channel:str,level:int=0,key:str=""):
-    if not valid_mod_key(key) or level<500:
-        return out("⛔ Moderator access required.")
+    if not twitch_owner_ok(key,level):
+        return out(OWNER_ONLY_TEXT)
     with SessionLocal() as db:
         s=society(db,channel);clock=db.execute(select(WorldClock).where(WorldClock.channel_id==channel)).scalar_one_or_none()
         if not clock:clock=WorldClock(channel_id=channel,anchor_at=now(),anchor_day=s.day);db.add(clock)
@@ -5667,13 +5678,13 @@ BEST USE: /guide goal:event during emergencies and /guide goal:society between e
 Use /me for personal information, /progress for personal progression, and /world for shared world information.""",
 "moderator":"""🛡️ MODERATOR CONTROLS
 
-/eventstart — Starts one selected event immediately. Existing automatic-event timing is safely reset. Moderator permission required.
-/eventstop — Cancels the active event with no failure penalty. This is cancellation, not success. Moderator permission required.
-/modlog — Shows recent event-control records, including the moderator and action. Moderator permission required.
+/eventstart — Starts one selected event immediately. Existing automatic-event timing is safely reset. Owner only.
+/eventstop — Cancels the active event with no failure penalty. This is cancellation, not success. Owner only.
+/modlog — Shows recent event-control records, including who did it and the action. Owner only.
 
 /mod — Stream challenge start/stop, Stream is live on/off/automatic, and Weekly recap preview/post now.
 
-Eligible moderators need Administrator, Manage Server, Manage Messages, or a role listed in DISCORD_MOD_ROLE_IDS.""",
+Only the game owner can use these: the Discord accounts in DISCORD_OWNER_USER_IDS, and on Twitch the broadcaster. Server permissions and roles do not grant them.""",
 "terms":"""📖 NEW ERIDIAN TERMS
 
 SC / Seed Coin — Personal currency used for businesses and Habitat upgrades.
@@ -5754,8 +5765,8 @@ def twitch_seed(topic:str="overview",page:str="1"):
 @app.get("/api/v1/admin/modlog")
 @game_transaction
 def twitch_modlog(channel:str,level:int=0,key:str="",page:str="1"):
-    if not valid_mod_key(key) or level<500:
-        return out("⛔ Moderator access and a configured game-admin key required.")
+    if not twitch_owner_ok(key,level):
+        return out(OWNER_ONLY_TEXT)
     with SessionLocal() as db:
         rows=db.execute(select(ModeratorAudit).where(ModeratorAudit.channel_id==channel).order_by(ModeratorAudit.created_at.desc()).limit(10)).scalars().all()
         content=" | ".join(f"{r.action}: {r.detail} ({r.moderator})" for r in rows) or "No moderator actions recorded."
@@ -6722,16 +6733,18 @@ def _discord_allowed_channel(payload: dict):
     return str(payload.get("channel_id") or "") == str(DISCORD_GAME_CHANNEL_ID)
 
 def _discord_is_moderator(payload:dict):
-    member=payload.get("member") or {}
-    try:permissions=int(member.get("permissions") or "0")
-    except (TypeError,ValueError):permissions=0
-    # Administrator, Manage Server, or Manage Messages.
-    if permissions & (0x8|0x20|0x2000):return True
-    return bool(DISCORD_MOD_ROLE_IDS.intersection({str(r) for r in member.get("roles") or []}))
+    """Moderator tools (events, challenges, live, recap, feed, panels, the moderator log) are the owner's alone:
+    server permissions (Administrator, Manage Server, Manage Messages) and DISCORD_MOD_ROLE_IDS roles no longer grant them."""
+    return _discord_is_owner(payload)
 
 def _discord_is_owner(payload:dict):
     uid,_=_discord_user(payload)
     return bool(DISCORD_OWNER_USER_IDS) and str(uid) in DISCORD_OWNER_USER_IDS
+
+def _discord_owner_denied(uid,what="moderator tools"):
+    """Why a Discord account cannot use an owner-only tool, with the ID to put in DISCORD_OWNER_USER_IDS."""
+    return (f"⛔ Only the game owner can use {what}. Detected Discord ID: {uid} | Owner IDs loaded: {len(DISCORD_OWNER_USER_IDS)}. "
+            f"If this is you, make sure Railway DISCORD_OWNER_USER_IDS contains this exact numeric ID, then redeploy.")
 
 def _discord_validate_options(command,options):
     options=dict(options or {})
@@ -6800,9 +6813,70 @@ def gain_branch(db,p,branch,amount):
         row=SkillBranch(channel_id=p.channel_id,canonical_uid=p.twitch_uid,branch=branch,xp=0);db.add(row)
     row.xp+=amount
 
+TRAINING_ORDER={'✅':0,'❌':1,'🔒':2}   # what trains the skill right now leads the list
+TRAINING_PAGE=8                         # tasks per Discord page: each fits with its Start button beside it
+
+def training_tasks(db,p,hub,provider='twitch'):
+    """One training skill's tasks, ready ones first, then missing items, then locked. Each: dict(key, cfg, status, head, uses, gives).
+    status: ✅ ready · ❌ missing items · 🔒 level, tier or workstation lock (the same mark the Start button's colour follows)."""
+    key=SEED_HUBS[hub];level=lvl(skill_xp(p,key))
+    rows=db.execute(select(SkillBranch).where(SkillBranch.channel_id==p.channel_id,SkillBranch.canonical_uid==p.twitch_uid)).scalars().all();branch_xp={r.branch:r.xp for r in rows}
+    ctx=workbench.Context(sys.modules[__name__],db,p,provider)
+    found=[]
+    for action_key,cfg in SEED_TASKS.items():
+        if cfg['hub']!=hub:continue
+        xp=branch_xp.get(cfg['branch'],0)
+        status=training_choice_label(db,p,action_key,cfg)[:1]
+        locks=[]
+        if level<cfg['unlock']:locks.append(f"needs {SKILL_LABELS[key]} Lv{cfg['unlock']}")
+        cost='; '.join(f"{resource_name(k)} {material_amount(db,p,k)}/{v}" for k,v in cfg['cost'].items()) or 'no items needed'
+        where="";makes=""
+        if action_key in MERGED_TRAINING:
+            e=workbench.entry(sys.modules[__name__],MERGED_TRAINING[action_key]);st=ctx.status(e)
+            where=f" · recipe: {e.name} at {workbench.station_label(e,ctx)} (T{e.tier}, {e.skill} Lv{e.level})"
+            makes=f"makes {e.name} at the {workbench.station_label(e,ctx)} · "   # the task's name alone does not say it
+            if st.code=='station':locks.append(f"needs the {workbench.station_label(e,ctx)} (craft its machine, or unlock it in /workshop)");status='🔒'
+            elif st.code=='locked':locks.append(st.short);status='🔒'
+        else:
+            tag=crafting_progression.TRAINING_STATIONS.get(cfg['branch'])
+            if tag:
+                info=crafting_progression.STATIONS[tag];where=f" · station: {info['name']} (T{info['tier']})";makes=f"at the {info['name']} · "
+                if tag not in ctx.access or info['tier']>ctx.tier:locks.append(f"unlock {info['name']}" if info['tier']<=ctx.tier else f"Tier {info['tier']}");status='🔒'
+        batch_outputs=seed_content.production_balance.current_outputs(sys.modules[__name__],db,p,MERGED_TRAINING[action_key]) if action_key in MERGED_TRAINING else cfg['output']
+        outputs=', '.join(f"{v} {resource_name(k)}" for k,v in batch_outputs.items())
+        benefits=', '.join(f"shared {k} +{v}" for k,v in cfg['shared'].items())
+        benefits+=(', ' if benefits and cfg['society'] else '')+', '.join(f"society {k} +{v}" for k,v in cfg['society'].items())
+        result="; ".join(x for x in (outputs,benefits,cfg['effect']) if x)
+        label=f"**{cfg['label']}**" if provider=='discord' else cfg['label']   # bold: the Start button finds its line by it
+        found.append({'key':action_key,'cfg':cfg,'status':status,
+                      'head':f"{status} {label} — {makes}branch Lv {lvl(xp)} ({xp} XP)"+(f" · {'; '.join(locks)}" if locks else ""),
+                      'uses':f"  Uses: {cost}{where}",'gives':f"  Gives: {result or 'practice'}"})
+    found.sort(key=lambda t:TRAINING_ORDER.get(t['status'],3))
+    return found
+
+def training_pages(count):
+    return max(1,-(-count//TRAINING_PAGE))
+
+def training_page_of(tasks,page):
+    """(page, pages, the tasks on it) for Discord; page 0 means every task (Twitch, the API)."""
+    if not page:return 1,1,tasks
+    pages=training_pages(len(tasks));page=max(1,min(int(page),pages))
+    return page,pages,tasks[(page-1)*TRAINING_PAGE:page*TRAINING_PAGE]
+
+def training_skills(db,p):
+    """[(hub, skill label, level, tasks ready now, tasks)] for every training skill."""
+    rows=[]
+    for hub,key in SEED_HUBS.items():
+        tasks=training_tasks(db,p,hub,'discord')
+        rows.append((hub,SKILL_LABELS[key],lvl(skill_xp(p,key)),sum(t['status']=='✅' for t in tasks),len(tasks)))
+    return rows
+
+def training_skill_line(label,level,ready,total):
+    return f"**{label}** — Lv {level} · {ready} of {total} task{'s' if total!=1 else ''} ready now"
+
 @app.get('/api/v1/training')
 @colony_command
-def training(channel:str,uid:str,name:str='Citizen',skill:str='',task:str='',provider:str='twitch',text:str=''):
+def training(channel:str,uid:str,name:str='Citizen',skill:str='',task:str='',provider:str='twitch',text:str='',page:int=0):
     if text and not skill and not task:
         parts=text.split()
         skill=parts[0] if parts else ''
@@ -6816,39 +6890,28 @@ def training(channel:str,uid:str,name:str='Citizen',skill:str='',task:str='',pro
     with SessionLocal() as db:
         _,p=player(db,channel,provider,uid,name)
         if hub not in SEED_HUBS:
+            if provider=='discord':
+                return PlainTextResponse('🎓 TRAIN SKILLS\nPick a skill to see every task that trains it, each with a Start button.\n'+
+                                         '\n'.join('• '+training_skill_line(label,level,ready,total) for _,label,level,ready,total in training_skills(db,p))+
+                                         '\nBrowsing spends nothing. Each Start does its task once.')
             return PlainTextResponse('🎒 ITEM MENU — SKILL TRAINING\nChoose Skill, then browse its tasks.\n'+'\n'.join(f"• {SKILL_LABELS[key]} — Lv. {lvl(skill_xp(p,key))}" for key in SEED_HUBS.values())+'\nBrowsing spends nothing. Task selections perform work. Existing /make recipes and work commands still function.')
         key=SEED_HUBS[hub];level=lvl(skill_xp(p,key))
-        rows=db.execute(select(SkillBranch).where(SkillBranch.channel_id==channel,SkillBranch.canonical_uid==p.twitch_uid)).scalars().all();branch_xp={r.branch:r.xp for r in rows}
-        lines=[f"🎒 ITEM MENU — {SKILL_LABELS[key]}",f"Main skill: level {level} · {skill_xp(p,key)} XP",
-               f"Each try costs {need_cost_text(STANDARD_ENERGY)} and has a 5-second cooldown. Materials are only used on success.",
-               "✅ ready · ❌ missing items · 🔒 level, tier or workstation lock"]
-        ctx=workbench.Context(sys.modules[__name__],db,p,provider)
-        for action_key,cfg in SEED_TASKS.items():
-            if cfg['hub']!=hub:continue
-            xp=branch_xp.get(cfg['branch'],0)
-            status=training_choice_label(db,p,action_key,cfg)[:1]
-            locks=[]
-            if level<cfg['unlock']:locks.append(f"needs {SKILL_LABELS[key]} Lv{cfg['unlock']}")
-            cost='; '.join(f"{resource_name(k)} {material_amount(db,p,k)}/{v}" for k,v in cfg['cost'].items()) or 'no items needed'
-            where="";makes=""
-            if action_key in MERGED_TRAINING:
-                e=workbench.entry(sys.modules[__name__],MERGED_TRAINING[action_key]);st=ctx.status(e)
-                where=f" · recipe: {e.name} at {workbench.station_label(e,ctx)} (T{e.tier}, {e.skill} Lv{e.level})"
-                makes=f"makes {e.name} at the {workbench.station_label(e,ctx)} · "   # the task's name alone does not say it
-                if st.code=='station':locks.append(f"needs the {workbench.station_label(e,ctx)} (craft its machine, or unlock it in /workshop)");status='🔒'
-                elif st.code=='locked':locks.append(st.short);status='🔒'
-            else:
-                tag=crafting_progression.TRAINING_STATIONS.get(cfg['branch'])
-                if tag:
-                    info=crafting_progression.STATIONS[tag];where=f" · station: {info['name']} (T{info['tier']})";makes=f"at the {info['name']} · "
-                    if tag not in ctx.access or info['tier']>ctx.tier:locks.append(f"unlock {info['name']}" if info['tier']<=ctx.tier else f"Tier {info['tier']}");status='🔒'
-            batch_outputs=seed_content.production_balance.current_outputs(sys.modules[__name__],db,p,MERGED_TRAINING[action_key]) if action_key in MERGED_TRAINING else cfg['output']
-            outputs=', '.join(f"{v} {resource_name(k)}" for k,v in batch_outputs.items())
-            benefits=', '.join(f"shared {k} +{v}" for k,v in cfg['shared'].items())
-            benefits+=(', ' if benefits and cfg['society'] else '')+', '.join(f"society {k} +{v}" for k,v in cfg['society'].items())
-            result="; ".join(x for x in (outputs,benefits,cfg['effect']) if x)
-            lines.append(f"{status} {cfg['label']} — {makes}branch Lv {lvl(xp)} ({xp} XP)"+(f" · {'; '.join(locks)}" if locks else "")+
-                         f"\n  Uses: {cost}{where}\n  Gives: {result or 'practice'}")
+        tasks=training_tasks(db,p,hub,provider)
+        page,pages,shown=training_page_of(tasks,page if provider=='discord' else 0)
+        ready=sum(t['status']=='✅' for t in tasks)
+        if provider=='discord':
+            lead=(f"{ready} of {len(tasks)} tasks can train it now, listed first." if ready else
+                  "nothing is ready yet: each task says what it still needs.")
+            lines=[f"🎓 TRAIN {SKILL_LABELS[key].upper()}",f"Lv {level} · {skill_xp(p,key)} XP · {lead}",
+                   "✅ ready · ❌ missing items · 🔒 level, tier or workstation lock"]
+        else:
+            lines=[f"🎒 ITEM MENU — {SKILL_LABELS[key]}",f"Main skill: level {level} · {skill_xp(p,key)} XP",
+                   f"Each try costs {need_cost_text(STANDARD_ENERGY)} and has a 5-second cooldown. Materials are only used on success.",
+                   "✅ ready · ❌ missing items · 🔒 level, tier or workstation lock"]
+        lines+=['\n'.join((t['head'],t['uses'],t['gives'])) for t in shown]
+        if pages>1:lines.append(f"Page {page} of {pages}: the buttons below show the other tasks.")
+        if provider=='discord':
+            lines.append(f"Each try costs {need_cost_text(STANDARD_ENERGY)} and has a 5-second cooldown. Materials are only used on success.")
         jobs=[label for label,sk,_ in NEW_JOBS.values() if sk==key]
         if key=='cultivation':jobs=['Farmer']
         # Kept short: where each material comes from is in /catalog and every recipe preview.
@@ -6999,10 +7062,15 @@ def seed_supplies(channel:str,uid:str,name:str='Citizen',mode:str='catalog',item
         else:result='🛑 Choose catalog or gather. Nothing spent.'
         return platform_response(provider,result,result.replace('\n',' | '))
 
+# Options a screen's own buttons set that are not typed in the slash command: a page of a skill's training tasks.
+SCREEN_OPTIONS={'training':{'page'}}
+
 def _discord_call_internal(command: str, uid: str, name: str, options: dict, interaction_id: str):
     command,options=discord_legacy_route(command,options)
-    options,error=_discord_validate_options(command,options)
+    screen={k:v for k,v in options.items() if k in SCREEN_OPTIONS.get(command,())}
+    options,error=_discord_validate_options(command,{k:v for k,v in options.items() if k not in screen})
     if error:return error
+    options={**options,**screen}
     # Reuse the same game functions the Twitch API uses.
     channel = DISCORD_WORLD_ID
     if command=='use':
@@ -7057,7 +7125,9 @@ def _discord_call_internal(command: str, uid: str, name: str, options: dict, int
         from .seasonal import holiday_message
         return holiday_message()
     if command == "training":
-        return training(channel,uid,name,str(options.get('skill') or ''),str(options.get('task') or ''),'discord').body.decode()
+        try:page=max(1,int(options.get('page') or 1))
+        except (TypeError,ValueError):page=1
+        return training(channel,uid,name,str(options.get('skill') or ''),str(options.get('task') or ''),'discord',page=page).body.decode()
     if command == "seed":
         return discord_seed_help(str(options.get("topic") or "overview"),name)
     if command == "start":
@@ -7355,7 +7425,7 @@ async def discord_interactions(request: Request, background_tasks: BackgroundTas
         return layout_v2.respond(_discord_json_message("Unknown New Eridian command.", ephemeral=True),payload)
 
     if command in {"eventstart","eventstop","modlog","guidepanels","menupanel"}|community.MOD and not _discord_is_moderator(payload):
-        return layout_v2.respond(_discord_json_message("⛔ Moderator access is required for event controls.", ephemeral=True, message_type="moderator"),payload)
+        return layout_v2.respond(_discord_json_message(_discord_owner_denied(uid), ephemeral=True, message_type="moderator"),payload)
 
     if command == "linklookup" and not _discord_is_owner(payload):
         return layout_v2.respond(_discord_json_message(
