@@ -422,8 +422,8 @@ commands.append(cmd('seedling','Your Seedling: mood, thoughts, what it is doing,
                 {'name':'Homebody: mornings and evenings for hobbies','value':'homebody'}]},
     {'type':STRING,'name':'autonomy','description':'Let your Seedling live its schedule while you are away','required':False,
      'choices':[{'name':'On','value':'on'},{'name':'Off','value':'off'}]}]))
-commands.append(cmd('find','Search recipes, items, buttons and the handbook for anything',[
-    {'type':STRING,'name':'query','description':'A word or name, e.g. campfire, lumber or comfort','required':True,'max_length':60}]))
+commands.append(cmd('find','Search, or ask a question: how do I make…, where do I get…, how do I level…',[
+    {'type':STRING,'name':'query','description':'A word or a question, e.g. campfire or how do I make Iron Nails?','required':True,'max_length':100}]))
 commands.append(cmd('settings','Queue alerts and auto-recovery; leave options blank to view them',[
     {'type':STRING,'name':'alerts','description':'How queue alerts reach you','required':False,
      'choices':[{'name':'Direct message (default)','value':'dm'},{'name':'Channel @mention (everyone sees it)','value':'mention'},
@@ -479,7 +479,7 @@ WORK_TASKS=[(W('Tend Fields','farm'),'farm_tend'),(W('Harvest Pumpkins','harvest
             (W('Delivery','delivery','','uses 1 Cargo'),'delivery'),(W('Spaceport','spaceport'),'spaceport'),
             (W('Expedite Spaceport','spaceport','expedite','uses 1 Power Cell'),'expedite'),(W('Scout','explore'),'scout'),
             (W('Survey','survey','','needs Resource Scanner'),'survey')]
-MOD_ACTIONS=[('Start event','eventstart'),('Stop event','eventstop'),('Moderator log','modlog'),('Linked-account lookup (owner)','linklookup'),('Post guide panels here','guidepanels'),('Post game button panel here','menupanel')]
+MOD_ACTIONS=[('Start event','eventstart'),('Stop event','eventstop'),('Moderator log','modlog'),('Unanswered Find questions','asklog'),('Linked-account lookup (owner)','linklookup'),('Post guide panels here','guidepanels'),('Post game button panel here','menupanel')]
 MOD_ACTIONS+=[('Stream challenge: start','challengestart'),('Stream challenge: stop','challengestop'),('Stream is live: on','liveon'),
               ('Stream is live: off','liveoff'),('Stream live: automatic','liveauto'),('Weekly recap: preview','recappreview'),('Weekly recap: post now','recappost'),
               ('Activity feed: post here','feedhere'),('Activity feed: off','feedoff')]

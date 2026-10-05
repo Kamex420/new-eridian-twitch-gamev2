@@ -1,5 +1,20 @@
 # Release notes
 
+## Find answers questions
+
+`/find`, the menu's 🔎 Find box and Twitch `!find` now take a question as well as a word. No AI runs behind it: Find recognises the shape of the question and answers from the game's own recipes, items, skills and handbook, with your own bag and levels.
+- **How do I make Iron Nails?** The recipe, the workstation and skill it needs, and everything still stopping you, with 📋 the recipe and 🎯 **Set as goal** (the walkthrough plans every step). Raw materials (*how do I make Lumber?*) are answered with how to gather them.
+- **Where do I get Coal?** The best way, other recipes that make it, the lines of work whose lucky finds turn it up, and how many you have, with **Gather ×1** / **Mine ×1** or the recipe.
+- **What is Clay used for?** Every recipe it goes into (ready ones first), what using it does, and its Seed Industries price. Items nothing uses yet say so.
+- **How do I level Chemistry?** Your level and the tasks that train it, each saying what it still needs, with **Start** for a ready task and **Train <skill>**. *How do I level up?* lists every skill.
+- **What does Morale mean?** Handbook terms, plus needs, Morale, Rocky's Favor, Seedlings, tiers, lucky finds, goals, workstations and queues. *What is a Campfire?* describes the item.
+- **Why can't I craft Iron Plate?** Every reason at once (tier, skill level, workstation, missing items), not only the first. *Why can't I work?* names the low need and how to fix it.
+- **What should I do next?** Your goal's next step, then the best thing to do now. *How do I make money?* explains Seed Coin and opens its guide.
+- **Typos, plurals and old names work** (*campfir*, *nails*, *Components*). When several things fit (*where do I get iron?*) Find asks which one, with a button for each. A plain word is still the usual search.
+- **On Twitch** the same answers fit one chat line; in the lite game crafting answers point to Discord.
+- **What Find could not answer** is counted (the question only, never who asked) for the game owner: **Menu → Moderator → Unanswered questions**, or `/mod action:asklog`. The newest 300 are kept.
+- `/find` and the Find box take up to 100 characters (was 60). `!find` already passes the channel and viewer, so no StreamElements change is needed.
+
 ## Moderator tools are the owner's alone, and one Train skills button with a Start for every task
 
 - **Only the game owner can use moderator tools.** On Discord that is the accounts in `DISCORD_OWNER_USER_IDS`: events, stream challenges, live on/off, the recap, the activity feed, the guide and game panels, the moderator log and account lookup. Administrator, Manage Server, Manage Messages and `DISCORD_MOD_ROLE_IDS` roles no longer grant them, and `DISCORD_MOD_ROLE_IDS` is no longer read. Anyone else who tries is told so, with the Discord ID to add if it is the owner on another account.

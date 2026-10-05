@@ -112,7 +112,7 @@ Short answers to what new players ask most.
 
 **Stuck?**
 
-- `/guide  /menu  /find` Your next step, every button, or a search for anything.
+- `/guide  /menu  /find` Your next step, every button, or search and ask anything.
 - **Ask in chat:** Other players and the mods can help.
 
 **NO RUSH · NO WRONG WAY · HAVE FUN**
@@ -395,7 +395,7 @@ Every command, grouped. /menu shows all of them as buttons.
 
 **Help**
 
-- `/guide  /find  /seed  /start  /link  /job` Next steps, search, the handbook and your setup.
+- `/guide  /find  /seed  /start  /link  /job` Next steps, search or ask, the handbook and your setup.
 - `/mod` Moderators: events, stream challenges, the recap and these panels.
 
 **STUCK? /menu HAS A BUTTON FOR EVERYTHING**

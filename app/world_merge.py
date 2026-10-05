@@ -32,7 +32,7 @@ SUMS = {
     'colony_project_help_v1': ('amount',),
     'season_scores_v1': ('points', 'contribution', 'xp', 'events', 'votes', 'trophies'),
     'week_scores_v1': ('points', 'contribution', 'xp', 'items', 'actions', 'events', 'votes'),
-    'hobby_progress_v55': ('points',), 'duck_bonds_v55': ('xp',), 'gear_familiarity_v600': ('uses',),
+    'hobby_progress_v55': ('points',), 'duck_bonds_v55': ('xp',), 'gear_familiarity_v600': ('uses',), 'find_unanswered_v1': ('times',),
     'collection_v54': ('qty',), 'collection_progress_v1': ('qty',), 'relationship_memories_v600': ('interactions',),
     'account_name_history_v541': ('seen_count',), 'extra_items_v4': ('qty',),
 }

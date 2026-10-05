@@ -678,7 +678,7 @@ def slash_panel(m, command, uid, name, options, result):
             rows, items = menu.with_next(m, db, p, uid, ctx, rows, items)
             return dict(message(m, result, rows, command, items), _home=True)
         if command == 'find':
-            return message(m, result, find_components(m, uid, str(options.get('query') or '')), command)
+            return message(m, result, find_components(m, uid, str(options.get('query') or ''), db, p), command)
         if command in {'seedling', 'seedlingstep'}:
             return message(m, result, seedling_components(m, db, p, uid), 'seedling')
         if command == 'seedindustries' and options.get('action') == 'clearout' and qol.clearout_plan(m, db, p):
@@ -1532,8 +1532,66 @@ def recent_components(m, db, p, owner):
     return [row(*buttons[i:i + 5]) for i in range(0, len(buttons), 5)] + [_menu_row(owner)]
 
 
-def find_components(m, owner, query):
+def ask_components(m, owner, result):
+    """Buttons for a Find answer (ask.Answer): open the recipe, set it as the goal, gather it, train the skill,
+    try a suggested name, then ask another question."""
+    from . import ask, menu
+    buttons = []
+    for a in result.actions:
+        kind = a['kind']
+        if kind == 'recipe':
+            e = a['entry']
+            buttons.append(button(wb.clip(e.name, 80), cid(owner, 'wr', e.id, e.category, 1, ''), emoji='📋'))
+        elif kind == 'goal':
+            buttons.append(button('Set as goal', cid(owner, 'gs', a['entry'].id), style=1, emoji='🎯'))
+        elif kind == 'goalview':
+            buttons.append(button('Goal', cid(owner, 'gv'), style=1, emoji='🎯'))
+        elif kind == 'gather':
+            key = a['item']
+            mine = key in m.task_queue.ores()
+            action = {'do': 'queue', 'task': 'mine:' + key, 'count': 1} if mine else {'do': 'gather', 'item': key}
+            buttons.append(button('Mine ×1' if mine else 'Gather ×1', cid(owner, 't', issue(m, owner, action)), style=3,
+                                  emoji='⛏️' if mine else '🌿'))
+        elif kind == 'uses':
+            buttons.append(button('What uses it?', cid(owner, 'fu', a['item']), emoji='🔍'))
+        elif kind == 'start':
+            ticket = issue(m, owner, {'do': 'train', 'skill': a['hub'], 'task': a['task']})
+            buttons.append(button(f"Start {a['label']}", cid(owner, 't', ticket), style=3, emoji='▶️'))
+        elif kind == 'train':
+            b = pick_button(cid(owner, 'mp', TRAIN_PICK), a['hub'], f"Train {a['label']}")
+            if b is not None:
+                b['emoji'] = {'name': '🎓'}
+                buttons.append(b)
+        elif kind in {'leaf', 'area'} and (a['key'] in menu.LEAVES or a['key'] in menu.AREAS):
+            buttons.append(menu._button(m, owner, a['key']))
+        elif kind == 'status':
+            buttons.append(button('Status', cid(owner, 'st'), emoji='📊'))
+        elif kind == 'guide':
+            b = pick_button(cid(owner, 'mp', 'guidegoal'), a['goal'], a['label'])
+            if b is not None:
+                b['emoji'] = {'name': '🗺️'}
+                buttons.append(b)
+        elif kind == 'suggest':
+            query = ask.suggestion_query(a['intent'], a['name']).replace('|', ' ')
+            try:
+                buttons.append(button(wb.clip(a['name'], 80), cid(owner, 'fd', query), emoji='🔎'))
+            except ValueError:                     # too long for a button: the name is still in the text
+                pass
+    buttons = buttons[:9]
+    buttons.append(menu._button(m, owner, 'find'))
+    buttons[-1]['label'] = 'Ask another'
+    return [row(*buttons[i:i + 5]) for i in range(0, len(buttons), 5)][:2] + [_menu_row(owner, ('help', 'Help'))]
+
+
+def find_components(m, owner, query, db=None, p=None):
+    """A question's answer buttons (ask_components) or, for a plain word, one button per result."""
     from . import extras as more, menu
+    if db is not None:
+        from . import ask
+        result = ask.answer(m, db, p, query)
+        if result.intent != 'search':
+            return ask_components(m, owner, result)
+        query = result.actions[0].get('query') or query
     found = more.find(m, query)
     buttons = [button(wb.clip(e.name, 80), cid(owner, 'wr', e.id, e.category, 1, ''), emoji='📋') for e in found['recipes'][:3]]
     shown = {e.name for e in found['recipes'][:3]}
@@ -1655,8 +1713,9 @@ def extra_view(m, db, p, owner, verb, args, values, name):
         key = args[0]
         return message(m, item_text(m, db, p, key), [row(button('What can I make with it?', cid(owner, 'fu', key), emoji='🔍')), _menu_row(owner)], 'catalog')
     if verb == 'fd':
-        query = values[0] if values else (args[0] if args else '')
-        return message(m, more.find_text(m, query), find_components(m, owner, query), 'find')
+        from . import ask
+        query = (values[0] if values else (args[0] if args else ''))[:ask.MAX_QUERY]
+        return message(m, ask.reply(m, db, p, query), find_components(m, owner, query, db, p), 'find')
     return _notice('This control is no longer available.')['data']
 
 

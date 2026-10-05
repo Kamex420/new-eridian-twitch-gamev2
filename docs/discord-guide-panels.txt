@@ -140,7 +140,7 @@ The Holidays panel's COMING UP part is worked out when the bot posts it; the cop
 [0mworks on the same projects and events.
 [1;36mSTUCK?
 [0;33m/guide  /menu  /find
-[0mYour next step, every button, or a search for anything.
+[0mYour next step, every button, or search and ask anything.
 [0;33mAsk in chat
 [0mOther players and the mods can help.
 [1;32mNO RUSH · NO WRONG WAY · HAVE FUN
@@ -472,7 +472,7 @@ The Holidays panel's COMING UP part is worked out when the bot posts it; the cop
 [0mFriends, the settlement, events and holidays.
 [1;36mHELP
 [0;33m/guide  /find  /seed  /start  /link  /job
-[0mNext steps, search, the handbook and your setup.
+[0mNext steps, search or ask, the handbook and your setup.
 [0;33m/mod
 [0mModerators: events, stream challenges, the recap and these
 [0mpanels.

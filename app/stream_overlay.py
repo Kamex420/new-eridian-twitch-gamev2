@@ -165,7 +165,7 @@ def extra(m, db, source_ids, world):
             'tips': [['!start', 'Create your citizen and join New Eridian'], ['!relax', '+25 Energy, +20 Comfort'],
                      ['!gather lumber', 'Collect materials'], ['!make campfire', 'Craft at the Workbench'],
                      ['!craftmax lumber', 'Queue up to 10 gathers and watch them run'], ['!status', 'Needs, queue and your next step'],
-                     ['!find <word>', 'Search recipes, items and help'], ['!target <recipe>', 'Pin a goal and track it'],
+                     ['!find <question>', 'Ask how to make, get or level anything'], ['!target <recipe>', 'Pin a goal and track it'],
                      ['!shopping add <recipe>', 'Plan several recipes together: what is missing, buy it all'],
                      ['!keep <item> <n>', 'Selling always leaves you that many'],
                      ['!again', 'Repeat your last action'], ['!seed', 'Every command, by topic']],

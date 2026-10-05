@@ -5681,6 +5681,7 @@ Use /me for personal information, /progress for personal progression, and /world
 /eventstart — Starts one selected event immediately. Existing automatic-event timing is safely reset. Owner only.
 /eventstop — Cancels the active event with no failure penalty. This is cancellation, not success. Owner only.
 /modlog — Shows recent event-control records, including who did it and the action. Owner only.
+/mod action:asklog — Questions players asked /find that it could not answer, most asked first (never who asked). Owner only.
 
 /mod — Stream challenge start/stop, Stream is live on/off/automatic, and Weekly recap preview/post now.
 
@@ -5786,7 +5787,7 @@ DISCORD_PUBLIC_COMMANDS = {
 
 DISCORD_PRIVATE_COMMANDS = {
     "seed", "guide", "start", "me", "progress", "inventory", "job",
-    "home", "business", "make", "seedindustries", "link", "specialize", "modlog",
+    "home", "business", "make", "seedindustries", "link", "specialize", "modlog", "asklog",
     "world", "linklookup", "ducks", "training", "catalog", "gather", "workshop",
     "status", "settings", "mod", "menu", "guidepanels", "menupanel", "inbox", "queuedetails", "find", "undo", "seedling", "seedlingstep",
     "vote", "season", "challenge", "trophies", "customize",
@@ -5808,7 +5809,7 @@ def discord_message_category(command):
     groups={
         "handbook":{"seed"},"guide":{"guide"},"character":{"start","me","progress","inventory","job","specialize","link"},
         "life":{"social","relax","walk","games","hobby","world","district","shift","meal","ducks","use"},"business":{"business","seedindustries","market"},
-        "society":{"society"},"event":{"event","eventstart","eventstop"},"moderator":{"modlog","linklookup"},
+        "society":{"society"},"event":{"event","eventstart","eventstop"},"moderator":{"modlog","asklog","linklookup"},
         "action":set(ACTION_SKILLS)|{"farm","fabricate","eat","sleep"},
     }
     return next((group for group,names in groups.items() if command in names),"default")
@@ -5919,7 +5920,7 @@ def _discord_command_title(command):
         "gear":"⚙️ EQUIPMENT","cooldowns":"⏱️ COOLDOWNS","bonuses":"✨ BONUSES",
         "specialize":"⭐ SPECIALIZATION","status":"🏛️ NEW ERIDIAN","progress":"📈 SOCIETY PROGRESS",
         "society":"🏛️ NEW ERIDIAN SOCIETY","event":"🚨 SOCIETY EVENT",
-        "link":"🔗 ACCOUNT LINK","linklookup":"🔐 LINKED ACCOUNT LOOKUP","modlog":"🛡️ MODERATOR LOG",
+        "link":"🔗 ACCOUNT LINK","linklookup":"🔐 LINKED ACCOUNT LOOKUP","modlog":"🛡️ MODERATOR LOG","asklog":"❓ UNANSWERED FIND QUESTIONS",
     }
     return titles.get(command,"🌱 NEW ERIDIAN v2")
 
@@ -7189,7 +7190,16 @@ def _discord_call_internal(command: str, uid: str, name: str, options: dict, int
     if command == "undo":
         return undo_sale(channel,uid,name,"discord").body.decode()
     if command == "find":
-        return extras.find_text(__import__("sys").modules[__name__],str(options.get("query") or "").strip()[:60] or "?")
+        query=str(options.get("query") or "").strip()[:ask.MAX_QUERY] or "?"
+        module=__import__("sys").modules[__name__]   # this function imports sys locally further down
+        with SessionLocal() as db:
+            p=ask.existing_player(module,db,channel,"discord",uid)
+            text=ask.reply(module,db,p,query,"discord",channel)
+            db.commit()
+        return text
+    if command == "asklog":
+        with SessionLocal() as db:
+            return ask.log_text(__import__("sys").modules[__name__],db)
     if command == "queuedetails":
         with SessionLocal() as db:
             _,p=player(db,channel,"discord",uid,name)
@@ -7424,7 +7434,7 @@ async def discord_interactions(request: Request, background_tasks: BackgroundTas
     if command not in (DISCORD_PUBLIC_COMMANDS | DISCORD_PRIVATE_COMMANDS):
         return layout_v2.respond(_discord_json_message("Unknown New Eridian command.", ephemeral=True),payload)
 
-    if command in {"eventstart","eventstop","modlog","guidepanels","menupanel"}|community.MOD and not _discord_is_moderator(payload):
+    if command in {"eventstart","eventstop","modlog","asklog","guidepanels","menupanel"}|community.MOD and not _discord_is_moderator(payload):
         return layout_v2.respond(_discord_json_message(_discord_owner_denied(uid), ephemeral=True, message_type="moderator"),payload)
 
     if command == "linklookup" and not _discord_is_owner(payload):
@@ -7573,8 +7583,9 @@ def queue_task_menu(query:str='',page:int=1,provider:str='twitch'):
     return platform_response(provider,text,text.replace('\n',' | '))
 
 
-from . import qol, presentation, menu, inbox, extras, keep_levels, shopping_list, force_merge
+from . import qol, presentation, menu, inbox, extras, keep_levels, shopping_list, force_merge, ask
 game_menu=menu
+ask.install(sys.modules[__name__])
 inbox.install(sys.modules[__name__])
 extras.install(sys.modules[__name__])
 from . import stream_overlay
@@ -7716,10 +7727,13 @@ def undo_sale(channel:str,uid:str,name:str='Citizen',provider:str='twitch'):
 
 
 @app.get('/api/v1/find')
-def find_anything(query:str='',provider:str='twitch'):
-    """Search recipes, items, menu buttons and handbook topics."""
-    if not query.strip():return out('🔎 Search for anything: !find <word>, e.g. !find campfire.')
-    text=extras.find_text(sys.modules[__name__],query.strip()[:60],provider)
+def find_anything(query:str='',provider:str='twitch',channel:str='',uid:str='',name:str='Citizen'):
+    """Search recipes, items, menu buttons and handbook topics, or answer a question (app/ask.py)."""
+    if not query.strip():return out('🔎 Search or ask anything: !find <word or question>, e.g. !find campfire or !find how do I make Iron Nails')
+    with SessionLocal() as db:
+        p=ask.existing_player(sys.modules[__name__],db,channel,provider,uid)
+        text=ask.reply(sys.modules[__name__],db,p,query.strip()[:ask.MAX_QUERY],provider,channel)
+        db.commit()
     return platform_response(provider,text,text)
 
 

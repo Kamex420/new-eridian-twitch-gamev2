@@ -64,7 +64,7 @@ AREAS = {
     'account': ('🔗', 'Account', 'Create your citizen, or link your Twitch citizen: type !link in Twitch chat, then enter the code here.',
                 ['start', 'link']),
     'mod': ('🛡️', 'Moderator', 'Events, the moderator log, account lookups and the channel panels. Game owner only.',
-            ['m_eventstart', 'm_eventstop', 'm_chalstart', 'm_chalstop', 'm_live', 'm_recap', 'm_recappost', 'm_feed', 'm_modlog', 'm_lookup', 'm_force',
+            ['m_eventstart', 'm_eventstop', 'm_chalstart', 'm_chalstop', 'm_live', 'm_recap', 'm_recappost', 'm_feed', 'm_modlog', 'm_asklog', 'm_lookup', 'm_force',
              'm_guidepanels', 'm_menupanel', 'h_moderator']),
 }
 # Areas only the game owner sees on the Home screen (moderator tools are owner-only).
@@ -72,7 +72,7 @@ MOD_AREAS = {'mod'}
 # Leaves only owners see and can use (Force merge: the screens and its ticket check ownership again every time).
 OWNER_ONLY = {'m_force'}
 # Commands a menu button may only run for the game owner (the Discord IDs in DISCORD_OWNER_USER_IDS).
-MOD_COMMANDS = {'eventstart', 'eventstop', 'modlog', 'guidepanels', 'menupanel', 'linklookup',
+MOD_COMMANDS = {'eventstart', 'eventstop', 'modlog', 'asklog', 'guidepanels', 'menupanel', 'linklookup',
                 'challengestart', 'challengestop', 'liveon', 'liveoff', 'liveauto', 'recappreview', 'recappost', 'feedhere', 'feedoff'}
 
 # Leaves: key -> dict(label, emoji, kind, cmd, opts, hint[, pick, then]).
@@ -223,8 +223,8 @@ leaf('auto_off', 'Auto-recover off', '✋', 'do', 'settings', {'autorecover': 'o
 leaf('guide', 'What next?', '🧭', 'view', 'guide', hint='your best next step and why')
 leaf('guidegoal', 'Guide for…', '🗺️', 'pick', 'guide', pick='field:guide:goal', then='view', option='goal',
      hint='step-by-step help for one goal (SC, crafting, home…)')
-leaf('find', 'Find', '🔎', 'modal', 'find', modal=('Find anything', 'Recipe, item, button or topic', 'e.g. campfire'), option='query',
-     hint='search recipes, items, buttons and the handbook')
+leaf('find', 'Find', '🔎', 'modal', 'find', modal=('Find or ask anything', 'A word or a question', 'e.g. how do I make Iron Nails?'),
+     option='query', max_length=100, hint='search, or ask: how do I make…, where do I get…, how do I level…')
 # My Seedling
 leaf('sl_view', 'Overview', '🌱', 'view', 'seedling', hint='mood, thought, where it is and what it is doing')
 leaf('sl_decide', 'Let it decide', '🎲', 'do', 'seedlingstep', hint='your Seedling picks its next step itself, right now')
@@ -253,6 +253,7 @@ leaf('m_eventstart', 'Start event', '🚨', 'pick', 'eventstart', pick='field:ev
      hint='begin a society event')
 leaf('m_eventstop', 'Stop event', '🛑', 'do', 'eventstop', style=4, hint='cancel the active event without a penalty')
 leaf('m_modlog', 'Moderator log', '📜', 'view', 'modlog', hint='the last ten moderator actions')
+leaf('m_asklog', 'Unanswered questions', '❓', 'view', 'asklog', hint='what players asked Find that it could not answer')
 leaf('m_lookup', 'Account lookup', '🔍', 'pick', 'linklookup', pick='player_name', then='view', option='player',
      hint='linked accounts of a citizen (owners)')
 leaf('m_force', 'Force merge', '🧬', 'nav', nav=('xk',), hint='merge two characters into one, irreversibly (owners)')
@@ -356,7 +357,7 @@ COMMAND_AREA = {}
 for _key, _leaf in LEAVES.items():
     if _leaf['cmd']:
         COMMAND_AREA.setdefault(_leaf['cmd'], PARENT.get(_key, 'home'))
-COMMAND_AREA.update({'seedling': 'seedling', 'seedlingstep': 'seedling', 'link': 'account', 'start': 'account', 'eventstart': 'mod', 'eventstop': 'mod', 'modlog': 'mod',
+COMMAND_AREA.update({'seedling': 'seedling', 'seedlingstep': 'seedling', 'link': 'account', 'start': 'account', 'eventstart': 'mod', 'eventstop': 'mod', 'modlog': 'mod', 'asklog': 'mod',
                      'linklookup': 'mod', 'guidepanels': 'mod', 'menupanel': 'mod', 'eatfull': 'life', 'undo': 'bag', 'find': 'help', 'make': 'craft', 'workshop': 'craft', 'catalog': 'craft', 'queue': 'queue', 'mine': 'work', 'gather': 'work',
                      'farm': 'work', 'scan': 'work', 'rare': 'work', 'research': 'work', 'cargo': 'work', 'delivery': 'work',
                      'spaceport': 'work', 'explore': 'work', 'repair': 'work', 'training': 'work', 'society': 'community',
@@ -1022,7 +1023,8 @@ def submit(m, db, p, owner, name, key, args, value, fields=None):
         return {'do': 'cmd', 'leaf': key, 'value': args[0] if args else '', 'amount': int(value)}
     command, options = options_for(key, value)
     if key == 'find':
-        return ui.message(m, m.extras.find_text(m, value[:60]), ui.find_components(m, owner, value[:60]), 'find')
+        query = value[:m.ask.MAX_QUERY]
+        return ui.message(m, m.ask.reply(m, db, p, query), ui.find_components(m, owner, query, db, p), 'find')
     if item['kind'] == 'modal' and command in {'inventory'}:
         return show(m, db, p, owner, command, options, PARENT.get(key, 'home'), name, key)
     return {'do': 'cmd', 'leaf': key, 'value': value}

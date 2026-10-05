@@ -1458,9 +1458,9 @@
     {
       "type": 3,
       "name": "query",
-      "description": "A word or name, e.g. campfire, lumber or comfort",
+      "description": "A word or a question, e.g. campfire or how do I make Iron Nails?",
       "required": true,
-      "max_length": 60
+      "max_length": 100
     }
   ],
   "settings": [
@@ -1727,6 +1727,10 @@
         {
           "name": "Moderator log",
           "value": "modlog"
+        },
+        {
+          "name": "Unanswered Find questions",
+          "value": "asklog"
         },
         {
           "name": "Linked-account lookup (owner)",

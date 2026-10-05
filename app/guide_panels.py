@@ -107,7 +107,7 @@ NEWCOMER_PANELS = [
          ('Do I need to watch the stream?', 'No. Discord works any time. Stream challenges only run while live, and they pay extra.'),
          ('Can I play with friends?', 'Yes. Everyone lives in the same town, votes together and works on the same projects and events.')]),
       ('STUCK?', [
-          ('/guide  /menu  /find', 'Your next step, every button, or a search for anything.'),
+          ('/guide  /menu  /find', 'Your next step, every button, or search and ask anything.'),
           ('Ask in chat', 'Other players and the mods can help.')])],
      'NO RUSH · NO WRONG WAY · HAVE FUN'),
 ]
@@ -247,7 +247,7 @@ PANELS = NEWCOMER_PANELS + [
       ('TRADE & COMMUNITY', [('/seedindustries  /market  /home  /business', 'Money, prices, your Habitat and company.'),
                              ('/vote  /challenge  /season  /trophies', 'Colony votes, stream challenges, seasons and trophies.'),
                              ('/social  /world  /district  /shift  /ducks', 'Friends, the settlement, events and holidays.')]),
-      ('HELP', [('/guide  /find  /seed  /start  /link  /job', 'Next steps, search, the handbook and your setup.'),
+      ('HELP', [('/guide  /find  /seed  /start  /link  /job', 'Next steps, search or ask, the handbook and your setup.'),
                 ('/mod', 'Moderators: events, stream challenges, the recap and these panels.')])],
      'STUCK? /menu HAS A BUTTON FOR EVERYTHING', LEGEND),
 ]
