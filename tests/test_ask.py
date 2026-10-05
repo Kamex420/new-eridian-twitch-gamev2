@@ -285,3 +285,18 @@ def test_on_the_lite_twitch_game_crafting_answers_point_to_discord(monkeypatch):
     assert 'on Discord' in chat and '!make' not in chat and '!target' not in chat
     assert 'on Discord' in m.find_anything('where do I get iron ingot', 'twitch', 'test', 'u', 'Kamex').body.decode()
     assert '!training' in m.find_anything('how do I level wood harvesting', 'twitch', 'test', 'u', 'Kamex').body.decode()
+
+
+def test_lite_twitch_lines_read_cleanly_through_the_chat_filter(monkeypatch):
+    """What viewers actually see: item names instead of catalog ids, and Discord-only commands marked once."""
+    from fastapi.testclient import TestClient
+    seed()
+    monkeypatch.setattr(m.twitch_lite, 'ENABLED', True)
+    client = TestClient(m.app)
+    def chat(q):
+        return client.get('/api/v1/find', params={'channel': 'test', 'uid': 'u', 'name': 'Kamex', 'provider': 'twitch', 'query': q}).text
+    coal = chat('where do I get coal')
+    assert '!mine Coal 1' in coal and 'sd_' not in coal
+    assert 'on Discord on Discord' not in chat('how do I make money') and '/guide on Discord' in chat('how do I make money')
+    assert '!make' not in chat('what should I do next')
+    assert '✅ Wood Harvesting' in chat('how do I level wood harvesting') or 'Wood Harvesting:' in chat('how do I level wood harvesting')

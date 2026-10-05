@@ -382,6 +382,10 @@ def answer_get(m, db, p, key, provider):
     finds = _find_sources(m, key)
     have = m.material_amount(db, p, key) if p is not None else None
     if not _discord(provider):
+        if key in s.GATHER:                        # chat commands take the item's name (!mine: one word only)
+            source = source.replace(f'!gather {key}', f'!gather {name}')
+            if ' ' not in name:
+                source = source.replace(f'!mine {key} ', f'!mine {name} ')
         made = wb.entry(m, best) if best and key not in s.GATHER else None
         if made is not None and _lite(m):          # crafting is on Discord in the lite game
             source = f'crafted on Discord (/make): {_plain_inputs(m, made)} at the {wb.station_label(made)}.'
@@ -470,7 +474,7 @@ def answer_level(m, db, p, skill, provider):
                  for k, c in m.SEED_TASKS.items() if c['hub'] == hub and (c['branch'] == branch if branch else True)]
     ready = [t for t in tasks if t['status'] == '✅']
     if not _discord(provider):
-        shown = '; '.join(f"{t['status']}{t['cfg']['label']}: !training {hub} {t['key']}" for t in (ready or tasks)[:3])
+        shown = '; '.join(f"{t['status'] + ' ' if t['status'] else ''}{t['cfg']['label']}: !training {hub} {t['key']}" for t in (ready or tasks)[:3])
         return Answer('level', f'📈 {label}' + (f' (Lv {level})' if level is not None else '') + f': train it with {shown}.'
                       + (f' It is part of {main_label}.' if branch else ''))
     lines = [f'📈 HOW TO LEVEL {label.upper()}']
@@ -581,14 +585,15 @@ def answer_skills(m, db, p, provider):
 def answer_next(m, db, p, provider):
     from . import qol, extras
     if p is None:
-        guide = '/guide' if _discord(provider) else ('/guide on Discord' if _lite(m) else '!guide')
+        guide = '/guide' if _discord(provider) or _lite(m) else '!guide'     # the lite game's reply filter adds 'on Discord'
         return Answer('next', f'👋 New here? {"/start" if _discord(provider) else "!start"} creates your citizen, then '
                               f'{guide} shows your best next step.')
     goal = extras.goal_entry(m, db, p)
-    step = extras.next_step(m, db, p, provider)[0] if goal is not None else ''
-    tip = qol.next_step(m, db, p, provider)
+    wording = 'discord' if _discord(provider) or _lite(m) else provider    # lite: crafting is on Discord, so its /commands
+    step = extras.next_step(m, db, p, wording)[0] if goal is not None else ''
+    tip = qol.next_step(m, db, p, wording)
     if not _discord(provider):
-        return Answer('next', (f'🎯 Goal {goal.name}: {step} ' if step else '') + f'🧭 {tip}')
+        return Answer('next', ((f'🎯 Goal {goal.name}: {step} ' if step else '') + f'🧭 {tip}').replace('**', ''))
     lines = ['🧭 WHAT SHOULD I DO NEXT?']
     if step:
         lines.append(f'🎯 **Your goal, {goal.name}:** {step}')
@@ -605,7 +610,7 @@ def answer_money(m, provider):
     """"How do I make money?": the ways the handbook names, and the guide that picks one for you."""
     if not _discord(provider):
         return Answer('money', '💰 Seed Coin comes from work (+1 SC when it matches your job), the three daily Production Orders, '
-                               'and selling surplus to Seed Industries. ' + ('/guide on Discord picks the best way.' if _lite(m)
+                               'and selling surplus to Seed Industries. ' + ('/guide picks the best way.' if _lite(m)
                                                                             else '!guide shows your best next step.'))
     lines = ['💰 HOW DO I EARN SEED COIN?',
              '• **Work:** tasks pay SC; work that matches your job pays +1 SC more (/job).',
