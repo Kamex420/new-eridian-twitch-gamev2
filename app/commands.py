@@ -61,7 +61,8 @@ def command(fn):
                             for label,new in after["Ranks"].items():
                                 old=before["Ranks"].get(label,1)
                                 if new>old:
-                                    notice=f"LEVEL UP: {label} Lv. {old} → Lv. {new}"
+                                    shown=after.get("Labels",{}).get(label,label)    # a name, never an account id
+                                    notice=f"LEVEL UP: {shown} Lv. {old} → Lv. {new}"
                                     m.announce(db,p,notice,m.now());prefix.append(notice)
                         try:
                             from . import onboarding
@@ -143,7 +144,8 @@ def snapshot(db,p):
     for rel in db.execute(select(LifeRelationship).where(LifeRelationship.channel_id==p.channel_id,((LifeRelationship.uid_a==p.twitch_uid)|(LifeRelationship.uid_b==p.twitch_uid)))).scalars():
         partner=rel.uid_b if rel.uid_a==p.twitch_uid else rel.uid_a
         ranks["Relationship "+partner]=sum(rel.familiarity>=n for n in (10,35,90,180,300))+1
-    return {"Ranks":ranks,"Needs":{k:getattr(life,k) for k in NEEDS} if life else {},
+    from .readable_names import labels
+    return {"Ranks":ranks,"Labels":labels(m,db,p,ranks),"Needs":{k:getattr(life,k) for k in NEEDS} if life else {},
             "Resources":m.task_queue.inventory_snapshot(m,db,p)|{k:getattr(p,k) for k in ("sc","contribution")},
             "Competency":{k:getattr(p,v) for k,v in FIELDS.items()},
             "Settlement":{k:getattr(s,k) for k in CORE}|{k:getattr(shared,k) for k in STOCKS}}

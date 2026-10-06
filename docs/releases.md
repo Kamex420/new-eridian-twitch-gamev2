@@ -1,5 +1,11 @@
 # Release notes
 
+## Level-ups name people, not account ids
+
+- **Relationship level-ups say who.** "Relationship 621372225 Lv. 1 → Lv. 2" (the other citizen's account id) now reads "Relationship with blake1215 Lv. 1 → Lv. 2" in the reply, the activity feed, the stream highlights, the journal and the latest milestone on status screens. A citizen who no longer exists shows as "a former citizen".
+- **Hobby level-ups use the hobby's name:** "Gardening hobby Lv. 1 → Lv. 2" instead of "Hobby gardening".
+- **Older lines are fixed too.** On startup, level-up lines saved before this change are rewritten the same way. Activity-feed messages already posted in Discord update the next time the feed edits them; older posted messages keep their text.
+
 ## Find answers questions
 
 `/find`, the menu's 🔎 Find box and Twitch `!find` now take a question as well as a word. No AI runs behind it: Find recognises the shape of the question and answers from the game's own recipes, items, skills and handbook, with your own bag and levels.

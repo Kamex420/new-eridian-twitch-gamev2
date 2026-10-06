@@ -7603,6 +7603,9 @@ world_merge.install(sys.modules[__name__])
 presentation.SKILL_NAMES=tuple(SKILL_LABELS.values())
 # Every module above is loaded now: create any table a module added since the first create_all (existing tables are left alone).
 Base.metadata.create_all(engine)
+# Level-up lines stored before they used names ("Relationship 621372225") are rewritten once: "Relationship with blake1215".
+from . import readable_names
+readable_names.repair(sys.modules[__name__])
 
 
 @app.get('/api/v1/status')
