@@ -564,6 +564,11 @@ svg{position:absolute;inset:0;width:100%;height:100%;display:block}
 .shuttle{animation:launch 9s ease-in infinite}@keyframes launch{0%,55%{opacity:0;transform:translate(0,0)}60%{opacity:1}100%{opacity:0;transform:translate(260px,-330px)}}
 .burst circle{animation:burst 1.5s ease-out forwards}@keyframes burst{from{transform:translate(0,0);opacity:1}to{transform:translate(var(--dx),var(--dy));opacity:0}}
 .twinkle{animation:twinkle 2.4s ease-in-out infinite alternate}@keyframes twinkle{to{opacity:.25}}
+.flicker{animation:flicker 2.2s steps(6) infinite}@keyframes flicker{0%,100%{opacity:1}30%{opacity:.72}55%{opacity:.95}75%{opacity:.68}}
+.brew{animation:brew 2s ease-in infinite;transform-box:fill-box;transform-origin:center}@keyframes brew{0%{opacity:.95;transform:translateY(0) scale(.6)}100%{opacity:0;transform:translateY(-7px) scale(1.25)}}
+.float{animation:float 3.2s ease-in-out infinite alternate}@keyframes float{to{transform:translateY(-5px)}}
+.fog{animation:fog 9s ease-in-out infinite alternate}@keyframes fog{from{transform:translateX(-9px)}to{transform:translateX(9px)}}
+.flagwave{animation:flagwave 2.6s ease-in-out infinite alternate;transform-box:fill-box;transform-origin:0 50%}@keyframes flagwave{to{transform:skewY(-2.5deg) scaleX(.96)}}
 .head{position:absolute;left:0;right:0;top:0;height:8.5vh;display:flex;align-items:center;gap:1.2vw;padding:0 1.6vw;
   background:linear-gradient(180deg,rgba(6,9,28,.92),rgba(6,9,28,.72));border-bottom:2px solid rgba(147,154,255,.45);font-size:clamp(12px,min(2.2vw,3.9vh),44px);z-index:3}
 .head .name{font:700 1.15em var(--font-display);color:var(--ivory);white-space:nowrap}.head .tier{padding:.12em .55em;border-radius:.5em;background:rgba(126,227,176,.18);border:1px solid rgba(126,227,176,.55);color:var(--green2);font-weight:900;font-size:.8em;white-space:nowrap}
@@ -622,6 +627,7 @@ svg{position:absolute;inset:0;width:100%;height:100%;display:block}
   <radialGradient id="domeg" cx="35%" cy="30%" r="75%"><stop offset="0" stop-color="#ffffff" stop-opacity=".95"/><stop offset=".5" stop-color="#bfe8ff" stop-opacity=".7"/><stop offset="1" stop-color="#5aa6c8" stop-opacity=".55"/></radialGradient>
   <radialGradient id="vignette" cx="50%" cy="50%" r="72%"><stop offset=".62" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".45"/></radialGradient>
   <radialGradient id="glowdot"><stop offset="0" stop-color="#ffd98a" stop-opacity=".75"/><stop offset="1" stop-color="#ffd98a" stop-opacity="0"/></radialGradient>
+  <radialGradient id="glowgreen"><stop offset="0" stop-color="#8af07a" stop-opacity=".7"/><stop offset="1" stop-color="#8af07a" stop-opacity="0"/></radialGradient>
   <radialGradient id="sung"><stop offset="0" stop-color="#fff6d8"/><stop offset=".35" stop-color="#ffe7a0" stop-opacity=".9"/><stop offset="1" stop-color="#ffcf6b" stop-opacity="0"/></radialGradient>
   <radialGradient id="shadeg"><stop offset="0" stop-color="#000" stop-opacity=".22"/><stop offset="1" stop-color="#000" stop-opacity="0"/></radialGradient>
   <linearGradient id="mistg" x1="0" y1="0" x2="0" y2="1"><stop id="mist0" offset="0" stop-color="#9fd0c4" stop-opacity="0"/><stop id="mist1" offset="1" stop-color="#9fd0c4" stop-opacity=".8"/></linearGradient>
@@ -634,7 +640,7 @@ svg{position:absolute;inset:0;width:100%;height:100%;display:block}
   <g id="ground"></g><path id="shadows" fill="#141428" opacity="0" style="transition:opacity 4s"/><g id="city"></g><g id="festive"></g><g id="civic"></g><g id="crowd"></g><g id="shades"></g>
   <rect id="tint" x="-600" y="-400" width="2160" height="1400" fill="transparent" style="pointer-events:none;transition:fill 4s"/>
   <rect id="haze" x="-600" y="-400" width="2160" height="1400" fill="transparent" style="pointer-events:none;transition:fill 4s"/>
-  <g id="lights" style="pointer-events:none"></g><g id="labels"></g><g id="tokens"></g>
+  <g id="lights" style="pointer-events:none"></g><g id="festlights" style="pointer-events:none"></g><g id="labels"></g><g id="tokens"></g>
  </g>
  <g id="fx"></g>
 </svg><div class="vig"></div></div>
@@ -1171,7 +1177,7 @@ function effects(phase){const pal=festival&&HOLIDAYS[festival.name]?HOLIDAYS[fes
   if(weatherKey==='dust_winds')particles('dust',34,p=>{p.style.cssText=`left:-10%;top:${10+R()*85}%;width:${30+R()*50}px;height:2px;border-radius:2px;background:rgba(222,190,140,.55);--dx:1200px;--dy:${R()*60-30}px;animation-duration:${1.6+R()*1.6}s;animation-delay:-${R()*3}s`});
   if(weatherKey==='quiet_cycle'&&dark)particles('firefly',22,p=>{p.style.cssText=`left:${10+R()*80}%;top:${25+R()*65}%;width:5px;height:5px;border-radius:50%;background:#fff3a0;box-shadow:0 0 8px #ffe66b;--dx:${R()*80-40}px;--dy:${R()*60-30}px;animation-duration:${4+R()*5}s;animation-direction:alternate;animation-delay:-${R()*5}s`});
   const emoji=(list,n,dir)=>particles('emoji',n,p=>{const e=list[Math.floor(R()*list.length)];p.textContent=e;p.style.cssText=`left:${R()*100}%;top:${dir>0?-8:100}%;font-size:${14+R()*12}px;--dx:${R()*160-80}px;--dy:${dir*640}px;--rot:${R()*360}deg;animation-duration:${9+R()*8}s;animation-delay:-${R()*16}s;opacity:.85`});
-  const fest=document.getElementById('festive');fest.innerHTML='';fireworksOff();
+  const fest=document.getElementById('festive');fest.innerHTML='';document.getElementById('festlights').innerHTML='';fireworksOff();
   if(!festival||!pal)return;const theme=HOLIDAYS[festival.name][2];
   decorate(fest,theme,pal,dark);
   if(theme==='christmas'||theme==='newyear'&&!dark)particles('snow',50,p=>fall(p,'#fff',5,5,11,40,'border-radius:50%;opacity:.85'));
@@ -1184,34 +1190,271 @@ function fireworksOff(){if(fireworks){clearInterval(fireworks);fireworks=null}do
 function fireworksOn(pal){const fx=document.getElementById('fx');const pop=()=>{const x=150+Math.random()*660,y=80+Math.random()*130,c=pal[Math.floor(Math.random()*pal.length)],b=el('g',{class:'burst'},fx);
   for(let k=0;k<16;k++){const a=k/16*Math.PI*2,d=34+Math.random()*16;el('circle',{cx:x,cy:y,r:2.4,fill:c,style:`--dx:${(Math.cos(a)*d).toFixed(1)}px;--dy:${(Math.sin(a)*d+10).toFixed(1)}px`},b)}
   el('circle',{cx:x,cy:y,r:30,fill:'url(#glowdot)',opacity:.35},b);setTimeout(()=>b.remove(),1600)};pop();fireworks=setInterval(pop,QUALITY==='low'?2600:1100)}
-// Decorations: bunting along the streets, lanterns or pumpkins by the lamps, and a centrepiece on the crossing beside the Kernel's plaza
-// (its own doorstep stays clear for the Seedlings who step out of it).
+// Holiday decorations: bunting or garlands along every street, a decoration at every street lamp, and a scene on the
+// crossing beside the Kernel's plaza (its own doorstep stays clear for the Seedlings who step out of it). Everything is
+// drawn once per holiday and time of day; at night lanterns, bulbs and candles glow.
 const FEST_AT=[13.5,6.5];
-function decorate(g,theme,pal,dark){const r=rng('fest:'+theme);
-  for(const k of [6,13])for(let s=0;s+3<N;s+=3)for(const [a,b] of [[[k+.1,s+.1],[k+.1,s+3.1]],[[s+.1,k+.1],[s+3.1,k+.1]]]){const [x1,y1]=iso(...a),[x2,y2]=iso(...b),mx=(x1+x2)/2,my=(y1+y2)/2+5;if(behindKernel(mx,my-10))continue;
-    el('path',{d:`M${x1} ${y1-10} Q${mx} ${my-10} ${x2} ${y2-10}`,stroke:'rgba(40,30,30,.6)','stroke-width':.8,fill:'none'},g);
-    for(let q=1;q<6;q++){const t=q/6,x=(1-t)*(1-t)*x1+2*(1-t)*t*mx+t*t*x2,y=(1-t)*(1-t)*(y1-10)+2*(1-t)*t*(my-10)+t*t*(y2-10),c=pal[q%pal.length];
-      if(dark)el('circle',{cx:x,cy:y+1,r:4,fill:'url(#glowdot)'},g);el(dark?'circle':'polygon',dark?{cx:x,cy:y+1,r:1.8,fill:c}:{points:`${x-2.5},${y} ${x+2.5},${y} ${x},${y+5}`,fill:c},g)}}
+// What glows at night (lanterns, bulbs, candles, the star) is drawn above the night tint, in #festlights, so it stays bright.
+let FL=null;
+function glow(g,x,y,r,o=.6,id='glowdot'){el('circle',{cx:x,cy:y,r,fill:`url(#${id})`,opacity:o},FL||g)}
+function decorate(g,theme,pal,dark){const r=rng('fest:'+theme);FL=document.getElementById('festlights')||g;
+  bunting(g,theme,pal,dark);
   const lamp=(i,j,f)=>{const [x,y]=iso(i,j);if(!behindKernel(x,y-5))f(x,y)};
-  if(theme==='halloween'||theme==='feast')for(const [i,j] of LAMPS)lamp(i+.35,j+.35,(x,y)=>pumpkin(g,x,y,5,dark&&theme==='halloween'));
-  if(theme==='feast')for(let q=0;q<10;q++){const [x,y]=iso(1+r()*4.5,15+r()*4.5);el('rect',{x:x-6,y:y-6,width:12,height:6,rx:1.5,fill:'#e2c25a',stroke:'#a8862e'},g)}
+  for(const [i,j] of LAMPS){const s=i<j?-1:1,[lx,ly]=iso(i,j);if(behindKernel(lx,ly-8))continue;
+    if(theme==='halloween'){lamp(i+.35,j+.35,(x,y)=>pumpkin(g,x,y,5.5,dark,r));cobweb(g,lx,ly-15,s)}
+    else if(theme==='christmas'){candyPost(g,lx,ly);wreath(g,lx,ly-9,3.4)}
+    else if(theme==='feast'){lamp(i+.3,j+.45,(x,y)=>cornStalks(g,x,y,14));lamp(i+.45,j+.3,(x,y)=>{pumpkin(g,x,y,4.2,false,r);gourd(g,x+5,y+1.5,2.4,'#f2c230')})}
+    else if(theme==='valentine')balloon(g,lx+4*s,ly-27,['#ff5a8a','#e0303a','#ffb3c8'][Math.floor(r()*3)],'heart',ly-10);
+    else if(theme==='flag')miniFlag(g,lx-.6,ly-12,7);
+    else if(theme==='newyear')balloon(g,lx+4*s,ly-26,pal[Math.floor(r()*3)],'round',ly-10);
+    else miniFlag(g,lx-.6,ly-12,6,pal[0],pal[1])}
   const [si,sj]=FEST_AT,[x,y]=iso(si,sj),c=el('g',{},g);
-  if(theme==='christmas'){el('rect',{x:x-3,y:y-8,width:6,height:8,fill:'#6b4a2e'},c);[[34,-8],[27,-24],[19,-38]].forEach(([w,o])=>{const b=y+o,t=b-26,m=[x+w*.15,b+2];facet(c,[[x-w,b],[x,t],m],shade('#2f7a45',toward(-1,-.3)));facet(c,[[x,t],[x+w,b],m],shade('#2f7a45',toward(1,-.3)))});
-    for(let q=0;q<14;q++){const t=r(),yy=y-10-t*52,xx=x+(r()-.5)*(34*(1-t)+4)*1.6;if(dark)el('circle',{cx:xx,cy:yy,r:5,fill:'url(#glowdot)'},c);el('circle',{cx:xx,cy:yy,r:2.2,fill:pal[q%3]},c)}
-    el('polygon',{points:star(x,y-66,7,3),fill:'#ffd35a',stroke:'#fff3b0'},c);[[-22,'#e0303a'],[18,'#2d5bd8'],[-6,'#ffd35a']].forEach(([dx,f])=>{el('rect',{x:x+dx,y:y-6,width:10,height:8,fill:f},c);el('rect',{x:x+dx+4,y:y-6,width:2,height:8,fill:'#fff'},c)})}
-  if(theme==='halloween'){pumpkin(c,x,y,20,dark);pumpkin(c,x-26,y+6,9,dark);pumpkin(c,x+26,y+6,8,dark);el('rect',{x:x+34,y:y-40,width:2,height:40,fill:'#6b4a2e'},c);el('rect',{x:x+26,y:y-32,width:18,height:2,fill:'#6b4a2e'},c);el('circle',{cx:x+35,cy:y-44,r:5,fill:'#e2c27a'},c);el('polygon',{points:`${x+28},${y-47} ${x+42},${y-47} ${x+35},${y-56}`,fill:'#2b2b2b'},c)}
-  if(theme==='feast'){box(c,si-.9,sj-.6,1.8,.6,6,'#8a5a32',{topColor:'#f4efe4'});for(let q=0;q<5;q++){const [px,py]=iso(si-.7+q*.35,sj-.3);el('circle',{cx:px,cy:py-7,r:2.5,fill:pal[q%3]},c)}pumpkin(c,x-24,y+8,8,false);pumpkin(c,x+26,y+8,7,false)}
-  if(theme==='flag'){el('rect',{x:x-1.5,y:y-70,width:3,height:70,fill:'#d6d6d6'},c);const fx=x+1.5,fy=y-70;for(let q=0;q<7;q++)el('rect',{x:fx,y:fy+q*3.4,width:40,height:3.4,fill:q%2?'#ffffff':'#d9303a'},c);el('rect',{x:fx,y:fy,width:17,height:13.6,fill:'#2d5bd8'},c);
-    for(let q=0;q<6;q++)el('circle',{cx:fx+3+(q%3)*5.5,cy:fy+3.5+Math.floor(q/3)*6,r:.9,fill:'#fff'},c)}
-  if(theme==='valentine'){el('path',{d:heart(x,y-50,26),fill:'none',stroke:'#ff5a8a','stroke-width':6},c);el('path',{d:heart(x,y-50,26),fill:'none',stroke:'#ffb3c8','stroke-width':2},c);for(let q=0;q<8;q++)el('circle',{cx:x+(r()-.5)*50,cy:y+(r()-.5)*10,r:2.5,fill:q%2?'#ff5a8a':'#e0303a'},c)}
-  if(theme==='newyear'){el('rect',{x:x-1.5,y:y-64,width:3,height:64,fill:'#c9d3ff'},c);if(dark)el('circle',{cx:x,cy:y-70,r:18,fill:'url(#glowdot)'},c);el('circle',{cx:x,cy:y-70,r:9,fill:'#dfe6ff',stroke:'#ffd35a','stroke-width':2},c);
-    const yr=new Date(Date.now()+(festival.days_to_holiday>0?festival.days_to_holiday:0)*864e5+864e5*2).getFullYear();sign(c,x,y-16,`HAPPY ${yr}!`,'#ffd35a')}
-  if(theme==='grill'){box(c,si-.3,sj-.3,.6,.4,7,'#333a44',{topColor:'#555'});el('circle',{class:'smoke',cx:x,cy:y-14,r:4,fill:'#d8d3ca'},c);sign(c,x,y-26,"HAPPY FATHER'S DAY",'#8fd3ff')}
-  if(theme==='labor')sign(c,x,y-20,'THANK YOU, WORKERS!','#ffb000')}
-function pumpkin(g,x,y,s,lit){el('ellipse',{cx:x,cy:y-s*.55,rx:s,ry:s*.62,fill:'#e8701a',stroke:'#a8480e','stroke-width':Math.max(.6,s/10)},g);el('ellipse',{cx:x,cy:y-s*.55,rx:s*.45,ry:s*.62,fill:'none',stroke:'#c55a12','stroke-width':Math.max(.6,s/12)},g);
-  el('rect',{x:x-s*.08,y:y-s*1.35,width:s*.16,height:s*.3,fill:'#4a6a2a'},g);
-  if(s>=5){const f=lit?'#ffe46b':'#5a2a08';el('polygon',{points:`${x-s*.45},${y-s*.7} ${x-s*.2},${y-s*.7} ${x-s*.32},${y-s*.9}`,fill:f},g);el('polygon',{points:`${x+s*.2},${y-s*.7} ${x+s*.45},${y-s*.7} ${x+s*.32},${y-s*.9}`,fill:f},g);
-    el('path',{d:`M${x-s*.45} ${y-s*.45} Q${x} ${y-s*.1} ${x+s*.45} ${y-s*.45}`,stroke:f,'stroke-width':Math.max(.8,s/7),fill:'none'},g);if(lit)el('circle',{cx:x,cy:y-s*.5,r:s*1.8,fill:'url(#glowdot)',opacity:.6},g)}}
+  ({halloween:sceneHalloween,christmas:sceneChristmas,feast:sceneFeast,newyear:sceneNewYear,valentine:sceneValentine,flag:sceneFlag,grill:sceneGrill,labor:sceneLabor}[theme]||(()=>{}))(c,x,y,si,sj,pal,dark,r)}
+
+// ---- bunting: pennants by day and bulbs by night; holidays bring their own shapes (fir garland, hearts, leaves, bats, rosettes, stars)
+function bunting(g,theme,pal,dark){
+  for(const k of [6,13])for(let s=0;s+3<N;s+=3)for(const [a,b] of [[[k+.1,s+.1],[k+.1,s+3.1]],[[s+.1,k+.1],[s+3.1,k+.1]]]){const [x1,y1]=iso(...a),[x2,y2]=iso(...b),mx=(x1+x2)/2,my=(y1+y2)/2+5;if(behindKernel(mx,my-10))continue;
+    const d=`M${x1} ${y1-10} Q${mx} ${my-10} ${x2} ${y2-10}`,at=t=>[(1-t)*(1-t)*x1+2*(1-t)*t*mx+t*t*x2,(1-t)*(1-t)*(y1-10)+2*(1-t)*t*(my-10)+t*t*(y2-10)];
+    if(theme==='christmas'){el('path',{d,stroke:'#245a30','stroke-width':3,fill:'none','stroke-linecap':'round'},g);el('path',{d,stroke:'#3f8f4c','stroke-width':1.6,fill:'none','stroke-dasharray':'1.2 1.6'},g);
+      for(let q=1;q<9;q++){const [bx,by]=at(q/9),cc=pal[q%3];if(dark)el('circle',{cx:bx,cy:by+1.8,r:4.5,fill:'url(#glowdot)',class:'twinkle',style:`animation-delay:-${(q*.43)%1.8}s`},FL);
+        el('ellipse',{cx:bx,cy:by+1.8,rx:1.1,ry:1.5,fill:cc},dark?FL:g);el('rect',{x:bx-.6,y:by,width:1.2,height:.9,fill:'#c9c9c9'},g)}continue}
+    el('path',{d,stroke:'rgba(40,30,30,.55)','stroke-width':.8,fill:'none'},g);
+    for(let q=1;q<6;q++){const [px,py]=at(q/6),cc=pal[q%pal.length];
+      if(dark){el('circle',{cx:px,cy:py+1.5,r:4.5,fill:'url(#glowdot)'},FL);el('circle',{cx:px,cy:py+1.5,r:1.7,fill:cc},FL);el('circle',{cx:px-.5,cy:py+1,r:.5,fill:'#fff',opacity:.8},FL);continue}
+      if(theme==='valentine'){el('path',{d:heart(px,py+3.2,2.7),fill:cc,stroke:shade(cc,.65),'stroke-width':.4},g);el('circle',{cx:px-1,cy:py+2.2,r:.55,fill:'#fff',opacity:.7},g)}
+      else if(theme==='feast')leaf(g,px,py+3.4,3.2,['#d9771f','#b8431a','#e8b020'][q%3],(q*53)%70-35);
+      else if(theme==='halloween'&&q%2===0)bat(g,px,py+3,.9);
+      else if(theme==='flag')rosette(g,px,py+.5,3.2);
+      else if(theme==='newyear'){el('polygon',{points:star(px,py+3.5,3,1.3),fill:q%2?'#ffd35a':'#dfe6ff',stroke:q%2?'#b8861a':'#8a96c8','stroke-width':.4},g)}
+      else{el('polygon',{points:`${px-2.7},${py} ${px},${py} ${px},${py+6}`,fill:cc},g);el('polygon',{points:`${px},${py} ${px+2.7},${py} ${px},${py+6}`,fill:shade(cc,.78)},g)}}}}
+function bat(g,x,y,k=1){el('path',{d:`M${x-4.2*k} ${y} Q${x-2.6*k} ${y-2.4*k} ${x-1.2*k} ${y-.6*k} L${x-.6*k} ${y-1.8*k} L${x} ${y-.9*k} L${x+.6*k} ${y-1.8*k} L${x+1.2*k} ${y-.6*k} Q${x+2.6*k} ${y-2.4*k} ${x+4.2*k} ${y} Q${x+3*k} ${y-.2*k} ${x+2.4*k} ${y+1.1*k} Q${x+1.6*k} ${y+.2*k} ${x+.8*k} ${y+1.1*k} Q${x} ${y+.3*k} ${x-.8*k} ${y+1.1*k} Q${x-1.6*k} ${y+.2*k} ${x-2.4*k} ${y+1.1*k} Q${x-3*k} ${y-.2*k} ${x-4.2*k} ${y}Z`,fill:'#2a1f30'},g)}
+function leaf(g,x,y,s,c,rot=0){const lg=el('g',{transform:`rotate(${rot} ${x} ${y})`},g);el('path',{d:`M${x} ${y-s} Q${x+s*.95} ${y-s*.2} ${x} ${y+s} Q${x-s*.95} ${y-s*.2} ${x} ${y-s}Z`,fill:c,stroke:shade(c,.7),'stroke-width':.35},lg);
+  el('line',{x1:x,y1:y-s*.8,x2:x,y2:y+s*1.25,stroke:shade(c,.6),'stroke-width':.35},lg)}
+function rosette(g,x,y,s){[['#d9303a',1],['#ffffff',.72],['#2d5bd8',.44]].forEach(([c,k])=>el('path',{d:`M${x-s*k} ${y} A${s*k} ${s*k} 0 0 0 ${x+s*k} ${y}Z`,fill:c,stroke:c==='#ffffff'?'#c9c9c9':shade(c,.7),'stroke-width':.3},g));
+  for(let q=-2;q<=2;q++)el('line',{x1:x,y1:y,x2:x+Math.sin(q*.55)*s,y2:y+Math.cos(q*.55)*s,stroke:'rgba(0,0,0,.18)','stroke-width':.3},g)}
+
+// ---- street-lamp decorations
+function cobweb(g,x,y,s){const w=el('g',{opacity:.75},g),ax=x+4*s,R=[];for(let q=0;q<4;q++){const a=q/3*Math.PI/2;R.push([x+Math.sin(a)*4.5*s,y+Math.cos(a)*4.5])}
+  for(const [px,py] of R)el('line',{x1:x,y1:y,x2:px,y2:py,stroke:'#f2f2f2','stroke-width':.25},w);
+  for(const k of [.4,.7,1])el('polyline',{points:pts(R.map(([px,py])=>[x+(px-x)*k,y+(py-y)*k])),fill:'none',stroke:'#f2f2f2','stroke-width':.25},w);
+  el('line',{x1:ax-.5*s,y1:y-1,x2:ax-.5*s,y2:y+5,stroke:'#f2f2f2','stroke-width':.2},w);el('circle',{cx:ax-.5*s,cy:y+5.6,r:.8,fill:'#1a1a1a'},w)}
+function candyPost(g,x,y){for(let t=1;t<15;t+=2.6)el('line',{x1:x-.75,y1:y-t,x2:x+.75,y2:y-t-1.3,stroke:'#e0303a','stroke-width':.9},g)}
+function wreath(g,x,y,s){el('circle',{cx:x,cy:y,r:s,fill:'none',stroke:'#1f5a2a','stroke-width':2.2},g);el('circle',{cx:x,cy:y,r:s,fill:'none',stroke:'#3f8f4c','stroke-width':1.1,'stroke-dasharray':'1 1.2'},g);
+  for(let q=0;q<5;q++){const a=q/5*Math.PI*2+.3;el('circle',{cx:x+Math.cos(a)*s,cy:y+Math.sin(a)*s,r:.6,fill:'#e0303a'},g)}
+  el('polygon',{points:`${x},${y+s} ${x-2},${y+s-1.3} ${x-2},${y+s+1.3}`,fill:'#d9303a'},g);el('polygon',{points:`${x},${y+s} ${x+2},${y+s-1.3} ${x+2},${y+s+1.3}`,fill:'#d9303a'},g);
+  el('path',{d:`M${x} ${y+s} l-1 2.6 M${x} ${y+s} l1 2.6`,stroke:'#b8202a','stroke-width':.6},g)}
+function cornStalks(g,x,y,h){const c=el('g',{},g);for(let q=-3;q<=3;q++){const bx=x+q*1.3,tx=x+q*.35;el('line',{x1:bx,y1:y,x2:tx,y2:y-h,stroke:q%2?'#c8a94a':'#a8893a','stroke-width':.9},c);
+    el('path',{d:`M${(bx+tx)/2} ${y-h*.55} q${q<0?-3:3} -1 ${q<0?-4.5:4.5} 2`,stroke:'#b89a40','stroke-width':.7,fill:'none'},c)}
+  el('rect',{x:x-2.4,y:y-h*.42,width:4.8,height:1.4,fill:'#7a3a1a'},c)}
+function gourd(g,x,y,s,c){el('ellipse',{cx:x,cy:y-s*.7,rx:s,ry:s*.75,fill:c,stroke:shade(c,.65),'stroke-width':.4},g);el('ellipse',{cx:x+s*.2,cy:y-s*1.5,rx:s*.45,ry:s*.55,fill:c,stroke:shade(c,.65),'stroke-width':.4},g);
+  el('line',{x1:x+s*.25,y1:y-s*2,x2:x+s*.45,y2:y-s*2.5,stroke:'#4a6a2a','stroke-width':.6},g)}
+function balloon(g,x,y,c,kind,ty){el('path',{d:`M${x} ${y+4} Q${x-2} ${(y+ty)/2} ${x-1} ${ty}`,stroke:'rgba(60,60,60,.6)','stroke-width':.35,fill:'none'},g);
+  if(kind==='heart')el('path',{d:heart(x,y,3.4),fill:c,stroke:shade(c,.65),'stroke-width':.4},g);
+  else{el('ellipse',{cx:x,cy:y,rx:3,ry:3.6,fill:c,stroke:shade(c,.65),'stroke-width':.4},g);el('polygon',{points:`${x-.7},${y+3.9} ${x+.7},${y+3.9} ${x},${y+3.2}`,fill:shade(c,.8)},g)}
+  el('ellipse',{cx:x-1.1,cy:y-1.4,rx:.7,ry:1.1,fill:'#fff',opacity:.6},g)}
+function miniFlag(g,x,y,w,c1,c2){const h=w*.62;el('line',{x1:x,y1:y,x2:x,y2:y+h+3,stroke:'#cfcfcf','stroke-width':.5},g);
+  if(c1){el('polygon',{points:`${x},${y} ${x+w},${y+h/2} ${x},${y+h}`,fill:c1},g);el('polygon',{points:`${x},${y+h*.5} ${x+w*.6},${y+h*.5} ${x},${y+h}`,fill:c2,opacity:.8},g);return}
+  for(let q=0;q<5;q++)el('rect',{x,y:y+q*h/5,width:w,height:h/5,fill:q%2?'#ffffff':'#d9303a'},g);el('rect',{x,y,width:w*.42,height:h*.6,fill:'#2d5bd8'},g)}
+
+// ---- jack-o'-lanterns: ribbed, with a curled stem and leaf; carved faces glow and flicker at night
+function pumpkin(g,x,y,s,lit,r=Math.random){const p=el('g',{},g),cy=y-s*.62,body='#e8701a';
+  el('ellipse',{cx:x,cy:y+.4,rx:s*1.05,ry:s*.28,fill:'rgba(0,0,0,.18)'},p);
+  [[-.62,.5,shade(body,.82)],[.62,.5,shade(body,.9)],[-.3,.58,shade(body,.95)],[.3,.58,body],[0,.5,shade(body,1.08)]].forEach(([dx,w,f])=>el('ellipse',{cx:x+dx*s,cy,rx:s*w,ry:s*.66,fill:f,stroke:'#a8480e','stroke-width':Math.max(.35,s/16)},p));
+  el('path',{d:`M${x-s*.05} ${cy-s*.58} q${s*.05} ${-s*.42} ${s*.3} ${-s*.5}`,stroke:'#4a6a2a','stroke-width':Math.max(.9,s*.18),fill:'none','stroke-linecap':'round'},p);
+  if(s>=9){el('path',{d:`M${x+s*.1} ${cy-s*.75} q${s*.35} ${-s*.25} ${s*.6} ${-s*.05} q${-s*.28} ${s*.22} ${-s*.6} ${s*.05}Z`,fill:'#5f8a3a'},p);
+    el('path',{d:`M${x-s*.15} ${cy-s*.7} q${-s*.3} ${-s*.25} ${-s*.15} ${-s*.45} q${s*.2} ${s*.05} ${s*.05} ${s*.25}`,stroke:'#5f8a3a','stroke-width':.5,fill:'none'},p)}
+  if(s<4.5)return;
+  const f=lit?'#ffd34a':'#4a2208',e=lit?{class:'flicker'}:{},fp=lit?(FL||p):p;
+  el('polygon',{points:`${x-s*.5},${cy-s*.08} ${x-s*.14},${cy-s*.08} ${x-s*.32},${cy-s*.38}`,fill:f,...e},fp);el('polygon',{points:`${x+s*.14},${cy-s*.08} ${x+s*.5},${cy-s*.08} ${x+s*.32},${cy-s*.38}`,fill:f,...e},fp);
+  if(s>=9)el('polygon',{points:`${x-s*.08},${cy+s*.12} ${x+s*.08},${cy+s*.12} ${x},${cy}`,fill:f,...e},fp);
+  const m=[];for(let q=0;q<=6;q++)m.push([x-s*.5+q*s/6,cy+s*.22+(q%2?s*.14:0)+Math.sin(q/6*Math.PI)*s*.12]);
+  for(let q=6;q>=0;q--)m.push([x-s*.5+q*s/6,cy+s*.3+Math.sin(q/6*Math.PI)*s*.24-(q%2?0:s*.06)]);
+  el('polygon',{points:pts(m),fill:f,...e},fp);
+  if(lit)glow(p,x,cy,s*2,.7)}
+
+// ---- the scenes on the crossing
+function sceneHalloween(c,x,y,si,sj,pal,dark,r){
+  // gravestones on a little patch of dead grass, behind everything
+  el('ellipse',{cx:x-44,cy:y+2,rx:24,ry:9,fill:'#5a5a3a',opacity:.55},c);
+  [[-54,-2,9,13,-6],[-40,-6,8,11,4],[-30,2,7,9,-3]].forEach(([dx,dy,w,h,rot])=>{const gx=x+dx,gy=y+dy,t=el('g',{transform:`rotate(${rot} ${gx} ${gy})`},c);
+    el('path',{d:`M${gx-w/2+1.4} ${gy} L${gx-w/2+1.4} ${gy-h+w/2} A${w/2} ${w/2} 0 0 1 ${gx+w/2+1.4} ${gy-h+w/2} L${gx+w/2+1.4} ${gy}Z`,fill:'#6a6f75'},t);
+    el('path',{d:`M${gx-w/2} ${gy} L${gx-w/2} ${gy-h+w/2} A${w/2} ${w/2} 0 0 1 ${gx+w/2} ${gy-h+w/2} L${gx+w/2} ${gy}Z`,fill:'#a3a9b0',stroke:'#6a6f75','stroke-width':.5},t);
+    const tx=el('text',{x:gx,y:gy-h*.45,'text-anchor':'middle','font-size':Math.max(3,w*.38),'font-weight':900,fill:'#5a5f66'},t);tx.textContent='RIP';
+    for(let q=0;q<4;q++)el('path',{d:`M${gx-w/2+q*w/3} ${gy+.5} l${r()-.5} -2.4`,stroke:'#7a8a3a','stroke-width':.6},t)});
+  // scarecrow with a crow on its arm
+  const sx=x+40,sy=y-2,sc=el('g',{},c);
+  el('line',{x1:sx,y1:sy,x2:sx,y2:sy-40,stroke:'#6b4a2e','stroke-width':2},sc);el('line',{x1:sx-13,y1:sy-28,x2:sx+13,y2:sy-28,stroke:'#6b4a2e','stroke-width':1.6},sc);
+  el('polygon',{points:`${sx-7},${sy-30} ${sx+7},${sy-30} ${sx+6},${sy-15} ${sx-6},${sy-15}`,fill:'#b8452f'},sc);
+  for(let q=0;q<3;q++){el('line',{x1:sx-6.5+q*4.3,y1:sy-30,x2:sx-6+q*4,y2:sy-15,stroke:'#7a2a1f','stroke-width':.6},sc)}for(let q=0;q<3;q++)el('line',{x1:sx-7,y1:sy-26+q*4,x2:sx+7,y2:sy-26+q*4,stroke:'#e2c27a','stroke-width':.5,opacity:.7},sc);
+  el('polygon',{points:`${sx-6},${sy-15} ${sx+6},${sy-15} ${sx+7},${sy-11} ${sx-7},${sy-11}`,fill:'#3f5a8a'},sc);
+  for(const sd of [-1,1])for(let q=0;q<3;q++)el('line',{x1:sx+sd*13,y1:sy-28,x2:sx+sd*(15+q*.8),y2:sy-26+q*1.3,stroke:'#e2c25a','stroke-width':.6},sc);
+  for(let q=0;q<4;q++)el('line',{x1:sx-4+q*2.6,y1:sy-11,x2:sx-4.6+q*3,y2:sy-7.5,stroke:'#e2c25a','stroke-width':.6},sc);
+  el('circle',{cx:sx,cy:sy-35,r:5,fill:'#d9b98a',stroke:'#8a6a3a','stroke-width':.5},sc);
+  el('path',{d:`M${sx-2.6} ${sy-36.6} l1.4 1.4 m0 -1.4 l-1.4 1.4 M${sx+1.2} ${sy-36.6} l1.4 1.4 m0 -1.4 l-1.4 1.4 M${sx-2.4} ${sy-33.2} q2.4 1.6 4.8 0`,stroke:'#3a2a1a','stroke-width':.55,fill:'none'},sc);
+  el('ellipse',{cx:sx,cy:sy-39.5,rx:8,ry:1.8,fill:'#c8a050',stroke:'#8a6a2a','stroke-width':.4},sc);el('path',{d:`M${sx-4} ${sy-39.8} Q${sx} ${sy-49} ${sx+4} ${sy-39.8}Z`,fill:'#d9b060',stroke:'#8a6a2a','stroke-width':.4},sc);
+  el('rect',{x:sx-4,y:sy-41.3,width:8,height:1.3,fill:'#7a2a1f'},sc);
+  el('ellipse',{cx:sx+11,cy:sy-30.5,rx:2.4,ry:1.6,fill:'#1a1a22'},sc);el('circle',{cx:sx+13,cy:sy-32,r:1.2,fill:'#1a1a22'},sc);el('polygon',{points:`${sx+14},${sy-32.3} ${sx+15.8},${sy-31.8} ${sx+14},${sy-31.4}`,fill:'#e8a21a'},sc);
+  // hay bale with a little pumpkin
+  const hx=x+22,hy=y+16;el('polygon',{points:`${hx-9},${hy} ${hx+9},${hy} ${hx+9},${hy-6} ${hx-9},${hy-6}`,fill:'#d9b050',stroke:'#a8862e','stroke-width':.5},c);
+  el('polygon',{points:`${hx-9},${hy-6} ${hx+9},${hy-6} ${hx+6},${hy-9} ${hx-6},${hy-9}`,fill:'#e8c870'},c);for(let q=0;q<5;q++)el('line',{x1:hx-8+q*4,y1:hy-1,x2:hx-7+q*4,y2:hy-5,stroke:'#a8862e','stroke-width':.4},c);
+  pumpkin(c,hx+2,hy-8,4.6,dark,r);
+  // cauldron bubbling over a little fire
+  const kx=x-18,ky=y+18,kc=el('g',{},c);
+  if(dark)glow(kc,kx,ky-6,22,.5,'glowgreen');
+  for(const [dx,h,f] of [[-3,6,'#ff8a1a'],[0,8,'#ffd34a'],[3,5.5,'#ff5a1a']])el('path',{d:`M${kx+dx-2} ${ky+1} Q${kx+dx} ${ky+1-h} ${kx+dx+2} ${ky+1}Z`,fill:f,class:'flicker'},dark?FL:kc);
+  for(const sd of [-1,1])el('line',{x1:kx+sd*5,y1:ky-3,x2:kx+sd*6.5,y2:ky+1.5,stroke:'#1a1a1a','stroke-width':1.2},kc);
+  el('path',{d:`M${kx-8} ${ky-9} Q${kx-8.5} ${ky} ${kx} ${ky} Q${kx+8.5} ${ky} ${kx+8} ${ky-9}Z`,fill:'#2a2a30',stroke:'#111','stroke-width':.5},kc);
+  el('ellipse',{cx:kx,cy:ky-9,rx:8.6,ry:2.4,fill:'#3a3a42'},kc);el('ellipse',{cx:kx,cy:ky-9.2,rx:7.2,ry:1.8,fill:'#5ad14a'},kc);
+  [[-3,-10.5,1.2],[2,-11,1.6],[4.5,-9.8,.9],[-.5,-12.5,1]].forEach(([dx,dy,rr])=>el('circle',{cx:kx+dx,cy:ky+dy,r:rr,fill:'#8af07a',stroke:'#3aa02a','stroke-width':.3,class:'brew',style:`animation-delay:-${(rr*1.3)%2}s`},kc));
+  el('path',{d:`M${kx-7} ${ky-7} Q${kx-4} ${ky-1.5} ${kx-1} ${ky-1.6}`,stroke:'#55555e','stroke-width':.7,fill:'none'},kc);
+  // the big jack-o'-lantern and two friends
+  pumpkin(c,x,y+4,19,dark,r);pumpkin(c,x-24,y+11,8,dark,r);pumpkin(c,x+19,y+6,6,dark,r);
+  // a little ghost floats above it all
+  const gx=x-14,gy=y-46,gh=el('g',{class:'float'},c);
+  el('path',{d:`M${gx-6} ${gy+8} L${gx-6} ${gy} A6 6 0 0 1 ${gx+6} ${gy} L${gx+6} ${gy+8} q-1.5 -2 -3 0 q-1.5 2 -3 0 q-1.5 -2 -3 0 q-1.5 2 -3 0Z`,fill:'#f6f6fb',stroke:'#c9cbe0','stroke-width':.5,opacity:.92},gh);
+  el('ellipse',{cx:gx-2.2,cy:gy,rx:1,ry:1.5,fill:'#1a1a22'},gh);el('ellipse',{cx:gx+2.2,cy:gy,rx:1,ry:1.5,fill:'#1a1a22'},gh);el('ellipse',{cx:gx,cy:gy+3.2,rx:1,ry:1.2,fill:'#1a1a22'},gh);
+  if(dark)for(let q=0;q<5;q++)el('ellipse',{cx:x-50+q*25+r()*8,cy:y+12+r()*8,rx:16+r()*10,ry:3,fill:'#e8eaff',opacity:.12,class:'fog',style:`animation-delay:-${q*2.3}s`},c)}
+
+function sceneChristmas(c,x,y,si,sj,pal,dark,r){
+  // snow on the ground around the tree
+  [[0,4,40,11],[-40,8,16,5],[38,8,15,5]].forEach(([dx,dy,rx,ry])=>{el('ellipse',{cx:x+dx,cy:y+dy,rx,ry,fill:'#eef4ff',opacity:.92},c);el('ellipse',{cx:x+dx+rx*.2,cy:y+dy+ry*.25,rx:rx*.7,ry:ry*.55,fill:'#dbe6f8',opacity:.6},c)});
+  // the tree: four tiers with snowy tips, a gold garland, ornaments, twinkling lights and a glowing star
+  el('rect',{x:x-3.5,y:y-9,width:7,height:9,fill:'#6b4a2e'},c);el('rect',{x:x-3.5,y:y-9,width:2.5,height:9,fill:'#86603f'},c);
+  const tiers=[[34,-5,20],[27,-18,19],[21,-30,17],[14,-41,15]];
+  tiers.forEach(([w,o,hgt],q)=>{const b=y+o,t=b-hgt,mid=[x+w*.12,b+2];facet(c,[[x-w,b],[x,t],mid],shade('#2f7a45',toward(-1,-.3)));facet(c,[[x,t],[x+w,b],mid],shade('#2f7a45',toward(1,-.3)));
+    el('path',{d:`M${x-w} ${b} `+[...Array(8)].map((_,k)=>`Q${x-w+(k+.5)*w/4} ${b+(k%2?2.6:1.4)} ${x-w+(k+1)*w/4} ${b}`).join(' ')+` L${x+w*.12} ${b+2}Z`,fill:'#f4f8ff',opacity:.95},c);
+    el('path',{d:`M${x-w*.8} ${b-hgt*.3} Q${x} ${b-hgt*.05} ${x+w*.8} ${b-hgt*.35}`,stroke:'#ffd35a','stroke-width':1.1,fill:'none',opacity:.9},c)});
+  for(let q=0;q<22;q++){const t=r(),yy=y-8-t*44,ww=34*(1-t)*.8+3,xx=x+(r()-.5)*ww*1.7,cc=[...pal,'#70ddff','#ff8ad1'][q%5];
+    if(q%3===0){if(dark)el('circle',{cx:xx,cy:yy,r:4.5,fill:'url(#glowdot)',class:'twinkle',style:`animation-delay:-${(q*.31)%1.8}s`},FL);el('circle',{cx:xx,cy:yy,r:1,fill:'#fff6c8',class:dark?'twinkle':'',style:`animation-delay:-${(q*.31)%1.8}s`},dark?FL:c)}
+    else{el('circle',{cx:xx,cy:yy,r:2.1,fill:cc,stroke:shade(cc,.6),'stroke-width':.35},c);el('circle',{cx:xx-.7,cy:yy-.7,r:.6,fill:'#fff',opacity:.75},c)}}
+  if(dark)glow(c,x,y-58,16,.85);const sg=dark?FL:c;el('polygon',{points:star(x,y-58,7.5,3.2),fill:'#ffd35a',stroke:'#fff3b0','stroke-width':.8},sg);el('polygon',{points:star(x,y-58,3.6,1.6),fill:'#fff6c8'},sg);
+  // presents with ribbons and bows
+  [[-24,4,10,8,'#e0303a','#ffd35a'],[-12,9,8,6,'#2d5bd8','#ffffff'],[14,8,11,7,'#2fa84f','#e0303a'],[26,4,7,9,'#ffd35a','#e0303a'],[2,12,7,5,'#b58cff','#ffffff']].forEach(([dx,dy,w,h,bc,rc])=>{
+    const bx=x+dx,by=y+dy;el('rect',{x:bx-w/2,y:by-h,width:w,height:h,fill:bc,stroke:shade(bc,.6),'stroke-width':.5},c);el('rect',{x:bx+w*.15,y:by-h,width:w*.35,height:h,fill:shade(bc,.8),opacity:.6},c);
+    el('polygon',{points:`${bx-w/2},${by-h} ${bx+w/2},${by-h} ${bx+w/2+2},${by-h-2} ${bx-w/2+2},${by-h-2}`,fill:shade(bc,1.15)},c);
+    el('rect',{x:bx-.8,y:by-h-2,width:1.6,height:h+2,fill:rc},c);el('rect',{x:bx-w/2,y:by-h*.55,width:w,height:1.4,fill:rc},c);
+    el('ellipse',{cx:bx-1.8,cy:by-h-3.2,rx:1.9,ry:1.2,fill:'none',stroke:rc,'stroke-width':.9},c);el('ellipse',{cx:bx+1.8,cy:by-h-3.2,rx:1.9,ry:1.2,fill:'none',stroke:rc,'stroke-width':.9},c)});
+  // a snowman with a scarf, a top hat and stick arms
+  const sx=x-44,sy=y+6,sm=el('g',{},c);
+  [[0,0,8.5],[0,-12,6.5],[0,-21.5,4.8]].forEach(([dx,dy,rr])=>{el('circle',{cx:sx+dx,cy:sy+dy-rr+2,r:rr,fill:'#f7faff',stroke:'#c4d0e4','stroke-width':.5},sm);el('path',{d:`M${sx+rr*.2} ${sy+dy-rr*2+2.4} A${rr} ${rr} 0 0 1 ${sx+rr*.2} ${sy+dy+1.6}`,fill:'#dbe4f4',opacity:.7},sm)});
+  el('line',{x1:sx-5.5,y1:sy-14,x2:sx-13,y2:sy-20,stroke:'#6b4a2e','stroke-width':.9},sm);el('line',{x1:sx+5.5,y1:sy-14,x2:sx+12,y2:sy-21,stroke:'#6b4a2e','stroke-width':.9},sm);el('line',{x1:sx+10,y1:sy-19,x2:sx+12,y2:sy-18,stroke:'#6b4a2e','stroke-width':.7},sm);
+  for(const dy of [-9,-12.5,-16])el('circle',{cx:sx,cy:sy+dy,r:.7,fill:'#222'},sm);
+  el('circle',{cx:sx-1.6,cy:sy-25.5,r:.6,fill:'#222'},sm);el('circle',{cx:sx+1.6,cy:sy-25.5,r:.6,fill:'#222'},sm);el('polygon',{points:`${sx},${sy-24.3} ${sx+5},${sy-23.5} ${sx},${sy-23.1}`,fill:'#ff8a1a'},sm);
+  el('path',{d:`M${sx-4.5} ${sy-19.6} Q${sx} ${sy-17.6} ${sx+4.5} ${sy-19.6} L${sx+4.5} ${sy-18} Q${sx} ${sy-16} ${sx-4.5} ${sy-18}Z`,fill:'#e0303a'},sm);el('polygon',{points:`${sx+2},${sy-18} ${sx+4},${sy-18} ${sx+5},${sy-12} ${sx+3},${sy-12.5}`,fill:'#c42a32'},sm);
+  el('rect',{x:sx-5,y:sy-30.6,width:10,height:1.4,fill:'#1a1a22'},sm);el('rect',{x:sx-3.2,y:sy-37,width:6.4,height:6.6,fill:'#1a1a22'},sm);el('rect',{x:sx-3.2,y:sy-32.4,width:6.4,height:1.1,fill:'#e0303a'},sm);
+  // candy canes
+  for(const [dx,f] of [[40,1],[47,-1]]){const cx2=x+dx,cy2=y+6,d=`M${cx2} ${cy2} L${cx2} ${cy2-18} Q${cx2} ${cy2-23} ${cx2+4*f} ${cy2-23} Q${cx2+8*f} ${cy2-23} ${cx2+8*f} ${cy2-19}`;
+    el('path',{d,stroke:'#fbfbfb','stroke-width':2.6,fill:'none','stroke-linecap':'round'},c);el('path',{d,stroke:'#e0303a','stroke-width':2.6,fill:'none','stroke-dasharray':'2 2.4'},c)}}
+
+function sceneFeast(c,x,y,si,sj,pal,dark,r){
+  // the harvest table with a cloth, plates, a roast, a pie, corn and candles
+  box(c,si-.9,sj-.6,1.8,.6,6,'#8a5a32',{topColor:'#f0e2c8',noshadow:true});
+  const top=(t,u=.5)=>{const [px,py]=iso(si-.9+.15+t*1.5,sj-.6+.12+u*.36);return [px,py-6]};
+  el('polygon',{points:pts([top(0,0),top(1,0),top(1,1),top(0,1)]),fill:'#c8642a',opacity:.35},c);
+  for(let q=0;q<5;q++){const [px,py]=top(q/4,.5);el('ellipse',{cx:px,cy:py,rx:2.6,ry:1.3,fill:'#fbfbf6',stroke:'#c9c2b0','stroke-width':.3},c)}
+  {const [px,py]=top(.5,.5);el('ellipse',{cx:px,cy:py,rx:4.4,ry:2,fill:'#e8e2d0'},c);el('ellipse',{cx:px,cy:py-1.8,rx:3.6,ry:2.6,fill:'#b8641e',stroke:'#7a3a12','stroke-width':.4},c);
+    el('ellipse',{cx:px-1,cy:py-2.6,rx:1.4,ry:.8,fill:'#e8a050',opacity:.8},c);for(const sd of [-1,1]){el('line',{x1:px+sd*2.6,y1:py-1.2,x2:px+sd*4.6,y2:py-2.4,stroke:'#a8541a','stroke-width':1.2,'stroke-linecap':'round'},c);el('circle',{cx:px+sd*4.9,cy:py-2.6,r:.6,fill:'#fbfbf6'},c)}}
+  {const [px,py]=top(.18,.5);el('ellipse',{cx:px,cy:py-.4,rx:2.6,ry:1.3,fill:'#d9a050',stroke:'#a8762e','stroke-width':.3},c);el('path',{d:`M${px-1.8} ${py-.8} l3.6 .8 M${px-1.8} ${py} l3.6 -.8`,stroke:'#a8762e','stroke-width':.3},c)}
+  {const [px,py]=top(.82,.5);for(const dx of [-1.2,1.2]){el('ellipse',{cx:px+dx,cy:py-.6,rx:.8,ry:1.8,fill:'#f2c230',stroke:'#c8901a','stroke-width':.3},c);el('path',{d:`M${px+dx} ${py+1} l${dx} 1.4`,stroke:'#6a9a3a','stroke-width':.6},c)}}
+  for(const t of [.33,.67]){const [px,py]=top(t,.5);el('rect',{x:px-.5,y:py-4.5,width:1,height:4,fill:'#fbf3dc'},c);el('ellipse',{cx:px,cy:py-5.3,rx:.6,ry:1,fill:'#ffb030',class:'flicker'},dark?FL:c);if(dark)glow(c,px,py-5,7,.8)}
+  // hay bales stacked with pumpkins and gourds
+  for(const [dx,dy] of [[-40,4],[-31,9],[-36,-1]]){const hx=x+dx,hy=y+dy;el('polygon',{points:`${hx-7},${hy} ${hx+7},${hy} ${hx+7},${hy-5} ${hx-7},${hy-5}`,fill:'#d9b050',stroke:'#a8862e','stroke-width':.5},c);
+    el('polygon',{points:`${hx-7},${hy-5} ${hx+7},${hy-5} ${hx+5},${hy-7} ${hx-5},${hy-7}`,fill:'#e8c870'},c);for(let q=0;q<4;q++)el('line',{x1:hx-6+q*4,y1:hy-1,x2:hx-5+q*4,y2:hy-4,stroke:'#a8862e','stroke-width':.35},c)}
+  pumpkin(c,x-36,y-6,5.5,false,r);gourd(c,x-29,y+3,2.8,'#f2c230');gourd(c,x-44,y+3,2.4,'#e8e2c0');pumpkin(c,x-24,y+12,5,false,r);
+  // a cornucopia spilling fruit
+  const hx=x+30,hy=y+10;el('path',{d:`M${hx-10} ${hy-6} Q${hx+2} ${hy-12} ${hx+10} ${hy-2} Q${hx+14} ${hy+2} ${hx+16} ${hy-4} Q${hx+14} ${hy+4} ${hx+8} ${hy+2} Q${hx} ${hy+3} ${hx-10} ${hy+2}Z`,fill:'#b8862e',stroke:'#7a5418','stroke-width':.5},c);
+  for(let q=0;q<4;q++)el('path',{d:`M${hx-8+q*5} ${hy-7+q*.6} q1 4 0 8`,stroke:'#8a6424','stroke-width':.4,fill:'none'},c);
+  el('ellipse',{cx:hx-10,cy:hy-2,rx:3.2,ry:4.4,fill:'#5a3a18'},c);
+  [[-13,-1,2.2,'#d9303a'],[-15,2,2,'#8a3ab8'],[-11,3,2.2,'#f2c230'],[-17,-2,1.8,'#e8701a'],[-13.5,4.6,1.6,'#6aa83a']].forEach(([dx,dy,rr,f])=>{el('circle',{cx:hx+dx,cy:hy+dy,r:rr,fill:f,stroke:shade(f,.65),'stroke-width':.3},c);el('circle',{cx:hx+dx-.5,cy:hy+dy-.6,r:rr*.3,fill:'#fff',opacity:.5},c)});
+  // corn stalk teepees and leaves on the ground
+  cornStalks(c,x+46,y-2,22);cornStalks(c,x-52,y-8,18);
+  for(let q=0;q<16;q++)leaf(c,x-55+r()*110,y+8+r()*12,2.2,['#d9771f','#b8431a','#e8b020','#a8541a'][q%4],r()*360)}
+
+function sceneNewYear(c,x,y,si,sj,pal,dark,r){
+  // the ball tower: a lattice mast, a mirrored ball with facets and glints
+  for(const sd of [-1,1])el('line',{x1:x+sd*4,y1:y,x2:x+sd*1.6,y2:y-50,stroke:'#9aa6c8','stroke-width':1.2},c);
+  for(let q=0;q<5;q++){const y1=y-q*10,y2=y-(q+1)*10,w1=4-q*.4,w2=4-(q+1)*.4;el('line',{x1:x-w1,y1,x2:x+w2,y2,stroke:'#b8c2e0','stroke-width':.5},c);el('line',{x1:x+w1,y1,x2:x-w2,y2,stroke:'#b8c2e0','stroke-width':.5},c)}
+  if(dark)glow(c,x,y-58,26,.9);
+  el('circle',{cx:x,cy:y-58,r:10,fill:'#c9d3ff',stroke:'#ffd35a','stroke-width':1.6},c);
+  for(let q=-2;q<=2;q++){el('ellipse',{cx:x,cy:y-58,rx:Math.abs(10*Math.cos(q*.6)),ry:10,fill:'none',stroke:'#8a96c8','stroke-width':.35},c);el('line',{x1:x-Math.sqrt(100-(q*3.6)**2),y1:y-58+q*3.6,x2:x+Math.sqrt(100-(q*3.6)**2),y2:y-58+q*3.6,stroke:'#8a96c8','stroke-width':.35},c)}
+  for(let q=0;q<9;q++){const a=r()*Math.PI*2,d=r()*7;el('rect',{x:x+Math.cos(a)*d-.9,y:y-58+Math.sin(a)*d-.9,width:1.8,height:1.8,fill:['#ffffff','#ffd35a','#ff5ad1','#70ddff'][q%4],opacity:.9,class:dark?'twinkle':'',style:`animation-delay:-${q*.2}s`},dark?FL:c)}
+  const yr=new Date(Date.now()+(festival.days_to_holiday>0?festival.days_to_holiday:0)*864e5+864e5*2).getFullYear();sign(c,x,y-16,`HAPPY ${yr}!`,'#ffd35a');
+  // balloon bunches, streamers and confetti
+  for(const [bx,by] of [[x-36,y+4],[x+36,y+4]]){for(let q=0;q<5;q++){const cc=['#ffd35a','#dfe6ff','#ff5ad1','#70ddff','#ffd35a'][q];balloon(c,bx+(q-2)*3.4+(r()-.5)*2,by-28-(q%2)*4-r()*4,cc,'round',by)}
+    el('rect',{x:bx-1.5,y:by-1,width:3,height:2,fill:'#6b4a2e'},c)}
+  for(let q=0;q<6;q++){const sx=x-50+q*20,sy=y+2+r()*10;el('path',{d:`M${sx} ${sy} q2 -3 4 0 t4 0 t4 0`,stroke:pal[q%3],'stroke-width':.9,fill:'none'},c)}
+  for(let q=0;q<46;q++){const px=x-62+r()*124,py=y-4+r()*22;el('rect',{x:px,y:py,width:1.8,height:1,fill:['#ffd35a','#ff5ad1','#70ddff','#ffffff','#7ee3b0'][q%5],transform:`rotate(${r()*180} ${px} ${py})`},c)}}
+
+function sceneValentine(c,x,y,si,sj,pal,dark,r){
+  // a heart-shaped arch of roses over a little bench
+  const hp=el('path',{d:heart(x,y-40,22),fill:'none',stroke:'#4a7a3a','stroke-width':2.4},c),L=hp.getTotalLength?hp.getTotalLength():0;
+  for(let q=0;q<44&&L;q++){const pt=hp.getPointAtLength(L*q/44);el('ellipse',{cx:pt.x+(r()-.5)*2,cy:pt.y+(r()-.5)*2,rx:1.6,ry:1,fill:'#5f9a4a',transform:`rotate(${r()*180} ${pt.x} ${pt.y})`},c)}
+  for(let q=0;q<30&&L;q++){const pt=hp.getPointAtLength(L*(q+.5)/30),cc=['#e0303a','#ff5a8a','#ffb3c8'][q%3];el('circle',{cx:pt.x,cy:pt.y,r:1.9,fill:cc,stroke:shade(cc,.65),'stroke-width':.35},c);el('circle',{cx:pt.x-.4,cy:pt.y-.4,r:.7,fill:shade(cc,1.25)},c)}
+  if(dark)glow(c,x,y-36,28,.4);
+  el('rect',{x:x-12,y:y-9,width:24,height:2,fill:'#a8743a',stroke:'#6b4a2e','stroke-width':.4},c);el('rect',{x:x-12,y:y-15,width:24,height:1.6,fill:'#a8743a',stroke:'#6b4a2e','stroke-width':.4},c);
+  for(const dx of [-10,10]){el('line',{x1:x+dx,y1:y-7,x2:x+dx,y2:y,stroke:'#6b4a2e','stroke-width':1},c);el('line',{x1:x+dx,y1:y-15,x2:x+dx,y2:y-9,stroke:'#6b4a2e','stroke-width':.8},c)}
+  // heart balloons tied to the bench and rose bushes either side
+  for(const [dx,cc] of [[-12,'#ff5a8a'],[12,'#e0303a'],[-14,'#ffb3c8']])balloon(c,x+dx+(dx<0?-4:4),y-30-r()*6,cc,'heart',y-9);
+  for(const dx of [-38,38]){const bx=x+dx,by=y+4;el('ellipse',{cx:bx,cy:by-5,rx:11,ry:7,fill:'#3f7a3a'},c);el('ellipse',{cx:bx-2,cy:by-7,rx:7,ry:4.5,fill:'#5a9a4a'},c);
+    for(let q=0;q<9;q++){const cc=q%3?'#e0303a':'#ff8ab0',px=bx-8+r()*16,py=by-10+r()*8;el('circle',{cx:px,cy:py,r:1.5,fill:cc},c);el('circle',{cx:px-.3,cy:py-.3,r:.5,fill:shade(cc,1.3)},c)}}
+  for(let q=0;q<18;q++){const px=x-50+r()*100,py=y+4+r()*14;el('ellipse',{cx:px,cy:py,rx:1.2,ry:.7,fill:['#e0303a','#ff5a8a','#ffb3c8'][q%3],transform:`rotate(${r()*180} ${px} ${py})`},c)}}
+
+function sceneFlag(c,x,y,si,sj,pal,dark,r){
+  // a planter, a tall pole with a gold finial and a flag rippling in the wind
+  el('polygon',{points:`${x-8},${y} ${x+8},${y} ${x+6},${y-5} ${x-6},${y-5}`,fill:'#8a8f96',stroke:'#5a5f66','stroke-width':.5},c);
+  for(let q=0;q<7;q++)el('circle',{cx:x-6+q*2,cy:y-6-(q%2),r:1.5,fill:q%2?'#d9303a':'#ffffff'},c);
+  el('rect',{x:x-1.3,y:y-64,width:2.6,height:60,fill:'#d6d6d6'},c);el('rect',{x:x-1.3,y:y-64,width:1,height:60,fill:'#f2f2f2'},c);el('circle',{cx:x,cy:y-66,r:2.4,fill:'#ffd35a',stroke:'#b8861a','stroke-width':.5},c);
+  const fx=x+1.3,fy=y-62,W=40,H=24,wave=(t,ph=0)=>3*Math.sin(t*Math.PI*2.2-.6+ph)*t;
+  const flag=el('g',{class:'flagwave'},c);
+  for(let q=0;q<13;q++){const top=[],bot=[];for(let s=0;s<=12;s++){const t=s/12;top.push([fx+t*W,fy+q*H/13+wave(t)]);bot.push([fx+t*W,fy+(q+1)*H/13+wave(t)])}
+    el('polygon',{points:pts(top.concat(bot.reverse())),fill:q%2?'#ffffff':'#d9303a'},flag)}
+  {const top=[],bot=[];for(let s=0;s<=5;s++){const t=s/12;top.push([fx+t*W,fy+wave(t)]);bot.push([fx+t*W,fy+H*7/13+wave(t)])}el('polygon',{points:pts(top.concat(bot.reverse())),fill:'#2d5bd8'},flag)}
+  for(let q=0;q<12;q++){const t=(q%4+.6)/4*5/12,yy=fy+(Math.floor(q/4)+.6)*H*7/13/3.3+wave(t);el('polygon',{points:star(fx+t*W,yy,1.3,.55),fill:'#fff'},flag)}
+  for(let s=1;s<12;s+=2){const t=s/12;el('line',{x1:fx+t*W,y1:fy+wave(t),x2:fx+t*W,y2:fy+H+wave(t),stroke:'rgba(0,0,0,.08)','stroke-width':1.6},flag)}
+  // rosette drapes on two little stands, small flags in the grass
+  for(const dx of [-36,36]){el('line',{x1:x+dx,y1:y+6,x2:x+dx,y2:y-14,stroke:'#6b4a2e','stroke-width':1.2},c);rosette(c,x+dx,y-15,8);el('circle',{cx:x+dx,cy:y-15,r:1.6,fill:'#ffd35a'},c)}
+  for(let q=0;q<10;q++){const px=x-50+q*11+(r()-.5)*3,py=y+10+(q%2)*4;miniFlag(c,px,py-9,6)}
+  if(festival&&festival.name==='Memorial Day'){wreath(c,x,y-3,7);for(let q=0;q<6;q++){const a=q/6*Math.PI*2;el('circle',{cx:x+Math.cos(a)*7,cy:y-3+Math.sin(a)*7,r:1.3,fill:'#d9303a'},c)}}}
+
+function sceneGrill(c,x,y,si,sj,pal,dark,r){
+  // a kettle grill with sausages and burgers, smoke curling up
+  for(const [a,b] of [[-6,-9],[6,9],[0,1]])el('line',{x1:x+a*.6,y1:y-8,x2:x+b,y2:y+2,stroke:'#2a2a30','stroke-width':1.1},c);
+  el('path',{d:`M${x-10} ${y-13} Q${x-10} ${y-4} ${x} ${y-4} Q${x+10} ${y-4} ${x+10} ${y-13}Z`,fill:'#2f333a',stroke:'#16181c','stroke-width':.5},c);el('ellipse',{cx:x,cy:y-13,rx:10,ry:3,fill:'#444a52'},c);
+  for(let q=-3;q<=3;q++)el('line',{x1:x+q*2.6,y1:y-15.4,x2:x+q*2.6,y2:y-10.6,stroke:'#9aa0a8','stroke-width':.35},c);
+  for(const dx of [-5,-1.5]){el('rect',{x:x+dx,y:y-14.6,width:3,height:1.3,rx:.65,fill:'#a8452a',transform:`rotate(-12 ${x+dx} ${y-14})`},c)}
+  for(const dx of [3,6.5]){el('ellipse',{cx:x+dx,cy:y-13.4,rx:1.6,ry:.8,fill:'#6a3a1a'},c)}
+  if(dark)glow(c,x,y-12,10,.5);
+  for(let q=0;q<4;q++)el('circle',{class:'smoke',cx:x-2+q*1.6,cy:y-18,r:3+q*.4,fill:'#d8d3ca',style:`animation-delay:-${q*1.1}s`},c);
+  el('path',{d:`M${x+11} ${y-4} Q${x+11} ${y-16} ${x+20} ${y-16} L${x+20} ${y-4}`,fill:'#2f333a',stroke:'#16181c','stroke-width':.5,transform:`rotate(8 ${x+15} ${y-4})`},c);
+  // a picnic table with a checked cloth, a cooler
+  const tx=x-38,ty=y+4;for(const dx of [-9,9])el('line',{x1:tx+dx,y1:ty-8,x2:tx+dx*1.2,y2:ty+2,stroke:'#7a5a3a','stroke-width':1.2},c);
+  for(let a=0;a<6;a++)for(let b=0;b<3;b++)el('polygon',{points:pts([[tx-12+a*4+b*1.4,ty-9-b*1.6],[tx-8+a*4+b*1.4,ty-9-b*1.6],[tx-8+a*4+(b+1)*1.4,ty-9-(b+1)*1.6],[tx-12+a*4+(b+1)*1.4,ty-9-(b+1)*1.6]]),fill:(a+b)%2?'#ffffff':'#d9303a'},c);
+  el('rect',{x:tx-13,y:ty-3,width:26,height:1.4,fill:'#a8743a'},c);
+  const ox=x+34,oy=y+8;el('rect',{x:ox-7,y:oy-8,width:14,height:8,fill:'#3f7fd8',stroke:'#244a8a','stroke-width':.5},c);el('rect',{x:ox-7.5,y:oy-10,width:15,height:2.4,fill:'#f2f2f2',stroke:'#b8b8b8','stroke-width':.4},c);el('rect',{x:ox-3,y:oy-11.4,width:6,height:1.4,fill:'#9aa0a8'},c);
+  // two striped lawn chairs and a plate of burgers on the table
+  for(const [dx,cc] of [[18,'#3f7fd8'],[-56,'#2fa84f']]){const lx=x+dx,ly=y+14;el('line',{x1:lx-4,y1:ly,x2:lx+4,y2:ly-6,stroke:'#9aa0a8','stroke-width':.8},c);el('line',{x1:lx+4,y1:ly,x2:lx-3,y2:ly-5,stroke:'#9aa0a8','stroke-width':.8},c);
+    for(let q=0;q<4;q++)el('polygon',{points:`${lx-5+q*2.2},${ly-6} ${lx-2.8+q*2.2},${ly-6} ${lx-1.4+q*2.2},${ly-1} ${lx-3.6+q*2.2},${ly-1}`,fill:q%2?'#ffffff':cc},c);
+    for(let q=0;q<4;q++)el('polygon',{points:`${lx-5+q*2.2},${ly-6} ${lx-2.8+q*2.2},${ly-6} ${lx-1.4+q*2.2},${ly-13} ${lx-3.6+q*2.2},${ly-13}`,fill:q%2?cc:'#ffffff',opacity:.95},c)}
+  el('ellipse',{cx:tx+2,cy:ty-11.4,rx:4,ry:1.5,fill:'#fbfbf6',stroke:'#c9c2b0','stroke-width':.3},c);for(const dx of [-1.6,1.4,0])el('ellipse',{cx:tx+2+dx,cy:ty-12.2-(dx===0?1:0),rx:1.5,ry:.8,fill:'#8a4a1a',stroke:'#d9a050','stroke-width':.4},c);
+  el('rect',{x:tx-8,y:ty-14,width:1.4,height:3.6,rx:.5,fill:'#e0303a'},c);el('rect',{x:tx-6,y:ty-14,width:1.4,height:3.6,rx:.5,fill:'#f2c230'},c);
+  banner(c,x,y,"HAPPY FATHER'S DAY",'#3f7fd8')}
+
+function banner(c,x,y,text,fill,ink='#ffffff'){const t=el('text',{x,y:y-25,'text-anchor':'middle','dominant-baseline':'central','font-size':6,'font-weight':900,fill:ink},c);t.textContent=text;
+  const w=(t.getComputedTextLength?t.getComputedTextLength():text.length*4)/2+6;
+  for(const sd of [-1,1])el('rect',{x:x+sd*w-1,y:y-34,width:2,height:34,fill:'#6b4a2e'},c);
+  c.insertBefore(el('path',{d:`M${x-w} ${y-31} Q${x} ${y-28.5} ${x+w} ${y-31} L${x+w} ${y-20} Q${x} ${y-17.5} ${x-w} ${y-20}Z`,fill,stroke:shade(fill,.6),'stroke-width':.6}),t);
+  for(const sd of [-1,1])el('circle',{cx:x+sd*w,cy:y-35,r:1.4,fill:'#ffd35a'},c)}
+function sceneLabor(c,x,y,si,sj,pal,dark,r){
+  banner(c,x,y,'THANK YOU, WORKERS!','#2d5bd8');
+  // a toolbox with a wrench and hammer, traffic cones, hard hats on a crate and a striped sawhorse
+  const bx=x-10,by=y+10;el('rect',{x:bx-7,y:by-6,width:14,height:6,fill:'#d9303a',stroke:'#7a1a20','stroke-width':.5},c);el('rect',{x:bx-7,y:by-7.4,width:14,height:1.6,fill:'#b8202a'},c);el('path',{d:`M${bx-3} ${by-7.4} L${bx-3} ${by-9.4} L${bx+3} ${by-9.4} L${bx+3} ${by-7.4}`,stroke:'#555','stroke-width':.8,fill:'none'},c);
+  el('line',{x1:bx+8,y1:by,x2:bx+12,y2:by-9,stroke:'#9aa0a8','stroke-width':1.1},c);el('circle',{cx:bx+12.3,cy:by-9.6,r:1.4,fill:'none',stroke:'#9aa0a8','stroke-width':.9},c);
+  el('line',{x1:bx-9,y1:by,x2:bx-12,y2:by-8,stroke:'#a8743a','stroke-width':1},c);el('rect',{x:bx-14.5,y:by-9.6,width:5,height:2,fill:'#555',transform:`rotate(20 ${bx-12} ${by-8.6})`},c);
+  for(const [dx,dy] of [[-40,6],[38,8],[46,2]]){const cx2=x+dx,cy2=y+dy;el('polygon',{points:`${cx2-4},${cy2} ${cx2+4},${cy2} ${cx2},${cy2-11}`,fill:'#ff7a1a',stroke:'#b84a0a','stroke-width':.4},c);el('polygon',{points:`${cx2-2.4},${cy2-4.5} ${cx2+2.4},${cy2-4.5} ${cx2+1.6},${cy2-7} ${cx2-1.6},${cy2-7}`,fill:'#fff'},c);el('rect',{x:cx2-5,y:cy2-.8,width:10,height:1.6,fill:'#b84a0a'},c)}
+  const kx=x+16,ky=y+12;el('rect',{x:kx-7,y:ky-7,width:14,height:7,fill:'#a8743a',stroke:'#6b4a2e','stroke-width':.5},c);for(let q=0;q<3;q++)el('line',{x1:kx-7,y1:ky-5+q*2.4,x2:kx+7,y2:ky-5+q*2.4,stroke:'#86603f','stroke-width':.4},c);
+  for(const dx of [-3.6,3.6]){el('path',{d:`M${kx+dx-3.4} ${ky-7} A3.4 3 0 0 1 ${kx+dx+3.4} ${ky-7}Z`,fill:'#f2c230',stroke:'#a8781a','stroke-width':.4},c);el('rect',{x:kx+dx-4.2,y:ky-7.6,width:8.4,height:1,fill:'#f2c230'},c)}
+  const hx=x+2,hy=y-4;for(const dx of [-8,8])el('path',{d:`M${hx+dx-2} ${hy+4} L${hx+dx} ${hy-4} L${hx+dx+2} ${hy+4}`,stroke:'#6b4a2e','stroke-width':.9,fill:'none'},c);
+  el('rect',{x:hx-11,y:hy-6,width:22,height:3,fill:'#ffffff',stroke:'#b84a0a','stroke-width':.4},c);for(let q=0;q<5;q++)el('polygon',{points:`${hx-11+q*4.4},${hy-3} ${hx-8.6+q*4.4},${hy-6} ${hx-6.4+q*4.4},${hy-6} ${hx-8.8+q*4.4},${hy-3}`,fill:'#ff7a1a'},c)}
 function star(x,y,R,r){let p=[];for(let k=0;k<10;k++){const a=-Math.PI/2+k*Math.PI/5,d=k%2?r:R;p.push(`${x+Math.cos(a)*d},${y+Math.sin(a)*d}`)}return p.join(' ')}
 function heart(x,y,s){return `M${x} ${y+s*.9} C${x-s*1.6} ${y} ${x-s*.9} ${y-s*1.1} ${x} ${y-s*.35} C${x+s*.9} ${y-s*1.1} ${x+s*1.6} ${y} ${x} ${y+s*.9}Z`}
 function sign(g,x,y,text,color){const t=el('text',{x,y,'text-anchor':'middle','dominant-baseline':'central','font-size':11,'font-weight':900,fill:'#1a1026'},g);t.textContent=text;const w=t.getComputedTextLength()+16;

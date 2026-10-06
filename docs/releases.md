@@ -1,5 +1,18 @@
 # Release notes
 
+## More detailed holiday decorations on the stream map
+
+Every holiday's decorations on `/obs/map` are redrawn with much more detail. No OBS changes are needed.
+- **Halloween:** ribbed jack-o'-lanterns with stems, leaves and carved faces that glow and flicker at night; a scarecrow with a straw hat and a crow; gravestones; a bubbling cauldron over a fire; a hay bale; a floating ghost; bats in the bunting, cobwebs on the street lamps and fog at night.
+- **Thanksgiving:** a harvest table with a cloth, plates, a roast, a pie, corn and candles; hay bales with pumpkins and gourds; a cornucopia spilling fruit; corn-stalk bundles at the lamps; maple-leaf garlands and fallen leaves.
+- **Christmas:** a tree with snowy tiers, a gold garland, ornaments, twinkling lights and a glowing star; presents with ribbons and bows; a snowman with a scarf and top hat; candy canes; a fir garland with bulbs along the streets; wreaths and candy-cane stripes on the lamps; snow on the ground.
+- **New Year:** a lattice tower with a faceted, glinting ball; balloon bunches, streamers, confetti and star garlands.
+- **Valentine's Day:** a heart-shaped arch of roses over a bench, heart balloons, rose bushes, petals and heart garlands.
+- **Memorial Day and Independence Day:** a rippling flag on a tall pole with a gold finial, rosette drapes, little flags along the street and on every lamp (a poppy wreath on Memorial Day).
+- **Father's Day:** a kettle grill with sausages and burgers and curling smoke, a checked picnic table, lawn chairs and a cooler.
+- **Labor Day:** a banner on two posts, a toolbox with tools, traffic cones, hard hats on a crate and a striped sawhorse.
+- **At night** lanterns, bulbs, candles and the star are drawn above the night shading, so they stay bright.
+
 ## Trick-or-treat and holiday hats
 
 - **Trick-or-treat.** While the Halloween festival is on (October 1 – November 7), knock on up to 5 doors a day: `/life action:Trick-or-treat`, Menu → Life → 🎃 Trick-or-treat, or `!trick` on Twitch. Each door is a treat (1–2 Pumpkin, Nuts, Berries, Corn or Herbs; 2–5 SC; or now and then a whole Halloween festival food, which shows on the stream overlay) or a harmless trick (a joke from Rocky and friends, +1 Morale). It costs no needs and starts no cooldown. The count resets at midnight UTC (8 PM Eastern). Discord replies have a 🎃 Knock again button.

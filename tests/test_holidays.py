@@ -146,3 +146,16 @@ def test_the_map_draws_every_hat():
     page = TestClient(m.app).get('/obs/map').text
     for key in seasons.HOLIDAY_HATS.values():
         assert f"'{key}'" in page and f"k==='{key}'" in page, key
+
+
+def test_every_holiday_theme_has_a_detailed_scene():
+    """Each theme in the map's HOLIDAYS table draws its own scene on the crossing (stream_overlay.decorate)."""
+    import re
+    from fastapi.testclient import TestClient
+    page = TestClient(m.app).get('/obs/map').text
+    themes = set(re.findall(r"\],'([a-z]+)'\]", page[page.index('const HOLIDAYS='):page.index('const HOLIDAYS=') + 1200]))
+    assert {'halloween', 'christmas', 'feast', 'newyear', 'valentine', 'flag', 'grill', 'labor'} <= themes
+    for theme in themes:
+        name = {'newyear': 'NewYear'}.get(theme, theme.title())
+        assert f'function scene{name}(' in page and f'{theme}:scene{name}' in page, theme
+    assert 'id="festlights"' in page          # night lights are drawn above the darkness
