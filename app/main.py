@@ -1867,6 +1867,7 @@ def auto_event_status(db,w):
     return f"Automatic event meter: {w.activity_since_event or 0}/{target} actions from {unique} unique chatter{'s' if unique!=1 else ''}; activity timer {time_need}m; event cooldown {cooldown_need}m."
 def maybe_start_auto_event(db,w,add_activity=True,current_uid=None):
     if not AUTO_EVENTS_ENABLED or w.active_event:return ""
+    if unattended():return ""   # Seedlings and queues never start an event nobody is around for
     if add_activity:
         if not w.activity_window_started_at:w.activity_window_started_at=now()
         w.activity_since_event=(w.activity_since_event or 0)+1
@@ -1883,11 +1884,15 @@ def cancel_event(db,w,ended_by="moderator"):
     from . import stream_overlay
     stream_overlay.highlight(db,w.channel_id,"event_cancel",f"{cfg['name']} was called off","No penalty applied.")
     clear_event(w);db.commit();return f"🛑 {cfg['emoji']} {cfg['name']} cancelled by {ended_by}. No penalty applied."
-def event_note(db,s,w,p,a):
+def event_note(db,s,w,p,a):return skill_event_note(db,s,w,p,ACTION_SKILLS.get(a))
+def skill_event_note(db,s,w,p,skill):
+    """Count one success of `skill` for the active event. Only citizens whose work matched are listed as helpers."""
     if not w.active_event:return ""
     expired=resolve_expired_event(db,s,w)
     if expired:return " "+expired
-    ensure_event_instance(w);cfg=EVENTS[w.active_event];skill=ACTION_SKILLS.get(a)
+    ensure_event_instance(w);cfg=EVENTS[w.active_event]
+    if skill not in (cfg["primary"],cfg["support"]):skill=EVENT_SKILL_ALIASES.get(skill,skill)
+    if skill not in (cfg["primary"],cfg["support"]):return ""
     contribution=db.execute(select(EventContribution).where(EventContribution.channel_id==w.channel_id,EventContribution.event_instance==w.event_instance,EventContribution.canonical_uid==p.twitch_uid)).scalar_one_or_none()
     if not contribution:contribution=EventContribution(channel_id=w.channel_id,event_instance=w.event_instance,canonical_uid=p.twitch_uid,display_name=p.display_name,primary_successes=0,support_successes=0);db.add(contribution)
     contribution.display_name=p.display_name
@@ -1900,6 +1905,37 @@ def event_note(db,s,w,p,a):
     else:return ""
     if w.event_progress>=w.event_goal:return " "+finish_event(db,s,w,"completed by "+p.display_name)
     db.commit();return f" {cfg['emoji']} {cfg['name']}:{note}"
+# Everyday work builds New Eridian. Each successful gather, mine, Workbench craft or item job (by hand, from a
+# queue or by a Seedling) adds +1 Contribution and +1 to the society stat its skill builds, and counts for the
+# active event, today's society project and the weekly story (work_counts).
+WORK_STAT={"cultivation":"food","cooking":"food","extraction":"materials","environmental":"materials",
+           "fabrication":"development","infrastructure":"development","medicine":"knowledge","research":"knowledge",
+           "emergency":"reputation","logistics":"treasury","commerce":"treasury"}
+# Work that also helps an event outside its own skill: meals stock the food stores; medicine helps contain Siro.
+EVENT_SKILL_ALIASES={"cooking":"cultivation","medicine":"research"}
+EVENT_WORK={"extraction":"/gather stone, wood or ore, or /mine","cultivation":"/gather wild plants, cook with /make, or farm with /work",
+            "environmental":"/gather water, or environmental crafts with /make","infrastructure":"building crafts with /make, or /repair",
+            "fabrication":"most /make crafts: parts, tools, furniture","research":"/work task:research, /work task:scan, or medicine with /make",
+            "logistics":"/work task:cargo or delivery, or pack Cargo with /use","commerce":"sell with /seedindustries, Production Orders, or Commerce Work"}
+def unattended():
+    """True while a Seedling or a work queue acts for a citizen who may be away from the keyboard."""
+    return bool(("autonomy" in globals() and autonomy.ACTING.get()) or
+                ("task_queue" in globals() and task_queue.actor_context.get() is not None))
+def work_counts(db,p,skill,grow=True):
+    """What one successful job did for New Eridian, as a NEW ERIDIAN section ('' when nothing to say).
+    grow=False when the job already pays the society its own way (sales, Production Orders, clinic supplies)."""
+    s=society(db,p.channel_id);w=world(db,p.channel_id);lines=[]
+    if grow:
+        p.contribution+=1;stat=WORK_STAT.get(skill)
+        if stat:setattr(s,stat,getattr(s,stat)+1)
+        lines.append((f"+1 {stat.title()} · " if stat else "")+"+1 Contribution")
+    was_active=bool(w.active_event)
+    event=skill_event_note(db,s,w,p,skill).strip()
+    progress=important_progress_notes(project_contribute(db,p,skill,1),story_contribute(db,p,skill)).strip()
+    auto="" if was_active or not AUTO_EVENTS_ENABLED else maybe_start_auto_event(db,w,current_uid=p.twitch_uid)
+    lines+=[x for x in (event,progress,auto) if x]
+    db.commit()
+    return "NEW ERIDIAN\n"+"\n".join(lines) if lines else ""
 def log_action(db,channel,canonical_uid,action_name,response):
     row=ActionLog(channel_id=channel,canonical_uid=canonical_uid,action=action_name,response=response[:1000]);db.add(row);db.commit()
     from .commands import context
@@ -2975,11 +3011,12 @@ def seed_industries(channel:str,uid:str,name:str="Citizen",action:str="browse",i
             found=practice.find(sys.modules[__name__],db,p,"fabrication")
             db.add(ProductionOrderCompletion(channel_id=channel,canonical_uid=p.twitch_uid,avesta_day=clock["day"],order_key=order_key));db.commit()
             journal_add(db,p,f"Completed Seed Industries order: {data['name']}.");milestone=achieve(db,p)
+            colony=work_counts(db,p,"commerce",grow=False)
             text=(f"✅ PRODUCTION ORDER COMPLETE — {data['name']}\n\n"
                   f"DELIVERED\n• {cost_text(data['cost'])[1:-1]}\n\n"
                   f"REWARDS\n• +{numbers['sc']} SC · +{numbers['contribution']} Contribution\n"
                   f"• +2 Crafting XP · +1 Commerce XP\n"+(f"• {found}\n" if found else "")+f"• New Eridian +{numbers['development']} Development\n\n"
-                  f"WHY IT MATTERED\n• {data['purpose']}\n\nNEXT\n• View the remaining Day {clock['day']} orders or continue your daily contract."+milestone)
+                  f"WHY IT MATTERED\n• {data['purpose']}\n\n"+(colony+"\n\n" if colony else "")+f"NEXT\n• View the remaining Day {clock['day']} orders or continue your daily contract."+milestone)
             return PlainTextResponse(text) if provider=="discord" else out(chat_line(text))
     if key not in SEED_INDUSTRIES and item_name:
         key,suggestions=qol.fuzzy_item(item_name,SEED_INDUSTRIES)
@@ -3002,7 +3039,8 @@ def seed_industries(channel:str,uid:str,name:str="Citizen",action:str="browse",i
         if owned<amount:return out(f"🏭 {p.display_name} only has {owned} {resource_name(key)}.")
         unit=sale_price(key);total=unit*amount;material_change(db,p,key,-amount);p.sc+=total;gain_skill(p,"commerce",max(1,amount//3));db.commit()
         demand=" (today's demand price)" if unit>listing["sell"] else ""
-        return out(f"🏭 {p.display_name} sold {amount} {resource_name(key)} to Seed Industries for {total} SC{demand}. Balance: {p.sc} SC. +{max(1,amount//3)} Commerce XP.")
+        colony=work_counts(db,p,"commerce",grow=False)
+        return out(f"🏭 {p.display_name} sold {amount} {resource_name(key)} to Seed Industries for {total} SC{demand}. Balance: {p.sc} SC. +{max(1,amount//3)} Commerce XP."+(" "+colony.split("\n",1)[1].replace("\n"," ") if colony else ""))
 
 @app.get("/api/v1/duo")
 @colony_command
@@ -3330,7 +3368,7 @@ def event(channel:str,provider:str="twitch",viewer:str=""):
         cfg=EVENTS[w.active_event];seconds=max(0,int((as_utc(w.event_ends)-now()).total_seconds()));pct=int((w.event_progress/w.event_goal)*100) if w.event_goal else 0;leaders=event_contributors(db,w)
         penalty=stat_changes_text(cfg["penalty"],"−")
         if provider=="discord":
-            return PlainTextResponse(f"🚨 {cfg['emoji']} {cfg['name']}\n\n"+(f"{clean(viewer)}, New Eridian needs your response.\n\n" if viewer else "")+f"📊 STATUS\nProgress: {w.event_progress}/{w.event_goal} ({pct}%)\nTime remaining: {seconds//60}:{seconds%60:02d}\n\n🎯 HOW TO HELP\nPrimary: {SKILL_LABELS[cfg['primary']]} — each success adds +1\nSupport: {SKILL_LABELS[cfg['support']]} — {w.event_support_successes}/2 toward +1\n\n⚠️ Full failure penalty: {penalty}\n🏅 Leaders: {leader_text(leaders)}\n\nUse /guide goal:event for your personal best available command.")
+            return PlainTextResponse(f"🚨 {cfg['emoji']} {cfg['name']}\n\n"+(f"{clean(viewer)}, New Eridian needs your response.\n\n" if viewer else "")+f"📊 STATUS\nProgress: {w.event_progress}/{w.event_goal} ({pct}%)\nTime remaining: {seconds//60}:{seconds%60:02d}\n\n🎯 HOW TO HELP\nPrimary: {SKILL_LABELS[cfg['primary']]} — each success adds +1\n  {EVENT_WORK.get(cfg['primary'],'')}\nSupport: {SKILL_LABELS[cfg['support']]} — {w.event_support_successes}/2 toward +1\n  {EVENT_WORK.get(cfg['support'],'')}\nQueues and Seedlings count too.\n\n⚠️ Full failure penalty: {penalty}\n🏅 Leaders: {leader_text(leaders)}\n\nUse /guide goal:event for your personal best available command.")
         primary=SKILL_LABELS.get(cfg["primary"],cfg["primary"].title());support=SKILL_LABELS.get(cfg["support"],cfg["support"].title())
         return out(f"🚨 {cfg['emoji']} {cfg['name']} {pct}% | {w.event_progress}/{w.event_goal} | {seconds//60}:{seconds%60:02d} | Primary {primary} | Support {support} {w.event_support_successes}/2 | Penalty {penalty} | Leaders {leader_text(leaders)}")
 

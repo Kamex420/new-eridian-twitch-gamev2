@@ -206,9 +206,13 @@ def craft(m,db,p,key,provider):
     life=m.life_state(db,p);m.spend_life_for_action(life,'make')
     # Every successful catalog craft (button, chat, queue attempt) passes here: crafting the goal completes it.
     p.actions+=1;p.successes+=1;m.craft_record(db,p,key);m.extras.goal_crafted(m,db,p,key);db.commit()
+    colony=m.work_counts(db,p,SKILLS.get(req,('fabrication',None))[0])
     return ('✅ CRAFTING COMPLETE\n\nOUTPUT\n'+ '\n'.join(f"• {item_label(k)} ×{v}" for k,v in outputs.items())+
-      '\n\nUSED\n'+(m.requirement_text(r['inputs']) or 'No ingredients')+'\n\nPRACTICE\n'+', '.join(xp)+(f'\n{found}' if found else '')+
+      (f'\n\n{colony}' if colony else '')+'\n\nUSED\n'+(m.requirement_text(r['inputs']) or 'No ingredients')+'\n\nPRACTICE\n'+', '.join(xp)+(f'\n{found}' if found else '')+
       '\n\nWorkshop: '+(cp.STATIONS[chosen]['name'] if chosen else station(r))+(' · Owned workstation: +1 practice per trained skill included.' if workshop_bonus else '')+'\n'+need_cost(2)+mining_detail)
+
+# The work a gathering trip counts as for New Eridian: wild plants feed the colony, water keeps it running.
+GATHER_SKILL={'botanical_harvesting':'cultivation','water_collection':'environmental'}
 
 def gather(m,db,p,key,provider):
     if key not in GATHER:return '🛑 Choose a natural resource from /gather. Manufactured parts must be crafted.'
@@ -227,7 +231,8 @@ def gather(m,db,p,key,provider):
     from . import practice
     found=practice.find(m,db,p,'extraction',cfg['branch'])
     m.spend_life_for_action(life,'make');p.actions+=1;p.successes+=1;db.commit()
-    return f"✅ GATHERING COMPLETE\n\nOUTPUT\n• {ITEMS[key]['name']} ×{cfg['amount']}\n\nPRACTICE\n+{xp} Harvesting and {cfg['branch'].replace('_',' ').title()} XP\n"+(f"{found}\n" if found else "")+need_cost(2)+detail
+    colony=m.work_counts(db,p,GATHER_SKILL.get(cfg['branch'],'extraction'))
+    return f"✅ GATHERING COMPLETE\n\nOUTPUT\n• {ITEMS[key]['name']} ×{cfg['amount']}\n\n"+(f"{colony}\n\n" if colony else "")+f"PRACTICE\n+{xp} Harvesting and {cfg['branch'].replace('_',' ').title()} XP\n"+(f"{found}\n" if found else "")+need_cost(2)+detail
 
 # New Eridian adaptations: one primary category per obtainable item.
 CATEGORIES={
@@ -487,7 +492,7 @@ def use(m,db,p,key,provider):
         if housing:changes+=['+1 housing space']
         xp=m.gain_skill(p,'infrastructure',1);m.gain_branch(db,p,'maintenance_repair',xp);changes+=[f'+{xp} Engineering XP']
     if mode=='research':
-        m.society(db,p.channel_id).knowledge+=1;xp=m.gain_skill(p,'research',1);changes += ['+1 society Knowledge',f'+{xp} Research XP']
+        xp=m.gain_skill(p,'research',1);changes += [f'+{xp} Research XP']   # +1 Knowledge comes from work_counts
     if work:
         from . import practice
         line=WORK_LINE.get(mode)
@@ -495,4 +500,6 @@ def use(m,db,p,key,provider):
         if found:changes.append(found)
         m.spend_life_for_action(life,'make');changes+=[need_cost(2)]
     p.actions+=1;p.successes+=1;db.commit()
-    return '\n'.join([f'✅ {name} — Complete','','RESULT',*['• '+x for x in changes],'','USED',m.requirement_text(cost) if cost else 'No items were consumed.',*(['The selected durable item was kept.'] if not cfg['consume'] else [])])
+    skill={'clinic':'medicine'}.get(mode) or (WORK_LINE[mode][0] if work else None)
+    colony=m.work_counts(db,p,skill,grow=work) if skill else ''
+    return '\n'.join([f'✅ {name} — Complete','','RESULT',*['• '+x for x in changes],*(['',colony] if colony else []),'','USED',m.requirement_text(cost) if cost else 'No items were consumed.',*(['The selected durable item was kept.'] if not cfg['consume'] else [])])

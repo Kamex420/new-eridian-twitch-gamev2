@@ -21,21 +21,27 @@ from . import ask
 SOCIETY = {'food': ('🌾', 'Food'), 'materials': ('⛏️', 'Materials'), 'development': ('🏗️', 'Development'),
            'knowledge': ('🔬', 'Knowledge'), 'treasury': ('🪙', 'Treasury'), 'reputation': ('⭐', 'Reputation')}
 
-# Work that raises each society stat on success (main.action and main.duo). Each: (what, how much, the Discord
+# Work that raises each society stat on success (main.action, main.duo and main.work_counts). Each: (what, how much, the Discord
 # command, the Twitch action for guide_command; None: done on Discord; '': a mode chat cannot choose, so Discord).
 WORK = {
     'food': [('Harvest Pumpkins', '+1, +1–2 more while the colony has shared Water', '/work task:farm_harvest', 'harvest'),
              ('Tend Fields', '+1, +1–2 more while the colony has shared Water', '/work task:farm_tend', 'farm'),
-             ('Irrigate', '+1, Hydroponics +2', '/work task:farm_irrigate', 'water')],
-    'materials': [('Mining', '+1', '/mine', 'mine')],
+             ('Irrigate', '+1, Hydroponics +2', '/work task:farm_irrigate', 'water'),
+             ('Gather wild plants', '+1 a trip', '/gather', 'gather'),
+             ('Cook at the Workbench', '+1 a batch', '/make', None)],
+    'materials': [('Mining', '+1', '/mine', 'mine'),
+                  ('Gather stone, wood, water or ore', '+1 a trip', '/gather', 'gather'),
+                  ('Environmental crafting at the Workbench', '+1 a batch', '/make', None)],
     'development': [('Society Infrastructure Repair', '+1', '/repair target:Society Infrastructure', 'repair'),
+                    ('Craft parts, tools, furniture or buildings at the Workbench', '+1 a batch', '/make', None),
                     ('Business Investment', '+1 (and +3 Treasury)', '/business action:Invest', None)],
     'knowledge': [('Research', '+1, Field Analysis +2', '/work task:research', 'research'),
                   ('Environmental Scan', '+1', '/work task:scan', 'scan'),
                   ('Frontier Scout', '+1', '/work task:scout', 'explore'),
                   ('Advanced Survey', '+2, needs a Resource Scanner', '/work task:survey', 'survey'),
                   ('Duo research with a friend', '+2', '/social action:Duo Research player:<name>', 'duo_research'),
-                  ('Analyze a surplus item', '+1', '/use', None)],
+                  ('Analyze a surplus item', '+1', '/use', None),
+                  ('Craft medicine at the Workbench', '+1 a batch', '/make', None)],
     'treasury': [('Spaceport Operations', '+1', '/work task:spaceport', 'spaceport'),
                  ('Expedited Spaceport', '+2 (and +1 Reputation), uses a Power Cell', '/work task:expedite', ''),
                  ('Commerce Work', '+1, Market Analysis +2', '/market action:Commerce Work', 'market'),
@@ -46,7 +52,8 @@ WORK = {
                    ('Duo delivery with a friend', '+2, uses 1 Cargo', '/social action:Duo Delivery player:<name>', 'duo_delivery')],
 }
 CONTRIBUTION = [
-    ('Any successful work task', '+1 each (more during a Contribution bonus)'),
+    ('Any successful job', '+1 each: work tasks, gathering, mining, Workbench crafting and item jobs, '
+                           'also when your queue or Seedling does them (more during a Contribution bonus)'),
     ('Helping in an event', 'up to +8 when it ends, by how much you helped; the top helper gets +2 more'),
     ('Finishing a Society Project', '+3 to whoever completes it (/world → Society Project)'),
     ('Finishing the Society Directive', '+2 to whoever completes it (/world → Daily Bulletin)'),

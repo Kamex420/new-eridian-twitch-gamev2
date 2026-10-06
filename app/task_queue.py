@@ -360,16 +360,15 @@ def run_one(m,channel,uid):
                 stock_before=inventory_snapshot(m,db,p)
                 kind,target=row.task.split(':',1)
                 blocked=need_reason(m,db,p)
-                if blocked:result=blocked
-                elif kind in {'mine','gather'}:result=s.gather(m,db,p,target,'discord')
-                else:
-                    actor_token=actor_context.set((channel,uid))
-                    try:
-                        if kind=='make':result=m.make(channel,uid,p.display_name,target,'discord').body.decode()
-                        else:
-                            action,mode=task_yields.split(target)
-                            result=m.action(action,channel,uid,p.display_name,msg='mode:'+mode if mode else '',provider='discord').body.decode()
-                    finally:actor_context.reset(actor_token)
+                actor_token=actor_context.set((channel,uid))     # also tells the game nobody may be watching
+                try:
+                    if blocked:result=blocked
+                    elif kind in {'mine','gather'}:result=s.gather(m,db,p,target,'discord')
+                    elif kind=='make':result=m.make(channel,uid,p.display_name,target,'discord').body.decode()
+                    else:
+                        action,mode=task_yields.split(target)
+                        result=m.action(action,channel,uid,p.display_name,msg='mode:'+mode if mode else '',provider='discord').body.decode()
+                finally:actor_context.reset(actor_token)
                 db.refresh(p)
                 attempted=p.actions>before
                 if attempted:

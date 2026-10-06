@@ -1,5 +1,15 @@
 # Release notes
 
+## Everyday work wins events and builds New Eridian
+
+- **Events can be won by normal play.** Gathering, mining, Workbench crafting, item jobs (/use), selling to Seed Industries and Production Orders now count for the live event by their skill, whether you press the button, type in chat, run a queue or your Seedling does it. A Mining Boom used to end 0/16 while three Seedlings mined ore; quarrying stone or mining ore now counts as Primary for it.
+  - Wild plants count as Farming (a Food Crisis), water as Processing, stone, wood and ore as Harvesting. A craft counts as its recipe's skill: most crafts are Crafting, building parts are Engineering, cooking also helps a Food Crisis, and medicine also helps contain a Siro Bloom.
+  - `/event` now lists what counts for the Primary and Support skills.
+  - Only work that matches the event lists you as a helper; before, any action during an event put you on the reward list with 0/0.
+- **The colony and leaderboard grow from normal play.** Each successful gather, mine, Workbench craft or item job adds +1 Contribution and +1 to the society stat its skill builds (wild plants and cooking: Food; stone, wood, water, ore and environmental crafts: Materials; crafting and building: Development; medicine and research: Knowledge; packing and vending: Treasury). It also moves today's Society Project and the weekly story when the skill matches. Each result shows a short NEW ERIDIAN line.
+- **No surprise events while nobody is around.** Seedlings and work queues never start an automatic event or fill its meter; real players' gathering and crafting now fill it.
+- `/find` knows the new ways to raise each society stat and earn Contribution.
+
 ## Festival keepsakes, a Jack-o'-lantern Mask, and no more "Citizen"
 
 - **Festival keepsakes.** Every holiday now has keepsakes to craft as well as foods, at the free Survival Workbench while its festival runs: decorations (use them for Morale and Social; they are kept) and wearables (use them for Comfort and Morale). New Year: Confetti Popper, Sparkler Crown. Valentine's Day: Heart Garland, Rose Bouquet. Memorial Day: Poppy Wreath, Remembrance Lantern. Father's Day: Grill Apron, Fishing Rod. Independence Day: Star Bunting, Paper Firework. Labor Day: Tool Belt, Workers' Banner. Halloween: Jack-o'-lantern Mask, Spooky Lantern, Scarecrow Doll. Thanksgiving: Harvest Wreath, Gratitude Table Runner. Christmas: Holiday Stocking, Pine Wreath. They use everyday materials: Flaxa, Berries, Herbs, Clay, Lumber, Corn, Nuts, Pumpkin, Coal, Iron Nails and Fabric.

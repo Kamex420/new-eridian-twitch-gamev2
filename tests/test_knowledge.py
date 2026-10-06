@@ -78,7 +78,7 @@ def test_contribution_lists_its_sources():
     citizen()
     result = answer('how do I get contribution?')
     assert 'HOW TO EARN CONTRIBUTION' in result.text
-    for way in ('successful work task', 'event', 'Society Project', 'Society Directive', 'Production Orders', 'Mentoring'):
+    for way in ('successful job', 'gathering', 'Workbench crafting', 'event', 'Society Project', 'Society Directive', 'Production Orders', 'Mentoring'):
         assert way in result.text, way
     chat = answer('how to earn contribution', 'twitch')
     assert 'leaderboard' in chat.text and len(chat.text.encode()) <= 380
