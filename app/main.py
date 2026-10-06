@@ -5671,6 +5671,7 @@ BEST USE: /guide goal:event during emergencies and /guide goal:society between e
 /district — Chooses your home district.
 /shift — Chooses today's role bonus.
 /meal — Shows owned Pumpkins; choose Share a Crop to contribute one Pumpkin to the community meal.
+/life action:Trick-or-treat — During the Halloween festival, knock on up to 5 doors a day for a treat (ingredients, SC or a festival food) or a harmless trick. Twitch: !trick.
 /use — Lists owned usable items with exact effects; select Item to use it (durable items are kept).
 /repair — Choose Society Infrastructure work or Personal Quality Gear repair.
 /linklookup — Owner-only lookup for connected Discord/Twitch identities.
@@ -7187,6 +7188,8 @@ def _discord_call_internal(command: str, uid: str, name: str, options: dict, int
         return seedling_looks(channel,uid,name,provider="discord",**{k:str(options.get(k) or "") for k in looks.FIELDS}).body.decode()
     if command == "eatfull":
         return eat_full(channel,uid,name,"discord").body.decode()
+    if command == "trick":
+        return trick_or_treat(channel,uid,name,"discord").body.decode()
     if command == "undo":
         return undo_sale(channel,uid,name,"discord").body.decode()
     if command == "find":
@@ -7583,9 +7586,10 @@ def queue_task_menu(query:str='',page:int=1,provider:str='twitch'):
     return platform_response(provider,text,text.replace('\n',' | '))
 
 
-from . import qol, presentation, menu, inbox, extras, keep_levels, shopping_list, force_merge, ask
+from . import qol, presentation, menu, inbox, extras, keep_levels, shopping_list, force_merge, ask, halloween
 game_menu=menu
 ask.install(sys.modules[__name__])
+halloween.install(sys.modules[__name__])
 inbox.install(sys.modules[__name__])
 extras.install(sys.modules[__name__])
 from . import stream_overlay
@@ -7708,6 +7712,16 @@ def recover_needs(channel:str,uid:str,name:str='Citizen',provider:str='twitch'):
         return platform_response(provider,text,text)
 
 
+
+@app.get('/api/v1/trick')
+@colony_command
+def trick_or_treat(channel:str,uid:str,name:str='Citizen',provider:str='twitch'):
+    """Halloween trick-or-treat: a treat or a harmless trick, 5 doors a day while the festival is on (app/halloween.py)."""
+    with SessionLocal() as db:
+        _,p=player(db,channel,provider,uid,name)
+        text=halloween.trick(sys.modules[__name__],db,p,provider)
+        db.commit()
+    return platform_response(provider,text,text)
 
 @app.get('/api/v1/eatfull')
 @colony_command

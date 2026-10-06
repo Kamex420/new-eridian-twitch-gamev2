@@ -40,7 +40,7 @@ AREAS = {
     'stations': ('🏭', 'Workshops', 'Workstations and personal tiers. Unlock a station once, or own its machine.',
                  ['workshop', 'unlock', 'catalogcat']),
     'life': ('❤️', 'Life', 'Keep Energy, Nutrition, Social and Comfort up so work never stops.',
-             ['recover', 'relax', 'sleep', 'eat', 'eatfull', 'games', 'walk', 'hobby', 'meal', 'social', 'needs', 'cooldowns']),
+             ['recover', 'relax', 'sleep', 'eat', 'eatfull', 'games', 'walk', 'hobby', 'meal', 'trick', 'social', 'needs', 'cooldowns']),
     'social': ('🤝', 'Social', 'Spend time with other citizens.', ['friend', 'recreation', 'me_relationships']),
     'trade': ('🪙', 'Bag & Trade', 'What you own, buying and selling with Seed Industries, orders, and your home and business.',
               ['bag', 'market', 'buy', 'sellsome', 'sell', 'clearout', 'undo', 'browse', 'starters', 'orders', 'fulfill', 'prices', 'commerce', 'analyze', 'property']),
@@ -99,7 +99,8 @@ leaf('eat', 'Eat', '🍲', 'pick', 'eat', pick='food', then='do', option='food',
 leaf('games', 'Games', '🎲', 'do', 'games', hint='+25 Social')
 leaf('walk', 'Walk', '🌿', 'do', 'walk', hint='Morale and exploration')
 leaf('hobby', 'Hobby', '🎨', 'pick', 'hobby', pick='hobby', then='do', option='hobby', hint='practice a hobby')
-leaf('meal', 'Share meal', '🎃', 'do', 'meal', {'action': 'share'}, hint='1 Pumpkin: +25 Nutrition, +10 Social')
+leaf('meal', 'Share meal', '🍲', 'do', 'meal', {'action': 'share'}, hint='1 Pumpkin: +25 Nutrition, +10 Social')
+leaf('trick', 'Trick-or-treat', '🎃', 'do', 'trick', hint='Halloween: knock on a door for a treat or a trick, 5 times a day')
 leaf('recover', 'Recover', '🩹', 'do', 'recover', hint='every recovery that is ready, at once')
 leaf('eatfull', 'Eat until full', '🍽️', 'do', 'eatfull', hint='cheapest everyday food until Nutrition reaches 80')
 leaf('needs', 'Needs', '❤️', 'view', 'me', {'section': 'life'}, hint='your needs and how to fix them')
@@ -358,7 +359,7 @@ for _key, _leaf in LEAVES.items():
     if _leaf['cmd']:
         COMMAND_AREA.setdefault(_leaf['cmd'], PARENT.get(_key, 'home'))
 COMMAND_AREA.update({'seedling': 'seedling', 'seedlingstep': 'seedling', 'link': 'account', 'start': 'account', 'eventstart': 'mod', 'eventstop': 'mod', 'modlog': 'mod', 'asklog': 'mod',
-                     'linklookup': 'mod', 'guidepanels': 'mod', 'menupanel': 'mod', 'eatfull': 'life', 'undo': 'bag', 'find': 'help', 'make': 'craft', 'workshop': 'craft', 'catalog': 'craft', 'queue': 'queue', 'mine': 'work', 'gather': 'work',
+                     'linklookup': 'mod', 'guidepanels': 'mod', 'menupanel': 'mod', 'eatfull': 'life', 'trick': 'life', 'undo': 'bag', 'find': 'help', 'make': 'craft', 'workshop': 'craft', 'catalog': 'craft', 'queue': 'queue', 'mine': 'work', 'gather': 'work',
                      'farm': 'work', 'scan': 'work', 'rare': 'work', 'research': 'work', 'cargo': 'work', 'delivery': 'work',
                      'spaceport': 'work', 'explore': 'work', 'repair': 'work', 'training': 'work', 'society': 'community',
                      'event': 'community', 'holiday': 'community', 'world': 'community', 'progress': 'me', 'seed': 'help', 'guide': 'help',
@@ -457,6 +458,8 @@ WHEN = {
     'eat': (lambda c: _food(c) or c.get('emergency', lambda: c.m.emergency_food_available(c.db, c.p)), 'you have no food'),
     'eatfull': (_food, 'you have no food'),
     'meal': (lambda c: c.p.crops > 0, 'needs 1 Pumpkin'),
+    'trick': (lambda c: c.m.halloween.open_now() and c.m.halloween.tries_left(c.m, c.db, c.p) > 0,
+              'Halloween festival only, 5 doors a day'),
     'recreation': (lambda c: c.get('rec', lambda: bool(c.m.owned_life_items(c.db, c.p).get('recreation_set'))), 'needs a Recreation Set'),
     'w_farm_hydroponics': (lambda c: c.equipment('water', 'hydroponics'), 'needs a Small Water Filter'),
     'w_field_analysis': (lambda c: c.equipment('research', 'field_analysis'), 'needs a Siro Sampler'),
@@ -494,7 +497,7 @@ WHEN = {
     'feed_on': (lambda c: c.feed_hidden(), 'your activity already shows in the feed'),
     'feed_off': (lambda c: not c.feed_hidden(), 'your activity is already hidden'),
     'm_chalstop': (lambda c: c.challenge_active(), 'no stream challenge is running'),
-    'c_hat': (lambda c: c.has('hats'), 'no cosmetic hats yet: reach Silver this season'),
+    'c_hat': (lambda c: c.has('hats'), 'no cosmetic hats yet: reach Silver this season or win a holiday Feast'),
     'c_badge': (lambda c: c.has('badges'), 'no trophies yet'),
     'link': (lambda c: not c.linked(), 'already linked'),
     'account': (lambda c: not c.linked(), 'already linked'),

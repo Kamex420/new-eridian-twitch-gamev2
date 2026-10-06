@@ -60,6 +60,10 @@ User level: Everyone | Global cooldown: 0s | User cooldown: 5s
 Response: $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/find?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&k=YOUR_API_KEY&query=$(queryescape ${1:}))
 User level: Everyone | Global cooldown: 0s | User cooldown: 5s
 
+!trick
+Response: $(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/trick?channel=$(channel.provider_id)&uid=$(sender.twitchid)&name=$(queryescape $(sender))&k=YOUR_API_KEY)
+User level: Everyone | Global cooldown: 0s | User cooldown: 5s
+
 
 # ==== GATHERING, MINING AND WORK ====
 

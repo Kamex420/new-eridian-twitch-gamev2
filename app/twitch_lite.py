@@ -97,7 +97,7 @@ def key_problem(path, params):
 TWITCH_COMMANDS = set('''seed start link status me skills wallet job inventory inv find gather gatherpage mine mineinfo farm harvest forage water
     scan research rare scavenge craft machine build repair project work cargo delivery spaceport explore survey market training life eat
     sleep relax games walk hobby hi hangout meal recover eatfull cooldowns bonus seedling diary society progress event eventhistory
-    leaderboard contracts achievements siro rocky vote challenge season trophies recap'''.split())
+    leaderboard contracts achievements siro rocky vote challenge season trophies recap trick'''.split())
 SAME_ON_TWITCH = {'profile': 'me', 'bonuses': 'bonus', 'world': 'society', 'daily': 'contracts', 'tend': 'farm', 'scout': 'explore',
                   'field_analysis': 'research', 'expedite': 'spaceport', 'seasons': 'season'}
 _SLASH = __import__('re').compile(r'(?<![\w/:.<])/([a-z][a-z_]*)((?: [a-z_]+:[\w\-]+)*)')

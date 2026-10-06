@@ -1584,6 +1584,10 @@
         {
           "name": "Recover",
           "value": "recover"
+        },
+        {
+          "name": "Trick-or-treat (Halloween)",
+          "value": "trick"
         }
       ]
     },

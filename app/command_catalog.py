@@ -471,7 +471,7 @@ RETIRED={'relax','sleep','eat','games','walk','hobby','meal',
          'eventstart','eventstop','modlog','linklookup','society','event','holiday','progress'}
 _by_name={c['name']:c for c in commands}
 LIFE_ACTIONS=[('Relax','relax'),('Sleep','sleep'),('Eat','eat'),('Games','games'),('Walk','walk'),
-              ('Hobby','hobby'),('Share meal','meal'),('Recover','recover')]
+              ('Hobby','hobby'),('Share meal','meal'),('Recover','recover'),('Trick-or-treat (Halloween)','trick')]
 WORK_TASKS=[(W('Tend Fields','farm'),'farm_tend'),(W('Harvest Pumpkins','harvest'),'farm_harvest'),(W('Irrigate','water'),'farm_irrigate'),
             (W('Hydroponics','water','hydroponics','needs Small Water Filter'),'farm_hydroponics'),(W('Scan','scan'),'scan'),
             ('Rare prospecting · Harvesting Lv3','rare'),(W('Standard Research','research'),'research'),

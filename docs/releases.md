@@ -1,5 +1,12 @@
 # Release notes
 
+## Trick-or-treat and holiday hats
+
+- **Trick-or-treat.** While the Halloween festival is on (October 1 – November 7), knock on up to 5 doors a day: `/life action:Trick-or-treat`, Menu → Life → 🎃 Trick-or-treat, or `!trick` on Twitch. Each door is a treat (1–2 Pumpkin, Nuts, Berries, Corn or Herbs; 2–5 SC; or now and then a whole Halloween festival food, which shows on the stream overlay) or a harmless trick (a joke from Rocky and friends, +1 Morale). It costs no needs and starts no cooldown. The count resets at midnight UTC (8 PM Eastern). Discord replies have a 🎃 Knock again button.
+- **Holiday hats.** Every holiday's Feast trophy (craft all three of its festival foods) now wins a hat for your Seedling: New Year sparkle crown, Heart headband, Poppy cap, Fishing bucket hat, Star-spangled top hat, Golden hard hat, Witch hat, Pilgrim hat and Santa hat. Citizens who already won a Feast get its hat the next time they play. Wear them like other hats (`/season section:hats`, `!hat <name>`); the stream map draws each one.
+- Find answers both ("how do I trick or treat?", "how do I get the witch hat?").
+- **StreamElements:** add the `!trick` command from `integrations/twitch/ALL_COMMANDS.txt`.
+
 ## Find answers questions about the whole game
 
 `/find`, the menu's 🔎 Find box and Twitch `!find` now answer questions about everything, not only items, recipes and skills.

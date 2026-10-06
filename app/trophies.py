@@ -99,11 +99,13 @@ def _build(m):
            lambda c, cats=cats: sum(1 for k in cats if 'craft_' + k in c['owned']), title='grand_artisan')
 
     emoji_of = {name: emoji for name, _, _, emoji in seasonal.HOLIDAY_WINDOWS}
+    from . import seasons
     for holiday, rows in seasonal.FESTIVAL_FOODS.items():
         recipes = {'fr_' + seasonal._slug(r[0]) for r in rows}
+        hat = seasons.HOLIDAY_HATS.get(holiday, '')
         trophy('feast_' + seasonal._slug(holiday), emoji_of.get(holiday, '🎉'), f'{holiday} Feast',
-               f"Craft every {holiday} festival food: {', '.join(r[0] for r in rows)}", 'festivals', 25, len(recipes),
-               lambda c, recipes=recipes: len(c['crafted'] & recipes))
+               f"Craft every {holiday} festival food: {', '.join(r[0] for r in rows)}" + (f' (wins the {seasons.HATS[hat][1]})' if hat else ''),
+               'festivals', 25, len(recipes), lambda c, recipes=recipes: len(c['crafted'] & recipes), hat=hat)
 
     trophy('civic_duty', '🗳️', 'Civic Duty', 'Vote in a colony vote', 'colony', 5, 1, lambda c: c['votes'])
     trophy('town_council', '📜', 'Town Council', 'Vote in 15 colony votes', 'colony', 30, 15, lambda c: c['votes'], title='town_councillor')
@@ -209,6 +211,11 @@ def check(m, db, p, force=False):
         _last.clear()
     ctx = context(m, db, p)
     notes = []
+    from . import seasons
+    for k in ctx['owned']:              # a trophy earned before it came with a hat (holiday Feasts) still gets it
+        t = TROPHIES.get(k)
+        if t and t['hat'] and seasons.give_hat(db, p, t['hat']):
+            notes.append(f"🎩 Your {t['name']} trophy now comes with the {seasons.HATS[t['hat']][0]} {seasons.HATS[t['hat']][1]}!")
     for _ in range(2):                  # a second pass catches trophies that count other trophies
         for t in TROPHIES.values():
             if t['key'] in ctx['owned']:

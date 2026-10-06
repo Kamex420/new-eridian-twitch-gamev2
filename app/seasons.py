@@ -74,7 +74,14 @@ THEME = {t[0]: t for t in THEMES}
 HATS = {'flower': ('🌼', 'Flower crown'), 'viking': ('⛑️', 'Horned dust helm'), 'wizard': ('🧙', 'Siro wizard hat'),
         'astronaut': ('👩‍🚀', 'Astronaut helmet'), 'beanie': ('🧶', 'Frost beanie'), 'party': ('🥳', 'Party hat'),
         'crown': ('👑', 'Champion crown'), 'laurel': ('🌿', 'Finalist laurel'), 'halo': ('😇', 'Stream halo'),
-        'antlers': ('🦌', 'Festive antlers')}
+        'antlers': ('🦌', 'Festive antlers'),
+        # Holiday hats: crafting every festival food of a holiday (its Feast trophy) wins its hat.
+        'sparkle': ('🎆', 'New Year sparkle crown'), 'hearts': ('💝', 'Heart headband'), 'poppy': ('🌺', 'Poppy cap'),
+        'fishing': ('🎣', 'Fishing bucket hat'), 'starhat': ('🎩', 'Star-spangled top hat'), 'goldhelm': ('⛑️', 'Golden hard hat'),
+        'witch': ('🎃', 'Witch hat'), 'pilgrim': ('🦃', 'Pilgrim hat'), 'santa': ('🎅', 'Santa hat')}
+HOLIDAY_HATS = {'New Year': 'sparkle', "Valentine's Day": 'hearts', 'Memorial Day': 'poppy', "Father's Day": 'fishing',
+                'Independence Day': 'starhat', 'Labor Day': 'goldhelm', 'Halloween': 'witch', 'Thanksgiving': 'pilgrim',
+                'Christmas': 'santa'}
 
 
 class Season(Base):
@@ -322,7 +329,8 @@ def wear(db, p, choice, provider='twitch'):
     key = str(choice or '').strip().casefold().replace(' ', '_')
     if not key:
         if not owned:
-            return f'🎩 No cosmetic hats yet. Reach Silver this season (or win one) to get the season hat. {cmd} <name> wears one.'
+            return (f'🎩 No cosmetic hats yet. Reach Silver this season for the season hat, or craft every festival food of a '
+                    f'holiday for its holiday hat. {cmd} <name> wears one.')
         listing = ', '.join(f"{HATS[h][0]} {h}{' (on)' if h == worn else ''}" for h in owned if h in HATS)
         return f'🎩 Your hats: {listing}. {cmd} <name> to wear one, {cmd} job to go back to your job hat.'
     if key in {'job', 'off', 'none'}:

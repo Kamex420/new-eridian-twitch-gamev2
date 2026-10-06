@@ -66,6 +66,7 @@
 !undo,$(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/undo?channel=$(channel.provider_id)&uid=$(sender.twitchid)&k=YOUR_API_KEY&name=$(queryescape $(sender))),100,0,2
 !eatfull,$(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/eatfull?channel=$(channel.provider_id)&uid=$(sender.twitchid)&k=YOUR_API_KEY&name=$(queryescape $(sender))),100,0,3
 !find,$(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/find?channel=$(channel.provider_id)&uid=$(sender.twitchid)&k=YOUR_API_KEY&name=$(queryescape $(sender))&query=$(queryescape ${1:})),100,0,5
+!trick,$(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/trick?channel=$(channel.provider_id)&uid=$(sender.twitchid)&k=YOUR_API_KEY&name=$(queryescape $(sender))),100,0,5
 !seedling,$(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/seedling?channel=$(channel.provider_id)&uid=$(sender.twitchid)&k=YOUR_API_KEY&name=$(queryescape $(sender))),100,0,5
 !diary,$(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/diary?channel=$(channel.provider_id)&uid=$(sender.twitchid)&k=YOUR_API_KEY&name=$(queryescape $(sender))),100,0,5
 !schedule,$(customapi https://new-eridian-twitch-game-production.up.railway.app/api/v1/schedule?channel=$(channel.provider_id)&uid=$(sender.twitchid)&k=YOUR_API_KEY&name=$(queryescape $(sender))&preset=$(queryescape ${1:})),100,0,5

@@ -391,6 +391,12 @@ def index(m, provider):
                 logging.getLogger(__name__).exception('Find could not index a help source')
         terms = [Passage(title, text, 'Handbook · Terms', {'kind': 'leaf', 'key': 'h_terms'}) for title, text in ask.EXTRA_TERMS.items()]
         passages += terms
+        from . import seasons
+        wear = '/season section:hats' if key == 'discord' else '!hat <name>'
+        passages.append(Passage('Holiday hats', 'Craft every festival food of a holiday to win its Feast trophy and its hat: '
+                                + ', '.join(f'{seasons.HATS[h][1]} ({holiday})' for holiday, h in seasons.HOLIDAY_HATS.items())
+                                + f'. Wear one with {wear}; your Seedling shows it on the stream map.', 'Handbook · Terms',
+                                {'kind': 'leaf', 'key': 'c_hats'}))
         seen, unique = set(), []
         for p_ in passages:
             sig = (p_.head.casefold(), p_.body.casefold())
