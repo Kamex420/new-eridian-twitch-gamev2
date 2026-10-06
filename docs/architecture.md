@@ -25,6 +25,7 @@ The application now has one canonical Python package. Earlier releases stored im
 | `autonomy.py` | Autonomous Seedlings: schedules, the background worker that lets each Seedling act through ordinary commands, how it thinks a Work turn through (the goal's next step, then turns of collecting and training, with its reason kept and quoted), moods and their success modifier, thoughts, the diary, and the map/narrator overlay data |
 | `ask.py` | Find's questions: recognises how-to/where/what-for/level/meaning/why/next questions, matches their subject (typos, plurals, old names) and answers from game data with the asker's bag and levels; counts unanswered questions for the owner (`/mod action:asklog`) |
 | `readable_names.py` | Level-up labels that name the other citizen and the hobby instead of ids and keys, and a startup pass that rewrites lines stored before that |
+| `knowledge.py` | Find's answers beyond items: society stats, Contribution, needs, tiers, housing and the clinic from the game's rules, and a search over the handbook, commands, menu and guide panels |
 | `menu.py` | The /menu button tree: areas, their action and view buttons, choice lists and follow-up buttons on every reply |
 | `ui.py` | Buttons, dropdowns and one-time tickets for every panel; ◀️ Back and 🏠 Menu on every screen, with each message's screen history for Back (`HISTORY`, `go_back`) |
 | `presentation.py` | How every Discord card and Twitch line looks: task receipts, notices and information cards |

@@ -1,5 +1,15 @@
 # Release notes
 
+## Find answers questions about the whole game
+
+`/find`, the menu's 🔎 Find box and Twitch `!find` now answer questions about everything, not only items, recipes and skills.
+- **Society stats.** *How do I build Reputation?* (or Food, Materials, Development, Knowledge, Treasury): the colony's current value, whether it is the stat holding the next tier back, every kind of work that raises it with how much and its command, the training tasks, the Society Directive that adds +8, and the events that reward or cost it. The amounts come from the game's rules, and a test checks that the first way listed for each stat really raises it.
+- **Contribution.** Every way to earn it: work, events, Society Projects, the Society Directive, Production Orders, the daily contract, mentoring and clinic supplies.
+- **Needs.** *How do I get more Energy?* (Nutrition, Social, Comfort, Morale): what it does, your value and the commands that restore it.
+- **Tiers, housing and the clinic.** *How do I get the next tier?* names the lowest stat, with a button that asks how to raise it. Shared housing and shared Medicines are explained too.
+- **Everything else** is answered from the handbook (every `/seed` page), the Twitch handbook, the command list, the menu's buttons and the guide panels: *how do I change my job*, *what is a season*, *how do I make friends*, *how do I start a business*, *how do votes work*, *who made this game*. Discord shows the best passages with buttons to the handbook page and the matching menu button; Twitch gets one line.
+- Items still come first: *how do I make a Comfort Pack* is the recipe, not Comfort.
+
 ## Level-ups name people, not account ids
 
 - **Relationship level-ups say who.** "Relationship 621372225 Lv. 1 → Lv. 2" (the other citizen's account id) now reads "Relationship with blake1215 Lv. 1 → Lv. 2" in the reply, the activity feed, the stream highlights, the journal and the latest milestone on status screens. A citizen who no longer exists shows as "a former citizen".

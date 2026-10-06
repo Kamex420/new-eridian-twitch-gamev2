@@ -700,7 +700,13 @@ def _resolve(m, db, p, intent, subject, provider):
         if skill and _norm(subject) in skills(m):
             return answer_level(m, db, p, skill, provider), []
         key, near_items = find_item(subject, m)
-        if key is not None:
+        if key is not None and _norm(m.resource_name(key)) in _forms(subject):
+            return answer_item(m, db, p, key, provider), []                 # the item's own name
+        from . import knowledge
+        known = knowledge.search_answer(m, db, p, subject, provider)      # "what is a season?": the handbook's /season
+        if known is not None:
+            return known, []
+        if key is not None:                                                # part of an item's name ("ducks")
             return answer_item(m, db, p, key, provider), []
         leaf = find_leaf(m, subject)
         if leaf:
@@ -722,10 +728,17 @@ def _suggestions(m, text):
 
 
 def answer(m, db, p, query, provider='discord'):
-    """The Answer to a question or a search word. intent 'search': a plain word (extras.find); 'unknown': nothing matched."""
-    from . import extras
+    """The Answer to a question or a search word. intent 'search': a plain word (extras.find); 'handbook': what the
+    handbook, commands and menu say (knowledge.search); 'topic': a society stat, Contribution, a need, tiers, housing or
+    the clinic; 'unknown': nothing matched."""
+    from . import extras, knowledge
     text = str(query or '').strip()[:MAX_QUERY]
     readings = parse(text)
+    if not readings or readings[0][0] in {'define', 'level'} or any(knowledge.topic_of_subject(sub) for _, sub in readings if sub):
+        # "how do I raise Reputation?", "what is Morale?", "reputation": what raises it, not a word search.
+        topic = knowledge.topic_answer(m, db, p, text, provider)
+        if topic is not None:
+            return topic
     near = []
     which = None
     for intent, subject in readings:
@@ -735,12 +748,31 @@ def answer(m, db, p, query, provider='discord'):
         if close and which is None:
             which = (intent, subject, list(dict.fromkeys(close)))
         near += [x for x in close if x not in near]
-    if which is not None:
-        # "where do I get iron": several things fit; one button each asks the same question about it.
-        intent, subject, close = which
-        return Answer('suggest', which_text(subject, close, intent, provider),
-                      [{'kind': 'suggest', 'name': n, 'intent': intent} for n in close])
-    if not readings:
+    if readings:
+        # Not an item, recipe or skill: a society stat, Contribution or a need ("how do I build reputation?"),
+        # else whatever the handbook, the commands and the menu say about it.
+        topic = knowledge.topic_answer(m, db, p, text, provider)
+        if topic is not None:
+            return topic
+        known = knowledge.search_answer(m, db, p, text, provider)
+        if which is not None:
+            intent, subject, close = which
+            # "where do I get iron": several items hold the word, so ask which; a loose guess gives way to the handbook.
+            if known is None or all(_norm(subject) in _norm(n) for n in close):
+                return Answer('suggest', which_text(subject, close, intent, provider),
+                              [{'kind': 'suggest', 'name': n, 'intent': intent} for n in close])
+        if known is not None:
+            return known
+        # A question whose subject is a button or handbook topic ("how do I use the shopping list"): the plain search.
+        for subject in dict.fromkeys(sub for _, sub in readings if sub):
+            found = extras.find(m, subject)
+            if not _discord(provider):
+                found = {k: v for k, v in found.items() if k != 'menu'}       # chat lists no Discord buttons
+            if any(found.values()):
+                return Answer('search', extras.find_text(m, subject, provider), [{'kind': 'search', 'query': subject}])
+        if not near:
+            near = _suggestions(m, readings[0][1]) if readings[0][1] else []
+    else:
         term, _ = find_term(m, text)
         if term and _norm(clean(text)) not in terms(m):
             term = None
@@ -757,17 +789,10 @@ def answer(m, db, p, query, provider='discord'):
         skill, _ = find_skill(m, text)
         if skill:
             return answer_level(m, db, p, skill, provider)
+        known = knowledge.search_answer(m, db, p, text, provider)
+        if known is not None:
+            return known
         near = _suggestions(m, text)
-    else:
-        # A question whose subject is a button or handbook topic ("how do I use the shopping list"): the plain search.
-        for subject in dict.fromkeys(sub for _, sub in readings if sub):
-            found = extras.find(m, subject)
-            if not _discord(provider):
-                found = {k: v for k, v in found.items() if k != 'menu'}       # chat lists no Discord buttons
-            if any(found.values()):
-                return Answer('search', extras.find_text(m, subject, provider), [{'kind': 'search', 'query': subject}])
-        if not near:
-            near = _suggestions(m, readings[0][1]) if readings[0][1] else []
     intent = readings[0][0] if readings else 'search'
     return Answer('unknown', unknown_text(text, near, provider), [{'kind': 'suggest', 'name': n, 'intent': intent} for n in near], answered=False)
 
@@ -792,7 +817,7 @@ def unknown_text(text, near, provider):
 
 def suggestion_query(intent, name):
     """The question a Did-you-mean button asks again, with the suggested name in it."""
-    return {'make': f'how do I make {name}', 'why': f"why can't I make {name}", 'level': f'how do I level {name}',
+    return {'make': f'how do I make {name}', 'why': f"why can't I make {name}", 'level': f'how do I level {name}', 'raise': f'how do I raise {name}',
             'uses': f'what is {name} used for', 'get': f'where do I get {name}', 'define': f'what is {name}'}.get(intent, name)
 
 
