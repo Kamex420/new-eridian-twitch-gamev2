@@ -393,7 +393,7 @@ def index(m, provider):
         passages += terms
         from . import seasons
         wear = '/season section:hats' if key == 'discord' else '!hat <name>'
-        passages.append(Passage('Holiday hats', 'Craft every festival food of a holiday to win its Feast trophy and its hat: '
+        passages.append(Passage('Holiday hats', "Craft every festival food and keepsake of a holiday (a Jack-o'-lantern Mask makes your Seedling a pumpkin head) to win its Feast trophy and its hat: "
                                 + ', '.join(f'{seasons.HATS[h][1]} ({holiday})' for holiday, h in seasons.HOLIDAY_HATS.items())
                                 + f'. Wear one with {wear}; your Seedling shows it on the stream map.', 'Handbook · Terms',
                                 {'kind': 'leaf', 'key': 'c_hats'}))

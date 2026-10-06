@@ -1,5 +1,13 @@
 # Release notes
 
+## Festival keepsakes, a Jack-o'-lantern Mask, and no more "Citizen"
+
+- **Festival keepsakes.** Every holiday now has keepsakes to craft as well as foods, at the free Survival Workbench while its festival runs: decorations (use them for Morale and Social; they are kept) and wearables (use them for Comfort and Morale). New Year: Confetti Popper, Sparkler Crown. Valentine's Day: Heart Garland, Rose Bouquet. Memorial Day: Poppy Wreath, Remembrance Lantern. Father's Day: Grill Apron, Fishing Rod. Independence Day: Star Bunting, Paper Firework. Labor Day: Tool Belt, Workers' Banner. Halloween: Jack-o'-lantern Mask, Spooky Lantern, Scarecrow Doll. Thanksgiving: Harvest Wreath, Gratitude Table Runner. Christmas: Holiday Stocking, Pine Wreath. They use everyday materials: Flaxa, Berries, Herbs, Clay, Lumber, Corn, Nuts, Pumpkin, Coal, Iron Nails and Fabric.
+- **A holiday's hat now needs its keepsakes too.** The Feast trophy (and its hat) asks for every festival food and keepsake of the holiday. Feasts already won stay won, with their hats.
+- **Jack-o'-lantern Mask.** Pumpkin ×2 with Fabric ×2, or Pumpkin ×2 with Synthetic Fabric ×1. Crafting one wins the Pumpkin Head trophy, and your Seedling can wear the mask on the stream map: a carved pumpkin head with a glowing face.
+- `/world → Holidays` lists each festival's keepsakes and their ingredients, and the festival notice in your inbox names them.
+- **No more "Citizen".** Some background lookups (the Queue max button, reopening the Workbench) looked players up without a name, which renamed them "Citizen", and their Seedling kept that name. A lookup without a name now never changes a name, and anyone already stuck as "Citizen" gets the last name their account used back at startup.
+
 ## More detailed holiday decorations on the stream map
 
 Every holiday's decorations on `/obs/map` are redrawn with much more detail. No OBS changes are needed.

@@ -443,8 +443,8 @@ def test_festival_feasts_come_from_the_craft_ledger():
     call('/api/v1/start')
     with m.SessionLocal() as db:
         p = db.query(m.Player).filter_by(channel_id=W).first()
-        for food in seasonal.FESTIVAL_FOODS['Halloween']:
-            db.add(m.CraftLedger(channel_id=p.channel_id, canonical_uid=p.twitch_uid, recipe='fr_' + seasonal._slug(food[0]), qty=1, best_quality=''))
+        for recipes in seasonal.festival_items('Halloween').values():       # every food and keepsake
+            db.add(m.CraftLedger(channel_id=p.channel_id, canonical_uid=p.twitch_uid, recipe=recipes[0], qty=1, best_quality=''))
         db.flush()
         assert any('Halloween Feast' in n for n in trophies.check(m, db, p, force=True))
 

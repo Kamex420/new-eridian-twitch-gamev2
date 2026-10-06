@@ -929,7 +929,7 @@ const HAT={farmer:'straw',cultivator:'straw',harvester:'straw',miner:'helmet',te
   researcher:'goggles',pharmacist:'goggles',medic:'medic',cook:'chef',merchant:'tophat',courier:'cap',explorer:'ranger',processor:'bandana',artisan:'bandana'};
 // Cosmetic hats (season rewards, champions, trophies) replace the job hat when a citizen wears one.
 const COSMETIC=new Set(['flower','viking','wizard','astronaut','beanie','party','crown','laurel','halo','antlers',
-  'sparkle','hearts','poppy','fishing','starhat','goldhelm','witch','pilgrim','santa']);
+  'sparkle','hearts','poppy','fishing','starhat','goldhelm','witch','pilgrim','santa','jackmask']);
 function cosmetic(g,k){
   if(k==='flower')['#ff7aa8','#ffd35a','#fff','#b58cff','#ff9a5a'].forEach((c,n)=>el('circle',{cx:-6+n*3,cy:-36.5+(n%2),r:2,fill:c,stroke:'#7a3a4a','stroke-width':.4},g));
   if(k==='viking'){el('path',{d:'M-7.5 -33 A7.5 7 0 0 1 7.5 -33Z',fill:'#9aa3ad',stroke:'#4a4f58','stroke-width':.8},g);el('rect',{x:-8.5,y:-34,width:17,height:2,rx:1,fill:'#7a5a3a'},g);
@@ -951,6 +951,10 @@ function cosmetic(g,k){
   if(k==='hearts'){el('path',{d:'M-8 -33 Q0 -41 8 -33',fill:'none',stroke:'#ff5a8a','stroke-width':1.4},g);for(const sd of [-1,1]){el('line',{x1:sd*3,y1:-38,x2:sd*5,y2:-44,stroke:'#ff5a8a','stroke-width':.9},g);el('path',{d:heart(sd*5,-46,6),fill:'#ff5a8a'},g)}}
   if(k==='poppy'){el('path',{d:'M-7 -33 A7 6.5 0 0 1 7 -33Z',fill:'#3a4a3a',stroke:'#1a221a','stroke-width':.7},g);for(let q=0;q<5;q++)el('circle',{cx:4+Math.cos(q*1.26)*1.8,cy:-37+Math.sin(q*1.26)*1.8,r:1.4,fill:'#d9303a'},g);el('circle',{cx:4,cy:-37,r:.8,fill:'#111'},g)}
   if(k==='fishing'){el('path',{d:'M-10 -33 L-6 -40 L6 -40 L10 -33Z',fill:'#8a9a5a',stroke:'#4a5a2a','stroke-width':.7},g);el('rect',{x:-6,y:-40,width:12,height:1.6,fill:'#5a6a3a'},g);el('path',{d:'M5 -39 Q8 -41 7 -44',fill:'none',stroke:'#e0303a','stroke-width':.8},g)}
+  if(k==='jackmask'){[[-5.2,4.4,'#d9661a'],[5.2,4.4,'#e2721c'],[-2.4,5.4,'#ec7e22'],[2.4,5.4,'#ec7e22'],[0,4.6,'#f28a2a']].forEach(([dx,rx,f])=>el('ellipse',{cx:dx,cy:-28.5,rx,ry:8.6,fill:f,stroke:'#a8480e','stroke-width':.45},g));
+    el('path',{d:'M-.6 -37 q.6 -3.4 3 -4',stroke:'#4a6a2a','stroke-width':1.6,fill:'none','stroke-linecap':'round'},g);
+    el('polygon',{points:'-5,-30 -1.6,-30 -3.3,-33.2',fill:'#ffd34a'},g);el('polygon',{points:'1.6,-30 5,-30 3.3,-33.2',fill:'#ffd34a'},g);
+    el('path',{d:'M-5 -26.8 L-3.3 -25 L-1.7 -26.6 L0 -24.8 L1.7 -26.6 L3.3 -25 L5 -26.8 L4 -23.4 L-4 -23.4Z',fill:'#ffd34a'},g)}
   if(k==='goldhelm'){el('path',{d:'M-7.5 -33 A7.5 7 0 0 1 7.5 -33Z',fill:'#ffd35a',stroke:'#a8781a','stroke-width':.8},g);el('rect',{x:-9,y:-34,width:18,height:2,rx:1,fill:'#ffd35a',stroke:'#a8781a','stroke-width':.5},g);el('rect',{x:-1,y:-40,width:2,height:6,fill:'#fff3b0'},g)}}
 function hat(g,job){g.innerHTML='';if(COSMETIC.has(job))return cosmetic(g,job);const k=HAT[job];if(!k)return;
   if(k==='straw'){el('ellipse',{cx:0,cy:-35,rx:10,ry:2.6,fill:'#e2c27a',stroke:'#a8862e','stroke-width':.8},g);el('path',{d:'M-5 -35 Q0 -43 5 -35Z',fill:'#e8cc86',stroke:'#a8862e','stroke-width':.8},g);el('rect',{x:-5,y:-37,width:10,height:1.6,fill:'#b8452f'},g)}

@@ -159,3 +159,80 @@ def test_every_holiday_theme_has_a_detailed_scene():
         name = {'newyear': 'NewYear'}.get(theme, theme.title())
         assert f'function scene{name}(' in page and f'{theme}:scene{name}' in page, theme
     assert 'id="festlights"' in page          # night lights are drawn above the darkness
+
+
+# ---------------------------------------------------------------- festival keepsakes and the pumpkin-head mask
+
+def test_every_holiday_has_keepsakes_made_from_game_materials():
+    from app import seed_content as s, workbench as wb
+    for holiday in seasonal.FESTIVAL_FOODS:
+        crafts = [k for k, v in seasonal.FESTIVAL_CRAFT_ITEMS.items() if v['holiday'] == holiday]
+        assert len(crafts) >= 2, holiday
+        for key in crafts:
+            assert key in s.ITEMS and s.CATEGORY[key] in {'decor', 'clothing'}
+            for rid in seasonal.FESTIVAL_CRAFT_ITEMS[key]['recipes']:
+                assert seasonal.FESTIVAL_RECIPES[rid] == holiday and wb.entry(m, rid) is not None
+
+
+def test_the_mask_is_made_with_fabric_or_synthetic_fabric():
+    from app import seed_content as s
+    mask = seasonal.FESTIVAL_CRAFT_ITEMS['fest_jack_o_lantern_mask']
+    ways = [{s.ITEMS[k]['name'] for k in s.RECIPES[rid]['inputs']} for rid in mask['recipes']]
+    assert {'Pumpkin', 'Fabric'} in ways and {'Pumpkin', 'Synthetic Fabric'} in ways
+
+
+def test_crafting_the_mask_turns_the_seedling_into_a_pumpkin_head():
+    seed()
+    with m.SessionLocal() as db:
+        p = m.player(db, 'test', 'twitch', 'u', 'Kamex')[1]
+        m.craft_record(db, p, 'fr_jack_o_lantern_mask_2')          # the Synthetic Fabric recipe counts too
+        db.commit()
+        notes = trophies.check(m, db, p, force=True)
+        db.commit()
+        assert any('Pumpkin Head' in n for n in notes) and 'jackmask' in seasons.hats_of(db, p)[0]
+
+
+def test_the_feast_needs_every_food_and_keepsake():
+    seed()
+    with m.SessionLocal() as db:
+        p = m.player(db, 'test', 'twitch', 'u', 'Kamex')[1]
+        for recipe, holiday in seasonal.FESTIVAL_RECIPES.items():
+            if holiday == 'Christmas' and recipe in {v['recipe'] for v in seasonal.FESTIVAL_ITEMS.values()}:
+                m.craft_record(db, p, recipe)                       # the foods alone
+        db.commit()
+        assert not any('Christmas Feast' in n for n in trophies.check(m, db, p, force=True))
+        for key, v in seasonal.FESTIVAL_CRAFT_ITEMS.items():
+            if v['holiday'] == 'Christmas':
+                m.craft_record(db, p, v['recipe'])
+        db.commit()
+        assert any('Christmas Feast' in n and 'Santa hat' in n for n in trophies.check(m, db, p, force=True))
+
+
+def test_the_holiday_page_lists_keepsakes():
+    text = seasonal.holiday_message()
+    assert 'Festival keepsakes:' in text
+
+
+# ---------------------------------------------------------------- "Citizen"
+
+def test_a_call_without_a_name_never_renames_a_citizen():
+    with m.SessionLocal() as db:
+        m.player(db, W, 'discord', '111', 'Kam')
+        m.player(db, W, 'discord', '111', '')                       # background lookups pass no name
+        m.player(db, 'test', 'twitch', 'u', 'Kamex')
+        p = m.player(db, 'test', 'twitch', 'u', 'Citizen')[1]       # the endpoints' default
+        db.commit()
+        assert p.display_name == 'Kamex'
+        assert m.player(db, W, 'discord', '111', '')[1].display_name == 'Kam'
+        assert m.player(db, W, 'discord', '222', '')[1].display_name == 'Citizen'   # a brand-new nameless citizen still gets one
+
+
+def test_citizens_stuck_as_citizen_get_their_names_back():
+    from app import readable_names
+    with m.SessionLocal() as db:
+        p = m.player(db, 'test', 'twitch', 'u', 'blake1215')[1]
+        p.display_name = 'Citizen'
+        db.commit()
+    assert readable_names.restore_names(m) == 1
+    with m.SessionLocal() as db:
+        assert m.player(db, 'test', 'twitch', 'u', '')[1].display_name == 'blake1215'

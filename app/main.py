@@ -102,7 +102,8 @@ from .db import engine, SessionLocal, Base
 app=FastAPI(title="New Eridian v2 Unified API",version="7.0.0")
 
 def now(): return datetime.now(timezone.utc)
-def clean(v): return ((v or "Citizen").strip()[:30] or "Citizen")
+PLACEHOLDER_NAME="Citizen"   # the name a call without one gets; never stored over a real name
+def clean(v): return ((v or PLACEHOLDER_NAME).strip()[:30] or PLACEHOLDER_NAME)
 def out(s):
     from .commands import context
     if context.get() is not None:return PlainTextResponse(s)
@@ -782,8 +783,11 @@ def player(db,c,provider,uid,name):
         stream_overlay.highlight(db,c,"join",f"{clean(name)} arrived in New Eridian","A new citizen joined. Type !start in chat to join them.",clean(name))
         db.commit();db.refresh(p)
     item_identity.migrate_player(sys.modules[__name__],db,p)
-    record_account_name(db,c,provider,uid,name)
-    p.display_name=clean(name);p.last_seen=now();db.commit()
+    # Background work and a few chat commands call without the viewer's name; they keep the name the citizen already has.
+    if clean(name)!=PLACEHOLDER_NAME or not p.display_name:
+        record_account_name(db,c,provider,uid,name)
+        p.display_name=clean(name)
+    p.last_seen=now();db.commit()
     life_state(db,p)
     colony_capture(db,p)
     return canon,p
@@ -7610,6 +7614,7 @@ Base.metadata.create_all(engine)
 # Level-up lines stored before they used names ("Relationship 621372225") are rewritten once: "Relationship with blake1215".
 from . import readable_names
 readable_names.repair(sys.modules[__name__])
+readable_names.restore_names(sys.modules[__name__])
 
 
 @app.get('/api/v1/status')

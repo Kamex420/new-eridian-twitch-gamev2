@@ -100,12 +100,16 @@ def _build(m):
 
     emoji_of = {name: emoji for name, _, _, emoji in seasonal.HOLIDAY_WINDOWS}
     from . import seasons
-    for holiday, rows in seasonal.FESTIVAL_FOODS.items():
-        recipes = {'fr_' + seasonal._slug(r[0]) for r in rows}
+    for holiday in seasonal.FESTIVAL_FOODS:
+        items = seasonal.festival_items(holiday)          # every food and keepsake; an item counts by any of its recipes
+        names = [(seasonal.FESTIVAL_ITEMS.get(k) or seasonal.FESTIVAL_CRAFT_ITEMS[k])['name'] for k in items]
         hat = seasons.HOLIDAY_HATS.get(holiday, '')
         trophy('feast_' + seasonal._slug(holiday), emoji_of.get(holiday, '🎉'), f'{holiday} Feast',
-               f"Craft every {holiday} festival food: {', '.join(r[0] for r in rows)}" + (f' (wins the {seasons.HATS[hat][1]})' if hat else ''),
-               'festivals', 25, len(recipes), lambda c, recipes=recipes: len(c['crafted'] & recipes), hat=hat)
+               f"Craft every {holiday} festival food and keepsake: {', '.join(names)}" + (f' (wins the {seasons.HATS[hat][1]})' if hat else ''),
+               'festivals', 25, len(items), lambda c, items=items: sum(1 for rs in items.values() if c['crafted'] & set(rs)), hat=hat)
+    mask = set(seasonal.FESTIVAL_CRAFT_ITEMS['fest_jack_o_lantern_mask']['recipes'])
+    trophy('pumpkin_head', '🎃', 'Pumpkin Head', "Craft a Jack-o'-lantern Mask (your Seedling wears it on the stream map)", 'festivals', 5, 1,
+           lambda c, mask=mask: int(bool(c['crafted'] & mask)), hat='jackmask')
 
     trophy('civic_duty', '🗳️', 'Civic Duty', 'Vote in a colony vote', 'colony', 5, 1, lambda c: c['votes'])
     trophy('town_council', '📜', 'Town Council', 'Vote in 15 colony votes', 'colony', 30, 15, lambda c: c['votes'], title='town_councillor')

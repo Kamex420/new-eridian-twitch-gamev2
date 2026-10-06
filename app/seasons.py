@@ -78,7 +78,8 @@ HATS = {'flower': ('🌼', 'Flower crown'), 'viking': ('⛑️', 'Horned dust he
         # Holiday hats: crafting every festival food of a holiday (its Feast trophy) wins its hat.
         'sparkle': ('🎆', 'New Year sparkle crown'), 'hearts': ('💝', 'Heart headband'), 'poppy': ('🌺', 'Poppy cap'),
         'fishing': ('🎣', 'Fishing bucket hat'), 'starhat': ('🎩', 'Star-spangled top hat'), 'goldhelm': ('⛑️', 'Golden hard hat'),
-        'witch': ('🎃', 'Witch hat'), 'pilgrim': ('🦃', 'Pilgrim hat'), 'santa': ('🎅', 'Santa hat')}
+        'witch': ('🧹', 'Witch hat'), 'pilgrim': ('🦃', 'Pilgrim hat'), 'santa': ('🎅', 'Santa hat'),
+        'jackmask': ('🎃', "Jack-o'-lantern mask")}
 HOLIDAY_HATS = {'New Year': 'sparkle', "Valentine's Day": 'hearts', 'Memorial Day': 'poppy', "Father's Day": 'fishing',
                 'Independence Day': 'starhat', 'Labor Day': 'goldhelm', 'Halloween': 'witch', 'Thanksgiving': 'pilgrim',
                 'Christmas': 'santa'}

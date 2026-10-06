@@ -158,7 +158,7 @@ def max_attempts(m, db, p, task, with_needs=True):
 def max_for_owner(m, owner, task):
     """Queue max for a Discord user id, opening its own session (for panels)."""
     with m.SessionLocal() as db:
-        p = m.player(db, m.DISCORD_WORLD_ID, 'discord', owner, 'Citizen')[1]
+        p = m.player(db, m.DISCORD_WORLD_ID, 'discord', owner, '')[1]
         count, _ = max_attempts(m, db, p, task)
         db.commit()
         return count
@@ -1106,8 +1106,9 @@ def touch(m, db, p):
         if reminded.get('festival') != key:
             reminded['festival'] = key
             foods = ', '.join(food[0] for food in seasonal.FESTIVAL_FOODS[festival['name']])
+            keepsakes = ', '.join(c[0] for c in seasonal.FESTIVAL_CRAFTS.get(festival['name'], []))
             inbox.add(m, db, p.channel_id, p.twitch_uid, 'info', f"{festival['emoji']} **{festival['name']} festival is open!** Festival foods: {foods}. "
-                      '/world → Holidays shows ingredients.', important=False)
+                      f'Keepsakes: {keepsakes}. Craft them all for the holiday hat. /world → Holidays shows ingredients.', important=False)
         break
     try:
         d = m.daily(db, p)
@@ -1180,7 +1181,7 @@ def default_options(m, command, options, discord_uid):
     if command != 'make' or options:
         return options
     with m.SessionLocal() as db:
-        p = m.player(db, m.DISCORD_WORLD_ID, 'discord', discord_uid, 'Citizen')[1]
+        p = m.player(db, m.DISCORD_WORLD_ID, 'discord', discord_uid, '')[1]
         place = last_place(db, p)
         db.commit()
     if not place or place[0] not in wb.VIEW_INFO:

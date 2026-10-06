@@ -129,6 +129,51 @@ FESTIVAL_FOODS = {
 }
 
 
+# Festival keepsakes: decorations and costumes crafted at the Survival Workbench while their festival runs, from everyday
+# materials. (name, description, inputs or a list of alternative inputs, kind) — kind 'decor' (use it: +Morale, +Social,
+# kept) or 'clothing' (wear it: +Comfort, +Morale, kept). A holiday's Feast trophy (and its hat) needs every food and keepsake.
+FESTIVAL_CRAFTS = {
+    "New Year": [
+        ("Confetti Popper", "A paper tube of bright confetti, saved for the stroke of midnight.", {"Flaxa": 2, "Berries": 1}, "decor"),
+        ("Sparkler Crown", "A twisted wire crown studded with tiny sparklers.", {"Iron Nails": 2, "Flaxa": 1}, "clothing"),
+    ],
+    "Valentine's Day": [
+        ("Heart Garland", "A string of cloth hearts to hang over a doorway.", {"Fabric": 1, "Berries": 2}, "decor"),
+        ("Rose Bouquet", "Herb-scented roses tied with a ribbon.", {"Herbs": 3, "Flaxa": 1}, "decor"),
+    ],
+    "Memorial Day": [
+        ("Poppy Wreath", "A wreath of red paper poppies to remember those who came before.", {"Flaxa": 3, "Berries": 2}, "decor"),
+        ("Remembrance Lantern", "A clay lantern that holds a single small flame.", {"Clay": 2, "Herbs": 1}, "decor"),
+    ],
+    "Father's Day": [
+        ("Grill Apron", "A sturdy apron with a pocket for every grilling tool.", {"Fabric": 2}, "clothing"),
+        ("Fishing Rod", "A simple wooden rod and line for a quiet afternoon by the water.", {"Lumber": 2, "Flaxa": 1}, "decor"),
+    ],
+    "Independence Day": [
+        ("Star Bunting", "Red, white and blue bunting for the front porch.", {"Fabric": 1, "Flaxa": 2, "Berries": 1}, "decor"),
+        ("Paper Firework", "A harmless paper firework that bursts into streamers.", {"Flaxa": 2, "Coal": 1}, "decor"),
+    ],
+    "Labor Day": [
+        ("Tool Belt", "A sturdy belt with a loop for every tool.", {"Fabric": 1, "Iron Nails": 2}, "clothing"),
+        ("Workers' Banner", "A banner thanking everyone who keeps New Eridian running.", {"Fabric": 1, "Lumber": 1}, "decor"),
+    ],
+    "Halloween": [
+        ("Jack-o'-lantern Mask", "A carved pumpkin mask with a soft cloth lining. Crafting one turns your Seedling into a pumpkin head on the stream map.",
+         [{"Pumpkin": 2, "Fabric": 2}, {"Pumpkin": 2, "Synthetic Fabric": 1}], "clothing"),
+        ("Spooky Lantern", "A clay lantern with a carved face that flickers in the dark.", {"Clay": 2, "Pumpkin": 1, "Herbs": 1}, "decor"),
+        ("Scarecrow Doll", "A little straw scarecrow in a patched shirt.", {"Lumber": 1, "Flaxa": 2, "Corn": 2}, "decor"),
+    ],
+    "Thanksgiving": [
+        ("Harvest Wreath", "Corn husks, nuts and dried leaves woven into a wreath.", {"Corn": 2, "Nuts": 2, "Flaxa": 1}, "decor"),
+        ("Gratitude Table Runner", "A woven runner for the big shared table.", {"Fabric": 2, "Berries": 1}, "decor"),
+    ],
+    "Christmas": [
+        ("Holiday Stocking", "A cosy knitted stocking, waiting to be filled.", {"Fabric": 2, "Berries": 1}, "decor"),
+        ("Pine Wreath", "A fresh pine wreath with berry clusters and a ribbon.", {"Lumber": 1, "Herbs": 3, "Berries": 1}, "decor"),
+    ],
+}
+
+
 def _slug(text):
     return ''.join(c if c.isalnum() else '_' for c in text.lower()).strip('_').replace('__', '_')
 
@@ -141,6 +186,23 @@ for _holiday, _rows in FESTIVAL_FOODS.items():
         FESTIVAL_ITEMS[_key] = dict(name=_name, holiday=_holiday, description=_text, inputs=_inputs,
                                     food=_food, comfort=_comfort, morale=_morale, recipe='fr_' + _slug(_name))
         FESTIVAL_RECIPES['fr_' + _slug(_name)] = _holiday
+FESTIVAL_CRAFT_ITEMS = {}   # item key -> details (keepsakes; FESTIVAL_ITEMS stays the foods)
+for _holiday, _rows in FESTIVAL_CRAFTS.items():
+    for _name, _text, _inputs, _kind in _rows:
+        _key = 'fest_' + _slug(_name)
+        _ways = _inputs if isinstance(_inputs, list) else [_inputs]
+        _recipes = ['fr_' + _slug(_name) + (f'_{n + 1}' if n else '') for n in range(len(_ways))]
+        FESTIVAL_CRAFT_ITEMS[_key] = dict(name=_name, holiday=_holiday, description=_text, ways=_ways, kind=_kind,
+                                          recipe=_recipes[0], recipes=_recipes)
+        for _rid in _recipes:
+            FESTIVAL_RECIPES[_rid] = _holiday
+
+
+def festival_items(holiday):
+    """{item key: [recipe ids]} for every food and keepsake of a holiday."""
+    found = {k: [v['recipe']] for k, v in FESTIVAL_ITEMS.items() if v['holiday'] == holiday}
+    found.update({k: list(v['recipes']) for k, v in FESTIVAL_CRAFT_ITEMS.items() if v['holiday'] == holiday})
+    return found
 
 
 SURVIVAL_TAG = 'TAG_MACHINE_SURVIVAL_WORKBENCH'
@@ -164,6 +226,24 @@ def extend_catalog(data, survival_tag=SURVIVAL_TAG):
             'machines': [survival_tag], 'timing': {}, 'requirement': {'Skill': 'SK_COOKING', 'Level': 0},
             'xp': {'TrainedSkills': ['SK_COOKING'], 'ExperienceMultiplier': 1.0},
             'source': 'SCH_FESTIVAL_' + key[5:].upper()}
+    produced = {k for r in data['recipes'].values() for k in r['outputs']}
+    def item_key(name):                     # keepsakes also use crafted materials (Fabric, Iron Nails…)
+        if name in by_name:
+            return by_name[name]
+        return sorted(k for k, v in data['items'].items() if v['name'] == name and k in produced)[0]
+    for key, row in FESTIVAL_CRAFT_ITEMS.items():
+        data['items'][key] = {
+            'name': row['name'], 'description': row['description'] + f" Festival keepsake from {row['holiday']}.",
+            'properties': {'Volume': 0.2}, 'tags': ['TAG_RESOURCE_HAULABLE', 'TAG_RESOURCE_PRODUCEABLE', 'TAG_FESTIVAL'],
+            'categories': ['CAT_MAIN_CLOTHING'] if row['kind'] == 'clothing' else ['CAT_MAIN_FURNITURE', 'CAT_SUB_FURNITURE_DECOR'],
+            'aging': None, 'consumable': None, 'ailment_risk': None, 'remedy': None,
+            'source': 'FESTIVAL_' + key[5:].upper()}
+        for rid, inputs in zip(row['recipes'], row['ways']):
+            data['recipes'][rid] = {
+                'name': row['name'], 'inputs': {item_key(n): q for n, q in inputs.items()}, 'outputs': {key: 1},
+                'machines': [survival_tag], 'timing': {}, 'requirement': {'Skill': 'SK_CRAFTING', 'Level': 0},
+                'xp': {'TrainedSkills': ['SK_CRAFTING'], 'ExperienceMultiplier': 1.0},
+                'source': 'SCH_FESTIVAL_' + rid[3:].upper()}
 
 
 def festival_window(holiday, today=None):
@@ -276,6 +356,7 @@ def holiday_message(now=None):
               f"Holiday date: {row['holiday_date'].isoformat()}",
               f"Window: {row['start'].isoformat()} through {row['end'].isoformat()} (UTC dates).",
               'Festival foods: ' + ', '.join(food[0] for food in FESTIVAL_FOODS[row['name']]) + '.',
+              'Festival keepsakes: ' + ', '.join(c[0] for c in FESTIVAL_CRAFTS.get(row['name'], [])) + '.',
               'Festivals begin 30 days before the holiday at 00:00 UTC and include the 7 days after it. Discord timestamps show your local time.',
               'Festival foods are real items: craft them from gathered ingredients at the free Survival Workbench while their festival runs. '
               'Eating one gives Nutrition plus bonus Comfort and Morale; they keep, sell and stack all year.']
@@ -285,6 +366,12 @@ def holiday_message(now=None):
             key = 'fest_' + _slug(name)
             uses = ', '.join(f'{n} ×{q}' for n, q in inputs.items())
             lines.append(f"• {name} — {uses} → +{max(1, round(food * 50))} Nutrition, +{comfort} Comfort, +{morale} Morale · /make recipe:{FESTIVAL_ITEMS[key]['recipe']}")
+        lines += [f"{row['emoji']} {row['name'].upper()} FESTIVAL KEEPSAKES"]
+        for name, _, inputs, kind in FESTIVAL_CRAFTS.get(row['name'], []):
+            key = 'fest_' + _slug(name)
+            ways = ' or '.join(', '.join(f'{n} ×{q}' for n, q in way.items()) for way in (inputs if isinstance(inputs, list) else [inputs]))
+            lines.append(f"• {name} ({'wear it' if kind == 'clothing' else 'decoration'}) — {ways} · /make recipe:{FESTIVAL_CRAFT_ITEMS[key]['recipe']}")
+        lines.append('Craft every festival food and keepsake of a holiday for its Feast trophy and holiday hat.')
     return '\n'.join(lines)
 
 
@@ -328,4 +415,5 @@ def install(app):
 
 
 __all__ = ["festive_message_for", "holidays_active_for", "next_holiday_window", "holiday_message", "install",
-           "FESTIVAL_ITEMS", "FESTIVAL_RECIPES", "extend_catalog", "festival_open", "festival_lock_text"]
+           "FESTIVAL_ITEMS", "FESTIVAL_RECIPES", "FESTIVAL_CRAFTS", "FESTIVAL_CRAFT_ITEMS", "festival_items", "extend_catalog",
+           "festival_open", "festival_lock_text"]
