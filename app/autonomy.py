@@ -688,7 +688,81 @@ def work_plan(m, db, p, found):
                 or practice_plan(m, db, p, mind, False, found.cycle))
         if step:
             return step
-    return collect or train or collect_plan(m, db, p, found, mind)
+    return collect or train or colony_step(m, db, p, mind) or collect_plan(m, db, p, found, mind)
+
+
+# ---------------------------------------------------------------- helping New Eridian
+# Seedlings answer a live event in any waking hour (its Primary skill first, then Support). On some collecting turns
+# (LEAN) they help today's Society Directive, or once it is done the society stat the colony is lowest on. Their work
+# counts like anyone's (main.work_counts); they never start an automatic event.
+LEAN = .35
+STAT_SKILLS = {'food': ('cultivation',), 'materials': ('extraction', 'environmental'), 'development': ('infrastructure', 'fabrication'),
+               'knowledge': ('research', 'medicine'), 'treasury': ('commerce',), 'reputation': ('logistics',)}
+SKILL_ACT = {'cultivation': 'farm', 'environmental': 'water', 'infrastructure': 'repair', 'research': 'research',
+             'commerce': 'market', 'frontier': 'explore', 'logistics': 'cargo'}
+
+
+def skill_step(m, db, p, mind, skill):
+    """A step that counts as `skill` work: gathering a material of that kind, a training task, or the job task."""
+    from . import seed_content as s, crafting_progression as cp
+    natural = [k for k, v in s.GATHER.items() if k not in cp.RARE and v['branch'] != 'ore_mining'      # no mining roll
+               and s.GATHER_SKILL.get(v['branch'], 'extraction') == skill]
+    if natural:
+        key = min(natural, key=lambda k: (mind.have(k), k))
+        return {'kind': 'gather', 'item': key, 'skill': skill, 'doing': f'bringing in {m.resource_name(key)}'}
+    for key, cfg in m.SEED_TASKS.items():
+        if cfg['skill'] == skill and mind.unlocked(key) and mind.spares(cfg) and mind.plenty(cfg) and mind.open(key) and ready(m, db, p, key):
+            return {'kind': 'train', 'task': key, 'skill': skill, 'call': ('action', {'action': key}), 'doing': f"practising {cfg['label']}"}
+    act = SKILL_ACT.get(skill)
+    if act == 'cargo' and p.cargo > 0:
+        act = 'delivery'                       # a delivery also raises Reputation; packing cargo prepares one
+    if act and ready(m, db, p, act):
+        return {'kind': act, 'skill': skill, 'call': ('action', {'action': act}), 'doing': DOING[act]}
+    return None
+
+
+def _label(m, skill):
+    return m.SKILL_LABELS.get(skill, skill.title())
+
+
+def event_step(m, db, p, mind=None):
+    """Answer the live event: Primary work first, Support work when the Seedling can do no Primary work."""
+    w = m.world(db, p.channel_id)
+    if not w.active_event or (w.event_ends and m.as_utc(w.event_ends) <= m.now()):
+        return None
+    cfg, mind = m.EVENTS[w.active_event], mind or Mind(m, db, p)
+    for skill in (cfg['primary'], cfg['support']):
+        step = skill_step(m, db, p, mind, skill)
+        if step:
+            step['colony'] = 'event'
+            step['why'] = f"The {cfg['name']} is on and {_label(m, skill)} work counts, so I am {step.pop('doing')}."
+            return step
+    return None
+
+
+def colony_step(m, db, p, mind):
+    """Now and then (LEAN): today's Society Directive, my trade's skills first; once it is done, the weakest stat."""
+    if random.random() >= LEAN:
+        return None
+    from .occupations import matches
+    row, cfg = m.directive_for(db, p.channel_id, m.world_clock(db, p.channel_id)['day'])
+    if not row.complete:
+        for skill in sorted(cfg[2], key=lambda k: (not matches(p.job, k), k)):
+            step = skill_step(m, db, p, mind, skill)
+            if step:
+                step['colony'] = 'directive'
+                step['why'] = f"Today's Society Directive is {cfg[1]} and {_label(m, skill)} work counts, so I am {step.pop('doing')}."
+                return step
+    society = m.society(db, p.channel_id)
+    stat = min(STAT_SKILLS, key=lambda f: (getattr(society, f), f))
+    for skill in sorted(STAT_SKILLS[stat], key=lambda k: (not matches(p.job, k), k)):
+        step = skill_step(m, db, p, mind, skill)
+        if step:
+            step['colony'] = 'weakest'
+            step['why'] = (f"New Eridian is lowest on {stat.title()} ({getattr(society, stat)}), so I am "
+                           f"{step.pop('doing')} to help.")
+            return step
+    return None
 
 
 def plan(m, db, p, found, life, clock):
@@ -702,6 +776,9 @@ def plan(m, db, p, found, life, clock):
         return step
     if block == 'sleep':
         return {'kind': 'rest', 'why': 'Sleep time, but I am rested. A quiet hour at home.'}
+    step = event_step(m, db, p)                  # an event needs everyone awake, even on free time
+    if step is not None:
+        return step
     if block == 'work':
         return work_plan(m, db, p, found)
     if block == 'social':

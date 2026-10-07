@@ -1931,7 +1931,8 @@ def work_counts(db,p,skill,grow=True):
         lines.append((f"+1 {stat.title()} · " if stat else "")+"+1 Contribution")
     was_active=bool(w.active_event)
     event=skill_event_note(db,s,w,p,skill).strip()
-    progress=important_progress_notes(project_contribute(db,p,skill,1),story_contribute(db,p,skill)).strip()
+    progress=important_progress_notes(directive_note(db,p,s,skill,world_clock(db,p.channel_id)),
+                                      project_contribute(db,p,skill,1),story_contribute(db,p,skill)).strip()
     auto="" if was_active or not AUTO_EVENTS_ENABLED else maybe_start_auto_event(db,w,current_uid=p.twitch_uid)
     lines+=[x for x in (event,progress,auto) if x]
     db.commit()
