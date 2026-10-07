@@ -7,6 +7,10 @@ from sqlalchemy import Column,String,Integer,DateTime,Text,select,text
 from .db import Base, connection_context
 from discord.ext import tasks
 from . import seed_content as s, crafting_progression as cp, task_yields, queue_notifications, needs, qol, keep_levels, shopping_list, quiet_hours
+from . import runtime
+from .db import SessionLocal
+from .models import Player
+from .models import QualityGear
 
 class TaskQueue(Base):
     """One saved task per canonical citizen and world; remaining counts attempts.
@@ -60,7 +64,8 @@ def lock_world(conn, channel=None):
 
 
 def need_reason(m, db, p):
-    life = m.life_state(db, p)
+    from .game.life import life_state
+    life = life_state(db, p)
     return '\n'.join(qol.need_line(m, db, p, life, *row) for row in needs.blocked_needs(life))
 
 
@@ -82,23 +87,27 @@ def inventory_snapshot(m, db, p):
     Compare each attempt inside its transaction so unrelated work between ticks
     cannot enter the queue totals. Values are actual net changes per attempt.
     """
-    stock = m.item_identity.stock(m, db, p)
+    from . import item_identity
+    from .game.cooldowns_materials import PLAYER_MATERIAL_FIELDS
+    stock = item_identity.stock(m, db, p)
     stock = {k: v for k, v in stock.items() if not k.startswith('prospect:')}
     # Player columns that back catalog items are already in the canonical stock.
-    for field in m.PLAYER_MATERIAL_FIELDS - set(m.item_identity.FIELD_ITEMS.values()):
+    for field in PLAYER_MATERIAL_FIELDS - set(item_identity.FIELD_ITEMS.values()):
         stock[field] = getattr(p, field)
-    for gear in db.execute(select(m.QualityGear).where(
-            m.QualityGear.channel_id == p.channel_id,
-            m.QualityGear.canonical_uid == p.twitch_uid)).scalars():
+    for gear in db.execute(select(QualityGear).where(
+            QualityGear.channel_id == p.channel_id,
+            QualityGear.canonical_uid == p.twitch_uid)).scalars():
         stock['gear:' + gear.quality + ':' + gear.item_key] = gear.qty
     return stock
 
 
 def total_label(m, key):
+    from .game.players import resource_name
+    from .game.rules import QUALITY_RECIPES
     if key.startswith('gear:'):
         _, quality, item = key.split(':', 2)
-        return quality + ' ' + m.QUALITY_RECIPES[item]['name']
-    return m.resource_name(key)
+        return quality + ' ' + QUALITY_RECIPES[item]['name']
+    return resource_name(key)
 
 
 def totals_text(m, db, row, short=False, compact=False):
@@ -138,30 +147,40 @@ ATTEMPT_SECONDS=10
 def ores():return {k for k,v in s.GATHER.items() if v['branch']=='ore_mining'}
 
 def choices(m):
+    from . import item_identity
+    from .game.cooldowns_materials import action_display_name
+    from .game.routes_crafting import craft_item_name
+    from .game.rules import ACTION_SKILLS, PART_RECIPES, QUALITY_RECIPES, RECIPES
     result={f'mine:{k}':'Mine '+s.item_label(k) for k in sorted(ores())}
     result.update({f'gather:{k}':'Gather '+s.item_label(k) for k in sorted(s.GATHER) if k not in ores()})
     # Monetary investments, social targets and recovery are deliberately manual.
-    result.update({f'work:{k}':m.action_display_name(k) for k in m.ACTION_SKILLS if k not in {'businessinvest','hi','hangout','mentor','duo','mine','rare','scavenge'}})
-    result.update({f'work:{a}@{mode}':m.action_display_name(a,mode) for a,mode in task_yields.YIELDS if mode})
+    result.update({f'work:{k}':action_display_name(k) for k in ACTION_SKILLS if k not in {'businessinvest','hi','hangout','mentor','duo','mine','rare','scavenge'}})
+    result.update({f'work:{a}@{mode}':action_display_name(a,mode) for a,mode in task_yields.YIELDS if mode})
     result.update({f'make:{k}':'Make '+r['name'] for k,r in s.RECIPES.items()})
-    retired=m.item_identity.RETIRED_RECIPES.keys()|m.item_identity.RETIRED_GATHERED.keys()
-    result.update({f'make:{k}':'Make '+m.craft_item_name(k) for k in (*m.PART_RECIPES,*m.RECIPES,*m.QUALITY_RECIPES) if k not in retired})
+    retired=item_identity.RETIRED_RECIPES.keys()|item_identity.RETIRED_GATHERED.keys()
+    result.update({f'make:{k}':'Make '+craft_item_name(k) for k in (*PART_RECIPES,*RECIPES,*QUALITY_RECIPES) if k not in retired})
     return result
 
 def normalize(m,value):
+    from . import item_identity, workbench
+    from .game.rules import ACTION_SKILLS
     if value in choices(m):return value
     if value.startswith('make:'):
         # Biofiber is now gathered Flaxa rather than crafted.
-        gathered=m.item_identity.RETIRED_GATHERED.get(value[5:].strip().casefold().replace(' ','_'))
+        gathered=item_identity.RETIRED_GATHERED.get(value[5:].strip().casefold().replace(' ','_'))
         if gathered:return 'gather:'+gathered
         # Old recipe keys and item names (make:component, make:Iron Plate) resolve
         # to the Workbench recipe they now mean.
-        found=m.workbench.resolve(m,None,None,value[5:])
+        found=workbench.resolve(m,None,None,value[5:])
         if found is not None:return 'make:'+found.id
-    if value in m.ACTION_SKILLS:return {'mine':'mine:'+m.item_identity.ALIASES['ore'],'rare':'mine:'+m.item_identity.ALIASES['rare_ore']}.get(value,'work:'+value)
+    if value in ACTION_SKILLS:return {'mine':'mine:'+item_identity.ALIASES['ore'],'rare':'mine:'+item_identity.ALIASES['rare_ore']}.get(value,'work:'+value)
     return value
 
 def specification(m,task):
+    from . import item_identity
+    from .game.life import task_energy
+    from .game.rules import PART_RECIPES, QUALITY_RECIPES, RECIPES
+    from .seed_skills import TASKS as SEED_TASKS
     kind,target=task.split(':',1);cost={};energy=2;cooldown=5
     if kind in {'mine','gather'}:
         if target in cp.RARE:energy=3;cooldown=20
@@ -169,18 +188,24 @@ def specification(m,task):
         if target in s.RECIPES:
             cost=s.RECIPES[target]['inputs']
             if any(k in cp.RARE for k in s.RECIPES[target]['outputs']):energy=3;cooldown=20
-        else:cost=m.PART_RECIPES.get(target) or m.RECIPES.get(target) or m.QUALITY_RECIPES[target]['cost']
+        else:cost=PART_RECIPES.get(target) or RECIPES.get(target) or QUALITY_RECIPES[target]['cost']
     else:
         action,mode=task_yields.split(target)
-        energy=m.task_energy(action,mode)
-        if target in m.SEED_TASKS:cost=m.SEED_TASKS[target]['cost']
+        energy=task_energy(action,mode)
+        if target in SEED_TASKS:cost=SEED_TASKS[target]['cost']
         elif target=='craft':cost={'ore':1}
         elif target=='delivery':cost={'cargo':1}
-        if mode=='expedite':cost={m.item_identity.canonical('power_cell'):1}
+        if mode=='expedite':cost={item_identity.canonical('power_cell'):1}
     return cost,energy,max(ATTEMPT_SECONDS,cooldown)
 
 def requirements(m,db,p,task,count):
-    costs,energy,_=specification(m,task);life=m.life_state(db,p)
+    from .game.cooldowns_materials import material_amount, material_source
+    from .game.life import life_state
+    from .game.players import resource_name
+    from .game.routes_player import equipment_count
+    from .game.rules import SKILL_LABELS
+    from .seed_skills import TASKS as SEED_TASKS
+    costs,energy,_=specification(m,task);life=life_state(db,p)
     noun='attempt' if count==1 else 'attempts'
     need=needs.finish_forecast(energy,count)
     lines=[f'For {count} remaining {noun}: up to {energy*count} Energy, {count} Nutrition and {needs.comfort_cost(energy)*count} Comfort ({needs.cost_text(energy,", ")} each).',
@@ -188,8 +213,8 @@ def requirements(m,db,p,task,count):
            f'Current needs: Energy {life.energy}/100; Nutrition {life.nutrition}/100; Social {life.social}/100; Comfort {life.comfort}/100.',
            f'Every attempt requires Energy, Nutrition and Social of at least {needs.TASK_NEED_MINIMUM} and Comfort of at least {needs.COMFORT_BLOCK}. Comfort drains at the same rate as Energy; below {needs.COMFORT_SLOW} it also lowers success.']
     for key,n in costs.items():
-        have=m.material_amount(db,p,key)
-        lines.append(f'{m.resource_name(key)}: have {have}; need {n} for the next attempt (missing {max(0,n-have)}); up to {n*count} for the queue (missing {max(0,n*count-have)}). Get it: {m.material_source(key)}')
+        have=material_amount(db,p,key)
+        lines.append(f'{resource_name(key)}: have {have}; need {n} for the next attempt (missing {max(0,n-have)}); up to {n*count} for the queue (missing {max(0,n*count-have)}). Get it: {material_source(key)}')
     if not costs:lines.append('Consumable materials: none required.')
     lines.append(f'Morale may also fall by up to {count} if Comfort drops below {needs.COMFORT_SLOW}; recover Comfort with {needs.COMFORT_FIXES_DISCORD}, or /sleep when it is ready.')
     kind,target=task.split(':',1)
@@ -203,11 +228,11 @@ def requirements(m,db,p,task,count):
         action,mode=task_yields.split(target)
         equipment=task_yields.EQUIPMENT.get((action,mode))
         if equipment:
-            have=m.equipment_count(db,p,equipment)
-            lines.append(f'{m.resource_name(equipment)}: need 1, have {have}, missing {max(0,1-have)}. This equipment is kept. Get it: '+m.material_source(equipment))
-    if kind=='work' and target in m.SEED_TASKS:
-        cfg=m.SEED_TASKS[target]
-        lines.append(f"Requires {m.SKILL_LABELS[cfg['skill']]} level {cfg['unlock']}. Use /training to see the task's skill and workstation requirements.")
+            have=equipment_count(db,p,equipment)
+            lines.append(f'{resource_name(equipment)}: need 1, have {have}, missing {max(0,1-have)}. This equipment is kept. Get it: '+material_source(equipment))
+    if kind=='work' and target in SEED_TASKS:
+        cfg=SEED_TASKS[target]
+        lines.append(f"Requires {SKILL_LABELS[cfg['skill']]} level {cfg['unlock']}. Use /training to see the task's skill and workstation requirements.")
     if kind=='work':
         action,mode=task_yields.split(target)
         detail=task_yields.requirements(m,action,mode)
@@ -220,11 +245,12 @@ def requirements(m,db,p,task,count):
 def status(m,db,p,row,detail=False):
     """Queue status. The short view shows progress, results and only the warnings
     that apply; `detail` adds every requirement and rule (the Details button)."""
+    from .game.players import as_utc
     if row is None:return 'You have no task queue. Start one from /mine, /gather or /make with Queue 5 or Queue 10, or /queue action:Start.'
     name=choices(m).get(row.task,row.task)
     text=f'TASK QUEUE — {row.state.upper()}\n{name}\nAttempts completed: {row.total-row.remaining}/{row.total}; remaining: {row.remaining}.'
     if row.state=='running' and row.remaining and row.task in choices(m):
-        text+=f'\nFinishes about <t:{int(m.now().timestamp()+row.remaining*specification(m,row.task)[2])}:R>.'
+        text+=f'\nFinishes about <t:{int(runtime.now().timestamp()+row.remaining*specification(m,row.task)[2])}:R>.'
     if detail:text+='\nOnly one task type can be queued at a time; maximum 10 attempts.\nThe worker checks your task every 10 seconds, even when nobody sends a message. Longer task cooldowns still apply.'
     text+='\n'+totals_text(m,db,row,compact=not detail)
     following=qol.next_label(m,db,row.channel_id,row.canonical_uid)
@@ -232,7 +258,7 @@ def status(m,db,p,row,detail=False):
     if detail and row.state not in ACTIVE:text+='\n\nRepeat this queue with the Repeat button, /queue action:Repeat last, or !queuerepeat.'
     health=db.get(QueueHealth,(row.channel_id,row.canonical_uid))
     if health and health.failures and row.state in ACTIVE:
-        wait=max(0,int((m.as_utc(row.next_at)-m.now()).total_seconds()))
+        wait=max(0,int((as_utc(row.next_at)-runtime.now()).total_seconds()))
         text+=f'\n\nRETRY STATUS\nTemporary system error ({health.failures}/3). Retrying in about {wait}s; the interrupted attempt was not spent.'
     if row.state in {'paused','error'}:text+='\n\nPAUSE REASON\n'+row.result
     if detail and row.remaining and row.state in ACTIVE:
@@ -248,7 +274,7 @@ def status(m,db,p,row,detail=False):
 @contextmanager
 def atomic(m, channel=None):
     """Keep nested handler commits inside one outer database transaction."""
-    with m.engine.connect() as conn:
+    with runtime.engine.connect() as conn:
         if conn.dialect.name=='sqlite':conn.exec_driver_sql('BEGIN IMMEDIATE')
         else:conn.begin()
         lock_world(conn, channel)
@@ -274,7 +300,7 @@ def begin(m,db,p,row,task,count,target=None,renew=None):
     if health:health.failures=0
     if row is None:
         row=TaskQueue(channel_id=channel,canonical_uid=p.twitch_uid);db.add(row)
-    row.task=task;row.total=count;row.remaining=count;row.state='running';row.result='Waiting for the first attempt.';row.next_at=m.now()+timedelta(seconds=ATTEMPT_SECONDS)
+    row.task=task;row.total=count;row.remaining=count;row.state='running';row.result='Waiting for the first attempt.';row.next_at=runtime.now()+timedelta(seconds=ATTEMPT_SECONDS)
     if renew is None:queue_notifications.start(m,db,p,*(target or ('twitch',p.twitch_uid)))
     else:queue_notifications.renew(db,renew)
     reason,notes=recovered_reason(m,db,p,channel,p.twitch_uid)
@@ -285,12 +311,13 @@ def begin(m,db,p,row,task,count,target=None,renew=None):
 
 
 def control(m,channel,uid,name,provider,action='view',task='',count=1):
+    from .game.players import player
     if connection_context.get() is None:
         with atomic(m,channel):return control(m,channel,uid,name,provider,action,task,count)
-    with m.SessionLocal() as db:
-        _,p=m.player(db,channel,provider,uid,name)
+    with SessionLocal() as db:
+        _,p=player(db,channel,provider,uid,name)
         # Serialize competing starts even when no queue row exists yet.
-        db.execute(select(m.Player.id).where(m.Player.id==p.id).with_for_update()).scalar_one()
+        db.execute(select(Player.id).where(Player.id==p.id).with_for_update()).scalar_one()
         row=db.execute(select(TaskQueue).where(TaskQueue.channel_id==channel,TaskQueue.canonical_uid==p.twitch_uid).with_for_update()).scalar_one_or_none()
         prefix='/' if provider=='discord' else '!'
         if action=='repeat':
@@ -332,16 +359,19 @@ def control(m,channel,uid,name,provider,action='view',task='',count=1):
 def run_one(m,channel,uid):
     # Existing handlers commit internally. Binding their sessions to this outer
     # transaction makes gameplay changes and queue progress one atomic commit.
-    with m.engine.connect() as conn:
+    from .game import action as action_module
+    from .game.players import as_utc
+    from .game.routes_crafting import make
+    with runtime.engine.connect() as conn:
         if conn.dialect.name=='sqlite':conn.exec_driver_sql('BEGIN IMMEDIATE')
         else:conn.begin()
         lock_world(conn, channel)
         token=connection_context.set(conn)
         try:
-            with m.SessionLocal() as db:
-                p=db.execute(select(m.Player).where(m.Player.channel_id==channel,m.Player.twitch_uid==uid).with_for_update()).scalar_one_or_none()
+            with SessionLocal() as db:
+                p=db.execute(select(Player).where(Player.channel_id==channel,Player.twitch_uid==uid).with_for_update()).scalar_one_or_none()
                 row=db.execute(select(TaskQueue).where(TaskQueue.channel_id==channel,TaskQueue.canonical_uid==uid).with_for_update()).scalar_one_or_none()
-                if not p or not row or row.state not in ACTIVE or m.as_utc(row.next_at)>m.now():conn.rollback();return
+                if not p or not row or row.state not in ACTIVE or as_utc(row.next_at)>runtime.now():conn.rollback();return
                 if row.task not in choices(m) and normalize(m,row.task) in choices(m):
                     # Queues saved with a retired legacy recipe continue with its catalog recipe.
                     row.task=normalize(m,row.task)
@@ -364,10 +394,10 @@ def run_one(m,channel,uid):
                 try:
                     if blocked:result=blocked
                     elif kind in {'mine','gather'}:result=s.gather(m,db,p,target,'discord')
-                    elif kind=='make':result=m.make(channel,uid,p.display_name,target,'discord').body.decode()
+                    elif kind=='make':result=make(channel,uid,p.display_name,target,'discord').body.decode()
                     else:
                         action,mode=task_yields.split(target)
-                        result=m.action(action,channel,uid,p.display_name,msg='mode:'+mode if mode else '',provider='discord').body.decode()
+                        result=action_module.action(action,channel,uid,p.display_name,msg='mode:'+mode if mode else '',provider='discord').body.decode()
                 finally:actor_context.reset(actor_token)
                 db.refresh(p)
                 attempted=p.actions>before
@@ -408,7 +438,7 @@ def run_one(m,channel,uid):
                     queue_notifications.stopped(m,db,p,row,'paused',row.result)
                 health=db.get(QueueHealth,(channel,uid))
                 if health:health.failures=0
-                row.next_at=m.now()+timedelta(seconds=ATTEMPT_SECONDS)
+                row.next_at=runtime.now()+timedelta(seconds=ATTEMPT_SECONDS)
                 if row.state=='completed':
                     db.flush()
                     from . import extras
@@ -430,8 +460,8 @@ def run_one(m,channel,uid):
         finally:connection_context.reset(token)
 
 def tick(m):
-    with m.SessionLocal() as db:
-        keys=list(db.execute(select(TaskQueue.channel_id,TaskQueue.canonical_uid).where(TaskQueue.state.in_(ACTIVE),TaskQueue.next_at<=m.now()).order_by(TaskQueue.next_at).limit(100)))
+    with SessionLocal() as db:
+        keys=list(db.execute(select(TaskQueue.channel_id,TaskQueue.canonical_uid).where(TaskQueue.state.in_(ACTIVE),TaskQueue.next_at<=runtime.now()).order_by(TaskQueue.next_at).limit(100)))
     for channel,uid in keys:
         try:run_one(m,channel,uid)
         except Exception as exc:
@@ -441,28 +471,30 @@ def tick(m):
 
 def record_failure(m,channel,uid):
     """Retries only rolled-back work, with a three-error circuit breaker."""
+    from .game.players import as_utc
     with atomic(m,channel):
-        with m.SessionLocal() as db:
+        with SessionLocal() as db:
             row=db.get(TaskQueue,(channel,uid))
-            if not row or row.state not in ACTIVE or m.as_utc(row.next_at)>m.now():return
+            if not row or row.state not in ACTIVE or as_utc(row.next_at)>runtime.now():return
             health=db.get(QueueHealth,(channel,uid))
             if health is None:
                 health=QueueHealth(channel_id=channel,canonical_uid=uid,failures=0);db.add(health)
             health.failures+=1
-            row.next_at=m.now()+timedelta(seconds=min(120,10*2**health.failures))
+            row.next_at=runtime.now()+timedelta(seconds=min(120,10*2**health.failures))
             row.result='A system error interrupted this attempt. No progress from this attempt was saved.'
             if health.failures>=3:
                 row.state='error'
                 row.result+=' The queue has stopped after three errors. Completed attempts are kept. Try a new queue after the issue is resolved.'
-                p=db.execute(select(m.Player).where(m.Player.channel_id==channel,m.Player.twitch_uid==uid)).scalar_one()
+                p=db.execute(select(Player).where(Player.channel_id==channel,Player.twitch_uid==uid)).scalar_one()
                 queue_notifications.stopped(m,db,p,row,'error',row.result)
             db.commit()
 
 
 def install(m):
-    TaskQueue.__table__.create(m.engine,checkfirst=True)
-    QueueTotals.__table__.create(m.engine,checkfirst=True)
-    QueueHealth.__table__.create(m.engine,checkfirst=True)
+    from .game.base import app
+    TaskQueue.__table__.create(runtime.engine,checkfirst=True)
+    QueueTotals.__table__.create(runtime.engine,checkfirst=True)
+    QueueHealth.__table__.create(runtime.engine,checkfirst=True)
     queue_notifications.install(m)
     qol.install(m)
     keep_levels.install(m)
@@ -473,12 +505,12 @@ def install(m):
         try:await asyncio.to_thread(tick,m)
         except Exception:logging.getLogger(__name__).error('Queue timer failed; retrying')
     async def start():
-        m.app.state.queue_worker=timer.start()
+        app.state.queue_worker=timer.start()
     async def stop():
         timer.stop()
         task=timer.get_task()
         if task:await task
-    m.app.add_event_handler('startup',start);m.app.add_event_handler('shutdown',stop)
+    app.add_event_handler('startup',start);app.add_event_handler('shutdown',stop)
 
 
 def merge_accounts(m,db,channel,source_uid,target_uid):
@@ -518,8 +550,10 @@ def merge_accounts(m,db,channel,source_uid,target_uid):
 
 
 def short_status(m,channel,uid,name,provider):
-    with m.SessionLocal() as db:
-        _,p=m.player(db,channel,provider,uid,name);row=db.get(TaskQueue,(channel,p.twitch_uid))
+    from .game.life import life_state
+    from .game.players import player
+    with SessionLocal() as db:
+        _,p=player(db,channel,provider,uid,name);row=db.get(TaskQueue,(channel,p.twitch_uid))
         if row is None:return 'No queue. !queueadd <task ID> <1–10>; !queuecancel stops it. Only one task type at a time.'
         _,energy,_=specification(m,row.task);n=row.remaining
         text=f'{row.state.upper()}: {choices(m).get(row.task,row.task)} | {row.total-n}/{row.total} attempts done. '
@@ -528,7 +562,7 @@ def short_status(m,channel,uid,name,provider):
         if following:text+=f'Next: {following}. '
         if row.state not in ACTIVE:text+='!queuerepeat runs it again. '
         if n and row.state in ACTIVE:
-            life=m.life_state(db,p)
+            life=life_state(db,p)
             need=needs.finish_forecast(energy,n)
             text+=f'Finish without recovery: Energy {need["energy"]}, Nutrition {need["nutrition"]}, Social {need["social"]}, Comfort {need["comfort"]}. Now: {life.energy}/{life.nutrition}/{life.social}/{life.comfort}. '
             if row.state=='paused':text+='Paused: '+row.result.replace('\n',' ')[:95]+'. '

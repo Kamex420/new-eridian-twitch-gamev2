@@ -1,5 +1,9 @@
 # Release notes
 
+## Behind the scenes: explicit dependencies, step five
+
+- **The task queue, quality-of-life tools, the Discord UI and extras now import exactly what they use.** 40 of 43 systems are converted; the record of dependencies on app.main shrank from 371 to 241 names. Left: workbench, autonomy and menu. No gameplay changes.
+
 ## Behind the scenes: explicit dependencies, step four
 
 - **13 more systems import exactly what they use:** community, Find (ask and knowledge), trophies, keep levels, the inbox, the command wrapper, force merge, shopping lists, queue notifications, votes, world merge and item identities. votes, world merge and item identities still set one value each on app.main on purpose (the project hooks, the main world, the merged training list), but read nothing from it. 36 of 43 systems are converted; the record of dependencies on app.main shrank from 540 to 371 names. No gameplay changes.

@@ -115,7 +115,11 @@ def convert(path, main, runtime, defs):
             elif kind == 'module':
                 text = detail.split('.')[-1]
                 if detail.startswith('app.'):
-                    imports['from . import'].add(text)
+                    if text in local and text != x.attr or (text in bound_in(fn)):
+                        imports['from . import'].add(f'{text} as {text}_module')   # the function has its own `menu`
+                        text += '_module'
+                    else:
+                        imports['from . import'].add(text)
                 else:
                     top.add(f'import {detail}')
             elif kind == 'top':
@@ -125,8 +129,9 @@ def convert(path, main, runtime, defs):
                 text = x.attr
                 imports[detail[0]].add(detail[1])
             elif x.attr in local:                     # the function (or this module) uses the name for something else
-                text = f'{detail}.{x.attr}'
-                imports['from .game import'].add(detail)
+                alias = detail if detail not in local else f'{detail}_module'
+                text = f'{alias}.{x.attr}'
+                imports['from .game import'].add(detail if alias == detail else f'{detail} as {alias}')
             else:
                 text = x.attr
                 imports[f'from .game.{detail} import'].add(x.attr)

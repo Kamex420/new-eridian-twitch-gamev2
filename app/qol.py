@@ -14,6 +14,8 @@ from contextlib import contextmanager
 from sqlalchemy import Column, String, Integer, Text, select
 from .db import Base
 from . import seed_content as s, crafting_progression as cp, workbench as wb, needs
+from . import runtime
+from .models import Cooldown
 
 MAX_FAVORITES = 10
 CLEAROUT_RESERVE = 20
@@ -47,7 +49,7 @@ class Preferences(Base):
 
 
 def install(m):
-    Preferences.__table__.create(m.engine, checkfirst=True)
+    Preferences.__table__.create(runtime.engine, checkfirst=True)
     quiet_channel_once(m)
 
 
@@ -59,7 +61,7 @@ def quiet_channel_once(m):
     from sqlalchemy.exc import IntegrityError
     from .models import SimulationVersion
     try:
-        with m.engine.begin() as conn:
+        with runtime.engine.begin() as conn:
             if conn.execute(sql_text('SELECT version FROM simulation_schema_versions WHERE version=:v'), {'v': QUIET_MARKER}).first():
                 return
             conn.execute(sql_text("UPDATE player_preferences_v1 SET alerts=:new WHERE alerts='mention'"), {'new': DEFAULT_ALERTS})
@@ -108,7 +110,8 @@ def merge(db, channel, source, target):
 @contextmanager
 def acting_as(m, channel, uid):
     """Run ordinary game commands for a canonical citizen id (as queue attempts do)."""
-    tq = m.task_queue
+    from . import task_queue
+    tq = task_queue
     actor = tq.actor_context.set((channel, uid))
     wait = tq.cooldown_wait.set(0)
     try:
@@ -183,7 +186,8 @@ def next_task(db, channel, uid):
 
 def set_next(m, db, p, task, count):
     """Store the one follow-up queue. Returns (ok, message)."""
-    tq = m.task_queue
+    from . import task_queue
+    tq = task_queue
     task = tq.normalize(m, str(task or ''))
     if task not in tq.choices(m):
         return False, 'Choose a valid Task for the next queue. Nothing changed.'
@@ -215,20 +219,22 @@ def pop_next(db, channel, uid):
 
 
 def next_label(m, db, channel, uid):
+    from . import task_queue
     task, count = next_task(db, channel, uid)
-    return f'{m.task_queue.choices(m).get(task, task)} ×{count}' if task else ''
+    return f'{task_queue.choices(m).get(task, task)} ×{count}' if task else ''
 
 
 # ---------------------------------------------------------------- recovery
 
 def passive_eta(m, life, value, target):
     """Seconds until passive recovery lifts `value` to `target`; None if it never will."""
+    from .game.players import as_utc
     if value >= target:
         return 0
     if target > needs.RECOVERY_CAP:
         return None
-    last = m.as_utc(life.last_decay_at)
-    partial = max(0, (m.now() - last).total_seconds()) if last else 0
+    last = as_utc(life.last_decay_at)
+    partial = max(0, (runtime.now() - last).total_seconds()) if last else 0
     return max(1, math.ceil((target - value) * needs.TICK_SECONDS / needs.RECOVERY_PER_TICK - partial))
 
 
@@ -238,11 +244,12 @@ def eta_text(seconds):
 
 
 def need_line(m, db, p, life, field, label, value, minimum, provider='discord'):
-    text = f'{label}: {value}/100; need {minimum}. Use {m.need_fix(field, provider, db, p)}.'
+    from .game.world import need_fix
+    text = f'{label}: {value}/100; need {minimum}. Use {need_fix(field, provider, db, p)}.'
     eta = passive_eta(m, life, value, minimum)
     if eta:
         # A timestamp stays correct wherever this text is shown later (queue status, alerts).
-        text += f' Passive recovery reaches {minimum} <t:{int(m.now().timestamp() + eta)}:R>.' if provider == 'discord' else \
+        text += f' Passive recovery reaches {minimum} <t:{int(runtime.now().timestamp() + eta)}:R>.' if provider == 'discord' else \
                 f' Passive recovery reaches {minimum} in about {eta_text(eta)}.'
     return text
 
@@ -254,10 +261,11 @@ def resume_eta(m, life):
 
 
 def _cheapest_food(m, db, p):
-    foods = [row for row in m.edible_inventory(db, p) if row['key'] != 'meal_kit' and row['qty'] > 0]
+    from .game.training_and_items import edible_inventory, emergency_food_available
+    foods = [row for row in edible_inventory(db, p) if row['key'] != 'meal_kit' and row['qty'] > 0]
     if foods:
         return min(foods, key=lambda row: (row['gain'], row['name']))['key']
-    return 'emergency' if m.emergency_food_available(db, p, []) else ''
+    return 'emergency' if emergency_food_available(db, p, []) else ''
 
 
 def _comfort_item(m, db, p):
@@ -274,18 +282,24 @@ def recover(m, db, p, channel, uid):
     Runs the ordinary recovery commands (never a special shortcut), so their
     cooldowns and effects apply. Returns short notes of what changed.
     """
-    life = m.life_state(db, p)
+    from .game.action import action
+    from .game.cooldowns_materials import action_wait
+    from .game.life import life_state
+    from .game.players import resource_name
+    from .game.routes_life_social import games, relax
+    from .game.routes_market import use_item
+    life = life_state(db, p)
     if not needs.blocked_needs(life):
         return []
     notes = []
     name = p.display_name
 
     def attempt(label, fn):
-        before = {f: getattr(m.life_state(db, p), f) for f in needs.FIELDS}
+        before = {f: getattr(life_state(db, p), f) for f in needs.FIELDS}
         db.flush()
         fn()
         db.expire_all()
-        after = m.life_state(db, p)
+        after = life_state(db, p)
         changed = [f'{f.title()} {before[f]}→{getattr(after, f)}' for f in ('energy', 'nutrition', 'social', 'comfort')
                    if getattr(after, f) != before[f]]
         if changed:
@@ -293,37 +307,38 @@ def recover(m, db, p, channel, uid):
         return bool(changed)
 
     def blocked(field):
-        return any(f == field for f, *_ in needs.blocked_needs(m.life_state(db, p)))
+        return any(f == field for f, *_ in needs.blocked_needs(life_state(db, p)))
 
     with acting_as(m, channel, uid):
         if blocked('energy') or blocked('comfort'):
-            if not m.action_wait(db, p, 'relax'):
-                attempt('Relaxed', lambda: m.relax(channel, uid, name, provider='discord'))
-            if (blocked('energy') or blocked('comfort')) and not m.action_wait(db, p, 'sleep'):
-                attempt('Slept', lambda: m.action('sleep', channel, uid, name, provider='discord'))
-            if blocked('comfort') and not m.action_wait(db, p, 'seed_use'):
+            if not action_wait(db, p, 'relax'):
+                attempt('Relaxed', lambda: relax(channel, uid, name, provider='discord'))
+            if (blocked('energy') or blocked('comfort')) and not action_wait(db, p, 'sleep'):
+                attempt('Slept', lambda: action('sleep', channel, uid, name, provider='discord'))
+            if blocked('comfort') and not action_wait(db, p, 'seed_use'):
                 item = _comfort_item(m, db, p)
                 if item:
-                    attempt('Used ' + s.item_label(item), lambda: m.use_item(channel, uid, name, item=item, provider='discord'))
+                    attempt('Used ' + s.item_label(item), lambda: use_item(channel, uid, name, item=item, provider='discord'))
         if blocked('nutrition'):
             food = _cheapest_food(m, db, p)
-            if food and not m.action_wait(db, p, 'eat'):
-                label = 'Emergency meal' if food == 'emergency' else 'Ate ' + m.resource_name(food)
-                attempt(label, lambda: m.action('eat', channel, uid, name, msg='food:' + food, provider='discord'))
-        if blocked('social') and not m.action_wait(db, p, 'games'):
-            attempt('Played games', lambda: m.games(channel, uid, name, provider='discord'))
+            if food and not action_wait(db, p, 'eat'):
+                label = 'Emergency meal' if food == 'emergency' else 'Ate ' + resource_name(food)
+                attempt(label, lambda: action('eat', channel, uid, name, msg='food:' + food, provider='discord'))
+        if blocked('social') and not action_wait(db, p, 'games'):
+            attempt('Played games', lambda: games(channel, uid, name, provider='discord'))
     return notes
 
 
 def recover_text(m, db, p, provider):
     """Manual one-press recovery (/status button, !recover)."""
-    life = m.life_state(db, p)
+    from .game.life import life_state
+    life = life_state(db, p)
     if not needs.blocked_needs(life):
         return (f'✅ {p.display_name}, nothing blocks work right now. '
                 f'Energy {life.energy} · Nutrition {life.nutrition} · Social {life.social} · Comfort {life.comfort}.')
     notes = recover(m, db, p, p.channel_id, p.twitch_uid)
     db.expire_all()
-    life = m.life_state(db, p)
+    life = life_state(db, p)
     left = needs.blocked_needs(life)
     lines = ['🩹 RECOVERY'] + (['• ' + n for n in notes] if notes else ['• Every recovery action is on cooldown right now.'])
     if left:
@@ -337,6 +352,7 @@ def recover_text(m, db, p, provider):
 
 def next_step(m, db, p, provider, ctx=None):
     """One concrete suggestion: a ready favourite first, then the Workbench suggestion."""
+    from .game.players import resource_name
     ctx = ctx or wb.Context(m, db, p, provider)
     prefix = _prefix(provider)
     for e in favorite_entries(m, db, p):
@@ -349,7 +365,7 @@ def next_step(m, db, p, provider, ctx=None):
         how = f'/make recipe:{e.id}' if provider == 'discord' else f'!make {e.name}'
         return f'✅ {e.name} is ready at {wb.station_label(e, ctx)}: {how}'
     for e in wb.gather_first(ctx, 1):
-        missing = ', '.join(f'{n - ctx.have(k)} {m.resource_name(k)}' for k, n in e.inputs.items() if ctx.have(k) < n)
+        missing = ', '.join(f'{n - ctx.have(k)} {resource_name(k)}' for k, n in e.inputs.items() if ctx.have(k) < n)
         how = f'/make recipe:{e.id} action:Fetch missing' if provider == 'discord' else f'!fetch {e.name}'
         return f'🧺 Gather {missing} for {e.name}: {how}'
     return f'Gather with {prefix}gather or {prefix}mine, then open {prefix}make.'
@@ -357,7 +373,8 @@ def next_step(m, db, p, provider, ctx=None):
 
 def action_hint(m, db, p, provider, tier_before=None):
     """Appended to manual craft and gather receipts: tier-ups for all, hints for newer citizens."""
-    if m.task_queue.actor_context.get() is not None:
+    from . import task_queue
+    if task_queue.actor_context.get() is not None:
         return ''   # queue attempts are summarised by the queue itself
     ctx = wb.Context(m, db, p, provider)
     text = ''
@@ -383,15 +400,18 @@ def _gather_attempts(key, short):
 
 def fetch_routes(ctx, e, batches=1):
     """Every missing ingredient for `batches` batches with its best way to get it."""
+    from . import task_queue
+    from .game.players import resource_name
+    from .game.rules import SEED_INDUSTRIES
     m = ctx.m
-    ores = m.task_queue.ores()
+    ores = task_queue.ores()
     rows = []
     for key, n in e.inputs.items():
         short = n * batches - ctx.have(key)
         if short <= 0:
             continue
-        route = {'key': key, 'name': m.resource_name(key), 'short': short, 'kind': 'none', 'price': 0}
-        listing = m.SEED_INDUSTRIES.get(key) or {}
+        route = {'key': key, 'name': resource_name(key), 'short': short, 'kind': 'none', 'price': 0}
+        listing = SEED_INDUSTRIES.get(key) or {}
         if listing.get('buy'):
             route['price'] = listing['buy']
         if key in s.GATHER:
@@ -411,6 +431,8 @@ def fetch_routes(ctx, e, batches=1):
 
 def fetch_plan(ctx, e, batches=1):
     """(text, start) where start is the queue to begin, with the craft chained after it."""
+    from . import task_queue
+    from .game.cooldowns_materials import material_source
     m = ctx.m
     routes = fetch_routes(ctx, e, batches)
     discord = ctx.provider == 'discord'
@@ -432,7 +454,7 @@ def fetch_plan(ctx, e, batches=1):
         elif r['kind'] == 'buy':
             line = f"• {r['name']}: need {r['short']} more → buy from Seed Industries"
         else:
-            line = f"• {r['name']}: need {r['short']} more → {m.material_source(r['key'], ctx.provider)}"
+            line = f"• {r['name']}: need {r['short']} more → {material_source(r['key'], ctx.provider)}"
         if r['price']:
             line += f" · or buy for {r['price'] * r['short']} SC"
         lines.append(line)
@@ -443,7 +465,7 @@ def fetch_plan(ctx, e, batches=1):
         chain = not rest and not first['capped']
         start = {'task': first['task'], 'count': first['attempts'],
                  'then': {'task': 'make:' + e.id, 'count': batches} if chain else None}
-        label = m.task_queue.choices(m).get(first['task'], first['task'])
+        label = task_queue.choices(m).get(first['task'], first['task'])
         lines += ['', 'PLAN', f"1. {label} ×{first['attempts']}"]
         if chain:
             lines.append(f'2. Then make {e.name} ×{batches} automatically (queued next).')
@@ -475,7 +497,7 @@ def buy_missing(m, db, p, e, batches, provider='discord'):
             left = r['short']
             while left > 0:
                 amount = min(25, left)
-                lines.append(m.seed_industries(p.channel_id, p.twitch_uid, p.display_name, 'buy', r['key'], amount,
+                lines.append(runtime.seed_industries(p.channel_id, p.twitch_uid, p.display_name, 'buy', r['key'], amount,
                                                provider).body.decode())
                 left -= amount
                 if 'bought' not in lines[-1]:
@@ -488,15 +510,18 @@ def buy_missing(m, db, p, e, batches, provider='discord'):
 
 def sell_price(m, key):
     """Seed Industries' price for one today, including daily demand."""
-    return m.sale_price(key) if hasattr(m, 'sale_price') else (m.SEED_INDUSTRIES.get(key) or {}).get('sell', 0)
+    from .game.players import sale_price
+    from .game.rules import SEED_INDUSTRIES
+    return sale_price(key) if hasattr(m, 'sale_price') else (SEED_INDUSTRIES.get(key) or {}).get('sell', 0)
 
 
 def protected_items(m, db, p):
     """Ingredients of favourites and of the current or next queued recipe are never cleared out."""
+    from . import task_queue
     keep = set()
     for e in favorite_entries(m, db, p):
         keep |= set(e.inputs)
-    tq = m.task_queue
+    tq = task_queue
     row = db.get(tq.TaskQueue, (p.channel_id, p.twitch_uid))
     tasks = [row.task] if row is not None and row.state in tq.ACTIVE else []
     tasks.append(next_task(db, p.channel_id, p.twitch_uid)[0])
@@ -510,13 +535,16 @@ def protected_items(m, db, p):
 
 def sell_all(m, db, p, key, provider):
     """Sell a whole stack, except what the item's keep level keeps (keep_levels.keep_for)."""
+    from . import item_identity
+    from .game.cooldowns_materials import material_amount, material_change
+    from .game.players import resource_name
     from . import keep_levels
-    key = m.item_identity.canonical(key)
+    key = item_identity.canonical(key)
     price = sell_price(m, key)
-    name = m.resource_name(key)
+    name = resource_name(key)
     if not price:
         return f'🏭 Seed Industries does not buy {name}. Nothing sold.'
-    owned = m.material_amount(db, p, key)
+    owned = material_amount(db, p, key)
     if owned <= 0:
         return f'🏭 You have no {name}. Nothing sold.'
     keep = keep_levels.keep_for(m, db, p, key)
@@ -524,10 +552,10 @@ def sell_all(m, db, p, key, provider):
     if count <= 0:
         return f'🏭 Nothing to sell: you have {owned} {name} and your keep level keeps {keep}. Selling a chosen amount still works.'
     total = price * count
-    m.material_change(db, p, key, -count)
+    material_change(db, p, key, -count)
     p.sc += total
     xp = max(1, count // 3)
-    banked = m.gain_skill(p, 'commerce', xp)
+    banked = runtime.gain_skill(p, 'commerce', xp)
     from . import extras
     extras.remember_sale(m, db, p, {key: count}, total, banked)
     note = ''
@@ -542,10 +570,11 @@ def sell_all(m, db, p, key, provider):
 
 def clearout_plan(m, db, p):
     """(key, amount, price) to sell: Materials & Ores beyond the keep level, or CLEAROUT_RESERVE where none is set."""
+    from .game.players import resource_name
     from . import keep_levels
     keep = protected_items(m, db, p)
     rows = []
-    for key, qty in sorted(s.stock(m, db, p).items(), key=lambda kv: m.resource_name(kv[0])):
+    for key, qty in sorted(s.stock(m, db, p).items(), key=lambda kv: resource_name(kv[0])):
         if key not in s.ACTIVE or s.DISPLAY_CATEGORY.get(key) != 'materials' or key in keep:
             continue
         price = sell_price(m, key)
@@ -558,6 +587,8 @@ def clearout_plan(m, db, p):
 
 
 def clearout(m, db, p, provider, confirm=False):
+    from .game.cooldowns_materials import material_change
+    from .game.players import resource_name
     from . import keep_levels
     rows = clearout_plan(m, db, p)
     total = sum(n * price for _, n, price in rows)
@@ -567,13 +598,13 @@ def clearout(m, db, p, provider, confirm=False):
         return '🧹 Nothing to clear out. ' + rule
     if not confirm:
         if provider != 'discord':
-            items = ', '.join(f'{m.resource_name(k)} ×{n}' for k, n, _ in rows[:8]) + (' …' if len(rows) > 8 else '')
+            items = ', '.join(f'{resource_name(k)} ×{n}' for k, n, _ in rows[:8]) + (' …' if len(rows) > 8 else '')
             return (f'🧹 Clear-out would sell {items} for {total} SC. !clearout confirm to sell. '
                     f'Keeps {CLEAROUT_RESERVE} of each (or your keep level); favourites protected.')
         lines = [f'🧹 CLEAR-OUT PREVIEW · {total} SC', rule, '', 'WOULD SELL']
         for k, n, price in rows[:20]:
             kept = keep_levels.keep_for(m, db, p, k, None)
-            lines.append(f'• {m.resource_name(k)} ×{n} → {n * price} SC ({price} each)' +
+            lines.append(f'• {resource_name(k)} ×{n} → {n * price} SC ({price} each)' +
                          (f' · keeps {kept} (your keep level)' if kept is not None else ''))
         if len(rows) > 20:
             lines.append(f'• …and {len(rows) - 20} more item types')
@@ -582,12 +613,12 @@ def clearout(m, db, p, provider, confirm=False):
     sold = []
     earned = 0
     for key, n, price in rows:
-        m.material_change(db, p, key, -n)
+        material_change(db, p, key, -n)
         earned += n * price
-        sold.append(f'{m.resource_name(key)} ×{n}')
+        sold.append(f'{resource_name(key)} ×{n}')
     p.sc += earned
     xp = max(1, sum(n for _, n, _ in rows) // 3)
-    banked = m.gain_skill(p, 'commerce', xp)
+    banked = runtime.gain_skill(p, 'commerce', xp)
     from . import extras
     extras.remember_sale(m, db, p, {key: n for key, n, _ in rows}, earned, banked)
     db.commit()
@@ -625,6 +656,7 @@ def parse_inventory_text(text):
 
 
 def inventory_text(m, db, p, provider, search='', sort='quantity', show='all', page=1):
+    from .game.players import resource_name
     sort = sort if sort in INVENTORY_SORTS else 'quantity'
     show = show if show in INVENTORY_SHOWS else 'all'
     rows = _inventory_rows(m, db, p)
@@ -634,7 +666,7 @@ def inventory_text(m, db, p, provider, search='', sort='quantity', show='all', p
         return s.DISPLAY_INFO[s.DISPLAY_CATEGORY[k]][1] if k in s.DISPLAY_CATEGORY else 'Logistics'
 
     if q:
-        rows = {k: n for k, n in rows.items() if q in m.resource_name(k).casefold() or q in category(k).casefold() or q == k}
+        rows = {k: n for k, n in rows.items() if q in resource_name(k).casefold() or q in category(k).casefold() or q == k}
     if show in {'ready', 'favorites'}:
         ctx = wb.Context(m, db, p, provider)
         pool = favorite_entries(m, db, p) if show == 'favorites' else [e for e in wb.index(m) if ctx.status(e).code == 'ready']
@@ -642,10 +674,10 @@ def inventory_text(m, db, p, provider, search='', sort='quantity', show='all', p
         rows = {k: n for k, n in rows.items() if k in used}
     elif show == 'sellable':
         rows = {k: n for k, n in rows.items() if sell_price(m, k)}
-    key = {'quantity': lambda kv: (-kv[1], m.resource_name(kv[0])),
-           'name': lambda kv: m.resource_name(kv[0]).casefold(),
-           'value': lambda kv: (-sell_price(m, kv[0]) * kv[1], m.resource_name(kv[0])),
-           'category': lambda kv: (category(kv[0]), m.resource_name(kv[0]))}[sort]
+    key = {'quantity': lambda kv: (-kv[1], resource_name(kv[0])),
+           'name': lambda kv: resource_name(kv[0]).casefold(),
+           'value': lambda kv: (-sell_price(m, kv[0]) * kv[1], resource_name(kv[0])),
+           'category': lambda kv: (category(kv[0]), resource_name(kv[0]))}[sort]
     ordered = sorted(rows.items(), key=key)
     worth = sum(sell_price(m, k) * n for k, n in ordered)
     size = INVENTORY_PAGE if provider == 'discord' else 6
@@ -653,7 +685,7 @@ def inventory_text(m, db, p, provider, search='', sort='quantity', show='all', p
     shown = ordered[start:end]
     filters = ([f'"{search}"'] if q else []) + ([{'ready': 'used in recipes ready now', 'favorites': 'used by favourites', 'sellable': 'sellable'}[show]] if show != 'all' else [])
     if provider != 'discord':
-        items = ', '.join(f'{m.resource_name(k)} {n}' for k, n in shown) or 'no matching items'
+        items = ', '.join(f'{resource_name(k)} {n}' for k, n in shown) or 'no matching items'
         more = f' | !inv {search + " " if search else ""}{page + 1} for more' if page < pages else ''
         return f'🎒 {p.display_name} {page}/{pages}' + (f' ({", ".join(filters)})' if filters else '') + f': {items} | worth {worth} SC{more}'
     lines = [f'🎒 INVENTORY · Page {page}/{pages} · sorted by {sort}' + (' · ' + ' · '.join(filters) if filters else ''),
@@ -662,7 +694,7 @@ def inventory_text(m, db, p, provider, search='', sort='quantity', show='all', p
         price = sell_price(m, k)
         uses = len(s.USED_BY.get(k, ()))
         parts = [category(k)] + ([f'sells {price} SC each'] if price else []) + ([f'used in {uses} recipes'] if uses else [])
-        lines.append(f'• {m.resource_name(k)} ×{n} — ' + ' · '.join(parts))
+        lines.append(f'• {resource_name(k)} ×{n} — ' + ' · '.join(parts))
     if not shown:
         lines.append('• No matching items.')
     lines += ['', 'Search, sort (quantity, name, value, category) and filter with /inventory options. '
@@ -747,7 +779,8 @@ def did_you_mean(suggestions):
 
 def queue_summary(m, db, p, provider):
     """(line, row) describing the current or last queue, its pace and what follows."""
-    tq = m.task_queue
+    from . import task_queue
+    tq = task_queue
     row = db.get(tq.TaskQueue, (p.channel_id, p.twitch_uid))
     prefix = _prefix(provider)
     following = next_label(m, db, p.channel_id, p.twitch_uid)
@@ -759,7 +792,7 @@ def queue_summary(m, db, p, provider):
         if row.state == 'running':
             _, _, interval = tq.specification(m, row.task) if row.task in tq.choices(m) else (0, 0, tq.ATTEMPT_SECONDS)
             left = row.remaining * interval
-            finish = f'finishes <t:{int(m.now().timestamp() + left)}:R>' if provider == 'discord' else f'about {needs.duration_text(left)} left'
+            finish = f'finishes <t:{int(runtime.now().timestamp() + left)}:R>' if provider == 'discord' else f'about {needs.duration_text(left)} left'
             line = f'▶️ Running: {label} · {done}/{row.total} done · {finish}'
         elif row.state == 'paused':
             reason = row.result.splitlines()[0] if row.result else 'requirements not met'
@@ -774,15 +807,19 @@ def queue_summary(m, db, p, provider):
 
 
 def _cooldowns(m, db, p, provider, limit=3):
-    rows = db.execute(select(m.Cooldown).where(m.Cooldown.channel_id == p.channel_id, m.Cooldown.canonical_uid == p.twitch_uid)).scalars().all()
-    active = sorted((m.action_wait(db, p, r.action), r.action) for r in rows if r.action != 'sleep' and m.action_wait(db, p, r.action))
+    from .game.cooldowns_materials import action_wait, cooldown_label
+    rows = db.execute(select(Cooldown).where(Cooldown.channel_id == p.channel_id, Cooldown.canonical_uid == p.twitch_uid)).scalars().all()
+    active = sorted((action_wait(db, p, r.action), r.action) for r in rows if r.action != 'sleep' and action_wait(db, p, r.action))
     if provider == 'discord':
-        return [f'{m.cooldown_label(a, provider)} ready <t:{int(m.now().timestamp() + w)}:R>' for w, a in active[:limit]]
-    return [f'{m.cooldown_label(a, provider)} {needs.duration_text(w)}' for w, a in active[:limit]]
+        return [f'{cooldown_label(a, provider)} ready <t:{int(runtime.now().timestamp() + w)}:R>' for w, a in active[:limit]]
+    return [f'{cooldown_label(a, provider)} {needs.duration_text(w)}' for w, a in active[:limit]]
 
 
 def status_text(m, db, p, provider='discord'):
-    life = m.life_state(db, p)
+    from . import autonomy, extras
+    from .game.life import life_state
+    from .game.world import comfort_status_line, sleep_status
+    life = life_state(db, p)
     ctx = wb.Context(m, db, p, provider)
     blocked = needs.blocked_needs(life)
     queue_line, _ = queue_summary(m, db, p, provider)
@@ -793,7 +830,7 @@ def status_text(m, db, p, provider='discord'):
     row = prefs(db, p.channel_id, p.twitch_uid)
     mode = alert_mode(db, p.channel_id, p.twitch_uid)
     auto = bool(row and row.autorecover)
-    sleep = m.sleep_status(db, p, provider)
+    sleep = sleep_status(db, p, provider)
     if provider != 'discord':
         needs_part = f'E{life.energy} N{life.nutrition} S{life.social} C{life.comfort}'
         if blocked:
@@ -802,16 +839,16 @@ def status_text(m, db, p, provider='discord'):
         cds = _cooldowns(m, db, p, provider, 2)
         if cds:
             parts.append('CD: ' + ', '.join(cds))
-        goal = m.extras.goal_entry(m, db, p)
+        goal = extras.goal_entry(m, db, p)
         if goal is not None:
-            parts.append(f'🎯 {goal.name}: ' + m.extras.next_step(m, db, p, provider)[0])
+            parts.append(f'🎯 {goal.name}: ' + extras.next_step(m, db, p, provider)[0])
         if ready:
             parts.append('Ready: ' + ', '.join(('⭐' if e in favs else '') + e.name for e in ready))
         else:
             parts.append('Next: ' + next_step(m, db, p, provider, ctx))
         return ' | '.join(parts)
     from . import quiet_hours
-    quiet = quiet_hours.short(db, p.channel_id, p.twitch_uid, m.now()) if mode in {'dm', 'quiet'} else ''
+    quiet = quiet_hours.short(db, p.channel_id, p.twitch_uid, runtime.now()) if mode in {'dm', 'quiet'} else ''
     quiet = f' · {quiet}' if quiet else ''
     lines = [f'📊 STATUS — {p.display_name}', '', 'NEEDS',
              f'⚡ Energy {life.energy} · 🍲 Nutrition {life.nutrition} · 🤝 Social {life.social} · 🏠 Comfort {life.comfort} · ✨ Morale {life.morale}']
@@ -819,18 +856,18 @@ def status_text(m, db, p, provider='discord'):
         lines.append('⛔ Work is blocked:')
         lines += ['• ' + need_line(m, db, p, life, *b) for b in blocked]
     else:
-        lines.append('✅ Ready for work.' + (' ' + m.comfort_status_line(life) if life.comfort < needs.COMFORT_SLOW else ''))
+        lines.append('✅ Ready for work.' + (' ' + comfort_status_line(life) if life.comfort < needs.COMFORT_SLOW else ''))
     lines.append(f'🛏️ Sleep: {sleep}')
-    lines += ['', 'SEEDLING', m.autonomy.status_line(m, db, p)]
+    lines += ['', 'SEEDLING', autonomy.status_line(m, db, p)]
     lines += ['', 'QUEUE', queue_line]
     cds = _cooldowns(m, db, p, provider)
     if cds:
         lines += ['', 'COOLDOWNS', ' · '.join(cds)]
     lines += ['', 'READY TO CRAFT']
     lines += [f"{'⭐' if e in favs else '✅'} {e.name} ×{ctx.batch_size(e)} — {wb.station_label(e, ctx)}" for e in ready] or ['• Nothing is ready yet.']
-    goal = m.extras.goal_entry(m, db, p)
+    goal = extras.goal_entry(m, db, p)
     if goal is not None:
-        lines += ['', f'🎯 GOAL — {goal.name}', m.extras.next_step(m, db, p, provider)[0] + ' · /menu → Craft → Goal']
+        lines += ['', f'🎯 GOAL — {goal.name}', extras.next_step(m, db, p, provider)[0] + ' · /menu → Craft → Goal']
     lines += ['', 'NEXT STEP', next_step(m, db, p, provider, ctx),
               '', 'SETTINGS', f'Alerts: {ALERT_LABELS[mode]}{quiet} · Auto-recover: {"on" if auto else "off"} · Favourites: {len(favs)}/{MAX_FAVORITES} · /settings changes these.']
     return '\n'.join(lines)
@@ -883,7 +920,7 @@ def settings_text(m, db, p, provider, alerts='', autorecover='', text='', popups
     lines = ['⚙️ SETTINGS'] + (['', 'CHANGED'] + ['• ' + x for x in changed] if changed else [])
     from . import quiet_hours
     lines += ['', 'CURRENT', f'• Alerts: {ALERT_LABELS[mode]} — {ALERT_MODES[mode]}',
-              quiet_hours.settings_line(db, p.channel_id, p.twitch_uid, mode, m.now()),
+              quiet_hours.settings_line(db, p.channel_id, p.twitch_uid, mode, runtime.now()),
               f'• Auto-recover: {"on" if auto else "off"} — when a queue pauses for low needs it tries relax, games, your cheapest food, a comfort item or sleep first.',
               f'• Popups: {popup} — {inbox.POPUP_MODES[popup]}. Popups are private ("only you can see this") and appear with your next command or button.',
               '', 'Change with /settings alerts:<choice> autorecover:<On/Off> popups:<choice>. Quiet hours: /menu → You → Settings.']
