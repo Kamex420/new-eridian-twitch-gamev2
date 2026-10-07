@@ -22,6 +22,9 @@ import logging
 from datetime import datetime, timedelta, timezone
 from sqlalchemy import Column, String, Integer, DateTime, select, func
 from .db import Base
+from . import runtime
+from .models import Player
+from .settlement import state as colony_state
 
 GAP_MINUTES = max(3, int(os.getenv('LIVE_EVENT_GAP_MINUTES', '25')))
 FIRST_MINUTES = max(1, int(os.getenv('LIVE_EVENT_FIRST_MINUTES', '5')))
@@ -151,7 +154,7 @@ def twitch_api_live():
 
 
 def state(m, db):
-    world = m.DISCORD_WORLD_ID
+    world = runtime.DISCORD_WORLD_ID
     row = db.get(LiveState, world)
     if row is None:
         row = LiveState(world=world, manual='auto', last_key='')
@@ -191,7 +194,7 @@ def set_live(m, db, value, who='moderator'):
 # ---------------------------------------------------------------- running challenges
 
 def active(m, db):
-    return db.execute(select(Challenge).where(Challenge.world == m.DISCORD_WORLD_ID, Challenge.state == 'active').order_by(Challenge.id.desc())).scalars().first()
+    return db.execute(select(Challenge).where(Challenge.world == runtime.DISCORD_WORLD_ID, Challenge.state == 'active').order_by(Challenge.id.desc())).scalars().first()
 
 
 def goal_for(key, people):
@@ -211,13 +214,13 @@ def start(m, db, key='', who='auto'):
         return None, '⛔ Unknown challenge. Options: ' + ', '.join(CHALLENGES)
     c = CHALLENGES[key]
     people = max(1, chatters())
-    row = Challenge(world=m.DISCORD_WORLD_ID, key=key, goal=goal_for(key, people), progress=0, state='active', started_by=who[:80],
+    row = Challenge(world=runtime.DISCORD_WORLD_ID, key=key, goal=goal_for(key, people), progress=0, state='active', started_by=who[:80],
                     started_at=_now(), ends_at=_now() + timedelta(minutes=c[7]))
     db.add(row)
     st.last_key = key
     st.next_at = row.ends_at + timedelta(minutes=GAP_MINUTES + random.randint(-5, 5))
     db.flush()
-    stream_overlay.highlight(db, m.DISCORD_WORLD_ID, 'challenge_start', f'{c[1]}! {c[2]}', f'Goal {row.goal} in {c[7]} minutes. Help with {c[3]}.', emoji=c[0])
+    stream_overlay.highlight(db, runtime.DISCORD_WORLD_ID, 'challenge_start', f'{c[1]}! {c[2]}', f'Goal {row.goal} in {c[7]} minutes. Help with {c[3]}.', emoji=c[0])
     return row, f'{c[0]} STREAM CHALLENGE · {c[1]}: {c[2]}! Goal {row.goal} in {c[7]} min. Help: {c[3]}.'
 
 
@@ -261,18 +264,20 @@ def tick(m, db):
 
 
 def amount_for(m, key, before, after):
+    from .game.players import resource_name
     measure = CHALLENGES[key][4]
     if measure[0] == 'skills':
         b, a = before.get('Competency', {}), after.get('Competency', {})
         return int(any(a.get(k, 0) > b.get(k, 0) for k in measure[1]))
     wanted = {k for k in (item_key(m, n) for n in measure[1]) if k}
     b, a = before.get('Resources', {}), after.get('Resources', {})
-    return sum(max(0, v - b.get(k, 0)) for k, v in a.items() if k in wanted or m.resource_name(k) in measure[1])
+    return sum(max(0, v - b.get(k, 0)) for k, v in a.items() if k in wanted or resource_name(k) in measure[1])
 
 
 def item_key(m, name):
+    from . import seed_content
     try:
-        return m.seed_content.key(name)
+        return seed_content.key(name)
     except KeyError:
         return None
 
@@ -308,13 +313,15 @@ def from_command(m, db, p, before, after, provider='twitch'):
 
 def finish(m, db, row, won):
     """Pay everyone who took part. Returns {(channel, uid): SC paid}."""
+    from .game.cooldowns_materials import material_change
+    from .game.players import society
     from . import stream_overlay, seasons
     c = CHALLENGES[row.key]
     row.state, row.resolved_at = ('won' if won else 'lost'), _now()
     entries = db.execute(select(Entry).where(Entry.challenge_id == row.id, Entry.amount > 0).order_by(Entry.amount.desc())).scalars().all()
     paid = {}
     for rank, e in enumerate(entries):
-        p = db.execute(select(m.Player).where(m.Player.channel_id == e.channel_id, m.Player.twitch_uid == e.canonical_uid)).scalar_one_or_none()
+        p = db.execute(select(Player).where(Player.channel_id == e.channel_id, Player.twitch_uid == e.canonical_uid)).scalar_one_or_none()
         if not p:
             continue
         if won:
@@ -323,15 +330,15 @@ def finish(m, db, row, won):
             p.contribution += WIN_CONTRIBUTION
             for name, q in c[8].items():
                 if item_key(m, name):
-                    m.material_change(db, p, item_key(m, name), q)
+                    material_change(db, p, item_key(m, name), q)
             seasons.add(m, db, p, WIN_POINTS + e.amount, kind='events', contribution=WIN_CONTRIBUTION)
         else:
             sc = LOSE_SC
             p.sc += sc
             seasons.add(m, db, p, LOSE_POINTS, kind='events')
         paid[(e.channel_id, e.canonical_uid)] = sc
-    s = m.society(db, row.world)
-    shared = m.colony_state(db, row.world)
+    s = society(db, row.world)
+    shared = colony_state(db, row.world)
     if won:
         for field, n in c[9].items():
             setattr(s, field, getattr(s, field) + n)
@@ -385,7 +392,7 @@ def view(m, db, p=None, provider='discord'):
             when = 'A stream challenge starts soon.'
         else:
             when = 'Stream challenges only happen while the stream is live.'
-        last = db.execute(select(Challenge).where(Challenge.world == m.DISCORD_WORLD_ID, Challenge.state.in_(('won', 'lost')))
+        last = db.execute(select(Challenge).where(Challenge.world == runtime.DISCORD_WORLD_ID, Challenge.state.in_(('won', 'lost')))
                           .order_by(Challenge.id.desc())).scalars().first()
         tail = f" Last: {CHALLENGES[last.key][0]} {CHALLENGES[last.key][1]} {'won' if last.state == 'won' else 'missed'} ({last.progress}/{last.goal})." if last else ''
         return ('⚡ No stream challenge right now. ' if provider != 'discord' else '⚡ **No stream challenge right now.**\n') + when + tail
@@ -412,7 +419,7 @@ def overlay(m, db):
     row = active(m, db)
     shown = row
     if not shown:
-        recent = db.execute(select(Challenge).where(Challenge.world == m.DISCORD_WORLD_ID, Challenge.state.in_(('won', 'lost')))
+        recent = db.execute(select(Challenge).where(Challenge.world == runtime.DISCORD_WORLD_ID, Challenge.state.in_(('won', 'lost')))
                             .order_by(Challenge.id.desc())).scalars().first()
         if recent and recent.resolved_at and (_now() - _utc(recent.resolved_at)).total_seconds() < RESULT_SECONDS:
             shown = recent
@@ -430,7 +437,7 @@ def overlay(m, db):
 
 
 def week_summary(m, db, since):
-    rows = db.execute(select(Challenge).where(Challenge.world == m.DISCORD_WORLD_ID, Challenge.started_at >= since,
+    rows = db.execute(select(Challenge).where(Challenge.world == runtime.DISCORD_WORLD_ID, Challenge.started_at >= since,
                                               Challenge.state.in_(('won', 'lost')))).scalars().all()
     if not rows:
         return None

@@ -10,7 +10,10 @@ from scripts import main_dependencies as deps
 
 ROOT = Path(__file__).resolve().parents[1]
 # Systems that import what they need instead of reading app.main (docs/architecture.md, "Dependencies on app.main").
-EXPLICIT = ('halloween', 'readable_names', 'crafting_progression', 'seed_content')
+EXPLICIT = ('halloween', 'readable_names', 'crafting_progression', 'seed_content', 'twitch_lite', 'fun_systems', 'maintenance',
+            'presentation', 'production_balance', 'practice', 'seasons', 'task_yields', 'activity_feed', 'message_layout',
+            'quiet_hours', 'stream_overlay', 'world_guard', 'discord_execution', 'discord_queue_worker', 'discord_deferred',
+            'live_events', 'recap', 'onboarding')
 
 
 def test_the_record_matches_the_code():
@@ -37,6 +40,6 @@ def test_a_converted_system_still_imports_on_its_own(name, tmp_path):
     import from app.game would make importing them first loop back into the half-loaded game."""
     env = os.environ | {'DATABASE_URL': 'sqlite:///' + str(tmp_path / 'g.db'), 'AUTO_EVENTS_ENABLED': 'false',
                         'PYTHONPATH': os.pathsep.join([str(ROOT)] + sys.path)}
-    code = f'import app.{name}; import app.main; assert app.main.{name} is app.{name}'
+    code = f'import app.{name}; import app.main; assert app.main.app.routes'      # imported first, then the whole game
     result = subprocess.run([sys.executable, '-c', code], cwd=ROOT, env=env, capture_output=True, text=True)
     assert result.returncode == 0, result.stderr[-1500:]

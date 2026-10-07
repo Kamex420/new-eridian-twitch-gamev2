@@ -16,15 +16,18 @@ import discord
 from discord.ext import tasks
 from sqlalchemy import select, update
 from . import queue_notifications as n, qol, layout_v2, quiet_hours
+from . import runtime
+from .db import SessionLocal
+from .models import Player
 
 log=logging.getLogger('uvicorn.error.discord_queue')
 
 
 def claim(m,notice_id):
-    with m.SessionLocal() as db:
+    with SessionLocal() as db:
         result=db.execute(update(n.Notice).where(n.Notice.id==notice_id,n.Notice.provider=='discord',
-            n.Notice.state.in_(['pending','sending']),n.Notice.next_at<=m.now()).values(
-                state='sending',next_at=m.now()+timedelta(seconds=120),attempts=n.Notice.attempts+1))
+            n.Notice.state.in_(['pending','sending']),n.Notice.next_at<=runtime.now()).values(
+                state='sending',next_at=runtime.now()+timedelta(seconds=120),attempts=n.Notice.attempts+1))
         db.commit()
         if result.rowcount!=1:return None
         row=db.get(n.Notice,notice_id)
@@ -33,9 +36,9 @@ def claim(m,notice_id):
 
 
 def pending(m):
-    with m.SessionLocal() as db:
+    with SessionLocal() as db:
         return list(db.scalars(select(n.Notice.id).where(n.Notice.provider=='discord',
-            n.Notice.state.in_(['pending','sending']),n.Notice.next_at<=m.now()).order_by(n.Notice.next_at).limit(10)))
+            n.Notice.state.in_(['pending','sending']),n.Notice.next_at<=runtime.now()).order_by(n.Notice.next_at).limit(10)))
 
 
 def settle(m,row,notice,error=None):
@@ -45,7 +48,7 @@ def settle(m,row,notice,error=None):
     if error:
         row.state='failed' if error.permanent or row.attempts>=5 else 'pending'
         row.error=str(error)
-        row.next_at=m.now()+timedelta(seconds=max(error.delay,min(600,30*2**(row.attempts-1))))
+        row.next_at=runtime.now()+timedelta(seconds=max(error.delay,min(600,30*2**(row.attempts-1))))
         log.warning('Discord queue alert %s: %s',row.state,row.error)
     else:
         row.state='sent';row.error=''
@@ -54,7 +57,7 @@ def settle(m,row,notice,error=None):
 
 
 def finish(m,notice,error=None):
-    with m.SessionLocal() as db:
+    with SessionLocal() as db:
         settle(m,db.get(n.Notice,notice.id),notice,error)
         db.commit()
 
@@ -62,7 +65,7 @@ def finish(m,notice,error=None):
 def finish_all(m,batch,error=None):
     """finish() for every alert of one quiet-hours release, in one transaction. Alerts that were sent or failed for
     good are no longer held; ones that will retry stay held, so the retry is again one message."""
-    with m.SessionLocal() as db:
+    with SessionLocal() as db:
         done=[]
         for notice in batch:
             row=db.get(n.Notice,notice.id)
@@ -74,13 +77,13 @@ def finish_all(m,batch,error=None):
 def repair_recent(m):
     """One startup recovery of current stopped runs, not all historical alerts."""
     from .task_queue import TaskQueue,atomic
-    with m.SessionLocal() as db:
+    with SessionLocal() as db:
         keys=list(db.execute(select(TaskQueue.channel_id,TaskQueue.canonical_uid).where(
             TaskQueue.state.in_(['paused','completed','cancelled','error']),
-            TaskQueue.next_at>=m.now()-timedelta(hours=24))))
+            TaskQueue.next_at>=runtime.now()-timedelta(hours=24))))
     for channel,uid in keys:
         with atomic(m,channel):
-            with m.SessionLocal() as db:
+            with SessionLocal() as db:
                 queue=db.get(TaskQueue,(channel,uid));dest=db.get(n.Destination,(channel,uid))
                 if not dest or dest.provider!='discord' or queue.state not in {'paused','completed','cancelled','error'}:continue
                 mode=qol.alert_mode(db,channel,uid)
@@ -89,24 +92,25 @@ def repair_recent(m):
                     n.NoticeEvent.kind==queue.state).order_by(n.NoticeEvent.created_at.desc())).scalars().first()
                 notice=db.get(n.Notice,event.notice_id if event else dest.run_id)
                 if notice and notice.state=='failed':
-                    notice.state='pending';notice.attempts=0;notice.next_at=m.now();notice.error=''
+                    notice.state='pending';notice.attempts=0;notice.next_at=runtime.now();notice.error=''
                     if not notice.message_channel:notice.message_channel=dest.message_channel or os.getenv('DISCORD_GAME_CHANNEL_ID','')
                 elif notice is None:
                     if event and event.notice_id==dest.run_id:
                         db.delete(event);db.flush()
-                    player=db.execute(select(m.Player).where(m.Player.channel_id==channel,m.Player.twitch_uid==uid)).scalar_one_or_none()
+                    player=db.execute(select(Player).where(Player.channel_id==channel,Player.twitch_uid==uid)).scalar_one_or_none()
                     if player:n.stopped(m,db,player,queue,queue.state,queue.result if queue.state!='completed' else '')
                 db.commit()
 
 
 def payload(m,notice):
     # Formatting may read/write snapshot pages, so callers run it off-loop.
-    try:data=m._discord_json_message(notice.content,message_type='queue')['data']
+    from . import ui
+    try:data=runtime._discord_json_message(notice.content,message_type='queue')['data']
     except Exception:data={}
     try:
-        extra=m.ui.alert_components(m,notice)
+        extra=ui.alert_components(m,notice)
         if extra and data.get('embeds'):data['components']=list(data.get('components') or [])+extra
-        m.ui.tidy(data)
+        ui.tidy(data)
     except Exception:log.warning('Queue alert buttons unavailable; sending the alert without them')
     kind='paused' if 'QUEUE — PAUSED' in notice.content else 'cancelled' if 'QUEUE — CANCELLED' in notice.content else 'stopped after an error' if 'QUEUE — STOPPED' in notice.content else 'finished'
     mention=f'<@{notice.recipient}> Your queue '+('has ' if kind in {'paused','finished'} else 'was ')+kind+'.'
@@ -315,10 +319,11 @@ class Runtime:
 
 
 def install(m):
+    from .game.base import app
     async def start():
-        runtime=Runtime(m);m.app.state.discord_queue=runtime
-        m.app.state.discord_notification_worker=await runtime.start()
+        runtime=Runtime(m);app.state.discord_queue=runtime
+        app.state.discord_notification_worker=await runtime.start()
     async def stop():
-        runtime=getattr(m.app.state,'discord_queue',None)
+        runtime=getattr(app.state,'discord_queue',None)
         if runtime:await runtime.close()
-    m.app.add_event_handler('startup',start);m.app.add_event_handler('shutdown',stop)
+    app.add_event_handler('startup',start);app.add_event_handler('shutdown',stop)

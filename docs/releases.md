@@ -1,5 +1,9 @@
 # Release notes
 
+## Behind the scenes: explicit dependencies, step three
+
+- **19 more systems import exactly what they use** and read nothing from app.main: Twitch lite, fun systems, maintenance, presentation, production balance, lucky finds, seasons, task yields, the activity feed, message layout, quiet hours, the stream overlay, world guard, the three Discord delivery modules, live events, the weekly recap and onboarding. 23 of 43 systems are converted; the record of dependencies on app.main shrank from 631 to 540 names. No gameplay changes.
+
 ## Behind the scenes: explicit dependencies, step two
 
 - **Crafting progression and the seed catalog now import exactly what they use** and read nothing from app.main. Values tests swap at runtime (the clock, success chances, mining modifiers) come through `app/runtime.py`. The record of dependencies on app.main shrank from 678 to 631 names. No gameplay changes.

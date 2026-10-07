@@ -19,6 +19,8 @@ import os
 from datetime import datetime, timedelta, timezone
 from sqlalchemy import Column, String, Integer, DateTime, select, func
 from .db import Base
+from . import runtime
+from .models import Player
 
 SEASON_DAYS = max(7, int(os.getenv('SEASON_DAYS', '35')))
 TIERS = [('bronze', '🥉', 'Bronze', 150), ('silver', '🥈', 'Silver', 500), ('gold', '🥇', 'Gold', 1200)]
@@ -158,19 +160,20 @@ def week_key(when=None):
 
 
 def install(m):
+    from .game.rules import TITLE_DEFS
     for key, emoji, name, colour, hat, title, story in THEMES:
-        m.TITLE_DEFS.setdefault('season_' + key, title)
-        m.TITLE_DEFS.setdefault('season_' + key + '_gold', 'Golden ' + title)
+        TITLE_DEFS.setdefault('season_' + key, title)
+        TITLE_DEFS.setdefault('season_' + key + '_gold', 'Golden ' + title)
     for n in range(1, MAX_CHAMPION_TITLES + 1):
-        m.TITLE_DEFS.setdefault(f'season{n}_champion', f'Season {n} Champion')
-        m.TITLE_DEFS.setdefault(f'season{n}_finalist', f'Season {n} Finalist')
+        TITLE_DEFS.setdefault(f'season{n}_champion', f'Season {n} Champion')
+        TITLE_DEFS.setdefault(f'season{n}_finalist', f'Season {n} Finalist')
 
 
 # ---------------------------------------------------------------- the current season
 
 def current(m, db, world=None):
     """The running season, closing any that ended (and opening the next)."""
-    world = world or m.DISCORD_WORLD_ID
+    world = world or runtime.DISCORD_WORLD_ID
     row = db.execute(select(Season).where(Season.world == world).order_by(Season.id.desc())).scalars().first()
     if row is None:
         start = _now().replace(hour=0, minute=0, second=0, microsecond=0)
@@ -247,6 +250,7 @@ def add(m, db, p, points, kind='', contribution=0, xp=0, items=0, actions=0):
 
 
 def _reward(m, db, p, season, row, index):
+    from .game.players import unlock_title
     key, emoji, label, need = TIERS[index]
     if row.tier > index:
         return ''
@@ -254,13 +258,13 @@ def _reward(m, db, p, season, row, index):
     t = THEME.get(season.theme, THEMES[0])
     from . import stream_overlay
     if key == 'bronze':
-        m.unlock_title(db, p, 'season_' + t[0])
+        unlock_title(db, p, 'season_' + t[0])
         got = f'the **{t[5]}** title'
     elif key == 'silver':
         give_hat(db, p, t[4])
         got = f'the {HATS[t[4]][0]} **{HATS[t[4]][1]}** for your Seedling on the stream map'
     else:
-        m.unlock_title(db, p, 'season_' + t[0] + '_gold')
+        unlock_title(db, p, 'season_' + t[0] + '_gold')
         p.sc += GOLD_SC
         got = f'the **Golden {t[5]}** title and +{GOLD_SC} SC'
     stream_overlay.highlight(db, p.channel_id, 'season', f'{p.display_name} reached {label} this season', f'{t[1]} {t[2]}: {got.replace("**", "")}',
@@ -277,7 +281,7 @@ def _milestones(m, db, season):
     for need, key, emoji, text in MILESTONES[season.milestones:reached]:
         paid = 0
         for score in db.execute(select(SeasonScore).where(SeasonScore.season_id == season.id, SeasonScore.points > 0)).scalars():
-            p = db.execute(select(m.Player).where(m.Player.channel_id == score.channel_id, m.Player.twitch_uid == score.canonical_uid)).scalar_one_or_none()
+            p = db.execute(select(Player).where(Player.channel_id == score.channel_id, Player.twitch_uid == score.canonical_uid)).scalar_one_or_none()
             if p:
                 p.sc += MILESTONE_SC
                 paid += 1
@@ -363,13 +367,15 @@ def standings(m, db, season, limit=10):
 
 
 def _name(m, db, channel, uid):
-    p = db.execute(select(m.Player).where(m.Player.channel_id == channel, m.Player.twitch_uid == uid)).scalar_one_or_none()
+    p = db.execute(select(Player).where(Player.channel_id == channel, Player.twitch_uid == uid)).scalar_one_or_none()
     from .autonomy import clean_name
     return clean_name(p.display_name) if p else 'Citizen'
 
 
 def close(m, db, season):
     """Archive results, crown the top three, and leave everything else alone."""
+    from .game.players import unlock_title
+    from .game.rules import TITLE_DEFS
     if season.closed:
         return []
     rows = db.execute(select(SeasonScore).where(SeasonScore.season_id == season.id, SeasonScore.points > 0)
@@ -380,12 +386,12 @@ def close(m, db, season):
         db.merge(SeasonResult(season_id=season.id, channel_id=r.channel_id, canonical_uid=r.canonical_uid, rank=rank, points=r.points, tier=r.tier))
         if rank > 3:
             continue
-        p = db.execute(select(m.Player).where(m.Player.channel_id == r.channel_id, m.Player.twitch_uid == r.canonical_uid)).scalar_one_or_none()
+        p = db.execute(select(Player).where(Player.channel_id == r.channel_id, Player.twitch_uid == r.canonical_uid)).scalar_one_or_none()
         if not p:
             continue
-        m.TITLE_DEFS.setdefault(f'season{season.number}_champion', f'Season {season.number} Champion')
-        m.TITLE_DEFS.setdefault(f'season{season.number}_finalist', f'Season {season.number} Finalist')
-        m.unlock_title(db, p, f'season{season.number}_champion' if rank == 1 else f'season{season.number}_finalist')
+        TITLE_DEFS.setdefault(f'season{season.number}_champion', f'Season {season.number} Champion')
+        TITLE_DEFS.setdefault(f'season{season.number}_finalist', f'Season {season.number} Finalist')
+        unlock_title(db, p, f'season{season.number}_champion' if rank == 1 else f'season{season.number}_finalist')
         give_hat(db, p, 'crown' if rank == 1 else 'laurel')
         p.sc += CHAMPION_SC[rank - 1]
         winners.append((rank, p.display_name, r.points))

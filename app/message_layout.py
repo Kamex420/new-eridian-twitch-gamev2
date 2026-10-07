@@ -13,6 +13,8 @@ from sqlalchemy import Column, String, Text, DateTime, delete
 from .db import Base
 
 from .notice import FOOTER                     # "… · a fan project by Kamex • …"
+from . import runtime
+from .db import SessionLocal
 
 class MessagePages(Base):
     __tablename__ = 'message_pages_v1'
@@ -92,12 +94,13 @@ def queue_card(content):
 
 def action_card(m, embed, content, command):
     """Action receipts contain changes and immediate blockers, not handbook text."""
+    from .game.discord_embeds import _discord_action_name, _discord_split_result
     if 'MENU' in content.splitlines()[0] or content.startswith('TASK QUEUE'):return None
     performed=bool(re.search(r'TASK (?:COMPLETE|FAILED)|CRAFTING COMPLETE|GATHERING COMPLETE|MINING FAILED',content))
     performed=performed or bool(re.search(r'^Needs: (?!unchanged)',content,re.M))
     if not performed:return None
     failed='FAILED' in content[:120]
-    title=m._discord_action_name(command) if command not in {'make','gather'} else ('Crafting' if command=='make' else 'Gathering')
+    title=_discord_action_name(command) if command not in {'make','gather'} else ('Crafting' if command=='make' else 'Gathering')
     title=re.sub(r'^[^\w]+','',title).title().replace(' Shift','')
     performed_name=re.search(r' completes ([^.]+)\.',content)
     if performed_name:title=performed_name[1]
@@ -126,7 +129,7 @@ def action_card(m, embed, content, command):
         add('Result',reason)
     recovery=section('⚠️ RECOVERY NEEDED BEFORE MORE WORK')
     if recovery:add('Recovery needed',recovery)
-    milestones=[x for x in m._discord_split_result(content) if 'LEVEL UP' in x or x.startswith(('🩹','🔎','🧳','📜','🏆')) or re.search(r'\b(unlocked|completed|started|ended)\b',x,re.I)]
+    milestones=[x for x in _discord_split_result(content) if 'LEVEL UP' in x or x.startswith(('🩹','🔎','🧳','📜','🏆')) or re.search(r'\b(unlocked|completed|started|ended)\b',x,re.I)]
     add('New this action','\n'.join(milestones))
     add('Next step',section('NEXT STEP'))
     card['fields'].sort(key=lambda f:0 if f['name'] in {'Result','Recovery needed'} else 1)
@@ -167,9 +170,9 @@ def _render_queue(m, content):
 
 def _store(m, pages):
     token = secrets.token_hex(16)
-    with m.SessionLocal() as db:
-        db.execute(delete(MessagePages).where(MessagePages.expires_at < m.now()))
-        db.add(MessagePages(id=token, pages=json.dumps(pages), expires_at=m.now() + timedelta(hours=24)))
+    with SessionLocal() as db:
+        db.execute(delete(MessagePages).where(MessagePages.expires_at < runtime.now()))
+        db.add(MessagePages(id=token, pages=json.dumps(pages), expires_at=runtime.now() + timedelta(hours=24)))
         db.commit()
     return page_data(token, pages, 0)
 
@@ -188,11 +191,12 @@ def page_data(token, pages, index):
 
 
 def open_page(m, payload):
+    from .game.players import as_utc
     match = re.fullmatch(r'page:([a-f0-9]{32}):(\d{1,5})', str((payload.get('data') or {}).get('custom_id', '')))
     if match:
-        with m.SessionLocal() as db:
+        with SessionLocal() as db:
             row = db.get(MessagePages, match[1])
-            if row and m.as_utc(row.expires_at) > m.now():
+            if row and as_utc(row.expires_at) > runtime.now():
                 pages = json.loads(row.pages)
                 index = int(match[2])
                 if index < len(pages):

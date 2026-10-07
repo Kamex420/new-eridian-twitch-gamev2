@@ -121,10 +121,11 @@ def twitchify(text):
 
 
 def install(m):
+    from .game.base import app
     from starlette.concurrency import run_in_threadpool
     from . import world_guard
 
-    @m.app.middleware('http')
+    @app.middleware('http')
     async def lite(request, call_next):
         problem = key_problem(request.url.path, request.query_params)
         if not problem:

@@ -25,6 +25,9 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import Column, String, Integer, DateTime, select, update, delete, or_
 from .db import Base
 from .queue_notifications import Notice, NoticeEvent, DM_PREFIX
+from . import runtime
+from .db import SessionLocal
+from .models import Identity
 
 TITLE = '🌙 While your quiet hours were on'
 HELD_LINE = '🌙 Held during your quiet hours.'
@@ -57,8 +60,8 @@ class HeldAlert(Base):
 
 
 def install(m):
-    QuietHours.__table__.create(m.engine, checkfirst=True)
-    HeldAlert.__table__.create(m.engine, checkfirst=True)
+    QuietHours.__table__.create(runtime.engine, checkfirst=True)
+    HeldAlert.__table__.create(runtime.engine, checkfirst=True)
 
 
 def row(db, channel, uid):
@@ -214,15 +217,15 @@ def stamp(at):
 
 def citizen_of(m, db, channel, recipient):
     """The canonical citizen a Discord user id belongs to in this world."""
-    ident = db.execute(select(m.Identity.canonical_uid).where(m.Identity.channel_id == channel, m.Identity.provider == 'discord',
-                                                              m.Identity.provider_uid == str(recipient))).scalars().first()
+    ident = db.execute(select(Identity.canonical_uid).where(Identity.channel_id == channel, Identity.provider == 'discord',
+                                                              Identity.provider_uid == str(recipient))).scalars().first()
     return ident or 'discord:' + str(recipient)
 
 
 def recipients(m, db, channel, uid):
     """Every Discord user id that is this citizen."""
-    found = set(db.scalars(select(m.Identity.provider_uid).where(m.Identity.channel_id == channel, m.Identity.provider == 'discord',
-                                                                 m.Identity.canonical_uid == uid)))
+    found = set(db.scalars(select(Identity.provider_uid).where(Identity.channel_id == channel, Identity.provider == 'discord',
+                                                                 Identity.canonical_uid == uid)))
     if uid.startswith('discord:'):
         found.add(uid.split(':', 1)[1])
     return found
@@ -243,7 +246,7 @@ def _reschedule(m, db, channel, uid):
     ids = _held_ids(m, db, channel, uid)
     if not ids:
         return 0
-    now = m.now()
+    now = runtime.now()
     r = row(db, channel, uid)
     when = window_end(r, now) if r is not None and inside(r, now) else now
     db.execute(update(Notice).where(Notice.id.in_(ids), Notice.state == 'pending').values(next_at=when)
@@ -304,7 +307,7 @@ def set_hours(m, db, p, tz, start, end):
         current.tz, current.start_min, current.end_min = name, begin, finish
         text = f'🌙 Quiet hours changed: {describe(current)} (was {was}).'
     db.flush()
-    now = m.now()
+    now = runtime.now()
     text += ' DM alerts in that window wait and arrive as one message when it ends.'
     if inside(current, now):
         text += f' They are on now, until {stamp(window_end(current, now))}.'
@@ -362,9 +365,10 @@ def delivery_line(db, channel, uid, now):
 
 def held_line(m, db, notice):
     """For a waiting alert that is held: when it arrives. '' when it is not held."""
+    from .game.players import as_utc
     if db.get(HeldAlert, notice.id) is None:
         return ''
-    return (f'🌙 Held for your quiet hours: this alert arrives at {stamp(m.as_utc(notice.next_at))}, with any others as one message. '
+    return (f'🌙 Held for your quiet hours: this alert arrives at {stamp(as_utc(notice.next_at))}, with any others as one message. '
             'Your results are saved.')
 
 
@@ -377,12 +381,13 @@ def check(m, notice_id):
       (channel, recipient)    release every due DM alert of that recipient as one message
     Holding is a conditional update of next_at, so it spends no attempt and no lease, and only one worker
     can hold a given due alert."""
-    with m.SessionLocal() as db:
+    from .game.players import as_utc
+    with SessionLocal() as db:
         notice = db.get(Notice, notice_id)
         if notice is None or notice.provider != 'discord' or not str(notice.message_channel or '').startswith(DM_PREFIX):
             return 'send'
-        now = m.now()
-        if notice.state not in ('pending', 'sending') or m.as_utc(notice.next_at) > now:
+        now = runtime.now()
+        if notice.state not in ('pending', 'sending') or as_utc(notice.next_at) > now:
             return None
         channel, recipient = notice.channel_id, str(notice.recipient)
         r = row(db, channel, citizen_of(m, db, channel, recipient))
@@ -407,12 +412,13 @@ def claim_release(m, channel, recipient):
     workers lock rows in the same order, and one commit: a row is claimed by exactly one worker, which then
     owns its lease. Held rows of alerts that can no longer be sent (superseded, sent, failed) are dropped.
     Returns detached snapshots, oldest alert first."""
-    with m.SessionLocal() as db:
+    from .game.players import as_utc
+    with SessionLocal() as db:
         stale = list(db.scalars(select(HeldAlert.notice_id).outerjoin(Notice, Notice.id == HeldAlert.notice_id).where(
             HeldAlert.channel_id == channel, HeldAlert.recipient == recipient,
             or_(Notice.id.is_(None), Notice.state.notin_(['pending', 'sending'])))))
         forget(db, stale)
-        now = m.now()
+        now = runtime.now()
         ids = list(db.scalars(select(Notice.id).where(Notice.provider == 'discord', Notice.channel_id == channel, Notice.recipient == recipient,
                                                       Notice.message_channel.startswith(DM_PREFIX), Notice.state.in_(['pending', 'sending']),
                                                       Notice.next_at <= now).order_by(Notice.id)))
@@ -430,7 +436,7 @@ def claim_release(m, channel, recipient):
             n_ = db.get(Notice, notice_id)
             event = db.get(NoticeEvent, notice_id)
             batch.append(SimpleNamespace(**{k: getattr(n_, k) for k in ('id', 'recipient', 'message_channel', 'content', 'attempts', 'provider', 'channel_id')},
-                                         kind=event.kind if event else '', created_at=m.as_utc(event.created_at) if event else None))
+                                         kind=event.kind if event else '', created_at=as_utc(event.created_at) if event else None))
     far = datetime.max.replace(tzinfo=timezone.utc)
     return sorted(batch, key=lambda x: (x.created_at or far, x.id))
 

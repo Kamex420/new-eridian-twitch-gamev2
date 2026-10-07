@@ -8,6 +8,7 @@ import contextvars
 import logging
 import time
 import requests
+from . import runtime
 
 # True while edit_original fills a new deferred message (an answer acknowledged with type 5)
 # rather than changing the message a button sits on.
@@ -55,13 +56,14 @@ def edit_original(application_id,token,data):
 
 
 def finish(m,payload,command,uid,name,options):
-    origin=m.task_queue.queue_notifications.origin_channel
+    from . import discord_execution, extras, inbox, menu, task_queue, ui
+    origin=task_queue.queue_notifications.origin_channel
     token=origin.set(str(payload.get('channel_id') or ''))
-    m.ui.INTERACTION.set(payload)   # lets /menu show moderator tools to the game owner
+    ui.INTERACTION.set(payload)   # lets /menu show moderator tools to the game owner
     try:
-        options=m.extras.default_options(m,command,options,uid)   # e.g. /make reopens where you left off
-        result=m.discord_execution.execute(m,payload,command,uid,name,options)
-        try:m.extras.record_discord(m,uid,name,command,options)
+        options=extras.default_options(m,command,options,uid)   # e.g. /make reopens where you left off
+        result=discord_execution.execute(m,payload,command,uid,name,options)
+        try:extras.record_discord(m,uid,name,command,options)
         except Exception:logging.getLogger(__name__).error('Recent action not recorded: %s',command)
     except Exception:
         logging.getLogger(__name__).error('Deferred Discord command rolled back: %s',command)
@@ -71,29 +73,29 @@ def finish(m,payload,command,uid,name,options):
         # Public receipts omit private modifier calculations. No extra unsolicited
         # follow-up: the action has one response, with only relevant changes.
         # Every ticket the reply's buttons need is saved in one transaction.
-        with m.ui.ticket_batch(m):
+        with ui.ticket_batch(m):
             try:
                 # Workbench, mining, gathering and queue replies carry dropdowns and buttons.
-                data=m.ui.slash_panel(m,command,uid,name,options,result) or m._discord_json_message(result,message_type=command)['data']
+                data=ui.slash_panel(m,command,uid,name,options,result) or runtime._discord_json_message(result,message_type=command)['data']
                 # Lists such as a skill's tasks get a button beside each item in the newer layout.
-                data=m.ui.add_list_items(m,data,uid,command,options,name)
+                data=ui.add_list_items(m,data,uid,command,options,name)
                 # Every reply offers the next step as buttons: Again, its menu area, and Menu.
                 if command!='menu':
                     try:
                         rows=[r for r in data.get('components') or [] if r.get('components')]
-                        if len(rows)<5:data['components']=rows+m.menu.after_rows(m,command,options,uid,5-len(rows))
+                        if len(rows)<5:data['components']=rows+menu.after_rows(m,command,options,uid,5-len(rows))
                     except Exception:
                         logging.getLogger(__name__).error('Menu buttons could not be added: %s',command)
             except Exception:
                 logging.getLogger(__name__).error('Saved command result could not be formatted: %s',command)
                 data={'content':result[:1800], 'allowed_mentions':{'parse':[]}}
     finally:origin.reset(token)
-    edit_original(str(payload['application_id']),str(payload['token']),m.ui.tidy(data))
+    edit_original(str(payload['application_id']),str(payload['token']),ui.tidy(data))
     # Private notifications: warnings and tips raised by this command, and anything
     # waiting in the player's inbox, shown only to them.
     try:
-        m.inbox.after_command(m,uid,name,command,options,locals().get('result',''))
-        m.inbox.deliver(m,payload,uid)
+        inbox.after_command(m,uid,name,command,options,locals().get('result',''))
+        inbox.deliver(m,payload,uid)
     except Exception:
         logging.getLogger(__name__).error('Private notifications could not be delivered: %s',command)
 

@@ -1,11 +1,4 @@
 {
- "app/activity_feed.py": [
-  "DISCORD_GAME_CHANNEL_ID",
-  "DISCORD_WORLD_ID",
-  "Player",
-  "SessionLocal",
-  "resource_name"
- ],
  "app/ask.py": [
   "NEED_EMOJI",
   "Player",
@@ -104,31 +97,6 @@
   "task_queue",
   "twitch_owner_ok"
  ],
- "app/discord_deferred.py": [
-  "_discord_json_message",
-  "discord_execution",
-  "extras",
-  "inbox",
-  "menu",
-  "task_queue",
-  "ui"
- ],
- "app/discord_execution.py": [
-  "DISCORD_PRIVATE_COMMANDS",
-  "DISCORD_WORLD_ID",
-  "SessionLocal",
-  "_discord_call_internal",
-  "now",
-  "task_queue"
- ],
- "app/discord_queue_worker.py": [
-  "Player",
-  "SessionLocal",
-  "_discord_json_message",
-  "app",
-  "now",
-  "ui"
- ],
  "app/extras.py": [
   "Cooldown",
   "DISCORD_WORLD_ID",
@@ -181,11 +149,6 @@
   "item_identity",
   "merge_accounts",
   "task_queue"
- ],
- "app/fun_systems.py": [
-  "collection",
-  "contracts",
-  "resolve"
  ],
  "app/inbox.py": [
   "COMFORT_SLOW",
@@ -245,20 +208,6 @@
   "society_tier",
   "twitch_lite"
  ],
- "app/live_events.py": [
-  "DISCORD_WORLD_ID",
-  "Player",
-  "colony_state",
-  "material_change",
-  "resource_name",
-  "seed_content",
-  "society"
- ],
- "app/maintenance.py": [
-  "app",
-  "engine",
-  "now"
- ],
  "app/menu.py": [
   "AccountLink",
   "DISCORD_OPTION_SCHEMA",
@@ -314,39 +263,6 @@
   "world",
   "world_clock"
  ],
- "app/message_layout.py": [
-  "SessionLocal",
-  "_discord_action_name",
-  "_discord_split_result",
-  "as_utc",
-  "now"
- ],
- "app/onboarding.py": [
-  "CraftLedger",
-  "TITLE_DEFS",
-  "material_change",
-  "now",
-  "seed_content",
-  "task_queue",
-  "unlock_title",
-  "world_clock"
- ],
- "app/practice.py": [
-  "SKILL_LABELS",
-  "material_change",
-  "resource_name",
-  "seed_content"
- ],
- "app/presentation.py": [
-  "_discord_split_result",
-  "discord_command_copy",
-  "discord_message_status"
- ],
- "app/production_balance.py": [
-  "SEED_INDUSTRIES",
-  "crafting_progression",
-  "seed_content"
- ],
  "app/qol.py": [
   "Cooldown",
   "SEED_INDUSTRIES",
@@ -388,28 +304,6 @@
   "now",
   "resource_name"
  ],
- "app/quiet_hours.py": [
-  "Identity",
-  "SessionLocal",
-  "as_utc",
-  "engine",
-  "now"
- ],
- "app/recap.py": [
-  "DISCORD_WORLD_ID",
-  "Player",
-  "SOCIETY_TIERS",
-  "Society",
-  "resource_name",
-  "society",
-  "society_tier"
- ],
- "app/seasons.py": [
-  "DISCORD_WORLD_ID",
-  "Player",
-  "TITLE_DEFS",
-  "unlock_title"
- ],
  "app/shopping_list.py": [
   "SessionLocal",
   "UNIQUE_CORE_ITEMS",
@@ -421,13 +315,6 @@
   "presentation",
   "qol",
   "resource_name"
- ],
- "app/stream_overlay.py": [
-  "ActionLog",
-  "Player",
-  "as_utc",
-  "engine",
-  "task_queue"
  ],
  "app/task_queue.py": [
   "ACTION_SKILLS",
@@ -458,12 +345,6 @@
   "task_energy",
   "workbench"
  ],
- "app/task_yields.py": [
-  "action_display_name",
-  "material_change",
-  "resource_name",
-  "task_energy"
- ],
  "app/trophies.py": [
   "COLLECTIBLES",
   "COLLECTION_SETS",
@@ -477,9 +358,6 @@
   "task_queue",
   "unlock_title",
   "workbench"
- ],
- "app/twitch_lite.py": [
-  "app"
  ],
  "app/ui.py": [
   "AVESTA_DAY_SECONDS",
@@ -560,13 +438,6 @@
   "society_tier_index",
   "task_energy",
   "task_queue"
- ],
- "app/world_guard.py": [
-  "DISCORD_WORLD_ID",
-  "RUNTIME_WARNINGS",
-  "SessionLocal",
-  "Society",
-  "select"
  ],
  "app/world_merge.py": [
   "DISCORD_WORLD_ID",

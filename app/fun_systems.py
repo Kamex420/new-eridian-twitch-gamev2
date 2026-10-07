@@ -53,15 +53,18 @@ def season_today(today=None):
             "days_to_holiday": pick["days_until_holiday"]}
 
 def install(app):
+    from .game.players import resolve
+    from .game.routes_player import contracts
+    from .game.routes_world import collection
     @app.get("/api/v1/fun/daily")
     def daily_fun(channel:str,uid:str,name:str="Citizen",provider:str="twitch"):
         from . import main as m
-        return m.contracts(channel=channel,uid=uid,name=name,provider=provider)
+        return contracts(channel=channel,uid=uid,name=name,provider=provider)
 
     @app.get("/api/v1/fun/collection")
     def fun_collection(channel:str,uid:str,name:str="Citizen",provider:str="twitch"):
         from . import main as m
-        return m.collection(channel=channel,uid=uid,name=name,provider=provider)
+        return collection(channel=channel,uid=uid,name=name,provider=provider)
 
     @app.get("/api/v1/fun/vote")
     @transaction
@@ -70,7 +73,7 @@ def install(app):
         if choice not in {"greenhouse","market","observatory"}:return "🗳️ Choose: greenhouse, market, observatory."
         day=date.today().toordinal()
         with SessionLocal() as db:
-            uid=m.resolve(db,channel,provider,uid)
+            uid=resolve(db,channel,provider,uid)
             row=db.execute(select(Vote).where(Vote.channel_id==channel,Vote.canonical_uid==uid,Vote.day==day)).scalar_one_or_none()
             if not row:
                 row=Vote(channel_id=channel,canonical_uid=uid,day=day,choice=choice)

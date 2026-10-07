@@ -252,6 +252,7 @@ def _receipt_title(m, content, command, failed):
 
 def receipt(m, content, command, status):
     """A short card for a performed task."""
+    from .game.discord_embeds import _discord_split_result
     rows = [x.strip() for x in lines_of(content) if x.strip()]
     failed = bool(re.search(r'FAILED', content[:160])) or status == 'failure'
     if failed and not _section(content, 'WHY'):
@@ -299,7 +300,7 @@ def receipt(m, content, command, status):
     recovery = _section(content, '⚠️ RECOVERY NEEDED BEFORE MORE WORK')
     if recovery:
         extra.append('⚠️ ' + ' '.join(recovery.splitlines())[:200])
-    for x in m._discord_split_result(content):
+    for x in _discord_split_result(content):
         if 'LEVEL UP' in x or x.startswith(('🏆', '🩹', '🔎', '🧳', '📜', '🎉')):
             extra.append('**' + x.strip('* ')[:200] + '**' if 'LEVEL UP' in x or x.startswith('🏆') else x[:200])
     step = _section(content, 'NEXT STEP')
@@ -386,8 +387,10 @@ def info(m, content, status, command=''):
 
 def card(m, content, command=''):
     """(embed, shape, overflow) for any reply text."""
-    content = m.discord_command_copy(content)
-    status = m.discord_message_status(content)
+    from .game.discord_commands import discord_command_copy
+    from .game.discord_embeds import discord_message_status
+    content = discord_command_copy(content)
+    status = discord_message_status(content)
     shape = kind(content)
     if shape == 'receipt':
         return receipt(m, content, command, status), shape, len(content) > 900
@@ -399,8 +402,9 @@ def card(m, content, command=''):
 
 def page_text(m, content):
     """Full text for Details pages: bold section titles and tidy change lines."""
+    from .game.discord_commands import discord_command_copy
     out = []
-    for raw in lines_of(m.discord_command_copy(content)):
+    for raw in lines_of(discord_command_copy(content)):
         line = raw.strip()
         if not line:
             out.append('')
@@ -472,7 +476,8 @@ def chat_fold(text):
 
 
 def chat_receipt(m, text, command=''):
-    card = receipt(m, text, command, m.discord_message_status(text))
+    from .game.discord_embeds import discord_message_status
+    card = receipt(m, text, command, discord_message_status(text))
     lines = [card.get('title', '')] + [x for x in card['description'].split('\n') if x.strip() and x != '\u200b']
     lines = [plain(x).strip() for x in lines]
     return ' · '.join(x for x in lines if x)

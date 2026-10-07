@@ -60,10 +60,11 @@ _KEYS = {}
 
 def key(m, name):
     """The bag key for a find's item name."""
+    from . import seed_content
     if name == 'Cargo':
         return 'cargo'
     if name not in _KEYS:
-        _KEYS[name] = m.seed_content.find_item(name)
+        _KEYS[name] = seed_content.find_item(name)
     return _KEYS[name]
 
 
@@ -73,6 +74,9 @@ def pool(skill, branch=None):
 
 def find(m, db, p, skill, branch=None):
     """After a task succeeds: sometimes add one related item to the bag. Returns the line to show, or ''."""
+    from .game.cooldowns_materials import material_change
+    from .game.players import resource_name
+    from .game.rules import SKILL_LABELS
     items = pool(skill, branch)
     if not ENABLED or not items:
         return ''
@@ -80,5 +84,5 @@ def find(m, db, p, skill, branch=None):
     if random.random() >= chance:
         return ''
     item = key(m, random.choice(items))
-    m.material_change(db, p, item, 1)
-    return f"🎁 Lucky find ({m.SKILL_LABELS.get(skill, skill)}): +1 {m.resource_name(item)}"
+    material_change(db, p, item, 1)
+    return f"🎁 Lucky find ({SKILL_LABELS.get(skill, skill)}): +1 {resource_name(item)}"

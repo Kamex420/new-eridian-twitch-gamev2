@@ -85,7 +85,7 @@ def convert(path, main, runtime, defs):
                if isinstance(outer, (ast.FunctionDef, ast.AsyncFunctionDef))):
             continue                                  # nested: handled with its top-level function
         refs = [x for x in ast.walk(fn) if isinstance(x, ast.Attribute) and isinstance(x.value, ast.Name)
-                and x.value.id == 'm' and x.attr in vars(main)]
+                and x.value.id == 'm' and x.attr in vars(main) and isinstance(x.ctx, ast.Load)]   # m.X = ... stays
         if not refs:
             continue
         local = bound_in(fn) | module_names
@@ -125,8 +125,9 @@ def convert(path, main, runtime, defs):
         elif body0.lineno == fn.lineno:               # def f(m): return ... on one line
             inserts.append((body0.lineno, body0.col_offset, ' ' * (fn.col_offset + 4), imports))
         else:
-            indent = re.match(r'\s*', lines[body0.lineno - 1]).group(0)
-            inserts.append((body0.lineno - 1, None, indent, imports))
+            first = min([body0.lineno] + [d.lineno for d in getattr(body0, 'decorator_list', [])])   # above its decorators
+            indent = re.match(r'\s*', lines[first - 1]).group(0)
+            inserts.append((first - 1, None, indent, imports))
     # attribute edits (right to left per line), then import insertions (bottom up)
     by_line = collections.defaultdict(list)
     for x, text in edits:

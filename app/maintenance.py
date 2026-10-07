@@ -13,6 +13,7 @@ import logging
 import os
 from datetime import timedelta
 from sqlalchemy import text
+from . import runtime
 
 BATCH = 2000
 MAX_BATCHES = 25          # per table per pass; a backlog is worked off over a few hours
@@ -30,7 +31,7 @@ def days(name, default):
 def _batched(m, statement, params):
     removed = 0
     for _ in range(MAX_BATCHES):
-        with m.engine.begin() as conn:
+        with runtime.engine.begin() as conn:
             count = conn.execute(text(statement), params).rowcount or 0
         removed += count
         if count < BATCH:
@@ -40,7 +41,7 @@ def _batched(m, statement, params):
 
 def prune(m):
     """Delete old rows; returns how many went from each table."""
-    now = m.now()
+    now = runtime.now()
     done = {}
     done['action_logs'] = _batched(m, 'DELETE FROM action_logs_v5 WHERE id IN (SELECT id FROM action_logs_v5 WHERE created_at < :cutoff '
                                       f'ORDER BY id LIMIT {BATCH})', {'cutoff': now - timedelta(days=days('ACTION_LOG_DAYS', 14))})
@@ -59,6 +60,7 @@ def prune(m):
 
 
 def install(m):
+    from .game.base import app
     from discord.ext import tasks
 
     @tasks.loop(hours=1, reconnect=True)
@@ -69,9 +71,9 @@ def install(m):
             log.exception('Cleanup pass failed; it runs again next hour')
 
     async def start():
-        m.app.state.maintenance_worker = timer.start()
+        app.state.maintenance_worker = timer.start()
 
     async def stop():
         timer.stop()
-    m.app.add_event_handler('startup', start)
-    m.app.add_event_handler('shutdown', stop)
+    app.add_event_handler('startup', start)
+    app.add_event_handler('shutdown', stop)

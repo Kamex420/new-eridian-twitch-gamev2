@@ -24,6 +24,9 @@ import os
 from datetime import datetime, timedelta, timezone
 from sqlalchemy import Column, Integer, String, DateTime, select, delete, func
 from .db import Base
+from . import runtime
+from .models import ActionLog
+from .models import Player
 
 KEEP = 120                      # highlights kept per world
 PANELS = {'alerts', 'ticker', 'leaders', 'working', 'join', 'map', 'narrator', 'hub', 'challenge'}
@@ -55,8 +58,8 @@ class StreamState(Base):
 
 
 def install(m):
-    StreamHighlight.__table__.create(m.engine, checkfirst=True)
-    StreamState.__table__.create(m.engine, checkfirst=True)
+    StreamHighlight.__table__.create(runtime.engine, checkfirst=True)
+    StreamState.__table__.create(runtime.engine, checkfirst=True)
 
 
 def _now():
@@ -89,7 +92,8 @@ def from_announcement(db, p, message):
 
 
 def queue_finished(m, db, p, queue):
-    label = m.task_queue.choices(m).get(queue.task, queue.task.split(':')[-1])
+    from . import task_queue
+    label = task_queue.choices(m).get(queue.task, queue.task.split(':')[-1])
     highlight(db, p.channel_id, 'queue', f'{p.display_name} finished a queue', f'{label} ×{queue.total}', p.display_name)
 
 
@@ -123,30 +127,32 @@ def watch(m, db, channel, tier, project, story, directive):
 # ---------------------------------------------------------------- data for /api/v1/overlay
 
 def extra(m, db, source_ids, world):
+    from . import task_queue
+    from .game.players import as_utc
     since = _now() - timedelta(hours=24)
     rows = list(db.scalars(select(StreamHighlight).where(StreamHighlight.channel_id.in_(source_ids))
                            .order_by(StreamHighlight.id.desc()).limit(20)))
     highlights = [{'id': r.id, 'kind': r.kind, 'emoji': r.emoji, 'title': r.title, 'detail': r.detail, 'name': r.name,
-                   'at': m.as_utc(r.created_at).isoformat()} for r in rows]
+                   'at': as_utc(r.created_at).isoformat()} for r in rows]
 
-    players = list(db.scalars(select(m.Player).where(m.Player.channel_id.in_(source_ids)).order_by(m.Player.contribution.desc()).limit(5)))
+    players = list(db.scalars(select(Player).where(Player.channel_id.in_(source_ids)).order_by(Player.contribution.desc()).limit(5)))
     names = {}
-    counts = db.execute(select(m.ActionLog.canonical_uid, func.count()).where(m.ActionLog.channel_id.in_(source_ids),
-                                                                             m.ActionLog.created_at >= since)
-                        .group_by(m.ActionLog.canonical_uid).order_by(func.count().desc()).limit(5)).all()
+    counts = db.execute(select(ActionLog.canonical_uid, func.count()).where(ActionLog.channel_id.in_(source_ids),
+                                                                             ActionLog.created_at >= since)
+                        .group_by(ActionLog.canonical_uid).order_by(func.count().desc()).limit(5)).all()
     if counts:
-        for p in db.scalars(select(m.Player).where(m.Player.channel_id.in_(source_ids), m.Player.twitch_uid.in_([u for u, _ in counts]))):
+        for p in db.scalars(select(Player).where(Player.channel_id.in_(source_ids), Player.twitch_uid.in_([u for u, _ in counts]))):
             names.setdefault(p.twitch_uid, p.display_name)
     from .autonomy import clean_name
     leaders = {'contributors': [{'name': clean_name(p.display_name), 'contribution': p.contribution} for p in players if p.contribution > 0],
                'active_today': [{'name': clean_name(names.get(u, 'Citizen')), 'actions': n} for u, n in counts]}
 
-    tq = m.task_queue
+    tq = task_queue
     queues = list(db.scalars(select(tq.TaskQueue).where(tq.TaskQueue.channel_id.in_(source_ids), tq.TaskQueue.state.in_(tuple(tq.ACTIVE)))
                              .order_by(tq.TaskQueue.next_at).limit(8)))
     who = {}
     if queues:
-        for p in db.scalars(select(m.Player).where(m.Player.channel_id.in_(source_ids), m.Player.twitch_uid.in_([q.canonical_uid for q in queues]))):
+        for p in db.scalars(select(Player).where(Player.channel_id.in_(source_ids), Player.twitch_uid.in_([q.canonical_uid for q in queues]))):
             who.setdefault(p.twitch_uid, p.display_name)
     choices = tq.choices(m)
     working = [{'name': clean_name(who.get(q.canonical_uid, 'Citizen')), 'task': choices.get(q.task, q.task.split(':')[-1]), 'done': q.total - q.remaining,

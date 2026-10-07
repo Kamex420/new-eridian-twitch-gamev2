@@ -24,6 +24,9 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import Column, String, Integer, Text, DateTime, select, update, delete
 from .db import Base
 from . import layout_v2
+from . import runtime
+from .db import SessionLocal
+from .models import Player
 
 # How often the feed updates. It edits its own message when nobody else has posted since (edits do not
 # notify anyone), so a calm channel gets one message that grows; big moments go out at once.
@@ -80,9 +83,9 @@ def _utc(dt):
 
 
 def state(m, db):
-    row = db.get(FeedState, m.DISCORD_WORLD_ID)
+    row = db.get(FeedState, runtime.DISCORD_WORLD_ID)
     if row is None:
-        row = FeedState(world=m.DISCORD_WORLD_ID, channel='', enabled=1, message_id='', lines='[]', last_highlight=_top_highlight(db))
+        row = FeedState(world=runtime.DISCORD_WORLD_ID, channel='', enabled=1, message_id='', lines='[]', last_highlight=_top_highlight(db))
         db.add(row)
         db.flush()
     return row
@@ -95,10 +98,10 @@ def _top_highlight(db):
 
 
 def channel_of(m, db):
-    row = db.get(FeedState, m.DISCORD_WORLD_ID)
+    row = db.get(FeedState, runtime.DISCORD_WORLD_ID)
     if row is not None and not row.enabled:
         return ''
-    chosen = (row.channel if row is not None else '') or os.getenv('DISCORD_FEED_CHANNEL_ID', '') or m.DISCORD_GAME_CHANNEL_ID
+    chosen = (row.channel if row is not None else '') or os.getenv('DISCORD_FEED_CHANNEL_ID', '') or runtime.DISCORD_GAME_CHANNEL_ID
     return str(chosen or '').strip()
 
 
@@ -121,6 +124,7 @@ def set_hidden(db, p, value):
 
 def record(m, db, p, fn_name, params, before, after, acting=False):
     """Note what a command brought in, for the next feed update."""
+    from .game.players import resource_name
     if not before or not after or not channel_of(m, db) or hidden(db, p):
         return
     b, a = before.get('Resources', {}), after.get('Resources', {})
@@ -128,13 +132,13 @@ def record(m, db, p, fn_name, params, before, after, acting=False):
     for k, v in a.items():
         n = v - b.get(k, 0)
         if n > 0 and k not in {'sc', 'contribution'} and not str(k).startswith('gear:'):
-            label = m.resource_name(k)
+            label = resource_name(k)
             gained[label] = gained.get(label, 0) + n
     if not gained:
         return
     verb = 'seedling' if acting else fn_name if fn_name in VERBS else 'action'
     from .autonomy import clean_name
-    db.add(FeedEvent(world=m.DISCORD_WORLD_ID, channel_id=p.channel_id, canonical_uid=p.twitch_uid, name=clean_name(p.display_name)[:80],
+    db.add(FeedEvent(world=runtime.DISCORD_WORLD_ID, channel_id=p.channel_id, canonical_uid=p.twitch_uid, name=clean_name(p.display_name)[:80],
                      verb=verb, items=json.dumps(gained)[:1000], seedling=int(bool(acting)), created_at=_now()))
 
 
@@ -158,8 +162,8 @@ def _highlight_line(h):
 def build(m, db, st):
     """(new lines, urgent?, highest highlight id, event ids) for everything since the last update."""
     from .stream_overlay import StreamHighlight
-    hidden_names = {n for n, in db.execute(select(m.Player.display_name).join(
-        FeedPrivacy, (FeedPrivacy.channel_id == m.Player.channel_id) & (FeedPrivacy.canonical_uid == m.Player.twitch_uid))
+    hidden_names = {n for n, in db.execute(select(Player.display_name).join(
+        FeedPrivacy, (FeedPrivacy.channel_id == Player.channel_id) & (FeedPrivacy.canonical_uid == Player.twitch_uid))
         .where(FeedPrivacy.hidden == 1)).all()}
     highlights = db.execute(select(StreamHighlight).where(StreamHighlight.id > st.last_highlight).order_by(StreamHighlight.id).limit(40)).scalars().all()
     top = max([h.id for h in highlights], default=st.last_highlight)
@@ -167,7 +171,7 @@ def build(m, db, st):
     urgent = any(h.kind in URGENT for h in shown)
     lines = [_highlight_line(h) for h in sorted(shown, key=lambda h: (h.kind not in URGENT, h.id))]
 
-    events = db.execute(select(FeedEvent).where(FeedEvent.world == m.DISCORD_WORLD_ID).order_by(FeedEvent.id)).scalars().all()
+    events = db.execute(select(FeedEvent).where(FeedEvent.world == runtime.DISCORD_WORLD_ID).order_by(FeedEvent.id)).scalars().all()
     people, seedlings = {}, {}
     for e in events:
         items = json.loads(e.items or '{}')
@@ -216,7 +220,7 @@ def payload(m, lines):
 def tick(m, force=False):
     """Post (or extend) the feed when it is due. Safe to call from several workers: one claims each update."""
     token = os.getenv('DISCORD_BOT_TOKEN', '').strip()
-    with m.SessionLocal() as db:
+    with SessionLocal() as db:
         target = channel_of(m, db)
         if not token or not target.isdigit():
             return None
@@ -246,7 +250,7 @@ def tick(m, force=False):
         old = json.loads(st.lines or '[]')
         message_id, message_at, channel = st.message_id, st.message_at, target
     ok, message_id, all_lines = deliver(m, token, channel, message_id, message_at, old, new)
-    with m.SessionLocal() as db:
+    with SessionLocal() as db:
         st = state(m, db)
         if ok:
             if message_id != st.message_id:
@@ -296,5 +300,5 @@ def here(m, db, channel):
 def off(m, db):
     st = state(m, db)
     st.enabled = 0
-    db.execute(delete(FeedEvent).where(FeedEvent.world == m.DISCORD_WORLD_ID))
+    db.execute(delete(FeedEvent).where(FeedEvent.world == runtime.DISCORD_WORLD_ID))
     return '🔕 The activity feed is off. /mod → Activity feed: post here turns it back on.'

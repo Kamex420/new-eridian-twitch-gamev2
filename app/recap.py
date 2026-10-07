@@ -20,6 +20,9 @@ import os
 from datetime import datetime, timedelta, timezone
 from sqlalchemy import Column, String, Integer, DateTime, select, func
 from .db import Base
+from . import runtime
+from .models import Player
+from .models import Society
 
 RECAP_HOUR = min(23, max(0, int(os.getenv('RECAP_HOUR', '18'))))
 FUNNY = ('fail', 'empty', 'nothing', 'slip', 'trip', 'nap', 'dozed', 'argu', 'rocky', 'duck', 'spill', 'lost', 'forgot', 'sneez', 'hum',
@@ -57,18 +60,22 @@ def _names(m, db, pairs):
     out = {}
     from .autonomy import clean_name
     for channel, uid in pairs:
-        p = db.execute(select(m.Player).where(m.Player.channel_id == channel, m.Player.twitch_uid == uid)).scalar_one_or_none()
+        p = db.execute(select(Player).where(Player.channel_id == channel, Player.twitch_uid == uid)).scalar_one_or_none()
         out[(channel, uid)] = clean_name(p.display_name) if p else 'Citizen'
     return out
 
 
 def _stats(m, db):
-    s = m.society(db, m.DISCORD_WORLD_ID)
+    from .game.players import society
+    s = society(db, runtime.DISCORD_WORLD_ID)
     return {k: getattr(s, k) for k in ('food', 'materials', 'development', 'knowledge', 'treasury', 'reputation', 'population')}
 
 
 def build(m, db, when=None):
     """The recap as (title, [(section heading, text)], plain text)."""
+    from .game.players import resource_name
+    from .game.rules import SOCIETY_TIERS
+    from .game.world import society_tier
     from . import seasons, votes, live_events, trophies, autonomy
     when = when or _now()
     since = week_start(when)
@@ -98,17 +105,17 @@ def build(m, db, when=None):
             best, best_n = (h, gained), n
     if best:
         who = _names(m, db, [(best[0].channel_id, best[0].canonical_uid)])[(best[0].channel_id, best[0].canonical_uid)]
-        items = ', '.join(f'{v} {m.resource_name(k)}' for k, v in sorted(best[1].items(), key=lambda x: -x[1])[:3] if v > 0)
+        items = ', '.join(f'{v} {resource_name(k)}' for k, v in sorted(best[1].items(), key=lambda x: -x[1])[:3] if v > 0)
         lines.append(f"🌱 Biggest Seedling haul: **{who}'s** Seedling came home with {items}.")
     sections.append(('🎒 Biggest hauls', '\n'.join(lines) or 'No hauls recorded this week.'))
 
     stats = _stats(m, db)
-    total = m.Society(**stats)
-    tier = m.society_tier(total)
+    total = Society(**stats)
+    tier = society_tier(total)
     core = {k: stats[k] for k in ('food', 'materials', 'development', 'knowledge', 'treasury', 'reputation')}
     low = min(core, key=core.get)
-    nxt = next((t for t in m.SOCIETY_TIERS if t[1] > core[low]), None)
-    last = db.execute(select(RecapPost).where(RecapPost.world == m.DISCORD_WORLD_ID, RecapPost.week != week)
+    nxt = next((t for t in SOCIETY_TIERS if t[1] > core[low]), None)
+    last = db.execute(select(RecapPost).where(RecapPost.world == runtime.DISCORD_WORLD_ID, RecapPost.week != week)
                       .order_by(RecapPost.posted_at.desc())).scalars().first()
     before = json.loads(last.stats) if last else {}
     icon = {'food': '🌾', 'materials': '⛏️', 'development': '⚙️', 'knowledge': '🔬', 'treasury': '🪙', 'reputation': '⭐', 'population': '👥'}
@@ -152,7 +159,7 @@ def build(m, db, when=None):
     if moments:
         sections.append(('🌱 Seedling moments', '\n'.join(f'{e} *{t}*' for e, t in moments)))
 
-    new = db.execute(select(m.Player).where(m.Player.created_at >= since).order_by(m.Player.created_at)).scalars().all()
+    new = db.execute(select(Player).where(Player.created_at >= since).order_by(Player.created_at)).scalars().all()
     if new:
         who = ', '.join(autonomy.clean_name(p.display_name) for p in new[:10]) + (f' and {len(new) - 10} more' if len(new) > 10 else '')
         sections.append((f'👋 New citizens ({len(new)})', f'Welcome {who}!'))
@@ -199,7 +206,7 @@ def post(m, db, force=False, when=None):
     import requests
     when = when or _now()
     week = seasons.week_key(when)
-    row = db.get(RecapPost, (m.DISCORD_WORLD_ID, week))
+    row = db.get(RecapPost, (runtime.DISCORD_WORLD_ID, week))
     if row and row.sent and not force:
         return False, f'The recap for {week} was already posted.'
     title, sections, plain = build(m, db, when)
@@ -217,7 +224,7 @@ def post(m, db, force=False, when=None):
         except Exception:
             logging.getLogger(__name__).warning('Weekly recap post failed')
     if row is None:
-        row = RecapPost(world=m.DISCORD_WORLD_ID, week=week, posted_at=_now(), stats='{}', sent=0)
+        row = RecapPost(world=runtime.DISCORD_WORLD_ID, week=week, posted_at=_now(), stats='{}', sent=0)
         db.add(row)
     row.posted_at, row.stats, row.sent = _now(), json.dumps(_stats(m, db)), int(ok or row.sent)
     if ok:
@@ -235,7 +242,7 @@ def tick(m, db):
     from . import seasons
     if not due() or not channel_id() or not os.getenv('DISCORD_BOT_TOKEN', '').strip():
         return None
-    row = db.get(RecapPost, (m.DISCORD_WORLD_ID, seasons.week_key()))
+    row = db.get(RecapPost, (runtime.DISCORD_WORLD_ID, seasons.week_key()))
     if row and row.sent:
         return None
     return post(m, db)

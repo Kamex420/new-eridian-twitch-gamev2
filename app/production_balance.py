@@ -27,32 +27,38 @@ def outputs_at(s,cp,recipe,tag):
 
 
 def selected_station(m,db,p,recipe):
-    cp=m.crafting_progression;s=m.seed_content
+    from . import crafting_progression, seed_content
+    cp=crafting_progression;s=seed_content
     available=[tag for tag in cp.tags(recipe) if cp.STATIONS[tag]['tier']<=cp.personal_tier(m,db,p) and cp.has_access(m,db,p,tag)]
     if not available:return None
     return max(available,key=lambda tag:(sum(outputs_at(s,cp,recipe,tag).values()),cp.STATIONS[tag]['tier'],tag))
 
 
 def current_outputs(m,db,p,recipe):
+    from . import crafting_progression, seed_content
     tag=selected_station(m,db,p,recipe)
-    return outputs_at(m.seed_content,m.crafting_progression,recipe,tag) if tag else dict(m.seed_content.RECIPES[recipe]['outputs'])
+    return outputs_at(seed_content,crafting_progression,recipe,tag) if tag else dict(seed_content.RECIPES[recipe]['outputs'])
 
 
 def quote(m,db,p,recipe):
-    row=m.seed_content.RECIPES[recipe]
+    from . import seed_content
+    from .game.rules import SEED_INDUSTRIES
+    row=seed_content.RECIPES[recipe]
     output=current_outputs(m,db,p,recipe)
-    sale=sum(m.SEED_INDUSTRIES.get(k,{}).get('sell',0)*n for k,n in output.items())
-    inputs=sum(m.SEED_INDUSTRIES.get(k,{}).get('sell',0)*n for k,n in row['inputs'].items())
+    sale=sum(SEED_INDUSTRIES.get(k,{}).get('sell',0)*n for k,n in output.items())
+    inputs=sum(SEED_INDUSTRIES.get(k,{}).get('sell',0)*n for k,n in row['inputs'].items())
     return f'NPC sale: {sale} SC per batch · input resale value: {inputs} SC · added value: {sale-inputs:+} SC.'
 
 
 def configure_market(m):
     """Every catalog item has buyback; buy/sell spread prevents instant resale profit."""
-    for key in m.seed_content.ACTIVE:
-        buy=m.crafting_progression.VALUES[key]
+    from . import crafting_progression, seed_content
+    from .game.rules import SEED_INDUSTRIES
+    for key in seed_content.ACTIVE:
+        buy=crafting_progression.VALUES[key]
         sell=max(1,buy*7//10)
         buy=max(buy,sell+1)
-        previous=m.SEED_INDUSTRIES.get(key,{})
-        m.SEED_INDUSTRIES[key]=dict(buy=buy if previous else 0,sell=sell,
-            category='rare' if key in m.crafting_progression.RARE else previous.get('category','seed'),
-            purpose=m.seed_content.PURPOSE[key]['label'])
+        previous=SEED_INDUSTRIES.get(key,{})
+        SEED_INDUSTRIES[key]=dict(buy=buy if previous else 0,sell=sell,
+            category='rare' if key in crafting_progression.RARE else previous.get('category','seed'),
+            purpose=seed_content.PURPOSE[key]['label'])

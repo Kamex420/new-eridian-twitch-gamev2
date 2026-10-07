@@ -19,6 +19,8 @@ import json
 from datetime import timedelta
 from sqlalchemy import Column, String, Integer, DateTime, select
 from .db import Base
+from . import runtime
+from .models import CraftLedger
 
 STEPS = ['gather', 'craft', 'eat', 'job', 'queue', 'seedling']
 # key -> (emoji, goal, how on Discord, how on Twitch, SC reward, item reward {name: qty})
@@ -47,7 +49,8 @@ class FirstSteps(Base):
 
 
 def install(m):
-    m.TITLE_DEFS.setdefault(TITLE, 'Settled In')
+    from .game.rules import TITLE_DEFS
+    TITLE_DEFS.setdefault(TITLE, 'Settled In')
 
 
 def row(m, db, p, create=True):
@@ -55,7 +58,7 @@ def row(m, db, p, create=True):
     if found is None and create:
         veteran = (p.actions or 0) >= VETERAN_ACTIONS
         found = FirstSteps(channel_id=p.channel_id, canonical_uid=p.twitch_uid, done=json.dumps(STEPS if veteran else []),
-                           finished=int(veteran), created_at=m.now())
+                           finished=int(veteran), created_at=runtime.now())
         db.add(found)
         db.flush()
     return found
@@ -111,6 +114,9 @@ def status(m, db, p, provider='discord'):
 
 def complete(m, db, p, keys, provider='discord'):
     """Mark steps done, pay their rewards, and return the note to show (empty when nothing new)."""
+    from . import seed_content
+    from .game.cooldowns_materials import material_change
+    from .game.players import unlock_title
     if not ENABLED:
         return ''
     found = row(m, db, p)
@@ -125,7 +131,7 @@ def complete(m, db, p, keys, provider='discord'):
         emoji, goal, _, _, sc, items = INFO[k]
         p.sc += sc
         for name, n in items.items():
-            m.material_change(db, p, m.seed_content.key(name), n)
+            material_change(db, p, seed_content.key(name), n)
         got = f'+{sc} SC' + ''.join(f', +{n} {name}' for name, n in items.items())
         notes.append(f'{emoji} {goal.split(" (")[0]} ✅ {got}')
         done.append(k)
@@ -135,7 +141,7 @@ def complete(m, db, p, keys, provider='discord'):
         found.finished = 1
         p.sc += FINISH_SC
         p.contribution += FINISH_CONTRIBUTION
-        m.unlock_title(db, p, TITLE)
+        unlock_title(db, p, TITLE)
         if provider != 'discord':
             return f"🎓 First steps done! +{FINISH_SC} SC, Settled In title"
         return (f"🎓 First steps {count}/{len(STEPS)}! " + ' · '.join(notes)
@@ -149,27 +155,30 @@ def complete(m, db, p, keys, provider='discord'):
 
 def _gathered(m, before, after):
     """A natural material went up (gathering or mining, by hand or by a queue)."""
+    from . import seed_content
     b, a = before.get('Resources', {}), after.get('Resources', {})
-    return any(a.get(k, 0) > b.get(k, 0) for k in a if k in m.seed_content.GATHER)
+    return any(a.get(k, 0) > b.get(k, 0) for k in a if k in seed_content.GATHER)
 
 
 def _ate(m, before, after):
+    from . import seed_content
     b, a = before.get('Needs', {}), after.get('Needs', {})
-    eaten = any(after['Resources'].get(k, 0) < before['Resources'].get(k, 0) for k in before.get('Resources', {}) if k in m.seed_content.EDIBLE)
+    eaten = any(after['Resources'].get(k, 0) < before['Resources'].get(k, 0) for k in before.get('Resources', {}) if k in seed_content.EDIBLE)
     return a.get('nutrition', 0) > b.get('nutrition', 0) and eaten
 
 
 def _crafted(m, db, p):
-    return db.execute(select(m.CraftLedger).where(m.CraftLedger.channel_id == p.channel_id, m.CraftLedger.canonical_uid == p.twitch_uid,
-                                                  m.CraftLedger.qty > 0)).scalars().first() is not None
+    return db.execute(select(CraftLedger).where(CraftLedger.channel_id == p.channel_id, CraftLedger.canonical_uid == p.twitch_uid,
+                                                  CraftLedger.qty > 0)).scalars().first() is not None
 
 
 def from_state(m, db, p):
     """Steps visible in saved state, whenever they happened."""
+    from . import task_queue
     keys = []
     if p.job and p.job != 'settler':
         keys.append('job')
-    if db.get(m.task_queue.TaskQueue, (p.channel_id, p.twitch_uid)) is not None:
+    if db.get(task_queue.TaskQueue, (p.channel_id, p.twitch_uid)) is not None:
         keys.append('queue')
     if _crafted(m, db, p):
         keys.append('craft')
@@ -200,17 +209,20 @@ def mark(m, db, p, key, provider='twitch'):
 def welcome(m, db, p):
     """On !start / /start: a new citizen gets the welcome kit, their Seedling moves in and writes its first
     diary entry. Once per citizen; False (nothing given) for anyone who already had it or already plays."""
+    from . import seed_content
+    from .game.cooldowns_materials import material_change
+    from .game.world import world_clock
     found_steps = row(m, db, p)
     if found_steps.finished or 'kit' in json.loads(found_steps.done or '[]'):
         return False
     for name, n in WELCOME_KIT.items():
-        m.material_change(db, p, m.seed_content.key(name), n)
+        material_change(db, p, seed_content.key(name), n)
     from . import autonomy
     found = autonomy.row(db, p.channel_id, p.twitch_uid, create=True)
     found.activity, found.emoji, found.place = 'Moving in', '📦', 'residential_ring'
-    found.next_at = m.now() + timedelta(minutes=autonomy.AWAY_MINUTES)
+    found.next_at = runtime.now() + timedelta(minutes=autonomy.AWAY_MINUTES)
     name = autonomy.clean_name(p.display_name)
-    day = m.world_clock(db, p.channel_id)['day']
+    day = world_clock(db, p.channel_id)['day']
     autonomy.diary(m, db, p, 'residential_ring', '📦',
                    f'RESIDENTIAL RING, Day {day} — {name} arrived in New Eridian today and moved into a small home in the Residential Ring. '
                    f'Their Seedling unpacked a welcome kit: 2 Lumber, enough for a first Campfire, and 4 Berries.',

@@ -8,6 +8,10 @@ or one listed in GAME_CHANNELS. The overlay shows the main world for an unknown 
 """
 import os
 import secrets
+from . import runtime
+from .db import SessionLocal
+from .models import Society
+from sqlalchemy import select
 
 MAX_CHANNEL = 64      # the channel_id columns are VARCHAR(64); longer names failed on Postgres with an error
 NOT_STARTED = '🌱 New Eridian has not started in this channel yet. Type !start to found the colony, then try again.'
@@ -16,7 +20,7 @@ _known = set()
 
 def listed(m):
     extra = {c.strip() for c in os.getenv('GAME_CHANNELS', '').split(',') if c.strip()}
-    return {m.DISCORD_WORLD_ID} | extra
+    return {runtime.DISCORD_WORLD_ID} | extra
 
 
 def cached(m, channel):
@@ -30,8 +34,8 @@ def known(m, channel):
         return False
     if cached(m, channel):
         return True
-    with m.SessionLocal() as db:
-        found = db.execute(m.select(m.Society.id).where(m.Society.channel_id == channel)).first() is not None
+    with SessionLocal() as db:
+        found = db.execute(select(Society.id).where(Society.channel_id == channel)).first() is not None
     if found:
         _known.add(channel)
     return found
@@ -56,9 +60,9 @@ def note_split_world(m, channel, params):
         return
     key = os.getenv('TWITCH_API_KEY', '').strip()
     if key and params.get('uid') and secrets.compare_digest(str(params.get('k') or '').encode(), key.encode()):
-        m.RUNTIME_WARNINGS.add(f'Twitch commands use channel {channel} but DISCORD_WORLD_ID is {m.DISCORD_WORLD_ID}: Twitch and Discord '
+        runtime.RUNTIME_WARNINGS.add(f'Twitch commands use channel {channel} but DISCORD_WORLD_ID is {runtime.DISCORD_WORLD_ID}: Twitch and Discord '
                                f'are separate worlds and !link codes cannot be claimed. Merge them (do not only set DISCORD_WORLD_ID={channel}: '
-                               f'that hides every Discord character): open /api/v1/admin/world-merge?source={m.DISCORD_WORLD_ID}&target={channel}'
+                               f'that hides every Discord character): open /api/v1/admin/world-merge?source={runtime.DISCORD_WORLD_ID}&target={channel}'
                                '&key=<ADMIN_KEY> to preview, then add &confirm=1.')
 
 
@@ -67,7 +71,7 @@ def quick_problem(m, path, params):
     channel = params.get('channel')
     if channel is None or not checked(path):
         return None, False
-    if len(m.RUNTIME_WARNINGS) < 20:
+    if len(runtime.RUNTIME_WARNINGS) < 20:
         note_split_world(m, channel, params)
     if len(channel) > MAX_CHANNEL:
         return 'That channel name is too long. Nothing changed.', False
