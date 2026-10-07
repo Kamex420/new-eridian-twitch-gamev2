@@ -6,12 +6,19 @@ with the other citizen's account id, and hobbies read "Hobby gardening". command
 "Relationship with blake1215" and "Gardening hobby" (labels()), and repair() rewrites lines stored before this
 fix wherever they are shown again: the activity feed, stream highlights, journals, the latest milestone on
 status screens, and inboxes.
+
+Depends on: Player and the account tables (models), sessions (db), the hobby list (game.rules) and the placeholder
+name (game.base); it reads nothing from app.main. The game imports this module while it loads, so the two game
+imports sit inside the functions that use them.
 """
 import json
 import logging
 import re
 
 from sqlalchemy import select, or_
+
+from .db import SessionLocal
+from .models import Player
 
 log = logging.getLogger(__name__)
 
@@ -24,45 +31,47 @@ def relationship_label(name):
     return f'Relationship with {name or FORMER}'
 
 
-def hobby_label(m, key):
-    return f'{m.HOBBIES[key][0]} hobby' if key in m.HOBBIES else f'Hobby {key}'
+def hobby_label(key):
+    from .game.rules import HOBBIES
+    return f'{HOBBIES[key][0]} hobby' if key in HOBBIES else f'Hobby {key}'
 
 
-def labels(m, db, p, keys):
+def labels(db, p, keys):
     """{rank key: what players read} for snapshot's "Relationship <uid>" and "Hobby <key>" ranks."""
     partners = [k.split(' ', 1)[1] for k in keys if k.startswith('Relationship ')]
     names = {}
     if partners:
-        names = dict(db.execute(select(m.Player.twitch_uid, m.Player.display_name).where(
-            m.Player.channel_id == p.channel_id, m.Player.twitch_uid.in_(partners))).all())
+        names = dict(db.execute(select(Player.twitch_uid, Player.display_name).where(
+            Player.channel_id == p.channel_id, Player.twitch_uid.in_(partners))).all())
     found = {}
     for key in keys:
         if key.startswith('Relationship '):
             found[key] = relationship_label(names.get(key.split(' ', 1)[1]))
         elif key.startswith('Hobby '):
-            found[key] = hobby_label(m, key.split(' ', 1)[1])
+            found[key] = hobby_label(key.split(' ', 1)[1])
     return found
 
 
-def readable(m, text, names):
+def readable(text, names):
     """The same text with account ids replaced by names and hobby keys by their labels."""
+    from .game.rules import HOBBIES
     if not isinstance(text, str) or ('Relationship ' not in text and 'Hobby ' not in text):
         return text
     text = RELATIONSHIP.sub(lambda x: relationship_label(names.get(x.group(1))), text)
-    return HOBBY.sub(lambda x: hobby_label(m, x.group(1)) if x.group(1) in m.HOBBIES else x.group(0), text)
+    return HOBBY.sub(lambda x: hobby_label(x.group(1)) if x.group(1) in HOBBIES else x.group(0), text)
 
 
-def _deep(m, value, names):
+def _deep(value, names):
     if isinstance(value, str):
-        return readable(m, value, names)
+        return readable(value, names)
     if isinstance(value, list):
-        return [_deep(m, v, names) for v in value]
+        return [_deep(v, names) for v in value]
     if isinstance(value, dict):
-        return {k: _deep(m, v, names) for k, v in value.items()}
+        return {k: _deep(v, names) for k, v in value.items()}
     return value
 
 
-def repair(m):
+def repair(m=None):
     """Rewrite level-up lines stored before names were used. Safe to run again: fixed lines no longer match."""
     from .models import JournalEntry, SeedlingState
     from .stream_overlay import StreamHighlight
@@ -70,8 +79,8 @@ def repair(m):
     from .activity_feed import FeedState
     fixed = 0
     try:
-        with m.SessionLocal() as db:
-            names = dict(db.execute(select(m.Player.twitch_uid, m.Player.display_name)).all())
+        with SessionLocal() as db:
+            names = dict(db.execute(select(Player.twitch_uid, Player.display_name)).all())
             for model, columns in ((StreamHighlight, ('title', 'detail')), (JournalEntry, ('entry',)),
                                    (SeedlingState, ('last_progress',)), (InboxItem, ('text',))):
                 cols = [getattr(model, c) for c in columns]
@@ -80,14 +89,14 @@ def repair(m):
                 for row in rows:
                     for column, col in zip(columns, cols):
                         old = getattr(row, column)
-                        new = readable(m, old, names)
+                        new = readable(old, names)
                         if new != old:
                             limit = getattr(col.type, 'length', None)
                             setattr(row, column, new[:limit] if limit else new)
                             fixed += 1
             for row in db.execute(select(FeedState)).scalars().all():
                 lines = json.loads(row.lines or '[]')
-                new = _deep(m, lines, names)
+                new = _deep(lines, names)
                 if new != lines:
                     row.lines = json.dumps(new, ensure_ascii=False)
                     fixed += 1
@@ -99,16 +108,17 @@ def repair(m):
     return fixed
 
 
-def restore_names(m):
+def restore_names(m=None):
     """Give citizens stuck with the placeholder name "Citizen" back the last real name their accounts used.
 
     Background work once looked citizens up without a name, and each lookup renamed them "Citizen"; their Seedlings
     then kept the placeholder. The names every account used are kept in AccountNameHistory."""
     from .models import Identity, AccountNameHistory
+    from .game.base import PLACEHOLDER_NAME
     fixed = 0
     try:
-        with m.SessionLocal() as db:
-            stuck = db.execute(select(m.Player).where(m.Player.display_name == m.PLACEHOLDER_NAME)).scalars().all()
+        with SessionLocal() as db:
+            stuck = db.execute(select(Player).where(Player.display_name == PLACEHOLDER_NAME)).scalars().all()
             for p in stuck:
                 accounts = db.execute(select(Identity.provider, Identity.provider_uid).where(
                     Identity.channel_id == p.channel_id, Identity.canonical_uid == p.twitch_uid)).all()
@@ -116,7 +126,7 @@ def restore_names(m):
                 for provider, uid in accounts:
                     for row in db.execute(select(AccountNameHistory).where(
                             AccountNameHistory.channel_id == p.channel_id, AccountNameHistory.provider == provider,
-                            AccountNameHistory.provider_uid == uid, AccountNameHistory.display_name != m.PLACEHOLDER_NAME)).scalars():
+                            AccountNameHistory.provider_uid == uid, AccountNameHistory.display_name != PLACEHOLDER_NAME)).scalars():
                         if best is None or row.last_seen > best.last_seen:
                             best = row
                 if best is not None:

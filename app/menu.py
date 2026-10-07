@@ -458,7 +458,7 @@ WHEN = {
     'eat': (lambda c: _food(c) or c.get('emergency', lambda: c.m.emergency_food_available(c.db, c.p)), 'you have no food'),
     'eatfull': (_food, 'you have no food'),
     'meal': (lambda c: c.p.crops > 0, 'needs 1 Pumpkin'),
-    'trick': (lambda c: c.m.halloween.open_now() and c.m.halloween.tries_left(c.m, c.db, c.p) > 0,
+    'trick': (lambda c: c.m.halloween.open_now() and c.m.halloween.tries_left(c.db, c.p) > 0,
               'Halloween festival only, 5 doors a day'),
     'recreation': (lambda c: c.get('rec', lambda: bool(c.m.owned_life_items(c.db, c.p).get('recreation_set'))), 'needs a Recreation Set'),
     'w_farm_hydroponics': (lambda c: c.equipment('water', 'hydroponics'), 'needs a Small Water Filter'),

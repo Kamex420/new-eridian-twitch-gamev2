@@ -120,7 +120,7 @@ def trick_or_treat(channel:str,uid:str,name:str='Citizen',provider:str='twitch')
     """Halloween trick-or-treat: a treat or a harmless trick, 5 doors a day while the festival is on (app/halloween.py)."""
     with SessionLocal() as db:
         _,p=player(db,channel,provider,uid,name)
-        text=halloween.trick(main,db,p,provider)
+        text=halloween.trick(db,p,provider)
         db.commit()
     return platform_response(provider,text,text)
 

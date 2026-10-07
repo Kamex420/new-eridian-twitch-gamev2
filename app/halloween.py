@@ -3,14 +3,17 @@
 Each knock is a treat (an ingredient, a little SC, or now and then a Halloween festival food) or a harmless
 trick (a joke and +1 Morale). It costs no needs and starts no cooldown; only the daily count limits it.
 Discord: /life action:Trick-or-treat or Menu → Life → Trick-or-treat. Twitch: !trick.
+
+Depends on: the game's bag (cooldowns_materials), needs (life), item names (players) and the clock (runtime); it reads
+nothing else from app.main. The game imports this module while it loads, so those imports sit inside the functions.
 """
 import random
 from datetime import datetime, timezone
 
 from sqlalchemy import Column, String, Integer
 
-from .db import Base
-from . import seasonal
+from .db import Base, engine
+from . import seasonal, runtime, stream_overlay
 
 HOLIDAY = 'Halloween'
 TRIES_PER_DAY = 5
@@ -39,35 +42,40 @@ class TrickOrTreat(Base):
     tries = Column(Integer, nullable=False, default=0)
 
 
-def install(m):
-    TrickOrTreat.__table__.create(m.engine, checkfirst=True)
+def install(m=None):
+    """The wiring hook every system has; this one needs nothing from app.main."""
+    TrickOrTreat.__table__.create(engine, checkfirst=True)
 
 
-def _today(m):
-    return m.now().astimezone(timezone.utc).date()
+def _today():
+    return runtime.now().astimezone(timezone.utc).date()
 
 
 def open_now(today=None):
     return any(f['name'] == HOLIDAY for f in seasonal.holidays_active_for(today))
 
 
-def tries_left(m, db, p):
-    row = db.get(TrickOrTreat, (p.channel_id, p.twitch_uid, _today(m).isoformat()))
+def tries_left(db, p):
+    row = db.get(TrickOrTreat, (p.channel_id, p.twitch_uid, _today().isoformat()))
     return TRIES_PER_DAY - (row.tries if row else 0)
 
 
-def _closed_text(m, provider):
-    start, _ = seasonal.festival_window(HOLIDAY, _today(m))
+def _closed_text(provider):
+    start, _ = seasonal.festival_window(HOLIDAY, _today())
     where = '/world → Holidays' if provider == 'discord' else '!holiday'
     return (f'🎃 Trick-or-treating opens with the Halloween festival on {start.strftime("%B")} {start.day}. '
             f'Until then the doors stay shut. {where} shows what is on now.')
 
 
-def trick(m, db, p, provider='discord', roll=None):
+def trick(db, p, provider='discord', roll=None):
     """Knock on one door. `roll` (0–1) picks the outcome in tests."""
-    if not open_now(_today(m)):
-        return _closed_text(m, provider)
-    day = _today(m).isoformat()
+    from .game.players import resource_name
+    from .game.life import life_state
+    from .game.cooldowns_materials import material_change
+    from .seed_content import find_item
+    if not open_now(_today()):
+        return _closed_text(provider)
+    day = _today().isoformat()
     row = db.get(TrickOrTreat, (p.channel_id, p.twitch_uid, day))
     if row is None:
         row = TrickOrTreat(channel_id=p.channel_id, canonical_uid=p.twitch_uid, day=day, tries=0)
@@ -81,15 +89,14 @@ def trick(m, db, p, provider='discord', roll=None):
     roll = random.random() if roll is None else roll
     head = f'🎃 {p.display_name} goes door to door dressed as {costume}.'
     if roll < TRICK:
-        life = m.life_state(db, p)
+        life = life_state(db, p)
         life.morale = min(100, life.morale + 1)
         body = f'🃏 **TRICK!** {random.choice(TRICKS)} (+1 Morale from laughing)'
     elif roll < BIG_TREAT:
         key = random.choice([k for k, v in seasonal.FESTIVAL_ITEMS.items() if v['holiday'] == HOLIDAY])
-        m.material_change(db, p, key, 1)
-        body = f'🍬 **BIG TREAT!** Someone hands over a whole {m.resource_name(key)}! (+1 {m.resource_name(key)})'
-        from . import stream_overlay
-        stream_overlay.highlight(db, p.channel_id, 'holiday', f'{p.display_name} got a {m.resource_name(key)} trick-or-treating',
+        material_change(db, p, key, 1)
+        body = f'🍬 **BIG TREAT!** Someone hands over a whole {resource_name(key)}! (+1 {resource_name(key)})'
+        stream_overlay.highlight(db, p.channel_id, 'holiday', f'{p.display_name} got a {resource_name(key)} trick-or-treating',
                                  f'Dressed as {costume}. Type !trick to knock on a door.', p.display_name, emoji='🎃')
     elif roll < SC_TREAT:
         sc = random.randint(2, 5)
@@ -97,10 +104,10 @@ def trick(m, db, p, provider='discord', roll=None):
         body = f'🍬 **TREAT!** A shiny handful of coins: +{sc} SC.'
     else:
         name = random.choice(INGREDIENTS)
-        key = m.seed_content.find_item(name)
+        key = find_item(name)
         amount = random.randint(1, 2)
-        m.material_change(db, p, key, amount)
-        body = f'🍬 **TREAT!** +{amount} {m.resource_name(key)}.'
+        material_change(db, p, key, amount)
+        body = f'🍬 **TREAT!** +{amount} {resource_name(key)}.'
     doors = f'{left} door{"s" if left != 1 else ""} left today' if left else 'That was your last door today'
     if provider != 'discord':
         return f'{head} {body.replace("**", "")} | {doors}.'

@@ -145,7 +145,7 @@ def snapshot(db,p):
         partner=rel.uid_b if rel.uid_a==p.twitch_uid else rel.uid_a
         ranks["Relationship "+partner]=sum(rel.familiarity>=n for n in (10,35,90,180,300))+1
     from .readable_names import labels
-    return {"Ranks":ranks,"Labels":labels(m,db,p,ranks),"Needs":{k:getattr(life,k) for k in NEEDS} if life else {},
+    return {"Ranks":ranks,"Labels":labels(db,p,ranks),"Needs":{k:getattr(life,k) for k in NEEDS} if life else {},
             "Resources":m.task_queue.inventory_snapshot(m,db,p)|{k:getattr(p,k) for k in ("sc","contribution")},
             "Competency":{k:getattr(p,v) for k,v in FIELDS.items()},
             "Settlement":{k:getattr(s,k) for k in CORE}|{k:getattr(shared,k) for k in STOCKS}}

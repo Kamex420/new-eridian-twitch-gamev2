@@ -18,7 +18,7 @@ def festival(monkeypatch):
 def knock(roll=None, uid='u'):
     with m.SessionLocal() as db:
         p = m.player(db, 'test', 'twitch', uid, 'Kamex')[1]
-        text = halloween.trick(m, db, p, 'twitch', roll=roll)
+        text = halloween.trick(db, p, 'twitch', roll=roll)
         db.commit()
         return text
 
@@ -233,6 +233,6 @@ def test_citizens_stuck_as_citizen_get_their_names_back():
         p = m.player(db, 'test', 'twitch', 'u', 'blake1215')[1]
         p.display_name = 'Citizen'
         db.commit()
-    assert readable_names.restore_names(m) == 1
+    assert readable_names.restore_names() == 1
     with m.SessionLocal() as db:
         assert m.player(db, 'test', 'twitch', 'u', '')[1].display_name == 'blake1215'

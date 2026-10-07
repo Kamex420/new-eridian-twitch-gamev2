@@ -680,7 +680,7 @@ def slash_panel(m, command, uid, name, options, result):
         if command == 'find':
             return message(m, result, find_components(m, uid, str(options.get('query') or ''), db, p), command)
         if command == 'trick':
-            again = m.halloween.open_now() and m.halloween.tries_left(m, db, p) > 0
+            again = m.halloween.open_now() and m.halloween.tries_left(db, p) > 0
             knock = button('Knock again', cid(uid, 't', issue(m, uid, {'do': 'cmd', 'leaf': 'trick'})), style=3, emoji='🎃') if again else None
             return message(m, result, [row(knock), _menu_row(uid, ('life', 'Life'))], 'life')
         if command in {'seedling', 'seedlingstep'}:

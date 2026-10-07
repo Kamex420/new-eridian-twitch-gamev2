@@ -89,5 +89,16 @@ Rules for editing a game module:
 
 The split was made mechanically from the single file and checked against it: the same names with the same values, the same routes in the same order. Names read through `main` because they change at runtime: `now`, `engine`, `ADMIN_KEY`, `MOD_KEY`, `DISCORD_WORLD_ID`, `DISCORD_GAME_CHANNEL_ID`, `DISCORD_PUBLIC_KEY`, `DISCORD_OWNER_USER_IDS`, `RUNTIME_WARNINGS`, `OVERLAY_CACHE_SECONDS`, `AUTO_EVENTS_ENABLED`, `AUTO_EVENT_ACTIONS`, `MERGED_TRAINING`, `current_project`, `project_contribute`, `merge_accounts`, `world_rule_bundle`, `success_chance`, `seed_industries`, `life_modifiers`, `gain_skill`, `determination_bonus`, `demand_day`, `_discord_call_internal`, `_discord_json_message`.
 
+## Dependencies on app.main
+
+Most systems in `app/` receive app.main as `m` and read whatever they need from it (`m.society(...)`, `m.SKILL_LABELS`). That works, but it hides what a system really depends on. The goal is for each system to depend explicitly on the few things it needs. This is being done gradually, one system per change; `menu`, `extras`, `autonomy` and `ui` come last.
+
+- **The record.** `tests/contracts/main_dependencies.json` lists, per file, every name it reads from app.main (`m.<name>` in `app/`, `main.<name>` in `app/game/`). `tests/test_main_dependencies.py` fails when the code and the record differ, in either direction, so a new dependency is always deliberate and a removed one shrinks the record. `python -m scripts.main_dependencies` shows the map; `--write` updates the record.
+- **Converting a system.** Import each name from the module that defines it: models from `app/models.py`, sessions from `app/db.py`, game names from `app/game/<module>.py` (the table above says which), other systems directly. The game loads most systems while it starts up, so imports from `app.game` go inside the functions that use them; a top-level one would make importing that system first loop back into the half-loaded game. Then drop the `m` parameter from its functions and update the callers. Add the system to `EXPLICIT` in the test, which also checks it still imports on its own.
+- **Values that change at runtime.** Tests swap the clock and some settings on app.main, a world merge changes the main world, and `votes.install` wraps `project_contribute`; a direct import would keep the old value. Converted systems read these through `app/runtime.py` (`runtime.now()`), which looks them up on app.main at call time. Add an accessor there when a converted system needs another one.
+- **`install(m)`** stays the one wiring hook every system has, even when it no longer needs `m`.
+
+Converted so far: `halloween`, `readable_names`.
+
 [^1]: Canonical implementations: [`app/`](../app/). The removed loader was `app/_compat.py`.
 [^2]: Registrar: [`scripts/register_discord_commands.py`](../scripts/register_discord_commands.py). Import isolation and the container file layout are covered by `tests/test_repository.py`.

@@ -40,7 +40,7 @@ def test_a_relationship_level_up_names_the_other_citizen():
 def test_a_hobby_level_up_uses_the_hobby_name():
     with m.SessionLocal() as db:
         p = m.player(db, 'test', 'twitch', 'u', 'Kamex')[1]
-        assert readable_names.labels(m, db, p, ['Hobby gardening', 'Habitat']) == {'Hobby gardening': 'Gardening hobby'}
+        assert readable_names.labels(db, p, ['Hobby gardening', 'Habitat']) == {'Hobby gardening': 'Gardening hobby'}
 
 
 def test_lines_stored_before_the_fix_are_rewritten_once():
@@ -57,17 +57,17 @@ def test_lines_stored_before_the_fix_are_rewritten_once():
             [f'⬆️ Kamex levelled up — Relationship {FRIEND_ID} Lv. 1 → Lv. 2', '⬆️ Kamex levelled up — Hobby gardening Lv. 1 → Lv. 2']),
             last_highlight=0))
         db.commit()
-    assert readable_names.repair(m) == 4
+    assert readable_names.repair() == 4
     with m.SessionLocal() as db:
         assert db.execute(select(StreamHighlight).where(StreamHighlight.kind == 'level')).scalar_one().detail == 'Relationship with blake1215 Lv. 1 → Lv. 2'
         assert db.execute(select(JournalEntry).where(JournalEntry.entry.like('LEVEL UP%'))).scalar_one().entry == 'LEVEL UP: Relationship with blake1215 Lv. 1 → Lv. 2'
         assert db.execute(select(InboxItem)).scalar_one().text == 'LEVEL UP: Relationship with a former citizen Lv. 2 → Lv. 3'
         assert json.loads(db.get(FeedState, 'test').lines) == ['⬆️ Kamex levelled up — Relationship with blake1215 Lv. 1 → Lv. 2',
                                                               '⬆️ Kamex levelled up — Gardening hobby Lv. 1 → Lv. 2']
-    assert readable_names.repair(m) == 0                    # nothing left to fix
+    assert readable_names.repair() == 0                    # nothing left to fix
 
 
 def test_ordinary_text_is_left_alone():
     names = {FRIEND_ID: 'blake1215'}
     for text in ('Relationship: Friendly (12)', 'Hobby progress 15 (Novice)', '+1 Games hobby', 'Relationship +3'):
-        assert readable_names.readable(m, text, names) == text
+        assert readable_names.readable(text, names) == text

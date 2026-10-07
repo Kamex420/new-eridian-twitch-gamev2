@@ -27,5 +27,5 @@ presentation.SKILL_NAMES=tuple(SKILL_LABELS.values())
 Base.metadata.create_all(engine)
 # Level-up lines stored before they used names ("Relationship 621372225") are rewritten once: "Relationship with blake1215".
 from .. import readable_names
-readable_names.repair(main)
-readable_names.restore_names(main)
+readable_names.repair()
+readable_names.restore_names()

@@ -1,5 +1,11 @@
 # Release notes
 
+## Behind the scenes: explicit dependencies, step one
+
+- **Every system's dependencies on the shared app.main interface are now recorded** (`tests/contracts/main_dependencies.json`, 678 names across 62 files) and checked by a test, so new coupling is always a deliberate change and the record shrinks as systems are converted. `python -m scripts.main_dependencies` shows the map.
+- **Trick-or-treat (`halloween`) and the readable names repair (`readable_names`) now import exactly what they use** and read nothing from app.main. The game clock, which tests change, comes from the new `app/runtime.py`. No gameplay changes.
+- `docs/architecture.md` ("Dependencies on app.main") explains the rules for converting the next systems.
+
 ## Everyday work counts everywhere, rare ores from /mine, and holiday showpieces
 
 - **Daily contracts can be finished by normal play.** A "/mine ×4" contract counts `/mine` (queues and Twitch `!mine` too), and a "/make ×3" contract counts Workbench crafting.
