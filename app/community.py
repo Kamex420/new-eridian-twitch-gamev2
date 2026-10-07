@@ -12,6 +12,9 @@ The rules of each feature live in votes.py, live_events.py, seasons.py, trophies
 import logging
 from sqlalchemy import select
 from . import votes, live_events, seasons, trophies, recap
+from . import runtime
+from .db import SessionLocal
+from .models import Player
 
 ENABLED = True       # tests that check exact SC totals switch the whole set off
 log = logging.getLogger(__name__)
@@ -19,6 +22,7 @@ ROUTES = {}          # the endpoint functions, reused by the Discord commands
 
 
 def install(m):
+    from .game.base import app
     for mod in (seasons, trophies, votes):
         mod.install(m)
     _routes(m)
@@ -36,20 +40,21 @@ def install(m):
             log.error('Community pass failed; retrying')
 
     async def start():
-        m.app.state.community_worker = timer.start()
+        app.state.community_worker = timer.start()
 
     async def stop():
         timer.stop()
-    m.app.add_event_handler('startup', start)
-    m.app.add_event_handler('shutdown', stop)
+    app.add_event_handler('startup', start)
+    app.add_event_handler('shutdown', stop)
 
 
 def tick(m):
     """Close ballots, run stream challenges, roll the season over and post the Sunday recap."""
+    from . import task_queue
     if not ENABLED:
         return
-    with m.task_queue.atomic(m, m.DISCORD_WORLD_ID):
-        with m.SessionLocal() as db:
+    with task_queue.atomic(m, runtime.DISCORD_WORLD_ID):
+        with SessionLocal() as db:
             votes.sync(m, db)
             live_events.tick(m, db)
             seasons.current(m, db)
@@ -169,7 +174,7 @@ def overlay_data(m, db, seedlings):
     try:
         import hashlib
         ids = {}
-        for p in db.execute(select(m.Player.channel_id, m.Player.twitch_uid)).all():
+        for p in db.execute(select(Player.channel_id, Player.twitch_uid)).all():
             ids[hashlib.sha1(f'{p[0]}:{p[1]}'.encode()).hexdigest()[:10]] = (p[0], p[1])
         keys = {ids[s['id']] for s in seedlings if s.get('id') in ids}
         hats, badges = seasons.worn_hats(db, keys), trophies.badges_for(db, keys)
@@ -187,20 +192,24 @@ def overlay_data(m, db, seedlings):
 # ---------------------------------------------------------------- Twitch endpoints (StreamElements) and HTTP
 
 def _routes(m):
+    from .commands import transaction as game_transaction
+    from .game import base, players
+    from .game.base import OWNER_ONLY_TEXT, out, platform_response, twitch_owner_ok
+    from .game.cooldowns_materials import audit_moderator
     from fastapi.responses import PlainTextResponse
-    app, tx = m.app, m.game_transaction
+    app, tx = base.app, game_transaction
 
     def player(db, channel, provider, uid, name):
-        return m.player(db, channel, provider, uid, name)[1]
+        return players.player(db, channel, provider, uid, name)[1]
 
     def reply(provider, text):
-        return m.platform_response(provider, text, text.replace('**', '').replace('\n', ' · ') if provider != 'discord' else text)
+        return platform_response(provider, text, text.replace('**', '').replace('\n', ' · ') if provider != 'discord' else text)
 
     @app.get('/api/v1/vote')
     @tx
     def vote(channel: str, uid: str, name: str = 'Citizen', choice: str = '', provider: str = 'twitch'):
         """Today's colony vote; with a choice (1-3 or a name), cast or change your vote."""
-        with m.SessionLocal() as db:
+        with SessionLocal() as db:
             p = player(db, channel, provider, uid, name)
             text = votes.cast(m, db, p, choice, provider) if str(choice or '').strip() else votes.view(m, db, p, provider)
             if str(choice or '').strip():
@@ -215,7 +224,7 @@ def _routes(m):
     def season(channel: str, uid: str, name: str = 'Citizen', section: str = '', provider: str = 'twitch'):
         """The season: your points and rank (blank), top, rewards, story or hats."""
         section = str(section or '').strip().casefold()
-        with m.SessionLocal() as db:
+        with SessionLocal() as db:
             p = player(db, channel, provider, uid, name)
             if section in {'top', 'leaderboard', 'lb'}:
                 text = seasons.top_text(m, db, p, provider)
@@ -234,7 +243,7 @@ def _routes(m):
     @tx
     def hat(channel: str, uid: str, name: str = 'Citizen', hat: str = '', provider: str = 'twitch'):
         """Your cosmetic hats; with a name, your Seedling wears it on the stream map (job = the job hat)."""
-        with m.SessionLocal() as db:
+        with SessionLocal() as db:
             p = player(db, channel, provider, uid, name)
             text = seasons.wear(db, p, hat, provider)
             db.commit()
@@ -244,7 +253,7 @@ def _routes(m):
     @tx
     def challenge(channel: str, uid: str = '', name: str = 'Citizen', provider: str = 'twitch'):
         """The running stream challenge: goal, time left, your share and how to help."""
-        with m.SessionLocal() as db:
+        with SessionLocal() as db:
             p = player(db, channel, provider, uid, name) if uid else None
             text = live_events.view(m, db, p, provider)
             db.commit()
@@ -254,7 +263,7 @@ def _routes(m):
     @tx
     def trophies_view(channel: str, uid: str, name: str = 'Citizen', group: str = '', provider: str = 'twitch'):
         """Trophies and collections: what you have, what is close, and the badge you show."""
-        with m.SessionLocal() as db:
+        with SessionLocal() as db:
             p = player(db, channel, provider, uid, name)
             text = trophies.view(m, db, p, provider, str(group or '').strip().casefold())
             db.commit()
@@ -264,7 +273,7 @@ def _routes(m):
     @tx
     def badge(channel: str, uid: str, name: str = 'Citizen', badge: str = '', provider: str = 'twitch'):
         """Pin a trophy badge next to your name on the stream map; blank lists yours."""
-        with m.SessionLocal() as db:
+        with SessionLocal() as db:
             p = player(db, channel, provider, uid, name)
             trophies.check(m, db, p, force=True)
             text = trophies.pin(m, db, p, badge, provider)
@@ -275,45 +284,45 @@ def _routes(m):
     @tx
     def recap_view(channel: str = '', provider: str = 'discord'):
         """This week's recap as text (Twitch: this week's top three)."""
-        with m.SessionLocal() as db:
+        with SessionLocal() as db:
             if provider != 'discord':
                 text = recap.chat_line(m, db)
                 db.commit()
-                return m.out(text)
+                return out(text)
             _, _, text = recap.build(m, db)
             db.commit()
             return PlainTextResponse(text)
 
     def mod_ok(key, level):
         # Owner-only: MOD_KEY and the broadcaster's StreamElements level (see main.twitch_owner_ok).
-        return m.twitch_owner_ok(key, level)
+        return twitch_owner_ok(key, level)
 
     @app.get('/api/v1/admin/live')
     @tx
     def admin_live(channel: str = '', state: str = '', level: int = 0, key: str = ''):
         """!live on|off|auto for the channel owner (StreamElements passes the level and the moderator key)."""
         if not mod_ok(key, level):
-            return m.out(m.OWNER_ONLY_TEXT)
-        with m.SessionLocal() as db:
+            return out(OWNER_ONLY_TEXT)
+        with SessionLocal() as db:
             text = live_events.set_live(m, db, state, 'StreamElements moderator')
-            m.audit_moderator(db, m.DISCORD_WORLD_ID, 'StreamElements level ' + str(level), 'live', state or 'view')
+            audit_moderator(db, runtime.DISCORD_WORLD_ID, 'StreamElements level ' + str(level), 'live', state or 'view')
             db.commit()
-            return m.out(text)
+            return out(text)
 
     @app.get('/api/v1/admin/challenge')
     @tx
     def admin_challenge(channel: str = '', action: str = 'start', event: str = '', level: int = 0, key: str = ''):
         """!challenge start [name] / !challenge stop for the channel owner."""
         if not mod_ok(key, level):
-            return m.out(m.OWNER_ONLY_TEXT)
-        with m.SessionLocal() as db:
+            return out(OWNER_ONLY_TEXT)
+        with SessionLocal() as db:
             if str(action).casefold() == 'stop':
                 text = live_events.cancel(m, db, 'a moderator')
             else:
                 _, text = live_events.start(m, db, str(event or '').strip().casefold().replace(' ', '_'), 'moderator')
-            m.audit_moderator(db, m.DISCORD_WORLD_ID, 'StreamElements level ' + str(level), 'challenge', f'{action} {event}'.strip())
+            audit_moderator(db, runtime.DISCORD_WORLD_ID, 'StreamElements level ' + str(level), 'challenge', f'{action} {event}'.strip())
             db.commit()
-            return m.out(text)
+            return out(text)
 
     ROUTES.update(vote=vote, season=season, hat=hat, challenge=challenge, trophies=trophies_view, badge=badge)
 
@@ -322,8 +331,8 @@ def _routes(m):
     def admin_recap(channel: str = '', action: str = 'preview', level: int = 0, key: str = ''):
         """Preview or post the weekly recap now (channel owner)."""
         if not mod_ok(key, level):
-            return m.out(m.OWNER_ONLY_TEXT)
-        with m.SessionLocal() as db:
+            return out(OWNER_ONLY_TEXT)
+        with SessionLocal() as db:
             if action == 'post':
                 ok, text = recap.post(m, db, force=True)
             else:
@@ -339,7 +348,9 @@ MOD = {'challengestart', 'challengestop', 'liveon', 'liveoff', 'liveauto', 'reca
 
 
 def discord(m, command, uid, name, options):
-    channel = m.DISCORD_WORLD_ID
+    from . import task_queue
+    from .game.cooldowns_materials import audit_moderator
+    channel = runtime.DISCORD_WORLD_ID
     if command == 'vote':
         return ROUTES['vote'](channel, uid, name, str(options.get('choice') or ''), 'discord').body.decode()
     if command == 'season':
@@ -354,7 +365,7 @@ def discord(m, command, uid, name, options):
             return ROUTES['badge'](channel, uid, name, str(options['badge']), 'discord').body.decode()
         return ROUTES['trophies'](channel, uid, name, str(options.get('group') or ''), 'discord').body.decode()
     actor = f'{name} ({uid})'
-    with m.SessionLocal() as db:
+    with SessionLocal() as db:
         if command == 'challengestart':
             _, text = live_events.start(m, db, str(options.get('challenge') or ''), actor)
         elif command == 'challengestop':
@@ -363,7 +374,7 @@ def discord(m, command, uid, name, options):
             text = live_events.set_live(m, db, command[4:], actor)
         elif command == 'feedhere':
             from . import activity_feed
-            text = activity_feed.here(m, db, m.task_queue.queue_notifications.origin_channel.get())
+            text = activity_feed.here(m, db, task_queue.queue_notifications.origin_channel.get())
         elif command == 'feedoff':
             from . import activity_feed
             text = activity_feed.off(m, db)
@@ -373,6 +384,6 @@ def discord(m, command, uid, name, options):
             title, sections, _ = recap.build(m, db)
             text = '**' + title + '**\n\n' + '\n\n'.join(f'**{h}**\n{t}' for h, t in sections)
             text = text[:1900] + ('\n…' if len(text) > 1900 else '') + '\n\n(Preview. /mod action:recappost posts it for everyone.)'
-        m.audit_moderator(db, channel, actor, command, str(options.get('challenge') or ''))
+        audit_moderator(db, channel, actor, command, str(options.get('challenge') or ''))
         db.commit()
         return text

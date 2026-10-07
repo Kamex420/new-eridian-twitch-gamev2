@@ -23,12 +23,18 @@ ROOT = Path(__file__).resolve().parents[1]
 TOP_MODULES = {'app.models': '.models', 'app.db': '.db', 'app.settlement': '.settlement'}
 
 
+IMPORTED = {}   # name -> (app module, real name) for names the game modules import from elsewhere in app/
+
+
 def game_definitions():
     from app.game import MODULES
     found = {}
     for name in MODULES:
         tree = ast.parse((ROOT / 'app' / 'game' / f'{name}.py').read_text(encoding='utf-8'))
         for node in tree.body:
+            if isinstance(node, ast.ImportFrom) and node.level == 2 and node.module:
+                for a in node.names:
+                    IMPORTED.setdefault(a.asname or a.name, (node.module, a.name))
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
                 found.setdefault(node.name, name)
             elif isinstance(node, (ast.Assign, ast.AnnAssign)):
@@ -53,6 +59,9 @@ def source_of(main, runtime, defs, name):
         return 'top', (f'from {TOP_MODULES[module]} import {real}' + (f' as {name}' if real != name else ''))
     if name in defs:
         return 'game', defs[name]
+    if module.startswith('app.') or name in IMPORTED:              # from another part of app/: import it lazily
+        mod, real = IMPORTED.get(name, (module[4:], getattr(obj, '__name__', name)))
+        return 'app', (f'from .{mod} import', real if real == name else f'{real} as {name}')
     if module.startswith('sqlalchemy'):
         return 'top', f'from sqlalchemy import {name}'
     raise SystemExit(f'Do not know where {name} comes from ({module or type(obj).__name__}); convert it by hand.')
@@ -93,6 +102,8 @@ def convert(path, main, runtime, defs):
         for x in refs:
             kind, detail = source_of(main, runtime, defs, x.attr)
             if kind == 'runtime':
+                if 'runtime' in bound_in(fn):
+                    raise SystemExit(f'{path.name}: {fn.name} has its own variable called runtime; rename it first.')
                 text = 'runtime.' + x.attr
                 top.add('from . import runtime')
             elif kind == 'module' and detail == self_name:
@@ -110,6 +121,9 @@ def convert(path, main, runtime, defs):
             elif kind == 'top':
                 text = x.attr
                 top.add(detail)
+            elif kind == 'app':
+                text = x.attr
+                imports[detail[0]].add(detail[1])
             elif x.attr in local:                     # the function (or this module) uses the name for something else
                 text = f'{detail}.{x.attr}'
                 imports['from .game import'].add(detail)

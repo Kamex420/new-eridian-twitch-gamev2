@@ -1,5 +1,9 @@
 # Release notes
 
+## Behind the scenes: explicit dependencies, step four
+
+- **13 more systems import exactly what they use:** community, Find (ask and knowledge), trophies, keep levels, the inbox, the command wrapper, force merge, shopping lists, queue notifications, votes, world merge and item identities. votes, world merge and item identities still set one value each on app.main on purpose (the project hooks, the main world, the merged training list), but read nothing from it. 36 of 43 systems are converted; the record of dependencies on app.main shrank from 540 to 371 names. No gameplay changes.
+
 ## Behind the scenes: explicit dependencies, step three
 
 - **19 more systems import exactly what they use** and read nothing from app.main: Twitch lite, fun systems, maintenance, presentation, production balance, lucky finds, seasons, task yields, the activity feed, message layout, quiet hours, the stream overlay, world guard, the three Discord delivery modules, live events, the weekly recap and onboarding. 23 of 43 systems are converted; the record of dependencies on app.main shrank from 631 to 540 names. No gameplay changes.

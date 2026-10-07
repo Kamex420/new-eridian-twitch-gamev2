@@ -1,28 +1,4 @@
 {
- "app/ask.py": [
-  "NEED_EMOJI",
-  "Player",
-  "RECIPE_TIERS",
-  "SEED_HELP_TOPICS",
-  "SEED_HUBS",
-  "SEED_TASKS",
-  "SKILL_LABELS",
-  "SOCIETY_TIERS",
-  "blocked_needs",
-  "comfort_status_line",
-  "engine",
-  "life_state",
-  "material_amount",
-  "material_source",
-  "menu",
-  "need_fix",
-  "now",
-  "resolve",
-  "resource_name",
-  "training_skill_line",
-  "training_skills",
-  "training_tasks"
- ],
  "app/autonomy.py": [
   "EVENTS",
   "HOBBIES",
@@ -60,42 +36,6 @@
   "task_queue",
   "world",
   "world_clock"
- ],
- "app/commands.py": [
-  "ACTION_SKILLS",
-  "ActionLog",
-  "Player",
-  "SKILL_LABELS",
-  "SessionLocal",
-  "announce",
-  "colony_pressures",
-  "colony_seedling",
-  "colony_state",
-  "current_project",
-  "guide_command",
-  "life_state",
-  "now",
-  "resource_name",
-  "routine_description",
-  "select",
-  "society",
-  "society_tier_index",
-  "task_queue",
-  "world_clock"
- ],
- "app/community.py": [
-  "DISCORD_WORLD_ID",
-  "OWNER_ONLY_TEXT",
-  "Player",
-  "SessionLocal",
-  "app",
-  "audit_moderator",
-  "game_transaction",
-  "out",
-  "platform_response",
-  "player",
-  "task_queue",
-  "twitch_owner_ok"
  ],
  "app/extras.py": [
   "Cooldown",
@@ -138,75 +78,8 @@
   "skill_xp",
   "task_queue"
  ],
- "app/force_merge.py": [
-  "AccountLink",
-  "DISCORD_WORLD_ID",
-  "Identity",
-  "Player",
-  "SessionLocal",
-  "_player_summary",
-  "audit_moderator",
-  "item_identity",
-  "merge_accounts",
-  "task_queue"
- ],
- "app/inbox.py": [
-  "COMFORT_SLOW",
-  "DISCORD_WORLD_ID",
-  "Identity",
-  "Player",
-  "SessionLocal",
-  "as_utc",
-  "discord_command_copy",
-  "engine",
-  "extras",
-  "finish_forecast",
-  "life_state",
-  "material_amount",
-  "material_source",
-  "now",
-  "qol",
-  "resource_name",
-  "task_queue"
- ],
  "app/item_identity.py": [
-  "ExtraItem",
-  "MERGED_TRAINING",
-  "PART_RECIPES",
-  "Player",
-  "SEED_INDUSTRIES",
-  "SEED_TASKS",
-  "crafting_progression",
-  "select"
- ],
- "app/keep_levels.py": [
-  "QUALITY_RECIPES",
-  "SessionLocal",
-  "engine",
-  "extras",
-  "item_identity",
-  "material_amount",
-  "material_source",
-  "player",
-  "presentation",
-  "qol",
-  "queued_tasks",
-  "resource_name",
-  "task_queue"
- ],
- "app/knowledge.py": [
-  "DIRECTIVES",
-  "EVENTS",
-  "SEED_HELP_TOPICS",
-  "SEED_TASKS",
-  "SOCIETY_TIERS",
-  "guide_command",
-  "life_state",
-  "menu",
-  "need_fix",
-  "society",
-  "society_tier",
-  "twitch_lite"
+  "MERGED_TRAINING"
  ],
  "app/menu.py": [
   "AccountLink",
@@ -293,29 +166,6 @@
   "task_queue",
   "use_item"
  ],
- "app/queue_notifications.py": [
-  "Identity",
-  "SessionLocal",
-  "_discord_json_message",
-  "announce",
-  "app",
-  "engine",
-  "life_state",
-  "now",
-  "resource_name"
- ],
- "app/shopping_list.py": [
-  "SessionLocal",
-  "UNIQUE_CORE_ITEMS",
-  "UNIQUE_QUALITY_ITEMS",
-  "engine",
-  "material_source",
-  "now",
-  "player",
-  "presentation",
-  "qol",
-  "resource_name"
- ],
  "app/task_queue.py": [
   "ACTION_SKILLS",
   "PART_RECIPES",
@@ -343,20 +193,6 @@
   "player",
   "resource_name",
   "task_energy",
-  "workbench"
- ],
- "app/trophies.py": [
-  "COLLECTIBLES",
-  "COLLECTION_SETS",
-  "CollectionItem",
-  "CollectionSetClaim",
-  "CraftLedger",
-  "Player",
-  "TITLE_DEFS",
-  "resource_name",
-  "seed_content",
-  "task_queue",
-  "unlock_title",
   "workbench"
  ],
  "app/ui.py": [
@@ -398,19 +234,8 @@
   "world_clock"
  ],
  "app/votes.py": [
-  "AVESTA_DAY_SECONDS",
-  "DISCORD_WORLD_ID",
-  "PROJECTS",
-  "Player",
-  "SKILL_LABELS",
-  "SocietyProject",
   "current_project",
-  "material_change",
-  "project_cfg",
-  "project_contribute",
-  "seed_content",
-  "society",
-  "world_clock"
+  "project_contribute"
  ],
  "app/workbench.py": [
   "ExtraItem",
@@ -440,21 +265,7 @@
   "task_queue"
  ],
  "app/world_merge.py": [
-  "DISCORD_WORLD_ID",
-  "Identity",
-  "Player",
-  "RUNTIME_WARNINGS",
-  "SessionLocal",
-  "Society",
-  "World",
-  "_demand_day",
-  "_overlay_cache",
-  "app",
-  "audit_moderator",
-  "engine",
-  "merge_accounts",
-  "task_queue",
-  "valid_admin_key"
+  "DISCORD_WORLD_ID"
  ],
  "app/game/accounts.py": [
   "RUNTIME_WARNINGS",

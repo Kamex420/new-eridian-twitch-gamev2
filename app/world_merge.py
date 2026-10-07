@@ -20,6 +20,12 @@ import json
 import os
 from sqlalchemy import Column, String, Text, DateTime, UniqueConstraint, case, select, text, and_, or_, func
 from .db import Base
+from . import runtime
+from .db import SessionLocal
+from .models import Identity
+from .models import Player
+from .models import Society
+from .models import World
 
 WORLD_COLUMNS = ('channel_id', 'world')
 UID_COLUMNS = ('canonical_uid', 'twitch_uid', 'uid_a', 'uid_b')            # citizen ids (renamed when merging citizens)
@@ -115,7 +121,7 @@ def blockers(m, db, source, target):
         found.append('The target world name is longer than 64 characters.')
     if db.get(WorldAlias, source) is not None:
         found.append(f'World {source} was already merged.')
-    if db.execute(select(m.Society.id).where(m.Society.channel_id == source)).first() is None:
+    if db.execute(select(Society.id).where(Society.channel_id == source)).first() is None:
         found.append(f'World {source} does not exist, so there is nothing to merge.')
     for name in NO_DUPLICATES:
         table = Base.metadata.tables.get(name)
@@ -132,13 +138,13 @@ def blockers(m, db, source, target):
 def citizen_pairs(m, db, source, target):
     """(source uid, target uid) for every person with a character in both worlds."""
     pairs = {}
-    here = set(db.execute(select(m.Player.twitch_uid).where(m.Player.channel_id == source)).scalars())
-    there = set(db.execute(select(m.Player.twitch_uid).where(m.Player.channel_id == target)).scalars())
+    here = set(db.execute(select(Player.twitch_uid).where(Player.channel_id == source)).scalars())
+    there = set(db.execute(select(Player.twitch_uid).where(Player.channel_id == target)).scalars())
     for uid in here & there:
         pairs[uid] = uid
     # The same Twitch or Discord account mapped to two different characters (a link made while the worlds were one).
     ids = {}
-    for row in db.execute(select(m.Identity).where(m.Identity.channel_id.in_((source, target)))).scalars():
+    for row in db.execute(select(Identity).where(Identity.channel_id.in_((source, target)))).scalars():
         ids.setdefault((row.provider, row.provider_uid), {})[row.channel_id] = row.canonical_uid
     problems = []
     for (provider, uid), worlds in ids.items():
@@ -151,8 +157,8 @@ def citizen_pairs(m, db, source, target):
 
 
 def names(m, db, channel, uids):
-    rows = db.execute(select(m.Player.twitch_uid, m.Player.display_name).where(m.Player.channel_id == channel,
-                                                                               m.Player.twitch_uid.in_(list(uids) or ['']))).all()
+    rows = db.execute(select(Player.twitch_uid, Player.display_name).where(Player.channel_id == channel,
+                                                                               Player.twitch_uid.in_(list(uids) or ['']))).all()
     return {u: n for u, n in rows}
 
 
@@ -247,18 +253,19 @@ def adopt_leftovers(db, target, old, new, note):
 
 
 def counts(m, db, channel):
-    return {'citizens': db.execute(select(func.count()).select_from(m.Player).where(m.Player.channel_id == channel)).scalar()}
+    return {'citizens': db.execute(select(func.count()).select_from(Player).where(Player.channel_id == channel)).scalar()}
 
 
 def run(m, source, target, apply=False):
     """The merge, inside the game lock. Without apply it runs everything and rolls it back, returning the report."""
+    from . import task_queue
     source, target = str(source or '').strip(), str(target or '').strip()
-    previous = m.DISCORD_WORLD_ID
+    previous = runtime.DISCORD_WORLD_ID
     try:
-        with m.task_queue.atomic(m, target) as conn:
+        with task_queue.atomic(m, target) as conn:
             if conn.dialect.name == 'postgresql':
                 conn.execute(text('SET LOCAL statement_timeout = 0'))      # large worlds: relabelling the action log
-            with m.SessionLocal() as db:
+            with SessionLocal() as db:
                 problems = blockers(m, db, source, target)
                 pairs, pair_problems = citizen_pairs(m, db, source, target) if not problems else ({}, [])
                 problems += [f'Citizens: {p}. This needs a manual look.' for p in pair_problems]
@@ -268,8 +275,8 @@ def run(m, source, target, apply=False):
                 before = {'source': counts(m, db, source), 'target': counts(m, db, target)}
                 both = [{'source_uid': s, 'target_uid': t, 'source_name': names(m, db, source, [s]).get(s),
                          'target_name': names(m, db, target, [t]).get(t)} for s, t in sorted(pairs.items())]
-                w_source = db.execute(select(m.World).where(m.World.channel_id == source)).scalar_one_or_none()
-                w_target = db.execute(select(m.World).where(m.World.channel_id == target)).scalar_one_or_none()
+                w_source = db.execute(select(World).where(World.channel_id == source)).scalar_one_or_none()
+                w_target = db.execute(select(World).where(World.channel_id == target)).scalar_one_or_none()
                 ended = w_target.active_event if w_target is not None and w_target.active_event else ''
                 db.flush()
                 temporary = {}
@@ -285,7 +292,7 @@ def run(m, source, target, apply=False):
                 leftovers = {}
                 for s, t in pairs.items():
                     old = temporary.get(s, s)
-                    m.merge_accounts(db, target, old, t)
+                    runtime.merge_accounts(db, target, old, t)
                     db.flush()
                     db.expire_all()
                     adopt_leftovers(db, target, old, t, leftovers)
@@ -320,12 +327,12 @@ def run(m, source, target, apply=False):
         report['merged'] = True
         return report
     except _Preview as preview:
-        if m.DISCORD_WORLD_ID != previous:
+        if runtime.DISCORD_WORLD_ID != previous:
             switch(m, previous)
         preview.report['merged'] = False
         return preview.report
     except Exception:
-        if m.DISCORD_WORLD_ID != previous:
+        if runtime.DISCORD_WORLD_ID != previous:
             switch(m, previous)
         raise
 
@@ -338,46 +345,50 @@ def switch(m, world):
 
 def settle(m, source, target):
     """Forget what this process cached about the merged-away world."""
+    from .game.overlay_state import _overlay_cache
+    from .game.players import _demand_day
     from . import world_guard
     world_guard._known.discard(source)
     world_guard._known.add(target)
-    m._overlay_cache.clear()
-    m._demand_day[0] = 0.0
-    for note in [w for w in m.RUNTIME_WARNINGS if 'separate worlds' in w or 'different world' in w or 'share one world' in w]:
-        m.RUNTIME_WARNINGS.discard(note)
+    _overlay_cache.clear()
+    _demand_day[0] = 0.0
+    for note in [w for w in runtime.RUNTIME_WARNINGS if 'separate worlds' in w or 'different world' in w or 'share one world' in w]:
+        runtime.RUNTIME_WARNINGS.discard(note)
     if os.getenv('DISCORD_WORLD_ID_ON_START', source) != target:
-        m.RUNTIME_WARNINGS.add(f'World {source} was merged into {target}, and the game now uses {target}. Set DISCORD_WORLD_ID={target} '
+        runtime.RUNTIME_WARNINGS.add(f'World {source} was merged into {target}, and the game now uses {target}. Set DISCORD_WORLD_ID={target} '
                                'on Railway so the setting matches (the game keeps using it either way).')
 
 
 def apply_alias(m):
     """At startup: if DISCORD_WORLD_ID names a world that was merged away, use the world it was merged into."""
     try:
-        with m.SessionLocal() as db:
-            alias = db.get(WorldAlias, m.DISCORD_WORLD_ID)
+        with SessionLocal() as db:
+            alias = db.get(WorldAlias, runtime.DISCORD_WORLD_ID)
     except Exception:
         return
-    if alias is not None and alias.target != m.DISCORD_WORLD_ID:
-        old = m.DISCORD_WORLD_ID
+    if alias is not None and alias.target != runtime.DISCORD_WORLD_ID:
+        old = runtime.DISCORD_WORLD_ID
         switch(m, alias.target)
-        m.RUNTIME_WARNINGS.add(f'DISCORD_WORLD_ID on Railway is still {old}, which was merged into {alias.target}. The game uses '
+        runtime.RUNTIME_WARNINGS.add(f'DISCORD_WORLD_ID on Railway is still {old}, which was merged into {alias.target}. The game uses '
                                f'{alias.target}; set DISCORD_WORLD_ID={alias.target} on Railway so the setting matches.')
 
 
 def install(m):
+    from .game.base import app, valid_admin_key
+    from .game.cooldowns_materials import audit_moderator
     from fastapi.responses import JSONResponse
-    WorldAlias.__table__.create(m.engine, checkfirst=True)
+    WorldAlias.__table__.create(runtime.engine, checkfirst=True)
     apply_alias(m)
 
-    @m.app.get('/api/v1/admin/world-merge')
+    @app.get('/api/v1/admin/world-merge')
     def world_merge(source: str = '', target: str = '', key: str = '', confirm: int = 0):
         """Preview (and with confirm=1, run) merging world `source` into world `target`. Needs ADMIN_KEY."""
-        if not m.valid_admin_key(key):
+        if not valid_admin_key(key):
             return JSONResponse({'ok': False, 'error': 'Invalid game-admin key.'}, status_code=403)
         report = run(m, source, target, apply=bool(confirm))
         if report.get('merged'):
-            with m.SessionLocal() as db:
-                m.audit_moderator(db, target, 'game admin', 'world-merge', f'{source} into {target}')
+            with SessionLocal() as db:
+                audit_moderator(db, target, 'game admin', 'world-merge', f'{source} into {target}')
         elif not report.get('blocked'):
             report['apply'] = 'Nothing has changed yet. Repeat this address with &confirm=1 to merge.'
         return JSONResponse({'ok': not report.get('blocked'), **report}, status_code=200 if not report.get('blocked') else 409)

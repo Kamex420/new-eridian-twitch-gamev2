@@ -105,22 +105,27 @@ def topic_of_subject(subject):
 
 def _cmd(m, provider, discord, twitch):
     """The command for a way to raise a stat: Discord's, or a chat !command, or 'on Discord' when chat cannot do it."""
+    from . import twitch_lite
+    from .game.cooldowns_materials import guide_command
     if ask._discord(provider):
         return discord
-    if not twitch or ask._lite(m) and twitch.split('_')[0] not in m.twitch_lite.TWITCH_COMMANDS:
+    if not twitch or ask._lite(m) and twitch.split('_')[0] not in twitch_lite.TWITCH_COMMANDS:
         return 'on Discord'
-    return m.guide_command(twitch, 'twitch')
+    return guide_command(twitch, 'twitch')
 
 
 def _society(m, db, p):
-    return m.society(db, p.channel_id) if p is not None else None
+    from .game.players import society
+    return society(db, p.channel_id) if p is not None else None
 
 
 def _tier_line(m, s, stat=None):
+    from .game.rules import SOCIETY_TIERS
+    from .game.world import society_tier
     stats = {k: getattr(s, k) for k in SOCIETY}
     low = min(stats.values())
-    nxt = next((t for t in m.SOCIETY_TIERS if t[1] > low), None)
-    tier = m.society_tier(s)[0]
+    nxt = next((t for t in SOCIETY_TIERS if t[1] > low), None)
+    tier = society_tier(s)[0]
     text = f"New Eridian is {'an' if tier[:1].lower() in 'aeiou' else 'a'} {tier}"
     if nxt:
         text += f'; {nxt[0]} needs {nxt[1]} in all six stats'
@@ -130,14 +135,17 @@ def _tier_line(m, s, stat=None):
 
 
 def answer_society(m, db, p, stat, provider):
+    from .game.cooldowns_materials import guide_command
+    from .game.rules import DIRECTIVES, EVENTS
+    from .seed_skills import TASKS as SEED_TASKS
     emoji, label = SOCIETY[stat]
     s = _society(m, db, p)
     work = [(what, much, _cmd(m, provider, discord, twitch)) for what, much, discord, twitch in WORK[stat]]
-    training = [(c['label'], f"+{c['society'][stat]}", m.guide_command(k, provider)) for k, c in m.SEED_TASKS.items() if c['society'].get(stat)]
-    directives = [d[1] for d in m.DIRECTIVES if d[3] == stat]
-    amount = max([d[4] for d in m.DIRECTIVES if d[3] == stat], default=8)
-    wins = [e['name'] for e in m.EVENTS.values() if e['reward'].get(stat)]
-    losses = [e['name'] for e in m.EVENTS.values() if e['penalty'].get(stat)]
+    training = [(c['label'], f"+{c['society'][stat]}", guide_command(k, provider)) for k, c in SEED_TASKS.items() if c['society'].get(stat)]
+    directives = [d[1] for d in DIRECTIVES if d[3] == stat]
+    amount = max([d[4] for d in DIRECTIVES if d[3] == stat], default=8)
+    wins = [e['name'] for e in EVENTS.values() if e['reward'].get(stat)]
+    losses = [e['name'] for e in EVENTS.values() if e['penalty'].get(stat)]
     if not ask._discord(provider):
         parts = [f'{emoji} {label}' + (f' (colony {getattr(s, stat)})' if s is not None else '') + ':']
         parts += [f'{what} {much.split(",")[0].split(" (")[0]} ({c})' for what, much, c in work[:4]]
@@ -176,11 +184,13 @@ def answer_contribution(m, db, p, provider):
 
 
 def answer_need(m, db, p, need, provider):
+    from .game.life import life_state
+    from .game.world import need_fix
     emoji, label = NEEDS[need]
-    life = m.life_state(db, p) if p is not None else None
+    life = life_state(db, p) if p is not None else None
     now = f' You have {getattr(life, need)}/100.' if life is not None else ''
     rule = ask.EXTRA_TERMS[label]               # what it is and what it does, worded from the game's rules
-    fix = m.need_fix(need, provider, db, p) if p is not None else m.need_fix(need, provider)
+    fix = need_fix(need, provider, db, p) if p is not None else need_fix(need, provider)
     if not ask._discord(provider):
         return ask.Answer('topic', _fit(f'{emoji} {label}:{now} {rule} Raise it: {fix}. All needs recharge +1 per 15 min up to 60.'))
     lines = [f'{emoji} HOW TO RAISE {label.upper()}', rule + now, f'**Raise it:** {fix}.',
@@ -209,7 +219,9 @@ def answer_tier(m, db, p, provider):
 
 
 def answer_housing(m, db, p, provider):
-    tasks = [(c['label'], m.guide_command(k, provider)) for k, c in m.SEED_TASKS.items() if c['shared'].get('infrastructure')]
+    from .game.cooldowns_materials import guide_command
+    from .seed_skills import TASKS as SEED_TASKS
+    tasks = [(c['label'], guide_command(k, provider)) for k, c in SEED_TASKS.items() if c['shared'].get('infrastructure')]
     repair = _cmd(m, provider, '/repair target:Society Infrastructure', 'repair')
     if not ask._discord(provider):
         return ask.Answer('topic', _fit('🏘️ Shared housing: every 5 shared Infrastructure adds 1 space; fewer spaces than citizens gives −3% success. '
@@ -222,7 +234,8 @@ def answer_housing(m, db, p, provider):
 
 
 def answer_medicines(m, db, p, provider):
-    tasks = [(c['label'], c['shared']['medicines']) for k, c in m.SEED_TASKS.items() if c['shared'].get('medicines')]
+    from .seed_skills import TASKS as SEED_TASKS
+    tasks = [(c['label'], c['shared']['medicines']) for k, c in SEED_TASKS.items() if c['shared'].get('medicines')]
     text = ('Shared Medicines stock the colony clinic. Supply it by using a medicine from your bag (/use), +1 Contribution each, '
             'or with medical training: ' + ', '.join(f'{n} +{a}' for n, a in tasks[:5]) + ('…' if len(tasks) > 5 else '') + '.')
     if not ask._discord(provider):
@@ -304,8 +317,9 @@ TOPIC_NAMES = {'start': 'Start here', 'character': 'Character', 'property': 'Hom
 
 
 def _handbook(m):
+    from .game.handbook import SEED_HELP_TOPICS
     found = []
-    for topic, text in m.SEED_HELP_TOPICS.items():
+    for topic, text in SEED_HELP_TOPICS.items():
         if topic == 'moderator':
             continue
         heading, block = '', []
@@ -360,8 +374,9 @@ def _commands():
 
 
 def _menu(m):
+    from . import menu
     found = []
-    menu = m.menu
+    menu = menu
     for key, (_, title, text, _) in menu.AREAS.items():
         if key not in {'home', 'mod'} and key not in getattr(menu, 'MOD_AREAS', set()):
             found.append(Passage(title, text, 'Menu', {'kind': 'area', 'key': key}))

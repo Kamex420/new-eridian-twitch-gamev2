@@ -22,6 +22,10 @@ import time
 from sqlalchemy import Column, String, Integer, DateTime, select, func
 from datetime import datetime, timezone
 from .db import Base
+from .models import CollectionItem
+from .models import CollectionSetClaim
+from .models import CraftLedger
+from .models import Player
 
 TROPHY_POINTS = 25
 CHECK_EVERY = 45          # seconds between full checks for one citizen (a new find checks at once)
@@ -66,28 +70,31 @@ def trophy(key, emoji, name, text, group, sc, need, have, title='', hat=''):
 
 
 def _build(m):
+    from . import seed_content, workbench
+    from .game.players import resource_name
+    from .game.rules import COLLECTIBLES, COLLECTION_SETS
     if TROPHIES:
         return
     from . import seasonal
-    s = m.seed_content
-    ores = sorted(k for k in s.GATHER if m.resource_name(k).endswith(' Ore'))
+    s = seed_content
+    ores = sorted(k for k in s.GATHER if resource_name(k).endswith(' Ore'))
     natural = sorted(s.GATHER)
     trophy('first_finds', '🔎', 'First Finds', 'Find 10 different items', 'collections', 10, 10, lambda c: len(c['found']))
     trophy('treasure_hunter', '🎒', 'Treasure Hunter', 'Find 50 different items', 'collections', 30, 50, lambda c: len(c['found']))
-    trophy('ore_hunter', '💎', 'Ore Hunter', 'Find every ore on Avesta: ' + ', '.join(m.resource_name(k).replace(' Ore', '') for k in ores),
+    trophy('ore_hunter', '💎', 'Ore Hunter', 'Find every ore on Avesta: ' + ', '.join(resource_name(k).replace(' Ore', '') for k in ores),
            'collections', 40, len(ores), lambda c, ores=ores: len(c['found'] & set(ores)), title='ore_hunter')
     trophy('wild_harvest', '🧺', 'Wild Harvest', f'Find all {len(natural)} natural materials', 'collections', 60, len(natural),
            lambda c, natural=natural: len(c['found'] & set(natural)), title='wildlander')
     trophy('taste_tester', '🍽️', 'Taste Tester', 'Eat 10 different foods', 'collections', 20, 10, lambda c: len(c['ate']))
     trophy('gourmet', '👨‍🍳', 'Gourmet', 'Eat 25 different foods', 'collections', 50, 25, lambda c: len(c['ate']), title='gourmet')
-    for key, (name, items, *_) in m.COLLECTION_SETS.items():
+    for key, (name, items, *_) in COLLECTION_SETS.items():
         trophy('set_' + key, '🗃️', name, f'Complete the {name} curio set', 'collections', 20, len(items),
                lambda c, key=key, items=items: len(items) if key in c['claimed'] else len(c['curios'] & set(items)))
-    trophy('curator', '🏛️', 'Curator', f'Find all {len(m.COLLECTIBLES)} curios', 'collections', 50, len(m.COLLECTIBLES),
-           lambda c: len(c['curios'] & set(m.COLLECTIBLES)), title='curator')
+    trophy('curator', '🏛️', 'Curator', f'Find all {len(COLLECTIBLES)} curios', 'collections', 50, len(COLLECTIBLES),
+           lambda c: len(c['curios'] & set(COLLECTIBLES)), title='curator')
 
     counts = {}
-    for e in m.workbench.index(m):
+    for e in workbench.index(m):
         counts.setdefault(e.category, set()).add(e.id)
     for cat, ids in sorted(counts.items()):
         emoji, label = CATEGORY_LOOK.get(cat, ('🛠️', cat.title()))
@@ -138,21 +145,23 @@ TITLES = {'ore_hunter': 'Ore Hunter', 'wildlander': 'Wildlander', 'gourmet': 'Go
 
 
 def install(m):
+    from .game.rules import TITLE_DEFS
     for key, label in TITLES.items():
-        m.TITLE_DEFS.setdefault(key, label)
+        TITLE_DEFS.setdefault(key, label)
 
 
 # ---------------------------------------------------------------- what a citizen has
 
 def record(m, db, p, before, after):
     """Remember newly found items and newly eaten foods. Returns True when something is new."""
+    from . import seed_content
     if not before or not after:
         return False
     b, a = before.get('Resources', {}), after.get('Resources', {})
     new = [('item', k) for k, v in a.items() if v > b.get(k, 0) and k not in {'sc', 'contribution'} and not str(k).startswith('gear:')]
     nb, na = before.get('Needs', {}), after.get('Needs', {})
     if na.get('nutrition', 0) > nb.get('nutrition', 0):
-        new += [('ate', k) for k in b if a.get(k, 0) < b.get(k, 0) and k in m.seed_content.EDIBLE]
+        new += [('ate', k) for k in b if a.get(k, 0) < b.get(k, 0) and k in seed_content.EDIBLE]
     added = False
     for kind, key in dict.fromkeys(new):
         key = str(key)[:64]
@@ -165,16 +174,17 @@ def record(m, db, p, before, after):
 
 
 def context(m, db, p):
+    from . import task_queue
     from . import votes, live_events, seasons, onboarding, autonomy
     from .competencies import FIELDS, level
     rows = db.execute(select(Found.kind, Found.key).where(Found.channel_id == p.channel_id, Found.canonical_uid == p.twitch_uid)).all()
-    held = {k for k, v in m.task_queue.inventory_snapshot(m, db, p).items() if v > 0 and not str(k).startswith('gear:')}
-    crafted = {r for r, in db.execute(select(m.CraftLedger.recipe).where(m.CraftLedger.channel_id == p.channel_id, m.CraftLedger.canonical_uid == p.twitch_uid,
-                                                                        m.CraftLedger.qty > 0)).all()}
-    curios = {k for k, in db.execute(select(m.CollectionItem.item_key).where(m.CollectionItem.channel_id == p.channel_id,
-                                                                            m.CollectionItem.canonical_uid == p.twitch_uid, m.CollectionItem.qty > 0)).all()}
-    claimed = {k for k, in db.execute(select(m.CollectionSetClaim.set_key).where(m.CollectionSetClaim.channel_id == p.channel_id,
-                                                                                m.CollectionSetClaim.canonical_uid == p.twitch_uid)).all()}
+    held = {k for k, v in task_queue.inventory_snapshot(m, db, p).items() if v > 0 and not str(k).startswith('gear:')}
+    crafted = {r for r, in db.execute(select(CraftLedger.recipe).where(CraftLedger.channel_id == p.channel_id, CraftLedger.canonical_uid == p.twitch_uid,
+                                                                        CraftLedger.qty > 0)).all()}
+    curios = {k for k, in db.execute(select(CollectionItem.item_key).where(CollectionItem.channel_id == p.channel_id,
+                                                                            CollectionItem.canonical_uid == p.twitch_uid, CollectionItem.qty > 0)).all()}
+    claimed = {k for k, in db.execute(select(CollectionSetClaim.set_key).where(CollectionSetClaim.channel_id == p.channel_id,
+                                                                                CollectionSetClaim.canonical_uid == p.twitch_uid)).all()}
     steps = db.get(onboarding.FirstSteps, (p.channel_id, p.twitch_uid))
     life = autonomy.row(db, p.channel_id, p.twitch_uid)
     best = db.execute(select(func.max(seasons.SeasonScore.tier)).where(seasons.SeasonScore.channel_id == p.channel_id,
@@ -231,13 +241,15 @@ def check(m, db, p, force=False):
 
 
 def unlock(m, db, p, t):
+    from .game.players import unlock_title
+    from .game.rules import TITLE_DEFS
     from . import stream_overlay, seasons
     db.add(m_ach()(channel_id=p.channel_id, canonical_uid=p.twitch_uid, code=PREFIX + t['key']))
     db.add(Found(channel_id=p.channel_id, canonical_uid=p.twitch_uid, kind='trophy', key=t['key'], at=_now()))
     p.sc += t['sc']
     extra = []
-    if t['title'] and m.unlock_title(db, p, t['title']):
-        extra.append(f"the {m.TITLE_DEFS.get(t['title'], t['title'])} title")
+    if t['title'] and unlock_title(db, p, t['title']):
+        extra.append(f"the {TITLE_DEFS.get(t['title'], t['title'])} title")
     if t['hat'] and seasons.give_hat(db, p, t['hat']):
         extra.append(f"the {seasons.HATS[t['hat']][1]}")
     seasons.add(m, db, p, TROPHY_POINTS, kind='trophies')
@@ -352,7 +364,7 @@ def week_unlocks(m, db, since):
     rows = db.execute(select(Found).where(Found.kind == 'trophy', Found.at >= since).order_by(Found.at.desc())).scalars().all()
     out = []
     for r in rows:
-        p = db.execute(select(m.Player).where(m.Player.channel_id == r.channel_id, m.Player.twitch_uid == r.canonical_uid)).scalar_one_or_none()
+        p = db.execute(select(Player).where(Player.channel_id == r.channel_id, Player.twitch_uid == r.canonical_uid)).scalar_one_or_none()
         t = TROPHIES.get(r.key)
         if p and t:
             out.append((p.display_name, t['emoji'], t['name']))

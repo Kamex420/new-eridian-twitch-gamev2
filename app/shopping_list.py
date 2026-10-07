@@ -21,6 +21,8 @@ from types import SimpleNamespace
 from sqlalchemy import Column, String, Integer, DateTime, select
 from .db import Base
 from . import workbench as wb, crafting_progression as cp, extras
+from . import runtime
+from .db import SessionLocal
 
 MAX_ENTRIES = 10
 MAX_WANT = 999
@@ -43,7 +45,7 @@ class ShoppingEntry(Base):
 
 
 def install(m):
-    ShoppingEntry.__table__.create(m.engine, checkfirst=True)
+    ShoppingEntry.__table__.create(runtime.engine, checkfirst=True)
 
 
 def _utc(when):
@@ -82,7 +84,8 @@ def merge(db, channel, source, target):
 
 def _unique(m, e):
     """Bonus equipment is limited to one of each."""
-    return e.kind == 'legacy' and (e.output in m.UNIQUE_CORE_ITEMS or e.output in m.UNIQUE_QUALITY_ITEMS)
+    from .game.rules import UNIQUE_CORE_ITEMS, UNIQUE_QUALITY_ITEMS
+    return e.kind == 'legacy' and (e.output in UNIQUE_CORE_ITEMS or e.output in UNIQUE_QUALITY_ITEMS)
 
 
 def _amount(value):
@@ -133,7 +136,7 @@ def set_entry(m, db, p, recipe_id, amount=None):
     if row is None:
         if len(rows) >= MAX_ENTRIES:
             return f'🛒 Your shopping list already has {MAX_ENTRIES} recipes. Remove one before adding {e.name}. Nothing changed.'
-        now = m.now()
+        now = runtime.now()
         last = max((_utc(r.added_at) for r in rows), default=None)
         if last is not None and now <= last:
             now = last + timedelta(microseconds=1)       # list order is the order recipes were added
@@ -166,16 +169,17 @@ def clear(m, db, p, done_only=False):
 
 def find_recipe(m, db, p, text):
     """(recipe, note) for a typed name: exact names and ids first, then close spellings; (None, why) when none."""
+    from . import qol
     text = str(text or '').strip()
     if not text:
         return None, '🛒 Which recipe? Type its name, e.g. Iron Plate. Nothing changed.'
     found = wb.resolve(m, db, p, text)
     if found is not None:
         return found, ''
-    found, note, suggestions = m.qol.fuzzy_recipe(m, db, p, text)
+    found, note, suggestions = qol.fuzzy_recipe(m, db, p, text)
     if found is not None:
         return found, note
-    return None, f'🛒 No recipe called "{text[:40]}".' + m.qol.did_you_mean(suggestions) + ' Nothing changed.'
+    return None, f'🛒 No recipe called "{text[:40]}".' + qol.did_you_mean(suggestions) + ' Nothing changed.'
 
 
 def listed_recipe(m, db, p, text):
@@ -227,6 +231,8 @@ def _state(m, ctx, item):
 def overview(m, db, p, provider='discord'):
     """Everything the list screens show: entries with progress, the raw materials across the list, the steps,
     and what buying the missing materials costs."""
+    from . import qol
+    from .game.players import resource_name
     ctx = wb.Context(m, db, p, provider)
     rows = [(r, wb.entry(m, r.recipe_id)) for r in entries(db, p)]
     wanted = [(e, r.want) for r, e in rows if e is not None]
@@ -247,14 +253,14 @@ def overview(m, db, p, provider='discord'):
         if not item.done:
             item.mark, item.state = _state(m, ctx, item)
         items.append(item)
-    routes = {r['key']: r for r in m.qol.fetch_routes(ctx, SimpleNamespace(inputs={k: ctx.have(k) + n for k, n in raw.items()}), 1)}
+    routes = {r['key']: r for r in qol.fetch_routes(ctx, SimpleNamespace(inputs={k: ctx.have(k) + n for k, n in raw.items()}), 1)}
     materials = []
     for key in set(used) | set(raw):
         missing = raw.get(key, 0)
         route = routes.get(key)
         price = route['price'] if route else 0
         locked = key in cp.RARE and not ctx.rare_ok
-        materials.append(SimpleNamespace(key=key, name=m.resource_name(key), need=used.get(key, 0) + missing, have=ctx.have(key),
+        materials.append(SimpleNamespace(key=key, name=resource_name(key), need=used.get(key, 0) + missing, have=ctx.have(key),
                                          missing=missing, route=route, price=price, locked=locked,
                                          buyable=bool(missing and price and not locked), cost=price * missing))
     materials.sort(key=lambda x: (not x.missing, x.name.casefold()))
@@ -265,6 +271,7 @@ def overview(m, db, p, provider='discord'):
 
 def route_text(m, x, provider='discord'):
     """How a missing material comes in, and what buying it costs."""
+    from .game.cooldowns_materials import material_source
     r = x.route or {'kind': 'none'}
     if r['kind'] == 'queue':
         text = ('mine' if r['task'].startswith('mine:') else 'gather') + f" ×{r['attempts']}"
@@ -273,7 +280,7 @@ def route_text(m, x, provider='discord'):
     elif r['kind'] == 'buy':
         text = ''
     else:
-        text = m.material_source(x.key, provider).split(';')[0].rstrip('.')
+        text = material_source(x.key, provider).split(';')[0].rstrip('.')
     if x.locked:
         text += f' · needs {cp.RARE_NEED}'
     if x.buyable:
@@ -283,7 +290,8 @@ def route_text(m, x, provider='discord'):
 
 def source(m, x, provider='discord'):
     """Where a material Seed Industries will not sell you comes from (material_source, first part)."""
-    return m.material_source(x.key, provider).split(';')[0].rstrip('.')
+    from .game.cooldowns_materials import material_source
+    return material_source(x.key, provider).split(';')[0].rstrip('.')
 
 
 def step_text(st):
@@ -326,6 +334,7 @@ def _materials(m, info, shown):
 def screen_text(m, db, p, note='', info=None):
     """The Discord shopping list: entries, the combined materials, what buying costs and the first steps. It is one card:
     when everything does not fit (presentation's overview limits), fewer materials are listed."""
+    from . import presentation
     info = info or overview(m, db, p)
     done = sum(x.done for x in info.items)
     head = [f'🛒 SHOPPING LIST · {len(info.items)}/{MAX_ENTRIES}'] + ([note.strip()] if note.strip() else [])
@@ -345,7 +354,7 @@ def screen_text(m, db, p, note='', info=None):
     elif done == len(info.items):
         tail += ['', '✅ Everything on your list is done. Clear done removes the finished entries.']
     tail += ['', 'The button by each entry changes or removes it. ▶️ Fetch next does the first step once.']
-    chars, lines = m.presentation.OVERVIEW_CHARS - CARD_MARGIN, m.presentation.OVERVIEW_LINES - 6     # three sections
+    chars, lines = presentation.OVERVIEW_CHARS - CARD_MARGIN, presentation.OVERVIEW_LINES - 6     # three sections
     for shown in range(min(MATERIALS_SHOWN, len(info.materials)), -1, -1):
         text = '\n'.join(head + _materials(m, info, shown) + tail)
         if len(text) <= chars and len([x for x in text.split('\n') if x.strip()]) <= lines:
@@ -379,6 +388,7 @@ def _chat_entry(x):
 
 def chat_text(m, db, p):
     """Twitch: the whole list on one line: entries have/want, missing materials and the next step."""
+    from . import presentation
     info = overview(m, db, p, 'twitch')
     if not info.items:
         return ('🛒 Your shopping list is empty. !shopping add <recipe> [amount] adds one, e.g. !shopping add iron plate 30; '
@@ -398,7 +408,7 @@ def chat_text(m, db, p):
         elif done == len(info.items):
             parts.append('All done: !shopping clear done')
         text = ' | '.join(parts + ['!shopping add <recipe> [amount] · remove <recipe> · clear'])
-        if len(text.encode()) <= m.presentation.CHAT_LIMIT or shown <= 1:
+        if len(text.encode()) <= presentation.CHAT_LIMIT or shown <= 1:
             return text
         shown -= 1
 
@@ -426,6 +436,7 @@ def buy_preview(m, db, p, provider='twitch'):
 
 def buy_all(m, db, p, provider='discord'):
     """Buy every missing material Seed Industries sells (the ordinary purchase), only when you can afford all of it."""
+    from . import qol
     info = overview(m, db, p, provider)
     if not info.buy:
         return '🛒 Nothing missing on your list can be bought from Seed Industries. Nothing spent.'
@@ -434,7 +445,7 @@ def buy_all(m, db, p, provider='discord'):
                 f'earn {info.cost - p.sc} more SC first. Nothing spent.')
     before = p.sc
     shim = SimpleNamespace(inputs={x.key: x.have + x.missing for x in info.buy})
-    receipts = m.qol.buy_missing(m, db, p, shim, 1, provider).split('\n')
+    receipts = qol.buy_missing(m, db, p, shim, 1, provider).split('\n')
     refused = [r for r in receipts if r and 'bought' not in r]
     text = f'🛒 Bought for your shopping list: {_bought(info)} for {before - p.sc} SC. Balance: {p.sc} SC.'
     return text + (' ' + refused[0] if refused else '')
@@ -445,11 +456,12 @@ def buy_all(m, db, p, provider='discord'):
 def command(m, channel, uid, name, provider, text=''):
     """!shopping: blank sums the list up; 'add <recipe> [amount]' (0 removes), 'remove <recipe>', 'clear [done]',
     'buy' shows the cost and 'buy confirm' buys every missing material Seed Industries sells."""
+    from .game.players import player
     words = str(text or '').split()
     verb = words[0].casefold() if words else ''
     rest = words[1:]
-    with m.SessionLocal() as db:
-        p = m.player(db, channel, provider, uid, name)[1]
+    with SessionLocal() as db:
+        p = player(db, channel, provider, uid, name)[1]
         if not words:
             reply = chat_text(m, db, p) if provider != 'discord' else screen_text(m, db, p)
         elif verb == 'buy':

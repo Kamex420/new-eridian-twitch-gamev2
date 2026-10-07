@@ -21,6 +21,10 @@ from datetime import timedelta
 from sqlalchemy import Column, String, Integer, Text, DateTime, select, update, delete
 from .db import Base
 from . import layout_v2
+from . import runtime
+from .db import SessionLocal
+from .models import Identity
+from .models import Player
 
 POPUP_MODES = {'important': 'Queue results, pauses and warnings', 'all': 'Everything, including tips and milestones',
                'off': 'Nothing pops up; check Notifications in /menu'}
@@ -63,8 +67,8 @@ class InboxPrefs(Base):
 
 
 def install(m):
-    InboxItem.__table__.create(m.engine, checkfirst=True)
-    InboxPrefs.__table__.create(m.engine, checkfirst=True)
+    InboxItem.__table__.create(runtime.engine, checkfirst=True)
+    InboxPrefs.__table__.create(runtime.engine, checkfirst=True)
 
 
 def prefs(db, channel, uid, create=False):
@@ -83,7 +87,7 @@ def popup_mode(db, channel, uid):
 
 def add(m, db, channel, uid, kind, text, important=True, seen=False):
     db.add(InboxItem(channel_id=channel, canonical_uid=uid, kind=kind, important=int(bool(important)),
-                     text=text[:1500], created_at=m.now(), seen=int(bool(seen))))
+                     text=text[:1500], created_at=runtime.now(), seen=int(bool(seen))))
     db.flush()
     ids = [r for r in db.scalars(select(InboxItem.id).where(InboxItem.channel_id == channel, InboxItem.canonical_uid == uid)
                                    .order_by(InboxItem.id.desc()).offset(KEEP))]
@@ -135,28 +139,30 @@ def popup_embed(items, more=0):
 
 
 def _canonical(m, db, discord_uid):
-    ident = db.execute(select(m.Identity).where(m.Identity.channel_id == m.DISCORD_WORLD_ID, m.Identity.provider == 'discord',
-                                                m.Identity.provider_uid == str(discord_uid))).scalar_one_or_none()
+    ident = db.execute(select(Identity).where(Identity.channel_id == runtime.DISCORD_WORLD_ID, Identity.provider == 'discord',
+                                                Identity.provider_uid == str(discord_uid))).scalar_one_or_none()
     return ident.canonical_uid if ident else 'discord:' + str(discord_uid)
 
 
 def deliver(m, payload, discord_uid):
     """Send unseen notifications as a private follow-up to this interaction."""
+    from . import extras
+    from .game.discord_commands import discord_command_copy
     app_id, token = str(payload.get('application_id') or ''), str(payload.get('token') or '')
     if not app_id or not token or not discord_uid:
         return False
-    with m.SessionLocal() as db:
+    with SessionLocal() as db:
         uid = _canonical(m, db, discord_uid)
-        p = db.execute(select(m.Player).where(m.Player.channel_id == m.DISCORD_WORLD_ID, m.Player.twitch_uid == uid)).scalar_one_or_none()
+        p = db.execute(select(Player).where(Player.channel_id == runtime.DISCORD_WORLD_ID, Player.twitch_uid == uid)).scalar_one_or_none()
         if p is not None:
-            m.extras.touch(m, db, p)      # welcome-back summary and reminders
+            extras.touch(m, db, p)      # welcome-back summary and reminders
             db.commit()
-        items = pending(db, m.DISCORD_WORLD_ID, uid)
+        items = pending(db, runtime.DISCORD_WORLD_ID, uid)
         if not items:
             return False
         shown, more = items[:POPUP_LIMIT], max(0, len(items) - POPUP_LIMIT)
         embed = popup_embed(shown, more)
-        embed['description'] = m.discord_command_copy(embed['description'])[:4000]
+        embed['description'] = discord_command_copy(embed['description'])[:4000]
         body = {'embeds': [embed], 'flags': 64, 'allowed_mentions': {'parse': []}}
         body = layout_v2.new_message(body)      # Discord's newer layout, like every other reply
         try:
@@ -173,6 +179,7 @@ def deliver(m, payload, discord_uid):
 
 
 def inbox_text(m, db, p):
+    from .game.players import as_utc
     rows = list(db.scalars(select(InboxItem).where(InboxItem.channel_id == p.channel_id, InboxItem.canonical_uid == p.twitch_uid)
                            .order_by(InboxItem.id.desc()).limit(12)))
     mode = popup_mode(db, p.channel_id, p.twitch_uid)
@@ -180,7 +187,7 @@ def inbox_text(m, db, p):
     if not rows:
         lines.append('Nothing yet. Queue results, warnings and tips will appear here.')
     for r in rows:
-        age = m.now() - m.as_utc(r.created_at)
+        age = runtime.now() - as_utc(r.created_at)
         when = f'{int(age.total_seconds() // 60)}m ago' if age < timedelta(hours=1) else f'{int(age.total_seconds() // 3600)}h ago' if age < timedelta(days=2) else f'{age.days}d ago'
         lines.append(f"{'🔵 ' if not r.seen else ''}{ICONS.get(r.kind, '📬')} {r.text.splitlines()[0][:220]} · *{when}*")
     return '\n'.join(lines)
@@ -190,37 +197,45 @@ def inbox_text(m, db, p):
 
 def queue_warnings(m, db, p, task, count):
     """Short warnings for a queue that will not finish as it stands; [] when it will."""
-    tq = m.task_queue
+    from . import qol, task_queue
+    from .game.cooldowns_materials import material_amount, material_source
+    from .game.life import life_state
+    from .game.players import resource_name
+    from .needs import finish_forecast
+    tq = task_queue
     if task not in tq.choices(m) or count <= 0:
         return []
     costs, energy, _ = tq.specification(m, task)
-    life = m.life_state(db, p)
-    need = m.finish_forecast(energy, count)
+    life = life_state(db, p)
+    need = finish_forecast(energy, count)
     short = [f'{k.title()} {getattr(life, k)}/{v}' for k, v in need.items() if getattr(life, k) < v]
     out = []
     if short:
-        fix = 'auto-recover will top them up' if m.qol.autorecover_on(db, p.channel_id, p.twitch_uid) else \
+        fix = 'auto-recover will top them up' if qol.autorecover_on(db, p.channel_id, p.twitch_uid) else \
               'relax or eat first, or turn on /settings → Autorecover'
         out.append(f"Needs won't last all {count} attempts ({', '.join(short)}). It will pause; {fix}.")
     for key, n in costs.items():
-        have = m.material_amount(db, p, key)
+        have = material_amount(db, p, key)
         if have < n * count:
-            source = m.material_source(key).split(' or ')[0].split(';')[0].rstrip('. ')
-            out.append(f'{m.resource_name(key)}: enough for {have // n} of {count} attempts. Get more: {source}.')
+            source = material_source(key).split(' or ')[0].split(';')[0].rstrip('. ')
+            out.append(f'{resource_name(key)}: enough for {have // n} of {count} attempts. Get more: {source}.')
     return out
 
 
 def after_command(m, discord_uid, name, command, options, result):
     """Raise warnings and one-time tips from what just happened; they pop up privately."""
-    with m.SessionLocal() as db:
+    from . import extras, task_queue
+    from .game.life import life_state
+    from .needs import COMFORT_SLOW
+    with SessionLocal() as db:
         uid = _canonical(m, db, discord_uid)
-        channel = m.DISCORD_WORLD_ID
-        p = db.execute(select(m.Player).where(m.Player.channel_id == channel, m.Player.twitch_uid == uid)).scalar_one_or_none()
+        channel = runtime.DISCORD_WORLD_ID
+        p = db.execute(select(Player).where(Player.channel_id == channel, Player.twitch_uid == uid)).scalar_one_or_none()
         if p is None:
             return
         text = str(result or '')
         if command == 'queue':
-            row = db.get(m.task_queue.TaskQueue, (channel, uid))
+            row = db.get(task_queue.TaskQueue, (channel, uid))
             fresh = row is not None and row.state == 'running' and row.total == row.remaining
             if fresh and not list(db.scalars(select(InboxItem.id).where(InboxItem.channel_id == channel, InboxItem.canonical_uid == uid,
                                                                            InboxItem.kind == 'warning', InboxItem.seen == 0))):
@@ -233,7 +248,7 @@ def after_command(m, discord_uid, name, command, options, result):
             tip(m, db, channel, uid, 'blocked')
         if 'sleep again in' in text:
             tip(m, db, channel, uid, 'sleep_wait')
-        if m.life_state(db, p).comfort < m.COMFORT_SLOW:
+        if life_state(db, p).comfort < COMFORT_SLOW:
             tip(m, db, channel, uid, 'comfort_low')
-        m.extras.goal_ready_check(m, db, p)       # crafting the goal completes it where the craft happens (extras.goal_crafted)
+        extras.goal_ready_check(m, db, p)       # crafting the goal completes it where the craft happens (extras.goal_crafted)
         db.commit()

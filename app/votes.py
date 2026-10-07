@@ -25,6 +25,9 @@ import json
 from datetime import datetime, timedelta, timezone
 from sqlalchemy import Column, String, Integer, DateTime, select, func
 from .db import Base
+from . import runtime
+from .models import Player
+from .models import SocietyProject
 
 VOTE_SC, VOTE_POINTS = 3, 5
 FESTIVAL_BONUS = 0.05
@@ -112,7 +115,8 @@ def _now():
 
 def install(m):
     """Wrap the society project so votes can queue the next one and helpers are credited."""
-    original_current, original_contribute = m.current_project, m.project_contribute
+    from .game.world import world_clock
+    original_current, original_contribute = runtime.current_project, runtime.project_contribute
 
     def current_project(db, channel, day):
         row = original_current(db, channel, day)
@@ -125,12 +129,12 @@ def install(m):
         if note and enabled(m):
             try:
                 credit(m, db, p, amount)
-                row = db.execute(select(m.SocietyProject).where(m.SocietyProject.channel_id == p.channel_id)).scalar_one_or_none()
+                row = db.execute(select(SocietyProject).where(SocietyProject.channel_id == p.channel_id)).scalar_one_or_none()
                 if row is not None and row.progress >= row.goal:
                     paid = complete(m, db, row)
                     if paid:
                         note += f' 🏗️ Built! {paid} helpers paid.'
-                    advance(m, db, row, m.world_clock(db, p.channel_id)['day'])
+                    advance(m, db, row, world_clock(db, p.channel_id)['day'])
             except Exception:
                 import logging
                 logging.getLogger(__name__).exception('Project completion failed')
@@ -145,7 +149,7 @@ def enabled(m):
 
 
 def plan(m, db, world=None):
-    world = world or m.DISCORD_WORLD_ID
+    world = world or runtime.DISCORD_WORLD_ID
     row = db.get(ColonyPlan, world)
     if row is None:
         row = ColonyPlan(world=world, next_project='', festival='', festival_day=0, built='[]', run=1)
@@ -155,10 +159,11 @@ def plan(m, db, world=None):
 
 
 def label(option):
+    from .game.world import project_cfg
     kind, key = option.split(':', 1)
     if kind == 'project':
         from . import main as m
-        cfg = m.project_cfg(key)
+        cfg = project_cfg(key)
         emoji, place, text = PROJECT_INFO.get(key, ('🏗️', 'commons', 'a new building for the colony'))
         return emoji, cfg[1], f'Build next: {text} (goal {cfg[2]}). When built: {perk_text(m, key)}'
     emoji, name, text, _ = FESTIVALS[key]
@@ -172,13 +177,15 @@ def _stable(seed, n):
 
 def ballot(m, db, day=None, world=None):
     """Today's ballot (created on first look)."""
-    world = world or m.DISCORD_WORLD_ID
-    day = day or m.world_clock(db, world)['day']
+    from .game.rules import PROJECTS
+    from .game.world import world_clock
+    world = world or runtime.DISCORD_WORLD_ID
+    day = day or world_clock(db, world)['day']
     row = db.get(Ballot, (world, day))
     if row is None:
-        current = db.execute(select(m.SocietyProject).where(m.SocietyProject.channel_id == world)).scalar_one_or_none()
+        current = db.execute(select(SocietyProject).where(SocietyProject.channel_id == world)).scalar_one_or_none()
         skip = {current.project_key if current else '', plan(m, db, world).next_project}
-        projects = [k for k, *_ in m.PROJECTS if k not in skip]
+        projects = [k for k, *_ in PROJECTS if k not in skip]
         first = projects[_stable(f'{world}:{day}:p1', len(projects))]
         rest = [k for k in projects if k != first]
         second = rest[_stable(f'{world}:{day}:p2', len(rest))]
@@ -199,7 +206,7 @@ def tally(db, row):
 
 
 def cast(m, db, p, choice, provider='twitch'):
-    world = m.DISCORD_WORLD_ID
+    world = runtime.DISCORD_WORLD_ID
     sync(m, db)
     row = ballot(m, db)
     options = json.loads(row.options)
@@ -242,12 +249,15 @@ def _match(options, choice):
 
 
 def _left(m, db):
-    clock = m.world_clock(db, m.DISCORD_WORLD_ID)
-    seconds = max(0, m.AVESTA_DAY_SECONDS - clock['seconds'])
+    from .game.base import AVESTA_DAY_SECONDS
+    from .game.world import world_clock
+    clock = world_clock(db, runtime.DISCORD_WORLD_ID)
+    seconds = max(0, AVESTA_DAY_SECONDS - clock['seconds'])
     return f'{seconds // 3600}h {seconds % 3600 // 60}m' if seconds >= 3600 else f'{seconds // 60}m'
 
 
 def view(m, db, p=None, provider='discord', prefix=''):
+    from .game.world import project_cfg
     sync(m, db)
     row = ballot(m, db)
     options, counts = json.loads(row.options), tally(db, row)
@@ -270,9 +280,9 @@ def view(m, db, p=None, provider='discord', prefix=''):
     if last:
         lines.append(last)
     lines.append(status_line(m, db))
-    towns = buildings(m, db, m.DISCORD_WORLD_ID)
+    towns = buildings(m, db, runtime.DISCORD_WORLD_ID)
     if towns:
-        lines.append('🏗️ Built so far: ' + ' · '.join(f"{PROJECT_INFO.get(k, ('🏗️',))[0]} {m.project_cfg(k)[1]}{f' ×{n}' if n > 1 else ''} ({perk_text(m, k).split(' for')[0]})" for k, n in towns.items()))
+        lines.append('🏗️ Built so far: ' + ' · '.join(f"{PROJECT_INFO.get(k, ('🏗️',))[0]} {project_cfg(k)[1]}{f' ×{n}' if n > 1 else ''} ({perk_text(m, k).split(' for')[0]})" for k, n in towns.items()))
     lines.append('How it works: a project winner is built next and gives a lasting perk; a festival winner runs tomorrow with +5% and a gift for everyone.')
     return '\n'.join(x for x in lines if x is not None)
 
@@ -295,10 +305,11 @@ def status_line(m, db):
 
 def sync(m, db):
     """Close every past ballot and apply its winner."""
+    from .game.world import world_clock
     if not enabled(m):
         return []
-    world = m.DISCORD_WORLD_ID
-    today = m.world_clock(db, world)['day']
+    world = runtime.DISCORD_WORLD_ID
+    today = world_clock(db, world)['day']
     done = []
     for row in db.execute(select(Ballot).where(Ballot.world == world, Ballot.day < today, Ballot.resolved_at.is_(None)).order_by(Ballot.day)).scalars().all():
         done.append(resolve(m, db, row, today))
@@ -327,10 +338,10 @@ def resolve(m, db, row, today):
     from . import stream_overlay
     if kind == 'project':
         # Twitch and Discord can keep separate society projects: the vote queues the winner for each of them.
-        for current in db.execute(select(m.SocietyProject)).scalars().all():
+        for current in db.execute(select(SocietyProject)).scalars().all():
             plan(m, db, current.channel_id).next_project = key
             advance(m, db, current, today)
-        pl.next_project = pl.next_project if db.execute(select(m.SocietyProject).where(m.SocietyProject.channel_id == row.world)).first() else key
+        pl.next_project = pl.next_project if db.execute(select(SocietyProject).where(SocietyProject.channel_id == row.world)).first() else key
         stream_overlay.highlight(db, row.world, 'vote', f'The colony voted: {name} is next!', f'{emoji} {text} ({how}).', emoji='🗳️')
     else:
         pl.festival, pl.festival_day = key, row.day + 1
@@ -339,7 +350,7 @@ def resolve(m, db, row, today):
         ranked = sorted((i for i, o in enumerate(options) if o.startswith('project:')), key=lambda i: -counts[i])
         if ranked:
             runner = options[ranked[0]].split(':', 1)[1]
-            for current in db.execute(select(m.SocietyProject)).scalars().all():
+            for current in db.execute(select(SocietyProject)).scalars().all():
                 site = plan(m, db, current.channel_id)
                 if current.progress >= current.goal and not site.next_project:
                     site.next_project = runner
@@ -348,13 +359,17 @@ def resolve(m, db, row, today):
 
 
 def perk_text(m, key):
-    skills = ', '.join(m.SKILL_LABELS.get(s, s) for s in sorted(m.project_cfg(key)[3]))
+    from .game.rules import SKILL_LABELS
+    from .game.world import project_cfg
+    skills = ', '.join(SKILL_LABELS.get(s, s) for s in sorted(project_cfg(key)[3]))
     return f'+{round(PERK * 100)}% {skills} success for everyone'
 
 
 def complete(m, db, row):
     """A project was just finished: build it, pay everyone who helped, boost the society. Once per build.
     Returns how many helpers were paid (0 when this build was already recorded)."""
+    from .game.players import society
+    from .game.world import project_cfg, world_clock
     pl = plan(m, db, row.channel_id)
     built = json.loads(pl.built or '[]')
     # Recording a build moves the plan on to the next run, so this row is already built when the latest
@@ -366,21 +381,21 @@ def complete(m, db, row):
     paid = 0
     for h in helpers:
         h.finished = 1
-        p = db.execute(select(m.Player).where(m.Player.channel_id == h.channel_id, m.Player.twitch_uid == h.canonical_uid)).scalar_one_or_none()
+        p = db.execute(select(Player).where(Player.channel_id == h.channel_id, Player.twitch_uid == h.canonical_uid)).scalar_one_or_none()
         if p is None:
             continue
         p.sc += min(HELPER_SC_MAX, HELPER_SC + h.amount)
         seasons.add(m, db, p, HELPER_POINTS + h.amount)
         paid += 1
-    s = m.society(db, row.channel_id)
+    s = society(db, row.channel_id)
     for field, n in BUILT_STATS.items():
         setattr(s, field, getattr(s, field) + n)
-    day = m.world_clock(db, row.channel_id)['day']
+    day = world_clock(db, row.channel_id)['day']
     built.append({'key': row.project_key, 'day': day, 'at': _now().isoformat(), 'helpers': len(helpers), 'run': pl.run,
                   'start': row.started_day})
     pl.built = json.dumps(built[-40:])
     pl.run += 1
-    cfg = m.project_cfg(row.project_key)
+    cfg = project_cfg(row.project_key)
     emoji = PROJECT_INFO.get(row.project_key, ('🏗️',))[0]
     stream_overlay.highlight(db, row.channel_id, 'project', f'{cfg[1]} is built!',
                              f'{emoji} {paid} helpers paid · {perk_text(m, row.project_key)} · +10 Development, +5 Reputation', emoji=emoji)
@@ -389,24 +404,26 @@ def complete(m, db, row):
 
 def advance(m, db, row, day):
     """Start the voted project once the current one is finished (building the finished one first if needed)."""
+    from .game.rules import SKILL_LABELS
+    from .game.world import project_cfg
     if row.progress < row.goal:
         return False
     complete(m, db, row)
     pl = db.get(ColonyPlan, row.channel_id)
     if pl is None or not pl.next_project:
         return False
-    cfg = m.project_cfg(pl.next_project)
+    cfg = project_cfg(pl.next_project)
     row.project_key, row.progress, row.goal, row.started_day = cfg[0], 0, cfg[2], day
     pl.next_project = ''
     from . import stream_overlay
     stream_overlay.highlight(db, row.channel_id, 'project', f'Construction starts: {cfg[1]}',
-                             f"Voted by the colony. Helps: {', '.join(m.SKILL_LABELS.get(s, s) for s in sorted(cfg[3]))}.", emoji='🏗️')
+                             f"Voted by the colony. Helps: {', '.join(SKILL_LABELS.get(s, s) for s in sorted(cfg[3]))}.", emoji='🏗️')
     return True
 
 
 def credit(m, db, p, amount):
     pl = plan(m, db, p.channel_id)
-    row = db.execute(select(m.SocietyProject).where(m.SocietyProject.channel_id == p.channel_id)).scalar_one_or_none()
+    row = db.execute(select(SocietyProject).where(SocietyProject.channel_id == p.channel_id)).scalar_one_or_none()
     key = row.project_key if row else ''
     found = db.get(ProjectHelp, (pl.world, pl.run, p.channel_id, p.twitch_uid))
     if found is None:
@@ -433,11 +450,12 @@ _festival_cache = {}
 
 
 def festival_today(m, db):
-    world = m.DISCORD_WORLD_ID
+    from .game.world import world_clock
+    world = runtime.DISCORD_WORLD_ID
     pl = db.get(ColonyPlan, world)
     if not pl or not pl.festival:
         return ''
-    day = m.world_clock(db, world)['day']
+    day = world_clock(db, world)['day']
     return pl.festival if pl.festival_day == day else ''
 
 
@@ -451,31 +469,35 @@ def buildings(m, db, channel):
 
 def building_bonus(m, db, p, skill):
     """Lasting perks from finished buildings: +2% per build of a building that covers this aptitude, up to +6%."""
+    from .game.world import project_cfg
     if not enabled(m) or not skill:
         return 0, []
     total, names = 0, []
     for key, n in buildings(m, db, p.channel_id).items():
-        if skill in m.project_cfg(key)[3]:
+        if skill in project_cfg(key)[3]:
             total += PERK * n
-            names.append(m.project_cfg(key)[1])
+            names.append(project_cfg(key)[1])
     total = min(PERK_CAP, total)
     return (total, [f"🏗️ {', '.join(names)} +{round(total * 100)}%"]) if total else (0, [])
 
 
 def festival_gift(m, db, p):
     """Everyone's first action on a festival day comes with a gift. Returns the note, or ''."""
+    from . import seed_content
+    from .game.cooldowns_materials import material_change
+    from .game.world import world_clock
     fest = festival_today(m, db)
     if not fest:
         return ''
-    day = m.world_clock(db, m.DISCORD_WORLD_ID)['day']
-    if db.get(FestivalGift, (m.DISCORD_WORLD_ID, day, p.channel_id, p.twitch_uid)) is not None:
+    day = world_clock(db, runtime.DISCORD_WORLD_ID)['day']
+    if db.get(FestivalGift, (runtime.DISCORD_WORLD_ID, day, p.channel_id, p.twitch_uid)) is not None:
         return ''
-    db.add(FestivalGift(world=m.DISCORD_WORLD_ID, day=day, channel_id=p.channel_id, canonical_uid=p.twitch_uid))
+    db.add(FestivalGift(world=runtime.DISCORD_WORLD_ID, day=day, channel_id=p.channel_id, canonical_uid=p.twitch_uid))
     sc, items = FESTIVAL_GIFTS.get(fest, (5, {}))
     p.sc += sc
     for name, n in items.items():
         try:
-            m.material_change(db, p, m.seed_content.key(name), n)
+            material_change(db, p, seed_content.key(name), n)
         except KeyError:
             pass
     got = ', '.join([f'+{sc} SC'] + [f'+{n} {k}' for k, n in items.items()])
@@ -483,7 +505,7 @@ def festival_gift(m, db, p):
 
 
 def last_result(m, db):
-    row = db.execute(select(Ballot).where(Ballot.world == m.DISCORD_WORLD_ID, Ballot.resolved_at.is_not(None))
+    row = db.execute(select(Ballot).where(Ballot.world == runtime.DISCORD_WORLD_ID, Ballot.resolved_at.is_not(None))
                      .order_by(Ballot.day.desc())).scalars().first()
     if row is None or not row.winner:
         return ''
@@ -501,6 +523,7 @@ def success_bonus(m, db, skill):
 
 
 def overlay(m, db):
+    from .game.world import project_cfg
     sync(m, db)
     row = ballot(m, db)
     options, counts = json.loads(row.options), tally(db, row)
@@ -509,12 +532,12 @@ def overlay(m, db):
     built = []
     for b in json.loads(pl.built or '[]'):
         emoji, place, text = PROJECT_INFO.get(b['key'], ('🏗️', 'commons', ''))
-        built.append({'key': b['key'], 'name': m.project_cfg(b['key'])[1], 'emoji': emoji, 'place': place, 'day': b.get('day'), 'helpers': b.get('helpers', 0)})
-    current = db.execute(select(m.SocietyProject).where(m.SocietyProject.channel_id == m.DISCORD_WORLD_ID)).scalar_one_or_none()
+        built.append({'key': b['key'], 'name': project_cfg(b['key'])[1], 'emoji': emoji, 'place': place, 'day': b.get('day'), 'helpers': b.get('helpers', 0)})
+    current = db.execute(select(SocietyProject).where(SocietyProject.channel_id == runtime.DISCORD_WORLD_ID)).scalar_one_or_none()
     return {'day': row.day, 'closes_in': _left(m, db), 'total': sum(counts),
             'options': [{'n': i, 'kind': o.split(':')[0], 'emoji': label(o)[0], 'name': label(o)[1], 'text': label(o)[2], 'votes': c}
                         for i, (o, c) in enumerate(zip(options, counts), 1)],
-            'next_project': m.project_cfg(pl.next_project)[1] if pl.next_project else '',
+            'next_project': project_cfg(pl.next_project)[1] if pl.next_project else '',
             'festival': {'key': fest, 'emoji': FESTIVALS[fest][0], 'name': FESTIVALS[fest][1], 'text': FESTIVALS[fest][2]} if fest else None,
             'built': built,
             'building': {'key': current.project_key, 'place': PROJECT_INFO.get(current.project_key, ('', 'commons'))[1],
@@ -523,11 +546,12 @@ def overlay(m, db):
 
 
 def week_winners(m, db, since):
-    rows = db.execute(select(Ballot).where(Ballot.world == m.DISCORD_WORLD_ID, Ballot.resolved_at >= since).order_by(Ballot.day)).scalars().all()
+    rows = db.execute(select(Ballot).where(Ballot.world == runtime.DISCORD_WORLD_ID, Ballot.resolved_at >= since).order_by(Ballot.day)).scalars().all()
     return [(r.day, label(r.winner), r.votes) for r in rows if r.winner]
 
 
 def built_since(m, db, since):
+    from .game.world import project_cfg
     out = []
     for b in [b for pl in db.execute(select(ColonyPlan)).scalars() for b in json.loads(pl.built or '[]')]:
         try:
@@ -535,5 +559,5 @@ def built_since(m, db, since):
         except (TypeError, ValueError):
             continue
         if at >= since:
-            out.append((m.project_cfg(b['key'])[1], PROJECT_INFO.get(b['key'], ('🏗️',))[0], b.get('helpers', 0)))
+            out.append((project_cfg(b['key'])[1], PROJECT_INFO.get(b['key'], ('🏗️',))[0], b.get('helpers', 0)))
     return out

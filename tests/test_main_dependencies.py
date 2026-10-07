@@ -13,7 +13,11 @@ ROOT = Path(__file__).resolve().parents[1]
 EXPLICIT = ('halloween', 'readable_names', 'crafting_progression', 'seed_content', 'twitch_lite', 'fun_systems', 'maintenance',
             'presentation', 'production_balance', 'practice', 'seasons', 'task_yields', 'activity_feed', 'message_layout',
             'quiet_hours', 'stream_overlay', 'world_guard', 'discord_execution', 'discord_queue_worker', 'discord_deferred',
-            'live_events', 'recap', 'onboarding')
+            'live_events', 'recap', 'onboarding', 'community', 'knowledge', 'trophies', 'keep_levels', 'inbox', 'commands',
+            'ask', 'force_merge', 'shopping_list', 'queue_notifications')
+# These only set a value on app.main (a world merge switches the main world, votes wraps the project hooks, item
+# identities replace MERGED_TRAINING); they read nothing from it.
+SETS_ONLY = ('votes', 'world_merge', 'item_identity')
 
 
 def test_the_record_matches_the_code():
@@ -29,12 +33,16 @@ def test_the_record_matches_the_code():
                          'python -m scripts.main_dependencies --write so the record shrinks too.')
 
 
-@pytest.mark.parametrize('name', EXPLICIT)
+@pytest.mark.parametrize('name', EXPLICIT + SETS_ONLY)
 def test_a_converted_system_reads_nothing_from_app_main(name):
-    assert f'app/{name}.py' not in deps.current(set(vars(m)))
+    import ast
+    tree = ast.parse((ROOT / 'app' / f'{name}.py').read_text(encoding='utf-8'))
+    reads = {n.attr for n in ast.walk(tree) if isinstance(n, ast.Attribute) and isinstance(n.value, ast.Name)
+             and n.value.id == 'm' and isinstance(n.ctx, ast.Load) and n.attr in vars(m)}
+    assert not reads
 
 
-@pytest.mark.parametrize('name', EXPLICIT)
+@pytest.mark.parametrize('name', EXPLICIT + SETS_ONLY)
 def test_a_converted_system_still_imports_on_its_own(name, tmp_path):
     """The game loads these systems while it starts, so they import game modules inside their functions; a top-level
     import from app.game would make importing them first loop back into the half-loaded game."""

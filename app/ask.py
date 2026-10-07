@@ -23,6 +23,8 @@ from sqlalchemy import Column, String, Integer, DateTime, select, delete, func
 
 from .db import Base
 from . import workbench as wb, seed_content as s, crafting_progression as cp
+from . import runtime
+from .models import Player
 
 MAX_QUERY = 100          # the /find option and the menu's text box take up to this many characters
 LOG_KEEP = 300           # unanswered questions kept for the owner (the oldest go first)
@@ -39,7 +41,7 @@ class FindQuestion(Base):
 
 
 def install(m):
-    FindQuestion.__table__.create(m.engine, checkfirst=True)
+    FindQuestion.__table__.create(runtime.engine, checkfirst=True)
 
 
 @dataclass
@@ -215,19 +217,21 @@ _SKILLS = None
 
 def skills(m):
     """{normalized name: (main, branch or None, label, skill key)} for every skill and branch players can level."""
+    from .game.rules import SKILL_LABELS
+    from .seed_skills import HUBS as SEED_HUBS, TASKS as SEED_TASKS
     global _SKILLS
     if _SKILLS is None:
         _SKILLS = {}
         for skill_key, (main, branch) in s.SKILLS.items():
             _SKILLS.setdefault(_norm(s.skill_name(skill_key)), (main, branch, s.skill_name(skill_key), skill_key))
         mains = {main: key for key, (main, branch) in s.SKILLS.items() if branch is None}
-        for hub, main in m.SEED_HUBS.items():
+        for hub, main in SEED_HUBS.items():
             if main in mains:
-                value = (main, None, m.SKILL_LABELS.get(main, main.title()), mains[main])
+                value = (main, None, SKILL_LABELS.get(main, main.title()), mains[main])
                 _SKILLS.setdefault(_norm(hub), value)
-                _SKILLS.setdefault(_norm(m.SKILL_LABELS.get(main, main)), value)
+                _SKILLS.setdefault(_norm(SKILL_LABELS.get(main, main)), value)
                 _SKILLS.setdefault(_norm(main), value)
-        for cfg in m.SEED_TASKS.values():      # task names that differ from their skill's ('Maintenance & Repair')
+        for cfg in SEED_TASKS.values():      # task names that differ from their skill's ('Maintenance & Repair')
             match = [v for v in _SKILLS.values() if v[1] == cfg['branch'] or (v[1] is None and cfg['branch'] is None and v[0] == cfg['skill'])]
             if match:
                 _SKILLS.setdefault(_norm(cfg['label']), match[0])
@@ -269,10 +273,11 @@ _TERMS = None
 
 def terms(m):
     """{normalized term: (title, definition)} from the handbook's Terms page plus EXTRA_TERMS."""
+    from .game.handbook import SEED_HELP_TOPICS
     global _TERMS
     if _TERMS is None:
         _TERMS = {}
-        for line in m.SEED_HELP_TOPICS.get('terms', '').splitlines():
+        for line in SEED_HELP_TOPICS.get('terms', '').splitlines():
             head, sep, text = line.partition(' — ')
             if not sep or len(head) > 40:
                 continue
@@ -296,12 +301,13 @@ def find_term(m, text):
 
 def find_leaf(m, text):
     """A menu button or area whose label is the text ('train skills', 'shopping list')."""
+    from . import menu
     q = _norm(text)
-    for key, (_, title, _, _) in m.menu.AREAS.items():
+    for key, (_, title, _, _) in menu.AREAS.items():
         if key != 'home' and _norm(title) == q:
             return key
-    for key, leaf in m.menu.LEAVES.items():
-        if _norm(leaf['label']) == q and key not in m.menu.OWNER_ONLY and not key.startswith('m_'):
+    for key, leaf in menu.LEAVES.items():
+        if _norm(leaf['label']) == q and key not in menu.OWNER_ONLY and not key.startswith('m_'):
             return key
     return None
 
@@ -330,7 +336,8 @@ def _goal_id(m, db, p):
 
 
 def _plain_inputs(m, e):
-    return ', '.join(f'{m.resource_name(k)} ×{n}' for k, n in e.inputs.items()) or 'no ingredients'
+    from .game.players import resource_name
+    return ', '.join(f'{resource_name(k)} ×{n}' for k, n in e.inputs.items()) or 'no ingredients'
 
 
 def answer_make(m, db, p, e, provider):
@@ -366,8 +373,9 @@ def answer_make(m, db, p, e, provider):
 
 def _find_sources(m, key):
     """Lines of work whose lucky finds can turn up this item."""
+    from .seed_skills import TASKS as SEED_TASKS
     from . import practice
-    labels = {cfg['branch']: cfg['label'] for cfg in m.SEED_TASKS.values()}
+    labels = {cfg['branch']: cfg['label'] for cfg in SEED_TASKS.values()}
     found = []
     for branch, names in practice.BRANCH.items():
         if any(practice.key(m, n) == key for n in names):
@@ -376,12 +384,14 @@ def _find_sources(m, key):
 
 
 def answer_get(m, db, p, key, provider):
-    name = m.resource_name(key)
-    source = m.material_source(key, provider)
+    from .game.cooldowns_materials import material_amount, material_source
+    from .game.players import resource_name
+    name = resource_name(key)
+    source = material_source(key, provider)
     best = s.ACQUISITION.get(key) if key in s.ACTIVE else None
     others = [e for e in wb.index(m) if e.output == key and e.id != best][:3]
     finds = _find_sources(m, key)
-    have = m.material_amount(db, p, key) if p is not None else None
+    have = material_amount(db, p, key) if p is not None else None
     if not _discord(provider):
         if key in s.GATHER:                        # chat commands take the item's name (!mine: one word only)
             source = source.replace(f'!gather {key}', f'!gather {name}')
@@ -414,9 +424,10 @@ def answer_get(m, db, p, key, provider):
 
 
 def answer_uses(m, db, p, key, provider):
+    from .game.players import resource_name
     from . import qol
     ctx = _ctx(m, db, p, provider)
-    name = m.resource_name(key)
+    name = resource_name(key)
     rows = [e for e in wb.index(m) if key in e.inputs]
     if p is not None:
         rows.sort(key=lambda e: (wb.STATUS_ORDER[ctx.status(e).code], e.sort_key))
@@ -455,24 +466,29 @@ def answer_uses(m, db, p, key, provider):
 
 
 def _hub(m, main):
-    return next((h for h, k in m.SEED_HUBS.items() if k == main), None)
+    from .seed_skills import HUBS as SEED_HUBS
+    return next((h for h, k in SEED_HUBS.items() if k == main), None)
 
 
 def answer_level(m, db, p, skill, provider):
+    from .game.players import resource_name
+    from .game.rules import SKILL_LABELS
+    from .game.training_and_items import training_tasks
+    from .seed_skills import TASKS as SEED_TASKS
     main, branch, label, skill_key = skill
     hub = _hub(m, main)
-    main_label = m.SKILL_LABELS.get(main, main.title())
+    main_label = SKILL_LABELS.get(main, main.title())
     ctx = _ctx(m, db, p, provider)
     level = ctx.level(skill_key) if p is not None else None
     if hub is None:
         return Answer('level', f'📈 {label} is practised by its work tasks: {"/work" if _discord(provider) else "!work"} lists them.')
     if p is not None:
-        tasks = [t for t in m.training_tasks(db, p, hub, 'discord' if _discord(provider) else 'twitch')
+        tasks = [t for t in training_tasks(db, p, hub, 'discord' if _discord(provider) else 'twitch')
                  if (t['cfg']['branch'] == branch if branch else True)]
     else:
         tasks = [{'key': k, 'cfg': c, 'status': '', 'head': f"{c['label']} — needs {main_label} Lv{c['unlock']}",
-                  'uses': '  Uses: ' + (', '.join(f'{m.resource_name(x)} ×{n}' for x, n in c['cost'].items()) or 'no items')}
-                 for k, c in m.SEED_TASKS.items() if c['hub'] == hub and (c['branch'] == branch if branch else True)]
+                  'uses': '  Uses: ' + (', '.join(f'{resource_name(x)} ×{n}' for x, n in c['cost'].items()) or 'no items')}
+                 for k, c in SEED_TASKS.items() if c['hub'] == hub and (c['branch'] == branch if branch else True)]
     ready = [t for t in tasks if t['status'] == '✅']
     if not _discord(provider):
         shown = '; '.join(f"{t['status'] + ' ' if t['status'] else ''}{t['cfg']['label']}: !training {hub} {t['key']}" for t in (ready or tasks)[:3])
@@ -496,6 +512,8 @@ def answer_level(m, db, p, skill, provider):
 
 def blockers(m, ctx, e):
     """Every reason `e` cannot be crafted right now, not only the first (workbench.Context.status)."""
+    from .game.players import resource_name
+    from .game.rules import RECIPE_TIERS, SOCIETY_TIERS
     from . import seasonal, extras
     found = []
     if not seasonal.festival_open(e.id):
@@ -510,23 +528,23 @@ def blockers(m, ctx, e):
     if e.kind == 'seed' and any(k in cp.RARE for k in s.RECIPES[e.id]['outputs']) and not ctx.rare_ok:
         found.append(('⛏️', 'Rare ores need a Small or Frontiers Expedition Mineral Extractor in your bag.'))
     if e.kind == 'legacy':
-        society_need = m.RECIPE_TIERS.get(e.id)
+        society_need = RECIPE_TIERS.get(e.id)
         if society_need and ctx.society_tier < society_need:
-            found.append(('🏙️', f'Unlocks when New Eridian reaches {m.SOCIETY_TIERS[society_need][0]}.'))
+            found.append(('🏙️', f'Unlocks when New Eridian reaches {SOCIETY_TIERS[society_need][0]}.'))
         if ctx.owned_unique(e.id):
             found.append(('✅', 'You already own one; bonus equipment is limited to one of each.'))
     if not ctx.usable_tags(e):
         machine_key, machine = extras._machine(m, ctx, e)
         station = cp.STATIONS[e.tags[0]]['name'] if e.tags else 'workstation'
         if machine is not None:
-            found.append(('🏭', f'Needs the {station}: craft a {m.resource_name(machine_key)} to open it for good.'))
+            found.append(('🏭', f'Needs the {station}: craft a {resource_name(machine_key)} to open it for good.'))
         else:
             option = ctx.unlock_option(e)
             found.append(('🏭', f"Needs the {cp.STATIONS[option]['name'] if option else station}"
                                 + (f" (unlock it once for {cp.STATIONS[option]['cost']} SC in /workshop)." if option else '.')))
     missing = [(k, n - ctx.have(k)) for k, n in e.inputs.items() if ctx.have(k) < n]
     if missing:
-        found.append(('❌', 'Missing: ' + ', '.join(f'{n} {m.resource_name(k)}' for k, n in missing) + '.'))
+        found.append(('❌', 'Missing: ' + ', '.join(f'{n} {resource_name(k)}' for k, n in missing) + '.'))
     if not found and ctx.status(e).code != 'ready':        # a rule this list does not know yet
         st = ctx.status(e)
         found.append((st.emoji, st.detail))
@@ -553,17 +571,20 @@ def answer_why(m, db, p, e, provider):
 
 
 def answer_needs(m, db, p, provider):
+    from .game.life import life_state
+    from .game.world import NEED_EMOJI, comfort_status_line, need_fix
+    from .needs import blocked_needs
     if p is None:
         return Answer('needs', f'Start playing first ({"/start" if _discord(provider) else "!start"}), then ask again.')
-    life = m.life_state(db, p)
-    blocked = m.blocked_needs(life)
+    life = life_state(db, p)
+    blocked = blocked_needs(life)
     if blocked:
-        lines = [f"{m.NEED_EMOJI[f]} {label} {value}/100 (needs {minimum}) → {m.need_fix(f, provider, db, p)}" for f, label, value, minimum in blocked]
+        lines = [f"{NEED_EMOJI[f]} {label} {value}/100 (needs {minimum}) → {need_fix(f, provider, db, p)}" for f, label, value, minimum in blocked]
         if not _discord(provider):
             return Answer('needs', '⛔ Work is paused: ' + ' | '.join(lines))
         return Answer('needs', '⛔ WHY CAN\'T I WORK?\nA need is too low. Blocked tries spend nothing.\n' + '\n'.join(lines),
                       [{'kind': 'area', 'key': 'life'}, {'kind': 'status'}])
-    note = m.comfort_status_line(life)
+    note = comfort_status_line(life)
     rest = ((note + ' ') if note else '') + ('If a task still will not start, its cooldown or a queue may be running: check '
                                              + ('/status.' if _discord(provider) else '!status.'))
     if not _discord(provider):
@@ -573,12 +594,13 @@ def answer_needs(m, db, p, provider):
 
 def answer_skills(m, db, p, provider):
     """"How do I level up?": every skill, how many of its tasks are ready, and where to train."""
+    from .game.training_and_items import training_skill_line, training_skills
     if not _discord(provider):
         return Answer('level', '📈 Every skill has training tasks: !training <skill> lists them (farming, harvesting, engineering, '
                                'processing, crafting, cooking, medicine, emergency). Ask !find how do I level <skill> for one.')
     lines = ['📈 HOW DO I LEVEL UP?', 'Each skill has training tasks; doing one practises the skill (and its specialty).']
     if p is not None:
-        lines += ['• ' + m.training_skill_line(label, level, ready, total) for _, label, level, ready, total in m.training_skills(db, p)]
+        lines += ['• ' + training_skill_line(label, level, ready, total) for _, label, level, ready, total in training_skills(db, p)]
     lines.append('Ask about one skill for its tasks and a Start button, e.g. how do I level Chemistry?')
     return Answer('level', '\n'.join(lines), [{'kind': 'leaf', 'key': 'trainskill'}])
 
@@ -630,7 +652,8 @@ def answer_term(m, term, provider):
 
 
 def answer_leaf(m, key, provider):
-    menu = m.menu
+    from . import menu
+    menu = menu
     if key in menu.AREAS:
         _, title, text, _ = menu.AREAS[key]
     else:
@@ -643,20 +666,22 @@ def answer_leaf(m, key, provider):
 
 def answer_item(m, db, p, key, provider):
     """What an item is: what it does, how to get it, what it is for."""
-    name = m.resource_name(key)
+    from .game.cooldowns_materials import material_amount, material_source
+    from .game.players import resource_name
+    name = resource_name(key)
     description = s.ITEMS.get(key, {}).get('description', '') if key in s.ACTIVE else ''
     used = len([e for e in wb.index(m) if key in e.inputs])
     purpose = (s.PURPOSE.get(key) or {}).get('label', '')
     if not _discord(provider):
-        return Answer('define', f'📦 {name}: ' + (description[:120] + ' ' if description else '') + f'Get it: {m.material_source(key, provider)}')
+        return Answer('define', f'📦 {name}: ' + (description[:120] + ' ' if description else '') + f'Get it: {material_source(key, provider)}')
     lines = [f'📦 {name.upper()}'] + ([description] if description else [])
-    lines += [f'**Get it:** {m.material_source(key, provider)}']
+    lines += [f'**Get it:** {material_source(key, provider)}']
     if purpose:
         lines.append(f'**Use:** {purpose}')
     elif used:
         lines.append(f'**Use:** ingredient in {used} recipes.')
     if p is not None:
-        lines.append(f'**You have:** {m.material_amount(db, p, key)}')
+        lines.append(f'**You have:** {material_amount(db, p, key)}')
     return Answer('define', '\n'.join(lines), [{'kind': 'uses', 'item': key}] + ([{'kind': 'gather', 'item': key}] if key in s.GATHER else []))
 
 
@@ -664,6 +689,7 @@ def answer_item(m, db, p, key, provider):
 
 def _resolve(m, db, p, intent, subject, provider):
     """(Answer or None, suggestions) for one reading of the question."""
+    from .game.players import resource_name
     if intent == 'next':
         return answer_next(m, db, p, provider), []
     if intent == 'needs':
@@ -701,7 +727,7 @@ def _resolve(m, db, p, intent, subject, provider):
         if skill and _norm(subject) in skills(m):
             return answer_level(m, db, p, skill, provider), []
         key, near_items = find_item(subject, m)
-        if key is not None and _norm(m.resource_name(key)) in _forms(subject):
+        if key is not None and _norm(resource_name(key)) in _forms(subject):
             return answer_item(m, db, p, key, provider), []                 # the item's own name
         from . import knowledge
         known = knowledge.search_answer(m, db, p, subject, provider)      # "what is a season?": the handbook's /season
@@ -839,7 +865,7 @@ def log(m, db, channel, query):
         return
     try:
         found = db.get(FindQuestion, (str(channel), question))
-        when = m.now()
+        when = runtime.now()
         if found is not None:
             found.times += 1
             found.last_asked = when
@@ -858,12 +884,12 @@ def log(m, db, channel, query):
 
 def log_text(m, db, days=30, limit=25):
     """The owner's view: what Find could not answer lately, most asked first."""
-    since = m.now() - timedelta(days=days)
+    since = runtime.now() - timedelta(days=days)
     rows = db.execute(select(FindQuestion).where(FindQuestion.last_asked >= since)).scalars().all()
     merged = {}
     for r in rows:
         times, last = merged.get(r.question, (0, None))
-        when = r.last_asked if r.last_asked.tzinfo else r.last_asked.replace(tzinfo=m.now().tzinfo)
+        when = r.last_asked if r.last_asked.tzinfo else r.last_asked.replace(tzinfo=runtime.now().tzinfo)
         merged[r.question] = (times + r.times, max(last, when) if last else when)
     if not merged:
         return f'❓ UNANSWERED FIND QUESTIONS\nNothing in the last {days} days: Find answered everything players asked.'
@@ -878,7 +904,8 @@ def log_text(m, db, days=30, limit=25):
 
 def existing_player(m, db, channel, provider, uid):
     """The asker's citizen when they have one; Find never creates one."""
+    from .game.players import resolve
     if not channel or not uid:
         return None
-    canon = m.resolve(db, channel, provider, uid)
-    return db.execute(select(m.Player).where(m.Player.channel_id == channel, m.Player.twitch_uid == canon)).scalar_one_or_none()
+    canon = resolve(db, channel, provider, uid)
+    return db.execute(select(Player).where(Player.channel_id == channel, Player.twitch_uid == canon)).scalar_one_or_none()

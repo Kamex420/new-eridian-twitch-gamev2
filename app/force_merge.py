@@ -15,6 +15,11 @@ moderator log records "owner <discord id> via /menu". No new table.
 from types import SimpleNamespace
 from sqlalchemy import select, func
 from . import ui
+from . import runtime
+from .db import SessionLocal
+from .models import AccountLink
+from .models import Identity
+from .models import Player
 
 PAGE = 23                                   # dropdown rows per page, leaving room for Previous / Next
 DENIED = '⛔ Owner access is required for Force merge.'
@@ -32,13 +37,14 @@ class Refused(Exception):
 
 def load(m, db, channel, keep, merge):
     """Both characters (by uid) with their summaries and the combined totals, or Refused. Changes nothing."""
+    from .game.routes_obs_admin import _player_summary
     if keep == merge:
         raise Refused('same', 'keep and merge are the same character.', 400)
-    a = db.execute(select(m.Player).where(m.Player.channel_id == channel, m.Player.twitch_uid == keep)).scalar_one_or_none()
-    b = db.execute(select(m.Player).where(m.Player.channel_id == channel, m.Player.twitch_uid == merge)).scalar_one_or_none()
+    a = db.execute(select(Player).where(Player.channel_id == channel, Player.twitch_uid == keep)).scalar_one_or_none()
+    b = db.execute(select(Player).where(Player.channel_id == channel, Player.twitch_uid == merge)).scalar_one_or_none()
     if not a or not b:
         raise Refused('missing', 'Both characters must exist in this channel (use the uid values from /api/v1/admin/duplicates).', 404)
-    before = [m._player_summary(db, channel, a), m._player_summary(db, channel, b)]
+    before = [_player_summary(db, channel, a), _player_summary(db, channel, b)]
     combined = {k: before[0][k] + before[1][k] for k in ('sc', 'contribution', 'actions', 'xp')}
     return SimpleNamespace(keep=a, merge=b, before=before, combined=combined)
 
@@ -46,27 +52,29 @@ def load(m, db, channel, keep, merge):
 def apply(m, db, channel, pair, actor):
     """Merge `pair.merge` into `pair.keep` (what `load` returned), link a Twitch + Discord pair, log it as `actor`.
     The caller holds the game transaction. Returns {'character': the merged summary, 'expected': the combined totals}."""
+    from .game.cooldowns_materials import audit_moderator
+    from .game.routes_obs_admin import _player_summary
     keep, merge, before = pair.keep.twitch_uid, pair.merge.twitch_uid, pair.before
-    m.merge_accounts(db, channel, merge, keep)
+    runtime.merge_accounts(db, channel, merge, keep)
     # A Twitch + Discord pair becomes a permanent link, exactly as if the player had used /link.
-    ids = db.execute(select(m.Identity).where(m.Identity.channel_id == channel, m.Identity.canonical_uid == keep)).scalars().all()
+    ids = db.execute(select(Identity).where(Identity.channel_id == channel, Identity.canonical_uid == keep)).scalars().all()
     tw = [i.provider_uid for i in ids if i.provider == 'twitch']
     dc = [i.provider_uid for i in ids if i.provider == 'discord']
-    if len(dc) == 1 and not db.execute(select(m.AccountLink).where(m.AccountLink.channel_id == channel, m.AccountLink.discord_uid == dc[0])).scalar_one_or_none() \
-       and not db.execute(select(m.AccountLink).where(m.AccountLink.channel_id == channel, m.AccountLink.twitch_uid == keep)).scalar_one_or_none():
-        db.add(m.AccountLink(channel_id=channel, twitch_uid=keep, discord_uid=dc[0]))
-    m.audit_moderator(db, channel, actor, 'merge', f"{before[1]['name']} ({merge}) into {before[0]['name']} ({keep})")
+    if len(dc) == 1 and not db.execute(select(AccountLink).where(AccountLink.channel_id == channel, AccountLink.discord_uid == dc[0])).scalar_one_or_none() \
+       and not db.execute(select(AccountLink).where(AccountLink.channel_id == channel, AccountLink.twitch_uid == keep)).scalar_one_or_none():
+        db.add(AccountLink(channel_id=channel, twitch_uid=keep, discord_uid=dc[0]))
+    audit_moderator(db, channel, actor, 'merge', f"{before[1]['name']} ({merge}) into {before[0]['name']} ({keep})")
     db.commit()
-    p = db.execute(select(m.Player).where(m.Player.channel_id == channel, m.Player.twitch_uid == keep)).scalar_one()
-    return {'character': m._player_summary(db, channel, p), 'expected': pair.combined}
+    p = db.execute(select(Player).where(Player.channel_id == channel, Player.twitch_uid == keep)).scalar_one()
+    return {'character': _player_summary(db, channel, p), 'expected': pair.combined}
 
 
 # ---------------------------------------------------------------- what the screens say about a character
 
 def _ids(m, db, channel, uid):
     """['Twitch tw-555', 'Discord 9001']: every platform id that points at this character."""
-    rows = db.execute(select(m.Identity).where(m.Identity.channel_id == channel, m.Identity.canonical_uid == uid)
-                      .order_by(m.Identity.provider, m.Identity.provider_uid)).scalars().all()
+    rows = db.execute(select(Identity).where(Identity.channel_id == channel, Identity.canonical_uid == uid)
+                      .order_by(Identity.provider, Identity.provider_uid)).scalars().all()
     found = [f'{r.provider.capitalize()} {r.provider_uid}' for r in rows]
     return found or [f'Discord {uid[8:]}' if uid.startswith('discord:') else f'Twitch {uid}']
 
@@ -74,25 +82,28 @@ def _ids(m, db, channel, uid):
 def _platforms(m, db, channel, uids):
     """{uid: 'Twitch+Discord'} for a page of characters, from one query."""
     kinds = {}
-    for r in db.execute(select(m.Identity).where(m.Identity.channel_id == channel, m.Identity.canonical_uid.in_(uids))).scalars():
+    for r in db.execute(select(Identity).where(Identity.channel_id == channel, Identity.canonical_uid.in_(uids))).scalars():
         kinds.setdefault(r.canonical_uid, set()).add(r.provider.capitalize())
     return {u: '+'.join(sorted(kinds.get(u) or {'Discord' if u.startswith('discord:') else 'Twitch'})) for u in uids}
 
 
 def _queue(m, db, channel, uid):
-    return db.get(m.task_queue.TaskQueue, (channel, uid))
+    from . import task_queue
+    return db.get(task_queue.TaskQueue, (channel, uid))
 
 
 def _queue_line(m, row):
+    from . import task_queue
     if row is None:
         return 'none'
-    label = m.task_queue.choices(m).get(row.task, row.task)
-    return f'{label} · {row.state} · {row.remaining} of {row.total} attempts left' if row.state in m.task_queue.ACTIVE else f'{label} · {row.state}'
+    label = task_queue.choices(m).get(row.task, row.task)
+    return f'{label} · {row.state} · {row.remaining} of {row.total} attempts left' if row.state in task_queue.ACTIVE else f'{label} · {row.state}'
 
 
 def _queue_after(m, kq, mq, keep_name, merge_name):
     """What the existing merge does with the two queues (task_queue.merge_accounts), in words."""
-    active = m.task_queue.ACTIVE
+    from . import task_queue
+    active = task_queue.ACTIVE
     if mq is not None and mq.state in active:
         if kq is None or kq.state not in active:
             return f"{merge_name}'s running queue moves to {keep_name}"
@@ -101,7 +112,8 @@ def _queue_after(m, kq, mq, keep_name, merge_name):
 
 
 def _stock(m, db, p):
-    return m.item_identity.stock(m, db, p)
+    from . import item_identity
+    return item_identity.stock(m, db, p)
 
 
 def _facts(m, db, channel, p, summary):
@@ -167,13 +179,13 @@ def _id(raw):
 def _character(db, m, channel, raw):
     """The Player with this row id, or None (not a usable number, or no such character)."""
     pid = _id(raw)
-    return None if pid is None else db.execute(select(m.Player).where(m.Player.channel_id == channel, m.Player.id == pid)).scalar_one_or_none()
+    return None if pid is None else db.execute(select(Player).where(Player.channel_id == channel, Player.id == pid)).scalar_one_or_none()
 
 
 def _listing(m, db, channel, skip=None):
-    rows = db.execute(select(m.Player.id, m.Player.twitch_uid, m.Player.display_name, m.Player.sc, m.Player.actions)
-                      .where(m.Player.channel_id == channel, *([m.Player.id != skip] if skip else []))
-                      .order_by(func.lower(m.Player.display_name), m.Player.id)).all()
+    rows = db.execute(select(Player.id, Player.twitch_uid, Player.display_name, Player.sc, Player.actions)
+                      .where(Player.channel_id == channel, *([Player.id != skip] if skip else []))
+                      .order_by(func.lower(Player.display_name), Player.id)).all()
     return rows
 
 
@@ -206,7 +218,7 @@ def view(m, db, p, owner, verb, args, values):
     if not ui.is_owner(m):
         from .menu import nav
         return _stop(m, owner, DENIED, [nav(owner, 'mod', 'mod')])
-    channel = m.DISCORD_WORLD_ID
+    channel = runtime.DISCORD_WORLD_ID
     if verb == 'xk' and not (values and not _page(values)):
         return _picker(m, db, owner, channel, 'xk', (), max(1, _page(values)), 'step 1 of 3: who survives?',
                        'Choose the character to KEEP. Its name stays and the other character is merged into it.\n'
@@ -245,11 +257,11 @@ def preview(m, db, owner, channel, keep, gone):
 def run(m, uid, action):
     """✔️ Confirm merge, claimed once. Runs inside the game transaction; every check is repeated here."""
     owner = str(uid)
-    channel = m.DISCORD_WORLD_ID
+    channel = runtime.DISCORD_WORLD_ID
     done = ui.row(ui.button('Moderator', ui.cid(owner, 'mn', 'mod'), emoji='🛡️'), ui.button('Merge another', ui.cid(owner, 'xk'), emoji='🧬'))
     if not ui.is_owner(m):
         return _stop(m, owner, DENIED, [ui.row(ui.button('Moderator', ui.cid(owner, 'mn', 'mod'), emoji='🛡️')), _nav(owner, 'mn', 'mod')])
-    with m.SessionLocal() as db:
+    with SessionLocal() as db:
         keep, gone = (_character(db, m, channel, action.get(k)) for k in ('keep', 'merge'))
         if keep is None or gone is None:
             return _stop(m, owner, 'One of the two characters no longer exists (it may already have been merged).', [done, _nav(owner, 'mn', 'mod')])
@@ -262,9 +274,9 @@ def run(m, uid, action):
         names = (pair.before[1]['name'], pair.before[0]['name'])
         result = apply(m, db, channel, pair, f'owner {owner} via /menu')
         s = result['character']
-        p = db.execute(select(m.Player).where(m.Player.channel_id == channel, m.Player.twitch_uid == keep.twitch_uid)).scalar_one()
+        p = db.execute(select(Player).where(Player.channel_id == channel, Player.twitch_uid == keep.twitch_uid)).scalar_one()
         stock = _stock(m, db, p)
-        linked = db.execute(select(m.AccountLink).where(m.AccountLink.channel_id == channel, m.AccountLink.twitch_uid == p.twitch_uid)).scalar_one_or_none()
+        linked = db.execute(select(AccountLink).where(AccountLink.channel_id == channel, AccountLink.twitch_uid == p.twitch_uid)).scalar_one_or_none()
         text = '\n'.join([f"🧬 FORCE MERGE — DONE\nMerged **{names[0]}** into **{names[1]}**. {names[0]} is gone; {names[1]} survives.", '',
                           f"**{s['name']}** now has",
                           f"• {s['sc']} SC · {s['xp']} XP · {s['actions']} actions · {s['contribution']} contribution",

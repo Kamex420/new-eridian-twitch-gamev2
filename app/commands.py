@@ -10,6 +10,14 @@ from inspect import signature
 from contextvars import ContextVar
 from fastapi.responses import PlainTextResponse
 from .progression import notices
+from . import runtime
+from .db import SessionLocal
+from .models import ActionLog
+from .models import Player
+from .settlement import pressures as colony_pressures
+from .settlement import seedling as colony_seedling
+from .settlement import state as colony_state
+from sqlalchemy import select
 context=ContextVar("colony_command",default=None)
 
 def transaction(fn):
@@ -28,6 +36,14 @@ def transaction(fn):
 
 
 def command(fn):
+    from . import task_queue
+    from .game.cooldowns_materials import guide_command
+    from .game.life import life_state
+    from .game.players import resource_name, society
+    from .game.rules import ACTION_SKILLS, SKILL_LABELS
+    from .game.world import world_clock
+    from .progression import announce
+    from .seedlings import describe as routine_description
     sig=signature(fn)
     @wraps(fn)
     def wrapped(*args,**kwargs):
@@ -44,13 +60,13 @@ def command(fn):
             if not isinstance(response,PlainTextResponse):return response
             ctx=context.get();extra=[];prefix=list(dict.fromkeys(notices.get()));step_note=''
             if ctx["uid"]:
-                with m.SessionLocal() as db:
-                    p=db.execute(m.select(m.Player).where(m.Player.channel_id==params.get("channel"),m.Player.twitch_uid==ctx["uid"])).scalar_one_or_none()
+                with SessionLocal() as db:
+                    p=db.execute(select(Player).where(Player.channel_id==params.get("channel"),Player.twitch_uid==ctx["uid"])).scalar_one_or_none()
                     if p:
                         after=snapshot(db,p);before=ctx["before"]
                         if before:
                             for section in ("Needs","Resources","Competency","Settlement"):
-                                changed=[f"{m.SKILL_LABELS.get(k,k) if section=='Competency' else (m.task_queue.total_label(m,k) if k.startswith('gear:') else m.resource_name(k)) if section=='Resources' else k} {v-before[section].get(k,0):+d}" for k in sorted(after[section].keys()|before[section].keys()) for v in [after[section].get(k,0)] if v!=before[section].get(k,0)]
+                                changed=[f"{SKILL_LABELS.get(k,k) if section=='Competency' else (task_queue.total_label(m,k) if k.startswith('gear:') else resource_name(k)) if section=='Resources' else k} {v-before[section].get(k,0):+d}" for k in sorted(after[section].keys()|before[section].keys()) for v in [after[section].get(k,0)] if v!=before[section].get(k,0)]
                                 if section=="Competency" and ctx["practice"]:
                                     extra.append("Aptitude practice: "+"; ".join(ctx["practice"]))
                                 elif changed:extra.append(("Aptitudes" if section=="Competency" else section)+": "+", ".join(changed))
@@ -63,7 +79,7 @@ def command(fn):
                                 if new>old:
                                     shown=after.get("Labels",{}).get(label,label)    # a name, never an account id
                                     notice=f"LEVEL UP: {shown} Lv. {old} → Lv. {new}"
-                                    m.announce(db,p,notice,m.now());prefix.append(notice)
+                                    announce(db,p,notice,runtime.now());prefix.append(notice)
                         try:
                             from . import onboarding
                             step_note=onboarding.after_command(m,db,p,fn.__name__,params,ctx["before"],after)
@@ -81,25 +97,25 @@ def command(fn):
                             if fn.__name__=="profile":extra.extend(community.profile_lines(m,db,p))
                         except Exception:
                             pass    # community features never get in the way of a command
-                        st=m.colony_seedling(db,p)
+                        st=colony_seedling(db,p)
                         if fn.__name__ in {"profile","skills","life_status","guide"}:
                             if st.last_progress:prefix.append("Latest "+st.last_progress)
-                            life=m.life_state(db,p);project=m.current_project(db,p.channel_id,m.world_clock(db,p.channel_id)["day"]);routine=m.routine_description(life,p.job,project=project.progress<project.goal,goal=st.goal,preferred=st.preferred_activity)
+                            life=life_state(db,p);project=runtime.current_project(db,p.channel_id,world_clock(db,p.channel_id)["day"]);routine=routine_description(life,p.job,project=project.progress<project.goal,goal=st.goal,preferred=st.preferred_activity)
                             task=routine["next_action"]
-                            if task in m.ACTION_SKILLS and params.get("provider")=="discord":shown=m.guide_command(task,"discord")
+                            if task in ACTION_SKILLS and params.get("provider")=="discord":shown=guide_command(task,"discord")
                             else:shown=("/" if params.get("provider")=="discord" else "!")+task
                             extra.append(f"Routine: {routine['mood']} · {shown} · {routine['reason']}")
                         db.commit()
             if fn.__name__ in {"soc","world_status","progress","projectstatus"}:
-                with m.SessionLocal() as db:
-                    settlement=m.society(db,params["channel"]);shared=m.colony_state(db,params["channel"])
+                with SessionLocal() as db:
+                    settlement=society(db,params["channel"]);shared=colony_state(db,params["channel"])
                     extra.append(f"Settlement stocks: Water {shared.water}, Ore {shared.ore}, Components {shared.components}, Medicines {shared.medicines}, Cargo {shared.cargo}, Housing {shared.housing}/{settlement.population}, Mood {shared.mood}")
-                    pressure=m.colony_pressures(shared,settlement)
+                    pressure=colony_pressures(shared,settlement)
                     if pressure:extra.append("Pressure: "+", ".join(pressure))
             text=response.body.decode()
             if ctx.get("log_id"):
-                with m.SessionLocal() as db:
-                    log=db.get(m.ActionLog,ctx["log_id"])
+                with SessionLocal() as db:
+                    log=db.get(ActionLog,ctx["log_id"])
                     if log:log.response=(" | ".join(prefix+[text]+extra))[:1000]
                     db.commit()
             if params.get("provider")=="discord":
@@ -125,6 +141,8 @@ def command(fn):
     return wrapped
 
 def snapshot(db,p):
+    from . import task_queue
+    from .game.world import society_tier_index
     from .models import LifeState, Society, Home, HobbyProgress, DuckBond, LifeRelationship
     from . import main as m
     from .settlement import state, CORE, STOCKS
@@ -134,7 +152,7 @@ def snapshot(db,p):
     life=db.execute(select(LifeState).where(LifeState.channel_id==p.channel_id,LifeState.canonical_uid==p.twitch_uid)).scalar_one_or_none()
     s=db.execute(select(Society).where(Society.channel_id==p.channel_id)).scalar_one()
     shared=state(db,p.channel_id)
-    ranks={"Colony growth":m.society_tier_index(s)+1}
+    ranks={"Colony growth":society_tier_index(s)+1}
     home=db.execute(select(Home).where(Home.channel_id==p.channel_id,Home.canonical_uid==p.twitch_uid)).scalar_one_or_none()
     ranks["Habitat"]=home.tier if home else 1
     for row in db.execute(select(HobbyProgress).where(HobbyProgress.channel_id==p.channel_id,HobbyProgress.canonical_uid==p.twitch_uid)).scalars():
@@ -146,7 +164,7 @@ def snapshot(db,p):
         ranks["Relationship "+partner]=sum(rel.familiarity>=n for n in (10,35,90,180,300))+1
     from .readable_names import labels
     return {"Ranks":ranks,"Labels":labels(db,p,ranks),"Needs":{k:getattr(life,k) for k in NEEDS} if life else {},
-            "Resources":m.task_queue.inventory_snapshot(m,db,p)|{k:getattr(p,k) for k in ("sc","contribution")},
+            "Resources":task_queue.inventory_snapshot(m,db,p)|{k:getattr(p,k) for k in ("sc","contribution")},
             "Competency":{k:getattr(p,v) for k,v in FIELDS.items()},
             "Settlement":{k:getattr(s,k) for k in CORE}|{k:getattr(shared,k) for k in STOCKS}}
 
