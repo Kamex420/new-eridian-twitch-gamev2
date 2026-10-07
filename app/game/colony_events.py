@@ -6,14 +6,15 @@ import random
 import secrets
 from datetime import timedelta
 from sqlalchemy import select
-from ..models import ActionLog, EventContribution, EventHistory, Player
+from ..models import ActionLog, EventContribution, EventHistory, Player, RealActivity
 from .base import AUTO_EVENT_COOLDOWN_MINUTES, AUTO_EVENT_MINUTES
 from .rules import ACTION_SKILLS, EVENTS, SKILL_LABELS
-from .players import as_utc, society, story_contribute, world
-from .life import important_progress_notes
+from .players import as_utc, grant_random_bonus, society, story_contribute, world
+from .life import daily_variety_note, important_progress_notes
+from .cooldowns_materials import progress_daily
 from .world import (
-    active_player_count, directive_note, scaled_auto_event_actions, scaled_event_goal, set_event_aftermath,
-    society_tier, unique_activity_chatters, world_clock)
+    active_player_count, directive_note, maybe_lore_discovery, maybe_world_encounter, scaled_auto_event_actions,
+    scaled_event_goal, set_event_aftermath, society_tier, unique_activity_chatters, world_clock)
 from .. import main      # app.main: names from later modules and settings changed at runtime
 
 def stat_changes_text(changes,sign="+"):
@@ -145,23 +146,39 @@ def unattended():
     """True while a Seedling or a work queue acts for a citizen who may be away from the keyboard."""
     return bool(("autonomy" in vars(main) and main.autonomy.ACTING.get()) or
                 ("task_queue" in vars(main) and main.task_queue.actor_context.get() is not None))
-def work_counts(db,p,skill,grow=True):
-    """What one successful job did for New Eridian, as a NEW ERIDIAN section ('' when nothing to say).
+def mark_active(db,channel,uid):
+    """A citizen played themselves (not a Seedling or a queue): event sizes and the event meter count them."""
+    if unattended():return
+    row=db.get(RealActivity,(channel,uid))
+    if row is None:db.add(RealActivity(channel_id=channel,canonical_uid=uid,last_at=main.now()))
+    else:row.last_at=main.now()
+def work_counts(db,p,skill,grow=True,contract=None,action="work",detail=""):
+    """What one successful job did for New Eridian and for its citizen, as a NEW ERIDIAN section ('' when nothing to
+    say). Everyday work (gather, mine, Workbench craft, item jobs, sales, orders) gets what /work tasks get:
+    society growth and Contribution, the event, project, story and Directive, the daily contract (`contract`: the
+    contract action it counts as), Daily Variety, lore, world encounters, random bonuses and achievements.
     grow=False when the job already pays the society its own way (sales, Production Orders, clinic supplies)."""
-    s=society(db,p.channel_id);w=world(db,p.channel_id);lines=[]
+    s=society(db,p.channel_id);w=world(db,p.channel_id);clock=world_clock(db,p.channel_id);lines=[]
     if grow:
         p.contribution+=1;stat=WORK_STAT.get(skill)
         if stat:setattr(s,stat,getattr(s,stat)+1)
         lines.append((f"+1 {stat.title()} · " if stat else "")+"+1 Contribution")
     was_active=bool(w.active_event)
+    mark_active(db,p.channel_id,p.twitch_uid)          # the activity feed shows Seedling work too; only players count as active
+    db.add(ActionLog(channel_id=p.channel_id,canonical_uid=p.twitch_uid,action=action,response=(detail or action)[:1000]))
     event=skill_event_note(db,s,w,p,skill).strip()
-    progress=important_progress_notes(directive_note(db,p,s,skill,world_clock(db,p.channel_id)),
-                                      main.project_contribute(db,p,skill,1),story_contribute(db,p,skill)).strip()
+    daily=progress_daily(db,p,contract) if contract else ""
+    progress=important_progress_notes(directive_note(db,p,s,skill,clock),main.project_contribute(db,p,skill,1),
+                                      story_contribute(db,p,skill),daily,maybe_world_encounter(db,p,skill,clock,True),
+                                      grant_random_bonus(db,p),main.achieve(db,p)).strip()
+    extras=[x.strip() for x in (main.rare_outcome(db,p,s,skill),maybe_lore_discovery(db,p,skill,clock),
+                                daily_variety_note(db,p,skill,clock)) if x and x.strip()]
     auto="" if was_active or not main.AUTO_EVENTS_ENABLED else maybe_start_auto_event(db,w,current_uid=p.twitch_uid)
-    lines+=[x for x in (event,progress,auto) if x]
+    lines+=[x for x in (event,progress,*extras,auto) if x]
     db.commit()
     return "NEW ERIDIAN\n"+"\n".join(lines) if lines else ""
 def log_action(db,channel,canonical_uid,action_name,response):
+    mark_active(db,channel,canonical_uid)
     row=ActionLog(channel_id=channel,canonical_uid=canonical_uid,action=action_name,response=response[:1000]);db.add(row);db.commit()
     from ..commands import context
     ctx=context.get()

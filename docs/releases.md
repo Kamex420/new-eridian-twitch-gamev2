@@ -1,5 +1,25 @@
 # Release notes
 
+## Everyday work counts everywhere, rare ores from /mine, and holiday showpieces
+
+- **Daily contracts can be finished by normal play.** A "/mine ×4" contract counts `/mine` (queues and Twitch `!mine` too), and a "/make ×3" contract counts Workbench crafting.
+- **Gathering, mining and crafting get the extras `/work` gets:** Daily Variety (three different skills in a day), lore discoveries, world encounters, random bonuses and achievements.
+- **Events are sized by who is really playing.** Event goals, the Society Directive's goal and the automatic event meter count citizens who played themselves in the last 30 minutes, gathering and crafting included. Seedlings and queues no longer make events bigger. The activity feed still shows everyone's work, Seedlings' included.
+- **Seedlings earn at most 25 Contribution a day** for their citizen. Anything more is taken back after the step, and season points count only what was kept. The colony still grows from their work.
+- **Rare ores (Argentite, Aurite, Bauxite, Rutile) need a Mineral Extractor in your bag** and are mined with `/mine` and `!mine` like any ore: one roll, Stone Dust on a failure. A Small Mineral Extractor brings up 1 ore a success, a Frontiers Expedition Mineral Extractor 2. The Small one's recipe needs no rare ores; the Frontiers one's does. This replaces Harvesting Lv 3 and the three prospecting steps per ore; buying rare ores from Seed Industries needs an extractor too. `/rare` and `!rare` still work and mine the rare ore you have least of. Rare ore mining also counts for events, the colony and daily contracts.
+- **Holiday showpieces.** The 11 advanced parts nothing used now make optional holiday decorations, each using the part for what it really does:
+  - New Year: Midnight Countdown Clock (Board Computer, Glass, Iron Plate)
+  - Valentine's Day: Quantum Love Meter (Quantum Processor, Glass, Fabric)
+  - Memorial Day: Eternal Flame Lamp (Kerosene, Glass, Iron Plate)
+  - Father's Day: Grilling Stone (Ceramic Shield Tile, Iron Plate)
+  - Independence Day: Fireworks Safety Gloves (Aramid Fabric, Fabric), worn
+  - Labor Day: Workers' Piston Trophy (Piston, Lumber, Iron Nails)
+  - Halloween: Pop-up Skeleton (Actuator, Lumber, Clay)
+  - Thanksgiving: Turkey Carving Set (Blade Guard, Iron Plate, Lumber) and Teak Feast Table (Teak Parquet, Lumber)
+  - Christmas: Snow Globe (Fortified Glass, Clean Water, Silica Sand, Clay) and Candy Cane Post (White Paint, Lumber, Berries)
+
+  Like keepsakes, they are crafted at the free Survival Workbench while their festival runs. They are extras: the holiday Feast trophy and hat still need only the festival foods and keepsakes. `/world → Holidays` lists them.
+
 ## Seedlings help the colony, and main.py split into modules
 
 - **Seedlings answer events.** While an event is on, a Seedling that is awake (work or free time, not asleep) does work that counts for it: Primary work first, Support work when it can do no Primary work. During a Mining Boom it brings in stone, clay or wood; during a Food Crisis, wild plants. Its diary says why: “The Mining Boom is on and Harvesting work counts, so I am bringing in Clay.” Seedlings still never start an automatic event.

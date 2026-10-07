@@ -186,22 +186,69 @@ for _holiday, _rows in FESTIVAL_FOODS.items():
         FESTIVAL_ITEMS[_key] = dict(name=_name, holiday=_holiday, description=_text, inputs=_inputs,
                                     food=_food, comfort=_comfort, morale=_morale, recipe='fr_' + _slug(_name))
         FESTIVAL_RECIPES['fr_' + _slug(_name)] = _holiday
-FESTIVAL_CRAFT_ITEMS = {}   # item key -> details (keepsakes; FESTIVAL_ITEMS stays the foods)
-for _holiday, _rows in FESTIVAL_CRAFTS.items():
-    for _name, _text, _inputs, _kind in _rows:
+# Showpieces: optional holiday builds that give the advanced parts nothing else uses (Actuator, Aramid Fabric, Blade
+# Guard, Board Computer, Ceramic Shield Tile, Fortified Glass, Kerosene, Piston, Quantum Processor, Teak Parquet,
+# White Paint) a purpose. Each part does in the showpiece what it does for real. Not needed for the Feast trophy.
+FESTIVAL_SHOWPIECES = {
+    "New Year": [
+        ("Midnight Countdown Clock", "A glowing display that counts down to midnight, run by a salvaged Board Computer.",
+         {"Board Computer": 1, "Glass": 2, "Iron Plate": 1}, "decor"),
+    ],
+    "Valentine's Day": [
+        ("Quantum Love Meter", "A heart-shaped gauge whose Quantum Processor works out exactly how loved you are. It always says 100%.",
+         {"Quantum Processor": 1, "Glass": 1, "Fabric": 1}, "decor"),
+    ],
+    "Memorial Day": [
+        ("Eternal Flame Lamp", "A kerosene lamp behind glass that keeps a small flame burning all night in remembrance.",
+         {"Kerosene": 1, "Glass": 1, "Iron Plate": 1}, "decor"),
+    ],
+    "Father's Day": [
+        ("Grilling Stone", "A Ceramic Shield Tile built for re-entry heat, now searing steaks on Dad's grill.",
+         {"Ceramic Shield Tile": 1, "Iron Plate": 1}, "decor"),
+    ],
+    "Independence Day": [
+        ("Fireworks Safety Gloves", "Aramid-lined gloves that shrug off sparks, for whoever lights the fireworks.",
+         {"Aramid Fabric": 1, "Fabric": 1}, "clothing"),
+    ],
+    "Labor Day": [
+        ("Workers' Piston Trophy", "A polished Piston on a wooden plinth, awarded to New Eridian's hardest workers.",
+         {"Piston": 1, "Lumber": 1, "Iron Nails": 2}, "decor"),
+    ],
+    "Halloween": [
+        ("Pop-up Skeleton", "A wooden crate that bursts open as you pass, and an Actuator swings a clay skeleton out at you.",
+         {"Actuator": 1, "Lumber": 2, "Clay": 2}, "decor"),
+    ],
+    "Thanksgiving": [
+        ("Turkey Carving Set", "A carving knife and fork with a Blade Guard sheath, ready for the big feast.",
+         {"Blade Guard": 1, "Iron Plate": 1, "Lumber": 1}, "decor"),
+        ("Teak Feast Table", "A long table topped with polished Teak Parquet, big enough for the whole colony's feast.",
+         {"Teak Parquet": 2, "Lumber": 4}, "decor"),
+    ],
+    "Christmas": [
+        ("Snow Globe", "Fortified Glass around a tiny clay New Eridian, with water and a pinch of Silica Sand for snow.",
+         {"Fortified Glass": 1, "Clean Water (750ml)": 1, "Silica Sand": 1, "Clay": 1}, "decor"),
+        ("Candy Cane Post", "A wooden post coated in White Paint and striped red with berry juice.",
+         {"White Paint": 1, "Lumber": 1, "Berries": 2}, "decor"),
+    ],
+}
+
+FESTIVAL_CRAFT_ITEMS = {}   # item key -> details (keepsakes and showpieces; FESTIVAL_ITEMS stays the foods)
+for _holiday, _rows in [(h, [(*r, False) for r in rows]) for h, rows in FESTIVAL_CRAFTS.items()] + \
+        [(h, [(*r, True) for r in rows]) for h, rows in FESTIVAL_SHOWPIECES.items()]:
+    for _name, _text, _inputs, _kind, _showpiece in _rows:
         _key = 'fest_' + _slug(_name)
         _ways = _inputs if isinstance(_inputs, list) else [_inputs]
         _recipes = ['fr_' + _slug(_name) + (f'_{n + 1}' if n else '') for n in range(len(_ways))]
         FESTIVAL_CRAFT_ITEMS[_key] = dict(name=_name, holiday=_holiday, description=_text, ways=_ways, kind=_kind,
-                                          recipe=_recipes[0], recipes=_recipes)
+                                          recipe=_recipes[0], recipes=_recipes, showpiece=_showpiece)
         for _rid in _recipes:
             FESTIVAL_RECIPES[_rid] = _holiday
 
 
 def festival_items(holiday):
-    """{item key: [recipe ids]} for every food and keepsake of a holiday."""
+    """{item key: [recipe ids]} for every food and keepsake of a holiday (the Feast trophy; showpieces are extra)."""
     found = {k: [v['recipe']] for k, v in FESTIVAL_ITEMS.items() if v['holiday'] == holiday}
-    found.update({k: list(v['recipes']) for k, v in FESTIVAL_CRAFT_ITEMS.items() if v['holiday'] == holiday})
+    found.update({k: list(v['recipes']) for k, v in FESTIVAL_CRAFT_ITEMS.items() if v['holiday'] == holiday and not v['showpiece']})
     return found
 
 
@@ -238,6 +285,8 @@ def extend_catalog(data, survival_tag=SURVIVAL_TAG):
             'categories': ['CAT_MAIN_CLOTHING'] if row['kind'] == 'clothing' else ['CAT_MAIN_FURNITURE', 'CAT_SUB_FURNITURE_DECOR'],
             'aging': None, 'consumable': None, 'ailment_risk': None, 'remedy': None,
             'source': 'FESTIVAL_' + key[5:].upper()}
+        if row['showpiece']:
+            data['items'][key]['description'] = row['description'] + f" {row['holiday']} showpiece."
         for rid, inputs in zip(row['recipes'], row['ways']):
             data['recipes'][rid] = {
                 'name': row['name'], 'inputs': {item_key(n): q for n, q in inputs.items()}, 'outputs': {key: 1},
@@ -371,7 +420,14 @@ def holiday_message(now=None):
             key = 'fest_' + _slug(name)
             ways = ' or '.join(', '.join(f'{n} ×{q}' for n, q in way.items()) for way in (inputs if isinstance(inputs, list) else [inputs]))
             lines.append(f"• {name} ({'wear it' if kind == 'clothing' else 'decoration'}) — {ways} · /make recipe:{FESTIVAL_CRAFT_ITEMS[key]['recipe']}")
-        lines.append('Craft every festival food and keepsake of a holiday for its Feast trophy and holiday hat.')
+        shows = FESTIVAL_SHOWPIECES.get(row['name'], [])
+        if shows:
+            lines += [f"{row['emoji']} {row['name'].upper()} SHOWPIECES (optional, from advanced parts)"]
+            for name, _, inputs, kind in shows:
+                key = 'fest_' + _slug(name)
+                lines.append(f"• {name} ({'wear it' if kind == 'clothing' else 'decoration'}) — "
+                             f"{', '.join(f'{n} ×{q}' for n, q in inputs.items())} · /make recipe:{FESTIVAL_CRAFT_ITEMS[key]['recipe']}")
+        lines.append('Craft every festival food and keepsake of a holiday for its Feast trophy and holiday hat. Showpieces are extra.')
     return '\n'.join(lines)
 
 
@@ -415,5 +471,5 @@ def install(app):
 
 
 __all__ = ["festive_message_for", "holidays_active_for", "next_holiday_window", "holiday_message", "install",
-           "FESTIVAL_ITEMS", "FESTIVAL_RECIPES", "FESTIVAL_CRAFTS", "FESTIVAL_CRAFT_ITEMS", "festival_items", "extend_catalog",
+           "FESTIVAL_ITEMS", "FESTIVAL_RECIPES", "FESTIVAL_CRAFTS", "FESTIVAL_SHOWPIECES", "FESTIVAL_CRAFT_ITEMS", "festival_items", "extend_catalog",
            "festival_open", "festival_lock_text"]

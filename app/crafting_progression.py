@@ -54,8 +54,8 @@ def recipe_gate(m,db,p,recipe,provider='discord'):
     if not seasonal.festival_open(recipe):return '🎉 '+seasonal.festival_lock_text(recipe)+' Nothing spent.'
     blocked=station_gate(m,db,p,tags(recipe),recipe_tier(recipe),provider)
     if blocked:return blocked
-    if any(k in RARE for k in s.RECIPES[recipe]['outputs']) and m.lvl(m.skill_xp(p,'extraction'))<RARE_LEVEL:
-        return '🔒 Rare ores require Harvesting Lv.3 (12 XP). Gather common materials or use /mine first. Nothing spent.'
+    if any(k in RARE for k in s.RECIPES[recipe]['outputs']) and not rare_unlocked(m,db,p):
+        return RARE_LOCK
     return ''
 
 def unlock_text(m,db,p,recipe):
@@ -95,11 +95,25 @@ def workshop(m,db,p,action='view',station='',page=1,provider='discord'):
 
 RARE_NAMES={'Argentite Ore':24,'Bauxite Ore':24,'Aurite Ore':36,'Rutile Ore':32}
 RARE={k for k in s.GATHER if s.ITEMS[k]['name'] in RARE_NAMES}
-RARE_LEVEL=3
-RARE_STEPS=3
+# Rare ores are mined with /mine like any ore, once a Mineral Extractor is in your bag: the Small one brings up 1 ore a
+# success, the Frontiers Expedition one 2. The Small one's recipe needs no rare ores; the Frontiers one's does.
+SMALL_EXTRACTOR=next(k for k in sorted(s.ACTIVE) if s.ITEMS[k]['name']=='Small Mineral Extractor')
+FRONTIERS_EXTRACTOR=next(k for k in sorted(s.ACTIVE) if s.ITEMS[k]['name']=='Frontiers Expedition Mineral Extractor')
+EXTRACTOR_YIELD={FRONTIERS_EXTRACTOR:2,SMALL_EXTRACTOR:1}
+RARE_NEED='a Mineral Extractor'
+RARE_LOCK=('🔒 Rare ores need a Mineral Extractor in your bag: a Small Mineral Extractor (1 ore a success) or a Frontiers '
+           'Expedition Mineral Extractor (2), built at the Advanced Workbench. Until then, /mine the common ores. Nothing spent.')
+
+def extractor(m,db,p):
+    """The best Mineral Extractor a citizen owns (Frontiers first), or None."""
+    if p is None:return None
+    return next((k for k in EXTRACTOR_YIELD if m.material_amount(db,p,k)>0),None)
+
+def rare_unlocked(m,db,p):
+    return extractor(m,db,p) is not None
 
 def rare_hint(key):
-    return 'Harvesting Lv.3; 3 successful prospecting actions per ore; failure gives 1 Stone Dust. Each: '+need_cost(3,', ')+'; 20s cooldown.'
+    return 'Needs a Mineral Extractor (Small: 1 ore a success, Frontiers Expedition: 2); failure gives 1 Stone Dust. Each: '+need_cost(3,', ')+'; 20s cooldown.'
 
 STONE_DUST='sd_1903724340'
 mining_outcome=ContextVar('mining_outcome',default=None)
@@ -129,33 +143,33 @@ def mining_failure(m,db,p,provider,detail,rare=False):
     p.actions+=1
     grit=m.determination_fail(db,p,'extraction');db.commit()
     return ('❌ MINING FAILED\n\nOUTPUT\n• Stone Dust ×1\nNo ore was recovered.'+
-            (' Saved prospecting progress was kept.' if rare else '')+
             "\n"+need_cost(3 if rare else 2)+
             f"\nCooldown: {20 if rare else 5} seconds. Stone Dust is a crafting ingredient."+grit+detail)
 
 def rare_gather(m,db,p,key,provider='discord',workshop_bonus=0):
-    if m.lvl(m.skill_xp(p,'extraction'))<RARE_LEVEL:
-        return '🔒 Rare ores require Harvesting Lv.3 (12 XP). Gather common materials or use /mine first. Nothing spent.'
+    """Mine a rare ore: one roll like any ore, with a Mineral Extractor in the bag (/mine, queues, /make and Seedlings)."""
+    machine=extractor(m,db,p)
+    if machine is None:return RARE_LOCK
     life=m.life_state(db,p);blocked=m.task_need_gate(db,p,'make',provider,life)
     if blocked:return blocked
     wait=m.check_cooldown(db,p,'rare_prospect')
-    if wait:return f'⏳ Prospecting will be ready in {wait}s. Nothing spent.'
+    if wait:return f'⏳ Rare ore mining will be ready in {wait}s. Nothing spent.'
     success,detail=mining_roll(m,db,p,provider)
     if not success:return mining_failure(m,db,p,provider,detail,rare=True)
     m.determination_clear(db,p,'extraction')
-    progress_key='prospect:'+key;progress=m.material_amount(db,p,progress_key)+1
-    complete=progress>=RARE_STEPS
-    m.material_change(db,p,progress_key,-m.material_amount(db,p,progress_key))
-    if not complete:m.material_change(db,p,progress_key,progress)
-    mining_outcome.set('success' if complete else 'progress')
-    if complete:m.material_change(db,p,key,1)
+    leftover='prospect:'+key            # progress from the retired three-step prospecting
+    if m.material_amount(db,p,leftover):m.material_change(db,p,leftover,-m.material_amount(db,p,leftover))
+    amount=EXTRACTOR_YIELD[machine]
+    m.material_change(db,p,key,amount)
+    mining_outcome.set('success')
     xp=m.gain_skill(p,'extraction',1+workshop_bonus);m.gain_branch(db,p,'ore_mining',xp)
     from . import practice
     found=practice.find(m,db,p,'extraction','ore_mining')
-    m.spend_life_for_action(life,'rare');p.actions+=1;p.successes+=int(complete);db.commit()
-    return (f"{'✅ ORE RECOVERED' if complete else '⛏️ PROSPECTING'} · {s.item_label(key)}\n"
-            f"Progress: {progress}/3 · {'+1 ore; progress resets.' if complete else 'No ore yet; progress saved.'}\n"
-            f'+{xp} Harvesting/Ore Mining XP · '+need_cost(3)+' · 20s cooldown'+(f'\n{found}' if found else '')+detail)
+    m.spend_life_for_action(life,'rare');p.actions+=1;p.successes+=1;db.commit()
+    colony=m.work_counts(db,p,'extraction',contract='mine',action='mine',detail=f'mined {s.item_label(key)} ×{amount}')
+    return (f"✅ RARE ORE MINED\n\nOUTPUT\n• {s.item_label(key)} ×{amount}\n\n"+(f"{colony}\n\n" if colony else "")+
+            f"PRACTICE\n+{xp} Harvesting/Ore Mining XP\n"+(f"{found}\n" if found else "")+
+            f"Extractor: {s.ITEMS[machine]['name']} ({amount} ore a success) · "+need_cost(3)+' · 20s cooldown'+detail)
 
 # Price all catalog materials from existing base-resource values plus processing
 # labor. No-input extraction never makes ores free. Market buyback is applied

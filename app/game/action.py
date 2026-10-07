@@ -36,8 +36,7 @@ from .routes_crafting import craft_missing_materials, life_change_summary, task_
 from .. import main      # app.main: names from later modules and settings changed at runtime
 
 def rare_ore_to_prospect(db,p):
-    """Prospecting (/work task:rare, !rare) treats every rare ore alike: it continues an ore already being
-    prospected, otherwise the rare ore you have least of. /mine picks a specific one."""
+    """/work task:rare and !rare mine the rare ore you have least of (one left mid-prospecting first); /mine picks one."""
     ores=sorted(crafting_progression.RARE,key=seed_content.item_label)
     progress=[k for k in ores if item(db,p.channel_id,p.twitch_uid,'prospect:'+k)>0]
     if progress:return progress[0]

@@ -258,7 +258,7 @@ commands = [
     ]),
     cmd("scan","Environmental survey that supports society Knowledge"),
     cmd("mine","Standard Extraction work that gives personal Hematite Ore"),
-    cmd("rare","Prospect a rare ore: Harvesting Lv3, three actions per ore, 20-second cooldown"),
+    cmd("rare","Mine a rare ore: needs a Mineral Extractor, 20-second cooldown (/mine picks one)"),
     cmd("research","Research or use a Siro Sampler for advanced field analysis",[
         {"type":STRING,"name":"operation","description":"Research operation","required":False,
          "choices":[{"name":W("Standard Research","research"),"value":"standard"},{"name":W("Field Analysis","research","field_analysis","needs Siro Sampler"),"value":"field_analysis"}]}
@@ -393,7 +393,7 @@ for command in commands:
         command['options']=[
             {'type':STRING,'name':'ore','description':'Ore or Coal (shows owned, costs and locks); View Requirements spends nothing','required':False,'autocomplete':True},
             {'type':STRING,'name':'action','description':'Viewing requirements spends nothing','required':False,'choices':[{'name':'View Requirements','value':'view'},{'name':'Mine','value':'mine'}]},
-            {'type':4,'name':'count','description':'Attempts (1–10); rare ores need three successful prospecting attempts per ore','required':False,'min_value':1,'max_value':10}]
+            {'type':4,'name':'count','description':'Attempts (1–10); rare ores need a Mineral Extractor in your bag','required':False,'min_value':1,'max_value':10}]
 commands.append(cmd('queue','View, start or cancel one task queue; maximum 10 attempts of one task type',[
     {'type':STRING,'name':'action','description':'Queue automatically pauses and resumes as requirements change','required':False,'choices':[{'name':'View','value':'view'},{'name':'Start','value':'start'},{'name':'Cancel','value':'cancel'}]},
     {'type':STRING,'name':'task','description':'One task, resource or recipe for the whole queue (type to search)','required':False,'autocomplete':True},
@@ -474,7 +474,7 @@ LIFE_ACTIONS=[('Relax','relax'),('Sleep','sleep'),('Eat','eat'),('Games','games'
               ('Hobby','hobby'),('Share meal','meal'),('Recover','recover'),('Trick-or-treat (Halloween)','trick')]
 WORK_TASKS=[(W('Tend Fields','farm'),'farm_tend'),(W('Harvest Pumpkins','harvest'),'farm_harvest'),(W('Irrigate','water'),'farm_irrigate'),
             (W('Hydroponics','water','hydroponics','needs Small Water Filter'),'farm_hydroponics'),(W('Scan','scan'),'scan'),
-            ('Rare prospecting · Harvesting Lv3','rare'),(W('Standard Research','research'),'research'),
+            ('Rare ore · needs a Mineral Extractor','rare'),(W('Standard Research','research'),'research'),
             (W('Field Analysis','research','field_analysis','needs Siro Sampler'),'field_analysis'),(W('Prepare Cargo','cargo'),'cargo'),
             (W('Delivery','delivery','','uses 1 Cargo'),'delivery'),(W('Spaceport','spaceport'),'spaceport'),
             (W('Expedite Spaceport','spaceport','expedite','uses 1 Power Cell'),'expedite'),(W('Scout','explore'),'scout'),

@@ -11,6 +11,7 @@ from ..needs import (
     cost_text as need_cost_text, duration_text, HEAVY_ENERGY, RECOVERY_HELP, SLEEP_COOLDOWN_SECONDS, TASK_NEED_MINIMUM)
 from ..occupations import matches as occupation_matches
 from ..settlement import pressures as colony_pressures, state as colony_state, tick as colony_tick
+from ..models import RealActivity
 from ..models import (
     ActionLog, CollectionItem, DirectiveParticipant, DirectiveProgress, GearFamiliarity, JournalEntry,
     LifeRelationship, LoreDiscovery, Player, PlayerGoal, PlayerWorld, QualityGear, RelationshipMemory,
@@ -467,15 +468,16 @@ def society_tier_index(s):
     """Zero-based society rank used for recipe unlock requirements."""
     return SOCIETY_TIERS.index(society_tier(s))
 def active_player_count(db,channel):
+    """Citizens who played themselves in the last 30 minutes (Seedlings and queues do not count)."""
     cutoff=main.now()-timedelta(minutes=30)
-    action_users=set(db.execute(select(ActionLog.canonical_uid).where(ActionLog.channel_id==channel,ActionLog.created_at>=cutoff)).scalars().all())
+    action_users=set(db.execute(select(RealActivity.canonical_uid).where(RealActivity.channel_id==channel,RealActivity.last_at>=cutoff)).scalars().all())
     if action_users:return len(action_users)
     return max(1,len(db.execute(select(Player).where(Player.channel_id==channel,Player.last_seen>=cutoff)).scalars().all()))
 def scaled_event_goal(base,active):
     return max(6,int(math.ceil(base*min(2.0,1+.15*max(0,active-1)))))
 def unique_activity_chatters(db,w,current_uid=None):
     if not w.activity_window_started_at:return 1 if current_uid else 0
-    users=set(db.execute(select(ActionLog.canonical_uid).where(ActionLog.channel_id==w.channel_id,ActionLog.created_at>=as_utc(w.activity_window_started_at))).scalars().all())
+    users=set(db.execute(select(RealActivity.canonical_uid).where(RealActivity.channel_id==w.channel_id,RealActivity.last_at>=as_utc(w.activity_window_started_at))).scalars().all())
     if current_uid:users.add(current_uid)
     return len(users)
 def scaled_auto_event_actions(unique_chatters):

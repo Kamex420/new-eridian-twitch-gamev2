@@ -32,6 +32,12 @@ Shopping lists live in the additive `player_shopping_list_v1` table (world, citi
 
 Questions `/find` could not answer live in the additive `find_unanswered_v1` table (world, the cleaned question, how many times it was asked, first and last time), created at startup. It holds no player or account ids. The newest 300 rows are kept; a world merge adds the counts of a question both worlds asked.
 
+When each citizen last played themselves (not a Seedling or a queue acting for them) lives in the additive `real_activity_v1` table (world, citizen, last time), created at startup. Event goals, the Society Directive's goal and the automatic event meter count these citizens; the action log (`action_logs_v5`) still records every action, Seedlings' included, for the activity feed.
+
+Contribution a Seedling kept each day lives in the additive `seedling_contribution_v1` table (world, citizen, UTC day, amount), created when Seedlings start. A Seedling keeps at most 25 a day; anything more is taken back after its step.
+
+Rare ores no longer use prospecting progress: the old `prospect:<ore>` bag rows are cleared the next time that ore is mined.
+
 Goal progress lives in the additive `player_goal_progress_v1` table (world, citizen, goal recipe ID, the walkthrough's step count when the goal was set, when it was set, and whether the one ready note went out); the goal itself stays in `player_extras_v1`. Setting a different goal replaces the row, clearing or completing the goal deletes it, and a goal set before the table existed gets its row the first time it is shown or checked (counting from then; a ready note the old reminder already sent is not repeated). A row for another recipe than the current goal is ignored. Linking keeps the target's row; the source's row moves when the target has none.
 
 ## Rollback semantics

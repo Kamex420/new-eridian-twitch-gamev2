@@ -74,7 +74,7 @@ def ready_for(action):
     seed(provider='discord')
     with m.SessionLocal() as db:
         p=db.query(m.Player).one()
-        if action=='rare':p.mining_xp=12
+        if action=='rare':m.material_change(db,p,m.crafting_progression.SMALL_EXTRACTOR,1)
         db.add(m.Business(channel_id='test',canonical_uid=p.twitch_uid,name='Test Business'))
         m.item_add(db,'test',p.twitch_uid,'sensor',1)
         if action in m.SEED_TASKS:
@@ -102,7 +102,7 @@ def test_all_actions_success_paths(action,monkeypatch):
     monkeypatch.setattr(m.random,'random',lambda:0.0);ready_for(action)
     r=client.get('/api/v1/action/'+action,params=dict(channel='test',uid='u',provider='discord'))
     assert r.status_code==200,r.text
-    assert ('PROSPECTING' if action=='rare' else 'TASK COMPLETE') in r.text,r.text
+    assert ('RARE ORE MINED' if action=='rare' else 'TASK COMPLETE') in r.text,r.text
     assert 'Needs:' in r.text or action=='sleep'
 
 @pytest.mark.parametrize('provider',['twitch','discord'])

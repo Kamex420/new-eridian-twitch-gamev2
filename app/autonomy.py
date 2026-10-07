@@ -248,12 +248,52 @@ class SeedlingHaul(Base):
 
 HAUL_KEEP = 400      # steps remembered per Seedling for totals (about four days of autonomy)
 
+# A Seedling keeps at most this much Contribution a day (UTC) for its citizen; anything more is taken back after the
+# step, so the leaderboard mostly reflects playing yourself. Colony stats, items and XP are not capped.
+CONTRIBUTION_CAP = 25
+
+
+class SeedlingContribution(Base):
+    """Contribution a citizen's Seedling kept each day (see CONTRIBUTION_CAP)."""
+    __tablename__ = 'seedling_contribution_v1'
+    channel_id = Column(String(64), primary_key=True)
+    canonical_uid = Column(String(96), primary_key=True)
+    day = Column(String(10), primary_key=True)
+    amount = Column(Integer, nullable=False, default=0)
+
+
+def _today(m):
+    from datetime import timezone
+    return m.now().astimezone(timezone.utc).date().isoformat()
+
+
+def contribution_room(m, db, p):
+    """How much more Contribution this citizen's Seedling may keep today."""
+    found = db.get(SeedlingContribution, (p.channel_id, p.twitch_uid, _today(m)))
+    return max(0, CONTRIBUTION_CAP - (found.amount if found else 0))
+
+
+def keep_contribution(m, db, p, gained):
+    """Count what one Seedling step earned toward today's cap and take back anything over it. Returns what was taken."""
+    if gained <= 0:
+        return 0
+    key = (p.channel_id, p.twitch_uid, _today(m))
+    found = db.get(SeedlingContribution, key)
+    if found is None:
+        found = SeedlingContribution(channel_id=key[0], canonical_uid=key[1], day=key[2], amount=0)
+        db.add(found)
+    kept = min(gained, max(0, CONTRIBUTION_CAP - found.amount))
+    found.amount += kept
+    p.contribution -= gained - kept
+    return gained - kept
+
 
 # ---------------------------------------------------------------- state
 
 def install(m):
     SeedlingLife.__table__.create(m.engine, checkfirst=True)
     SeedlingDiary.__table__.create(m.engine, checkfirst=True)
+    SeedlingContribution.__table__.create(m.engine, checkfirst=True)
     add_columns(m.engine)
     try:
         import asyncio
@@ -1056,6 +1096,7 @@ def live_one(m, channel, uid, force=False):
                 return ''
             step = plan(m, db, p, found, life, clock)
         before = snapshot(m, db, p)
+        contribution_before = p.contribution
         provider, provider_uid = identity_for(m, db, p)
         name = p.display_name
         db.commit()
@@ -1063,6 +1104,7 @@ def live_one(m, channel, uid, force=False):
     with m.SessionLocal() as db:
         p = db.execute(select(m.Player).where(m.Player.channel_id == channel, m.Player.twitch_uid == uid)).scalar_one()
         p.last_seen = last_seen            # autonomous steps do not count as the player being active
+        keep_contribution(m, db, p, p.contribution - contribution_before)
         found = row(db, channel, uid, create=True)
         clock = m.world_clock(db, channel)
         change = changes(m, before, snapshot(m, db, p))

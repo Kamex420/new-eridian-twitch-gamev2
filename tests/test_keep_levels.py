@@ -325,13 +325,13 @@ def test_restock_never_starts_a_craft_at_a_locked_workstation():
     assert any(label.startswith('Unlock Metalworking Bench') for label in labels(press(recipe['custom_id'])['data']))
 
 
-def test_restock_never_mines_a_rare_ore_without_the_harvesting_level():
+def test_restock_never_mines_a_rare_ore_without_a_mineral_extractor():
     citizen(lumber=0)
     set_keep(ARGENTITE, 3)
     r = shortfall(ARGENTITE)
-    assert r['kind'] == 'queue' and r['blocked'] == '🔒 rare ores require Harvesting Lv.3 (you are Lv 1)' and r['view'] is None
+    assert r['kind'] == 'queue' and r['blocked'] == '🔒 rare ores need a Mineral Extractor in your bag' and r['view'] is None
     text = keep.restock(m, W, '111', 'Kam', 'discord', ARGENTITE)
-    assert text.startswith('🛡️ Restock Argentite Ore is blocked: Mine ×10') and 'Harvesting Lv.3' in text
+    assert text.startswith('🛡️ Restock Argentite Ore is blocked: Mine ×10') and 'Mineral Extractor' in text
     assert text.endswith('Nothing changed.') and queue_row() is None
     screen = press(ui.cid('111', 'kv'))['data']
     assert not any('Argentite' in label for label in labels(screen)[1:]) and no_tickets(screen)   # no button, only the text

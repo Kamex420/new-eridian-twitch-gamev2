@@ -327,13 +327,13 @@ def test_what_cannot_be_bought_is_listed_with_where_it_comes_from(monkeypatch):
     assert have(LUMBER) == 0 and sc() == 1000
 
 
-def test_a_rare_ore_is_not_bought_without_harvesting_level_three():
+def test_a_rare_ore_is_not_bought_without_a_mineral_extractor():
     citizen(lumber=0)
     give(MACHINES)
     add('ore_scanner', 1)                                             # needs an Argentite Ore
     ore = material(ARGENTITE)
     assert ore.missing == 1 and ore.price and ore.locked and not ore.buyable
-    assert 'needs Harvesting Lv 3' in shop.route_text(m, ore)
+    assert 'needs a Mineral Extractor' in shop.route_text(m, ore)
     whole = info()
     assert ARGENTITE not in [x.key for x in whole.buy] and ARGENTITE in [x.key for x in whole.unsold]
     assert whole.cost == sum(x.cost for x in whole.buy) > 0
@@ -579,8 +579,8 @@ ORE_SCANNER_STEPS = [
     ('✅', 'Gather Lumber ×3', 'need 3 · runs as a queue', 'Gather', {'do': 'queue', 'task': 'gather:sd_1000004', 'count': 3}, None),
     ('✅', 'Gather Stone ×4', 'need 4 · runs as a queue', 'Gather', {'do': 'queue', 'task': 'gather:sd_1566791299', 'count': 4}, None),
     ('✅', 'Gather Clay ×1', 'need 1 · runs as a queue', 'Gather', {'do': 'queue', 'task': 'gather:sd_1663615028', 'count': 1}, None),
-    ('🔒', 'Reach Harvesting Lv 3', 'you are Lv 1 · each training task gives practice', 'Train', None, ('mp', 'trainskill', '=harvesting')),
-    ('❌', 'Mine Argentite Ore', 'need 1 · after Harvesting Lv 3', 'Mine', None, ('mp', 'mine', '=sd_1035602738')),
+    ('❌', 'Build a Small Mineral Extractor', 'rare ores need a Mineral Extractor in your bag', 'Recipe', None, ('wr', 'sr_189646837', 'machines', 1, '')),
+    ('❌', 'Mine Argentite Ore', 'need 1 · after you have a Mineral Extractor', 'Mine', None, ('mp', 'mine', '=sd_1035602738')),
     ('❌', 'Craft Raw Iron ×2', 'a part for your goal · after the steps above', 'Recipe', None, ('wr', 'sr_86276024', 'materials', 1, '')),
     ('❌', 'Craft Iron Ingot ×1', 'a part for your goal · after the steps above', 'Recipe', None, ('wr', 'sr_535171027', 'materials', 1, '')),
     ('❌', 'Craft Iron Plate ×1', 'a part for your goal · after the steps above', 'Recipe', None, ('wr', 'sr_1018791011', 'parts', 1, '')),
@@ -611,7 +611,7 @@ def test_the_goal_walkthrough_is_the_same_as_before_the_planner_was_shared():
         e, steps = extras.walkthrough(m, db, p)
         assert e.id == 'ore_scanner'
         assert [(st['mark'], st['name'], st['detail'], st['label'], st['action'], st['view']) for st in steps] == ORE_SCANNER_STEPS
-        assert all(st['cost'] == 0 for st in steps) and [(st['name'], st['size']) for st in steps if st['size']] == [('Reach Harvesting Lv 3', 3), ('Do Water Treatment ×8', 8)]
+        assert all(st['cost'] == 0 for st in steps) and [(st['name'], st['size']) for st in steps if st['size']] == [('Do Water Treatment ×8', 8)]
         # Only the progress part changed since e1b2583: steps done since the goal was set (0 of these 19), not direct ingredients.
         assert extras.goal_text(m, db, p, 'twitch') == ('🎯 Goal Ore Scanner 0/19 steps | Next: Mine Hematite Ore ×3 (need 2) | '
                                                        'Then: Gather Lumber ×3 → Gather Stone ×4 → Gather Clay ×1 | !target clear')

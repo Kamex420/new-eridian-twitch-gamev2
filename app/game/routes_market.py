@@ -79,7 +79,7 @@ def seed_industries(channel:str,uid:str,name:str="Citizen",action:str="browse",i
             v=SEED_INDUSTRIES[k];sale=f"sell {v['sell']}" if v['sell'] else 'no buyback'
             purchase=f"buy {v['buy']} SC" if v['buy'] else 'crafted item; sell only'
             lines.append(f"• {market_item_label(k)}: {purchase} · {sale}"+(f' · {k}' if provider!='discord' else ''))
-        lines+=['Select Starter Routes for each branch. Buy + Item + Amount (1–25) purchases supplies. Page/Category browse all stock. All catalog items have NPC buyback. Prices are per item; recipe previews show batch sale value. Rare ore purchases require Harvesting Lv.3.' if provider=='discord' else '!seedpage <page>; !seedbuy <id> <qty>. Rare: Harvesting Lv3.']
+        lines+=['Select Starter Routes for each branch. Buy + Item + Amount (1–25) purchases supplies. Page/Category browse all stock. All catalog items have NPC buyback. Prices are per item; recipe previews show batch sale value. Rare ore purchases need a Mineral Extractor.' if provider=='discord' else '!seedpage <page>; !seedbuy <id> <qty>. Rare ores: need a Mineral Extractor.']
         result='\n'.join(lines)
         return platform_response(provider,result,result.replace('\n',' | '))
     if action in {"orders","fulfill"}:
@@ -126,8 +126,8 @@ def seed_industries(channel:str,uid:str,name:str="Citizen",action:str="browse",i
     with SessionLocal() as db:
         _,p=player(db,channel,provider,uid,name)
         if action=="buy":
-            if key in crafting_progression.RARE and lvl(skill_xp(p,'extraction'))<3:
-                return out('Rare ore purchases require Harvesting Lv.3 (12 XP). Gather common materials or use /mine first. Nothing spent.')
+            if key in crafting_progression.RARE and not crafting_progression.rare_unlocked(main,db,p):
+                return out(crafting_progression.RARE_LOCK)
             total=listing["buy"]*amount
             if p.sc<total:return out(f"🏭 {p.display_name} needs {total} SC to buy {amount} {resource_name(key)}. Current balance: {p.sc} SC.")
             p.sc-=total;material_change(db,p,key,amount);db.commit()

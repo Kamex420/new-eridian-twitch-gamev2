@@ -535,8 +535,8 @@ def _locks(m, ctx, e, opened=None, ores=(), depth=0):
     if e.kind == 'seed' and ctx.level(e.skill_key) < e.level:
         main, branch = s.SKILLS.get(e.skill_key, ('fabrication', None))
         steps += _practice(m, ctx, main, branch, e.level, e.skill, opened, ores, depth)
-    if e.kind == 'seed' and any(k in cp.RARE for k in s.RECIPES[e.id]['outputs']) and ctx.harvesting < cp.RARE_LEVEL:
-        steps += _practice(m, ctx, 'extraction', None, cp.RARE_LEVEL, 'Harvesting', opened, ores, depth)
+    if e.kind == 'seed' and any(k in cp.RARE for k in s.RECIPES[e.id]['outputs']) and not ctx.rare_ok:
+        steps.append(_extractor_step(m))
     if e.kind == 'legacy':
         need = m.RECIPE_TIERS.get(e.id)
         if need and ctx.society_tier < need:
@@ -658,14 +658,22 @@ def _craft_steps(m, ctx, crafts, raw, opened, ores, depth=0, part='a part for yo
     return steps
 
 
+def _extractor_step(m):
+    """Rare ores need a Mineral Extractor in the bag; the Small one needs no rare ores to build."""
+    from . import crafting_progression as cp, workbench as wb
+    e = wb.entry(m, s.ACQUISITION[cp.SMALL_EXTRACTOR])
+    return _step('❌', 'Build a Small Mineral Extractor', 'rare ores need a Mineral Extractor in your bag',
+                 view=('wr', e.id, e.category, 1, ''), label='Recipe')
+
+
 def _collect(m, ctx, key, qty, ores):
     """Steps that bring in a raw material the goal still needs."""
     from . import crafting_progression as cp
     name = m.resource_name(key)
     if key in s.GATHER:
-        if key in cp.RARE and ctx.harvesting < cp.RARE_LEVEL:
-            return [_train('Harvesting', cp.RARE_LEVEL, ctx.harvesting, 'harvesting'),
-                    _step('❌', f'Mine {name}', f'need {qty} · after Harvesting Lv {cp.RARE_LEVEL}', view=('mp', 'mine', '=' + key), label='Mine')]
+        if key in cp.RARE and not ctx.rare_ok:
+            return [_extractor_step(m),
+                    _step('❌', f'Mine {name}', f'need {qty} · after you have a Mineral Extractor', view=('mp', 'mine', '=' + key), label='Mine')]
         attempts = min(10, m.qol._gather_attempts(key, qty))
         verb = 'Mine' if key in ores else 'Gather'
         return [_step('✅', f'{verb} {name} ×{attempts}', f'need {qty} · runs as a queue',

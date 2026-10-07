@@ -507,8 +507,8 @@ def blockers(m, ctx, e):
                             f'({ctx.batches}/{need}).'))
     if e.kind == 'seed' and ctx.level(e.skill_key) < e.level:
         found.append(('📈', f'Needs {e.skill} Lv {e.level}; you are Lv {ctx.level(e.skill_key)}. Ask Find: how do I level {e.skill}?'))
-    if e.kind == 'seed' and any(k in cp.RARE for k in s.RECIPES[e.id]['outputs']) and ctx.harvesting < cp.RARE_LEVEL:
-        found.append(('⛏️', f'Rare ores need Harvesting Lv {cp.RARE_LEVEL}.'))
+    if e.kind == 'seed' and any(k in cp.RARE for k in s.RECIPES[e.id]['outputs']) and not ctx.rare_ok:
+        found.append(('⛏️', 'Rare ores need a Small or Frontiers Expedition Mineral Extractor in your bag.'))
     if e.kind == 'legacy':
         society_need = m.RECIPE_TIERS.get(e.id)
         if society_need and ctx.society_tier < society_need:

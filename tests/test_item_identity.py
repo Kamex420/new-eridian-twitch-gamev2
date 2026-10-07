@@ -149,19 +149,20 @@ def test_display_labels_have_no_seed_prefix():
     assert all('SEED' not in row['name'] for row in choices)
 
 
-def test_old_rare_route_respects_new_progress_and_cooldown():
+def test_old_rare_route_mines_the_rare_ore_you_have_least_of():
     seed(provider='discord')
+    assert m.crafting_progression.RARE_LOCK in m.action('rare','test','u',provider='discord').body.decode()
     with m.SessionLocal() as db:
-        p=db.query(m.Player).one();p.mining_xp=12;db.commit()
+        p=db.query(m.Player).one();m.material_change(db,p,m.crafting_progression.SMALL_EXTRACTOR,1);db.commit()
     first=m.action('rare','test','u',provider='discord').body.decode()
-    assert 'PROSPECTING' in first and '1/3' in first
+    assert 'RARE ORE MINED' in first
     second=m.action('rare','test','u',provider='discord').body.decode()
     assert 'ready in' in second
     with m.SessionLocal() as db:
         p=db.query(m.Player).one();assert p.rare_ore==100
-        # Argentite is one rare ore among four: prospecting picks the one this citizen has least of.
-        progress={k:m.material_amount(db,p,'prospect:'+k) for k in m.crafting_progression.RARE}
-        assert sorted(progress.values())==[0,0,0,1] and progress[ident.ALIASES['rare_ore']]==0
+        # Argentite is one rare ore among four: /rare mines the one this citizen has least of.
+        owned={k:m.material_amount(db,p,k) for k in m.crafting_progression.RARE if k!=ident.ALIASES['rare_ore']}
+        assert sorted(owned.values())==[0,0,1]
 
 
 def test_prospecting_continues_the_rare_ore_already_started():
@@ -199,9 +200,9 @@ def test_new_recipe_consumes_converted_legacy_circuit_boards():
 def test_rare_alias_purchase_is_gated_and_cannot_buy_at_retired_price():
     seed(provider='discord')
     response=m.seed_industries('test','u',action='buy',item_name='rare_ore',provider='discord').body.decode()
-    assert 'Harvesting Lv.3' in response
+    assert 'Mineral Extractor' in response
     with m.SessionLocal() as db:
-        p=db.query(m.Player).one();assert p.sc==10000;p.mining_xp=12;db.commit()
+        p=db.query(m.Player).one();assert p.sc==10000;m.material_change(db,p,m.crafting_progression.SMALL_EXTRACTOR,1);db.commit()
     response=m.seed_industries('test','u',action='buy',item_name='rare_ore',amount=2,provider='discord').body.decode()
     assert '48 SC' in response
     with m.SessionLocal() as db:

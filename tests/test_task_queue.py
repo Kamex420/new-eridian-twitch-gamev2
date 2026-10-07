@@ -38,7 +38,7 @@ def test_mine_lists_all_ores_and_preview_spends_nothing():
     for k in q.ores():assert s.item_label(k) in result
     result=m.mining('test','u',ore=RARE,count=10,provider='discord').body.decode()
     assert '47 Energy' in result and '29 Nutrition' in result
-    assert 'Harvesting level 3' in result
+    assert 'Mineral Extractor' in result
     with m.SessionLocal() as db:
         assert db.query(q.TaskQueue).count()==0
         assert db.query(m.Player).one().actions==0
@@ -121,14 +121,14 @@ def test_failure_counts_as_attempt(monkeypatch):
         row=db.query(q.TaskQueue).one();assert row.remaining==1
         assert 'TASK FAILED' in row.result
 
-def test_rare_steps_do_not_award_an_ore_each_attempt():
-    enqueue('mine:'+RARE,3)
+def test_a_queued_rare_ore_comes_up_on_each_success():
+    enqueue('mine:'+RARE,2)
     with m.SessionLocal() as db:
-        p=db.query(m.Player).one();p.mining_xp=12;db.commit()
+        p=db.query(m.Player).one();m.material_change(db,p,m.crafting_progression.SMALL_EXTRACTOR,1);db.commit()
     advance()
-    with m.SessionLocal() as db:assert db.query(m.Player).one().rare_ore==100
-    advance();advance()
     with m.SessionLocal() as db:assert db.query(m.Player).one().rare_ore==101
+    advance()
+    with m.SessionLocal() as db:assert db.query(m.Player).one().rare_ore==102
 
 def test_cooldown_and_two_workers_cannot_double_execute():
     enqueue(count=2);due()
@@ -159,8 +159,8 @@ def test_queue_survives_new_sessions_and_checks_skill_requirements():
     enqueue('mine:'+RARE,1);advance()
     with m.SessionLocal() as db:
         row=db.query(q.TaskQueue).one();assert row.state=='paused' and row.remaining==1
-        assert 'Harvesting Lv.3' in row.result
-        p=db.query(m.Player).one();p.mining_xp=12;db.commit()
+        assert 'Mineral Extractor' in row.result
+        p=db.query(m.Player).one();m.material_change(db,p,m.crafting_progression.SMALL_EXTRACTOR,1);db.commit()
     advance()
     with m.SessionLocal() as db:assert db.query(q.TaskQueue).one().state=='completed'
 
@@ -226,25 +226,24 @@ def test_twitch_task_discovery_and_requirements():
     r=client.get('/api/v1/queue-tasks',params={'query':'Hematite'})
     assert 'mine:'+ORE in r.text
     r=client.get('/api/v1/mining',params={'channel':'test','uid':'u','ore':RARE})
-    assert 'Harvesting level 3' in r.text and 'three successful prospecting steps' in r.text
+    assert 'Mineral Extractor' in r.text and 'Frontiers Expedition' in r.text
 
 @pytest.mark.parametrize('key',sorted(s.GATHER))
 def test_every_gatherable_has_exact_queue_totals(key):
-    count=6 if key in m.crafting_progression.RARE else 3
+    count=3
     enqueue(('mine:' if key in q.ores() else 'gather:')+key,count)
     with m.SessionLocal() as db:
-        p=db.query(m.Player).one();p.mining_xp=12
+        p=db.query(m.Player).one();m.material_change(db,p,m.crafting_progression.SMALL_EXTRACTOR,1)
         initial=m.material_amount(db,p,key);db.commit()
     for _ in range(count):advance()
     with m.SessionLocal() as db:
         p=db.query(m.Player).one();row=db.query(q.TaskQueue).one()
         totals=db.query(q.QueueTotals).one()
-        expected=2 if key in m.crafting_progression.RARE else count*s.GATHER[key]['amount']
+        expected=count*s.GATHER[key]['amount']                       # rare ores too: one ore a success
         assert m.material_amount(db,p,key)-initial==expected
         assert json.loads(totals.gained)=={key:expected}
         assert totals.failed==0
-        assert totals.succeeded==(2 if key in m.crafting_progression.RARE else count)
-        assert totals.progress==(4 if key in m.crafting_progression.RARE else 0)
+        assert totals.succeeded==count and totals.progress==0
         assert f'{s.item_label(key)} ×{expected}' in q.status(m,db,p,row)
 
 

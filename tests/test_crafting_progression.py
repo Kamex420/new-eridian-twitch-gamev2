@@ -117,44 +117,38 @@ def test_free_survival_bench_bootstraps_without_any_station_purchase():
 
 
 @pytest.mark.parametrize('key',sorted(cp.RARE))
-def test_rare_ores_require_level_and_three_persistent_efforts(key):
+def test_rare_ores_need_a_mineral_extractor_and_mine_like_any_ore(key):
     with m.SessionLocal() as db:
         p=citizen(db)
-        assert 'Harvesting Lv.3' in s.gather(m,db,p,key,'discord')
+        assert s.gather(m,db,p,key,'discord')==cp.RARE_LOCK
         assert db.query(m.Cooldown).count()==0
-        p.mining_xp=12;life=m.life_state(db,p);before=life.energy;db.commit()
-        for i in range(1,4):
-            if i>1:
-                db.query(m.Cooldown).delete();db.commit() # simulate cooldown elapsed
-            result=s.gather(m,db,p,key,'discord')
-            assert f'{i}/3' in result
-            assert m.material_amount(db,p,key)==int(i==3)
-            assert m.material_amount(db,p,'prospect:'+key)==(i if i<3 else 0)
-            assert 'ready in' in s.gather(m,db,p,key,'discord')
-        assert life.energy==before-9
+        m.material_change(db,p,cp.SMALL_EXTRACTOR,1);life=m.life_state(db,p);before=life.energy;db.commit()
+        result=s.gather(m,db,p,key,'discord')
+        assert 'RARE ORE MINED' in result and m.material_amount(db,p,key)==1          # one try, one ore
+        assert 'ready in' in s.gather(m,db,p,key,'discord')
+        assert life.energy==before-3
+        m.material_change(db,p,cp.FRONTIERS_EXTRACTOR,1);db.query(m.Cooldown).delete();db.commit()
+        assert '×2' in s.gather(m,db,p,key,'discord') and m.material_amount(db,p,key)==3   # the Frontiers extractor: 2 a success
         assert cp.manufactured_batches(m,db,p)==0
-    with m.SessionLocal() as db:
-        p=citizen(db);assert m.material_amount(db,p,key)==1
 
 
 def test_rare_cooldown_shared_across_ores_and_extractor_route():
     with m.SessionLocal() as db:
-        p=citizen(db);p.mining_xp=12;p.sc=1000;provision_tier(db,p,4)
-        cp.workshop(m,db,p,'unlock','TAG_MACHINE_EXTRACTOR')
+        p=citizen(db);m.material_change(db,p,cp.SMALL_EXTRACTOR,1);p.sc=1000;provision_tier(db,p,4)
         first,second=sorted(cp.RARE)[:2]
-        assert 'PROSPECTING' in s.gather(m,db,p,first,'discord')
+        assert 'RARE ORE MINED' in s.gather(m,db,p,first,'discord')
         rid=next(k for k,r in s.RECIPES.items() if second in r['outputs'])
         assert 'ready in' in s.craft(m,db,p,rid,'discord')
         assert m.material_amount(db,p,second)==0
 
 
-def test_rare_market_requires_level_and_buyback_pays_exactly():
+def test_rare_market_requires_an_extractor_and_buyback_pays_exactly():
     key=next(k for k in cp.RARE if s.ITEMS[k]['name']=='Rutile Ore')
     with m.SessionLocal() as db:
         p=citizen(db);p.sc=1000;db.commit()
-    assert 'Harvesting Lv.3' in m.seed_industries('test','new',action='buy',item_name=key,provider='discord').body.decode()
+    assert 'Mineral Extractor' in m.seed_industries('test','new',action='buy',item_name=key,provider='discord').body.decode()
     with m.SessionLocal() as db:
-        p=citizen(db);assert p.sc==1000;p.mining_xp=12;db.commit()
+        p=citizen(db);assert p.sc==1000;m.material_change(db,p,cp.SMALL_EXTRACTOR,1);db.commit()
     price=m.SEED_INDUSTRIES[key]['buy']
     result=m.seed_industries('test','new',action='buy',item_name=key,amount=2,provider='discord').body.decode()
     assert f'{price*2} SC' in result

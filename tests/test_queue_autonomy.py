@@ -35,7 +35,7 @@ def test_rare_cooldown_wait_does_not_spend_attempt(monkeypatch):
     clock=[m.now()];monkeypatch.setattr(m,'now',lambda:clock[0])
     enqueue('mine:'+RARE,3)
     with m.SessionLocal() as db:
-        p=db.query(m.Player).one();p.mining_xp=12;db.commit()
+        p=db.query(m.Player).one();m.material_change(db,p,m.crafting_progression.SMALL_EXTRACTOR,1);db.commit()
     for seconds,expected in [(10,1),(10,1),(10,2)]:
         clock[0]+=timedelta(seconds=seconds);q.run_one(m,'test','discord:u')
         with m.SessionLocal() as db:assert db.query(m.Player).one().actions==expected

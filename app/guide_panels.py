@@ -162,7 +162,7 @@ PANELS = NEWCOMER_PANELS + [
           ('/training', 'Every skill and which tasks train it.')]),
       ('GOOD TO KNOW', [
           ('Mining can fail', 'A failed attempt gives Stone Dust instead of ore.'),
-          ('Rare ores', 'Unlock at Harvesting level 3.'),
+          ('Rare ores', 'Mine them with /mine once a Mineral Extractor is in your bag.'),
           ('Time of day', 'Morning, Day, Evening and Night each favour different work. /world shows the current phase.')])],
      'GATHER → MINE → WORK → LEVEL UP'),
     ('Crafting',

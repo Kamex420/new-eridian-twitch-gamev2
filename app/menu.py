@@ -313,7 +313,7 @@ leaf('quiet_off', 'Turn off quiet hours', '☀️', 'nav', nav=('qo',), hint='DM
 _HINTS = {
     'w_farm_tend': 'gives 1 Pumpkin + 1 Pumpkin Seeds', 'w_farm_harvest': 'gives 3 Pumpkins + 1 Pumpkin Seeds',
     'w_farm_irrigate': 'gives 3 Pumpkins + 1 Murky Water', 'w_farm_hydroponics': 'gives 4 Pumpkins + 1 Raw Algae; needs a Small Water Filter',
-    'w_scan': 'an environmental scan', 'w_rare': 'search for rare ores (Harvesting level 3)', 'w_research': 'gives 1 Stone',
+    'w_scan': 'an environmental scan', 'w_rare': 'mine a rare ore (needs a Mineral Extractor)', 'w_research': 'gives 1 Stone',
     'w_field_analysis': 'gives 2 Stone + 1 Herbs; needs a Siro Sampler', 'w_cargo': 'prepare Cargo for deliveries',
     'w_delivery': 'deliver Cargo (used on success)', 'w_spaceport': 'gives 1 Cargo + 1 Lumber',
     'w_expedite': 'gives 2 Cargo + 2 Lumber; uses 1 Power Cell', 'w_scout': 'gives 1 Stone + 1 Berries',
@@ -467,7 +467,7 @@ WHEN = {
     'analyze': (lambda c: c.equipment('market', 'analyze'), 'needs a Market Analyzer'),
     'w_delivery': (lambda c: c.p.cargo > 0, 'needs Cargo: Prepare cargo first'),
     'w_expedite': (lambda c: c.get('cell', lambda: c.m.material_amount(c.db, c.p, 'power_cell') > 0), 'needs a Power Cell'),
-    'w_rare': (lambda c: c.m.lvl(c.m.skill_xp(c.p, 'extraction')) >= c.m.crafting_progression.RARE_LEVEL, 'needs Harvesting Lv 3'),
+    'w_rare': (lambda c: c.m.crafting_progression.rare_unlocked(c.m, c.db, c.p), 'needs a Mineral Extractor'),
     'gearrepair': (lambda c: c.has('gear'), 'you have no quality gear'),
     'use': (lambda c: c.has('use'), 'you own nothing usable yet'),
     'sell': (lambda c: c.has('sell'), 'you have nothing Seed Industries buys'),

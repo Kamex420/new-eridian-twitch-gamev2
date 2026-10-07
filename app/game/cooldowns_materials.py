@@ -30,7 +30,7 @@ def check_cooldown(db,p,action_name):
     if not row:row=Cooldown(channel_id=p.channel_id,canonical_uid=p.twitch_uid,action=action_name,ready_at=main.now());db.add(row)
     row.ready_at=main.now()+timedelta(seconds=seconds);db.commit();return 0
 COOLDOWN_LABELS={"seed_work":("/make, /gather and common /mine","!make, !gather and !mine"),"seed_use":("/use","!use"),
-    "rare_prospect":("Rare-ore prospecting (/mine)","rare prospecting")}
+    "rare_prospect":("Rare ore mining (/mine)","rare ore mining")}
 
 def cooldown_label(action_name,provider):
     if action_name in COOLDOWN_LABELS:return COOLDOWN_LABELS[action_name][0 if provider=="discord" else 1]
@@ -38,7 +38,7 @@ def cooldown_label(action_name,provider):
 
 def cooldown_rules(provider="discord"):
     prefix="/" if provider=="discord" else "!"
-    return (f"Work, {prefix}eat, {prefix}make and {prefix}gather: 5s. Rare prospecting: 20s. Item {prefix}use: 20s. "
+    return (f"Work, {prefix}eat, {prefix}make and {prefix}gather: 5s. Rare ores: 20s. Item {prefix}use: 20s. "
             f"Social and recovery: 20–60s. {prefix}sleep: {duration_text(SLEEP_COOLDOWN_SECONDS)} (fully restores Energy and Comfort).")
 
 def cooldowns_text(db,p,provider="twitch"):

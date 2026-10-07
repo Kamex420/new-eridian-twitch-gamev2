@@ -213,7 +213,7 @@ def requirements(m,db,p,task,count):
         detail=task_yields.requirements(m,action,mode)
         if detail:lines.append(detail)
     if kind in {'mine','gather'} and target in ores():lines.append('Mining uses your work success chance. Failure spends needs and one attempt, gives 1 Stone Dust, and gives no ore.')
-    if target in cp.RARE:lines.append('Requires Harvesting level 3. Each queued attempt is one prospecting step; three successful steps produce one ore. Failed attempts give 1 Stone Dust and keep saved progress.')
+    if target in cp.RARE:lines.append('Needs a Mineral Extractor in your bag: a Small one brings up 1 ore a success, a Frontiers Expedition one 2. Failed attempts give 1 Stone Dust.')
     lines.append('These are task costs, excluding other activities, passive recovery and incident effects. Failed attempts count; blocked attempts do not.')
     return '\n'.join(lines)
 

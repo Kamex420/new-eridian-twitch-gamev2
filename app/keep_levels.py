@@ -137,8 +137,8 @@ def shortfalls(m, db, p, provider='discord'):
     rows = m.qol.fetch_routes(ctx, SimpleNamespace(inputs=want), 1)
     for r in rows:
         r.update(have=ctx.have(r['key']), keep=want[r['key']], blocked='', fix='', view=None, more='', count=r.get('attempts', 0))
-        if r['kind'] == 'queue' and r['key'] in cp.RARE and ctx.harvesting < cp.RARE_LEVEL:
-            r['blocked'] = f'🔒 rare ores require Harvesting Lv.{cp.RARE_LEVEL} (you are Lv {ctx.harvesting})'
+        if r['kind'] == 'queue' and r['key'] in cp.RARE and not ctx.rare_ok:
+            r['blocked'] = f'🔒 rare ores need {cp.RARE_NEED} in your bag'
         elif r['kind'] == 'recipe':
             e = wb.entry(m, r['recipe'])
             status = ctx.status(e)

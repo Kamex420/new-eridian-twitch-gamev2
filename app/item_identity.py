@@ -6,7 +6,7 @@ repeat-safe. Four catalog items keep using their established player columns so
 old mining, farming, trade, account merging and overlays share one stock:
 Hematite Ore (ore), Argentite Ore (rare_ore), Pumpkin (crops) and Iron Nails
 (components). Players see them as ordinary items; the columns are storage only.
-Argentite is one of the four rare ores, priced and prospected like the others.
+Argentite is one of the four rare ores, priced and mined like the others.
 Cargo stays a logistics token; it has no catalog counterpart.
 """
 from . import seed_content as s

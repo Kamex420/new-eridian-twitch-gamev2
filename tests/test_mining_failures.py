@@ -9,7 +9,7 @@ from app import task_queue as q, crafting_progression as cp, seed_content as s
 def test_all_mined_resources_fail_to_one_stone_dust(key,monkeypatch):
     enqueue('mine:'+key,1)
     with m.SessionLocal() as db:
-        p=db.query(m.Player).one();p.mining_xp=12;initial=m.material_amount(db,p,key);db.commit()
+        p=db.query(m.Player).one();m.material_change(db,p,cp.SMALL_EXTRACTOR,1);initial=m.material_amount(db,p,key);db.commit()
     monkeypatch.setattr(m.random,'random',lambda:0.99);advance()
     with m.SessionLocal() as db:
         p=db.query(m.Player).one();totals=db.query(q.QueueTotals).one();row=db.query(q.TaskQueue).one()
@@ -25,18 +25,18 @@ def test_all_mined_resources_fail_to_one_stone_dust(key,monkeypatch):
         assert 'failed: 1' in notice.content and 'Stone Dust ×1' in notice.content
 
 
-def test_rare_failures_preserve_successful_prospecting_steps(monkeypatch):
-    enqueue('mine:'+RARE,4)
+def test_rare_ores_mine_like_any_ore_one_roll_each(monkeypatch):
+    enqueue('mine:'+RARE,3)
     with m.SessionLocal() as db:
-        p=db.query(m.Player).one();p.mining_xp=12;db.commit()
-    for roll,progress in [(0.0,1),(0.99,1),(0.0,2),(0.0,0)]:
+        p=db.query(m.Player).one();m.material_change(db,p,cp.SMALL_EXTRACTOR,1);db.commit()
+    for roll,owned in [(0.0,101),(0.99,101),(0.0,102)]:
         monkeypatch.setattr(m.random,'random',lambda roll=roll:roll);advance()
         with m.SessionLocal() as db:
-            p=db.query(m.Player).one();assert m.material_amount(db,p,'prospect:'+RARE)==progress
+            assert db.query(m.Player).one().rare_ore==owned
     with m.SessionLocal() as db:
         p=db.query(m.Player).one();totals=db.query(q.QueueTotals).one()
-        assert p.rare_ore==101 and m.material_amount(db,p,cp.STONE_DUST)==1
-        assert (totals.succeeded,totals.failed,totals.progress)==(1,1,2)
+        assert m.material_amount(db,p,cp.STONE_DUST)==1
+        assert (totals.succeeded,totals.failed,totals.progress)==(2,1,0)
 
 
 def test_blocked_mining_never_grants_failure_reward(monkeypatch):
@@ -65,7 +65,7 @@ def test_legacy_mining_paths_also_give_dust(action,monkeypatch):
 def test_machine_extraction_cannot_bypass_mining_failure(rid,monkeypatch):
     enqueue('make:'+rid,1)
     with m.SessionLocal() as db:
-        p=db.query(m.Player).one();p.mining_xp=1000
+        p=db.query(m.Player).one();p.mining_xp=1000;m.material_change(db,p,cp.SMALL_EXTRACTOR,1)
         db.add(m.CraftLedger(channel_id='test',canonical_uid=p.twitch_uid,recipe='component',qty=250,best_quality=''))
         for tag in cp.tags(rid):m.material_change(db,p,cp.permit_key(tag),1)
         req=s.RECIPES[rid]['requirement'].get('Skill','SK_CRAFTING')

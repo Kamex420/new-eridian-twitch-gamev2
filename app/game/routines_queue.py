@@ -114,7 +114,7 @@ def mining(channel:str,uid:str,name:str='Citizen',ore:str='',action:str='view',c
         if not ore.strip():
             common=[seed_content.item_label(k).replace(' Ore','').lower() for k in sorted(task_queue.ores(),key=seed_content.item_label) if k not in crafting_progression.RARE]
             rare=[seed_content.item_label(k).replace(' Ore','').lower() for k in sorted(crafting_progression.RARE,key=seed_content.item_label) if k in task_queue.ores()]
-            return out('⛏️ !mine <ore>: '+', '.join(common)+(' · Rare (Harvesting Lv 3): '+', '.join(rare) if rare else '')+' · Mining can fail (you get Stone Dust).')
+            return out('⛏️ !mine <ore>: '+', '.join(common)+(' · Rare (needs a Mineral Extractor): '+', '.join(rare) if rare else '')+' · Mining can fail (you get Stone Dust).')
         if action=='mine' and count==1 and main.twitch_lite.ENABLED:
             # Typos are forgiven when they clearly mean one ore ("hemetite" → Hematite Ore).
             found,suggestions=main.qol.fuzzy_item(ore.strip() if ' ore' in ore.lower() or ore.lower().strip()=='coal' else ore.strip()+' ore',set(task_queue.ores()))
@@ -125,7 +125,7 @@ def mining(channel:str,uid:str,name:str='Citizen',ore:str='',action:str='view',c
     if not ore:
         lines=['MINING — CHOOSE AN ORE OR COAL','Mining can fail: each failure gives 1 Stone Dust instead of ore. Select Ore (including Coal) to inspect its requirements, then choose Mine. Count queues up to 10 attempts of that ore.']
         for k in sorted(task_queue.ores(),key=seed_content.item_label):
-            rule=(f'Harvesting Lv.3; three successful steps per ore; {need_cost_text(HEAVY_ENERGY)} per step; 20-second shared cooldown' if k in crafting_progression.RARE else f'No skill unlock or tools required; {need_cost_text(STANDARD_ENERGY)}; 5-second shared gathering cooldown')
+            rule=(f'Needs a Mineral Extractor in your bag (Small: 1 ore a success, Frontiers Expedition: 2); {need_cost_text(HEAVY_ENERGY)} per attempt; 20-second shared cooldown' if k in crafting_progression.RARE else f'No skill unlock or tools required; {need_cost_text(STANDARD_ENERGY)}; 5-second shared gathering cooldown')
             lines.append(seed_content.item_label(k)+': '+rule+'.')
         text='\n'.join(lines)
     elif key not in task_queue.ores():text='Choose an ore from /mine. Other natural resources are listed under /gather. Nothing was spent.'
@@ -133,7 +133,7 @@ def mining(channel:str,uid:str,name:str='Citizen',ore:str='',action:str='view',c
     else:
         with SessionLocal() as db:
             _,p=player(db,channel,provider,uid,name)
-            rule='Harvesting level 3; three successful prospecting steps per ore; failures give 1 Stone Dust and keep progress; shared 20-second cooldown. No materials or tools required.\n' if key in crafting_progression.RARE else 'No skill unlock, materials or tools required; shared 5-second gathering cooldown.\n'
+            rule='Needs a Mineral Extractor in your bag: a Small Mineral Extractor brings up 1 ore a success, a Frontiers Expedition Mineral Extractor 2. Failures give 1 Stone Dust; shared 20-second cooldown.\n' if key in crafting_progression.RARE else 'No skill unlock, materials or tools required; shared 5-second gathering cooldown.\n'
             text=seed_content.item_label(key)+' — MINING REQUIREMENTS\n'+rule+task_queue.requirements(module,db,p,'mine:'+key,count)+'\nSelect Mine to start. Use /queue to check progress or cancel.'
     return platform_response(provider,text,text.replace('\n',' | '))
 

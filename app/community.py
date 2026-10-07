@@ -95,6 +95,12 @@ def after_command(m, db, p, fn_name, params, before, after):
             if gift:
                 discord.append('🎉 ' + gift)
                 chat.append(gift)
+        if acting and before and after:      # season points count only the Contribution the Seedling may keep today (autonomy.CONTRIBUTION_CAP)
+            from .autonomy import contribution_room
+            had, now = before.get('Resources', {}).get('contribution', 0), after.get('Resources', {}).get('contribution', 0)
+            room = contribution_room(m, db, p)
+            if now - had > room:
+                after = {**after, 'Resources': {**after.get('Resources', {}), 'contribution': had + room}}
         note = seasons.from_command(m, db, p, before, after, acting)
         if note:
             discord.append(note)

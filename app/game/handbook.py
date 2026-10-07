@@ -25,7 +25,7 @@ BEST FIRST STEPS
 2. /job
 3. /guide
 
-Standard work, /eat, /make and /gather use a 5-second cooldown. Rare prospecting uses a shared 20-second cooldown. Social and recovery actions use 20–60 seconds depending on the activity. /sleep fully restores Energy and Comfort but only once every 30 minutes. Browsing spends nothing. Crafting requires the listed workstation, personal tier and skill; /make previews all of it before you spend anything. /workshop shows unlocks; /seedindustries sells starter supplies. Check exact remaining times with /me section:Cooldowns.""",
+Standard work, /eat, /make and /gather use a 5-second cooldown. Rare ore mining uses a shared 20-second cooldown. Social and recovery actions use 20–60 seconds depending on the activity. /sleep fully restores Energy and Comfort but only once every 30 minutes. Browsing spends nothing. Crafting requires the listed workstation, personal tier and skill; /make previews all of it before you spend anything. /workshop shows unlocks; /seedindustries sells starter supplies. Check exact remaining times with /me section:Cooldowns.""",
 "character":"""👤 CHARACTER & PROGRESSION
 
 /me — One personal hub for Overview, Life Needs, Bonuses, Cooldowns, Traits, Relationships, Journal, Tutorial, Titles, and Display Style. Compact results are default; Detailed adds every modifier and final success chance.
@@ -95,8 +95,8 @@ Recovery and information commands remain available while work is blocked. This r
 /farm action:Irrigate — Processing work that adds society Food and 3 Pumpkins.
 /farm action:Hydroponics — Requires a Small Water Filter (a /make machine) and improves Food while producing 4 Pumpkins.
 /scan — Processing work that adds +1 society Knowledge.
-/mine — Choose an ore and view its requirements, then select Mine. Count starts a queue of 1–10 attempts. Rare ores require three successful prospecting steps per ore. /queue shows progress, total needs and missing materials; it pauses and resumes automatically.
-/rare — Prospect a rare ore (Argentite, Aurite, Bauxite or Rutile; /mine picks one). Harvesting Lv.3 required; three successful prospecting steps per ore, with a shared 20-second prospecting cooldown.
+/mine — Choose an ore and view its requirements, then select Mine. Count starts a queue of 1–10 attempts. Rare ores (Argentite, Aurite, Bauxite, Rutile) are in the same list once you have a Mineral Extractor in your bag: the Small one brings up 1 ore a success, the Frontiers Expedition one 2. /queue shows progress, total needs and missing materials; it pauses and resumes automatically.
+/rare — Mine the rare ore you have least of (Argentite, Aurite, Bauxite or Rutile; /mine picks a specific one). Needs a Small or Frontiers Expedition Mineral Extractor in your bag; shared 20-second cooldown.
 /training — Choose a skill, view branches and inventory requirements, then choose Task to work. Includes Cooking, Medicine and Emergency Response, their jobs, and level unlocks.\n/make — The Workbench: every recipe by category, easiest first, with previews, Craft and Queue buttons.
 /repair target:Society Infrastructure — Engineering work; adds +1 Development.
 /research — Research work that raises Knowledge. Primary response for Siro Bloom.

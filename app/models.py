@@ -151,6 +151,14 @@ class ActionLog(Base):
     response=Column(String(1000),nullable=False)
     created_at=Column(DateTime(timezone=True),default=now,nullable=False)
 
+class RealActivity(Base):
+    """When a citizen last played themselves: not a Seedling or a queue acting for them. Event sizes and the automatic
+    event meter count these citizens (game.world.active_player_count, unique_activity_chatters)."""
+    __tablename__="real_activity_v1"
+    channel_id=Column(String(64),primary_key=True)
+    canonical_uid=Column(String(96),primary_key=True)
+    last_at=Column(DateTime(timezone=True),nullable=False,index=True)
+
 class Cooldown(Base):
     __tablename__="cooldowns_v52"
     id=Column(Integer,primary_key=True)

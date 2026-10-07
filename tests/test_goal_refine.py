@@ -120,20 +120,18 @@ def test_crafting_new_eridian_equipment_that_is_the_goal_completes_it():
 
 
 def test_a_rare_ore_recipe_completes_when_its_ore_is_recovered():
-    """A recipe with a rare-ore output prospects (three steps an ore): only the step that recovers the ore crafts it."""
+    """A recipe with a rare-ore output mines it (one roll, like any ore) and completes the goal when the ore comes up."""
     citizen()
     argentite = wb.entry(m, 'sr_2069171276')
     with m.SessionLocal() as db:
         p = m.player(db, W, 'discord', '111', 'Kam')[1]
         m.craft_record(db, p, CAMPFIRE.id).qty = 100                         # personal Tier 3
-        p.mining_xp = 12                                                    # Harvesting Lv 3
-        m.material_change(db, p, s.key('Small Mineral Extractor'), 1)
+        m.material_change(db, p, s.key('Small Mineral Extractor'), 1)       # unlocks rare ores
         db.commit()
     set_goal(argentite.id)
-    for step in (1, 2, 3):
-        due()
-        text = m.make(W, '111', 'Kam', argentite.id, 'discord').body.decode()
-        assert f'Progress: {step}/3' in text and goal() == (None if step == 3 else argentite.id), text
+    due()
+    text = m.make(W, '111', 'Kam', argentite.id, 'discord').body.decode()
+    assert 'RARE ORE MINED' in text and goal() is None, text
 
 
 def test_a_seedling_crafting_its_owners_goal_completes_it(monkeypatch):

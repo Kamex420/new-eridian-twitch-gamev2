@@ -253,7 +253,7 @@ def overview(m, db, p, provider='discord'):
         missing = raw.get(key, 0)
         route = routes.get(key)
         price = route['price'] if route else 0
-        locked = key in cp.RARE and ctx.harvesting < cp.RARE_LEVEL
+        locked = key in cp.RARE and not ctx.rare_ok
         materials.append(SimpleNamespace(key=key, name=m.resource_name(key), need=used.get(key, 0) + missing, have=ctx.have(key),
                                          missing=missing, route=route, price=price, locked=locked,
                                          buyable=bool(missing and price and not locked), cost=price * missing))
@@ -275,7 +275,7 @@ def route_text(m, x, provider='discord'):
     else:
         text = m.material_source(x.key, provider).split(';')[0].rstrip('.')
     if x.locked:
-        text += f' · needs Harvesting Lv {cp.RARE_LEVEL}'
+        text += f' · needs {cp.RARE_NEED}'
     if x.buyable:
         text += (' · or ' if text else '') + f'buy for {x.cost} SC'
     return text

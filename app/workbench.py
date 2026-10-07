@@ -162,6 +162,7 @@ class Context:
         self._levels = {}
         self.society_tier = m.society_tier_index(m.society(db, p.channel_id)) if p is not None else 0
         self.harvesting = m.lvl(m.skill_xp(p, 'extraction')) if p is not None else 1
+        self.rare_ok = cp.rare_unlocked(m, db, p)            # a Mineral Extractor in the bag
         self._statuses = {}
         self._unique = None
         self._favorites = None
@@ -277,8 +278,8 @@ class Context:
         if e.kind == 'seed' and self.level(e.skill_key) < e.level:
             return Status('locked', '🔒', f'{e.skill} Lv{e.level} (you {self.level(e.skill_key)})',
                           f'Needs {e.skill} Lv.{e.level}; you are Lv.{self.level(e.skill_key)}. Train it with lower-level recipes or /training.')
-        if e.kind == 'seed' and any(k in cp.RARE for k in s.RECIPES[e.id]['outputs']) and self.harvesting < cp.RARE_LEVEL:
-            return Status('locked', '🔒', 'Harvesting Lv3', 'Rare ores need Harvesting Lv.3 (12 XP).')
+        if e.kind == 'seed' and any(k in cp.RARE for k in s.RECIPES[e.id]['outputs']) and not self.rare_ok:
+            return Status('locked', '🔒', 'Mineral Extractor', 'Rare ores need a Small or Frontiers Expedition Mineral Extractor.')
         if e.kind == 'legacy':
             society_need = self.m.RECIPE_TIERS.get(e.id)
             if society_need and self.society_tier < society_need:

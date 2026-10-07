@@ -380,16 +380,15 @@ def _discord_make_autocomplete(payload:dict):
 
 def ore_choice_rows(db,p):
     """Mining dropdown: status, owned, needs per attempt, cooldown and locks."""
-    harvesting=lvl(skill_xp(p,"extraction")) if p else 1
+    rare_ok=crafting_progression.rare_unlocked(main,db,p)
     rows=[]
     for key in sorted(main.task_queue.ores(),key=lambda k:(k in crafting_progression.RARE,seed_content.item_label(k))):
         owned=material_amount(db,p,key) if p else 0
         rare=key in crafting_progression.RARE
         energy=HEAVY_ENERGY if rare else STANDARD_ENERGY
-        locked=rare and harvesting<crafting_progression.RARE_LEVEL
-        progress=material_amount(db,p,"prospect:"+key) if p and rare else 0
-        detail=(f" · 3 steps per ore ({progress}/3) · 20s" if rare else " · 5s")
-        lock=" · needs Harvesting Lv3" if locked else ""
+        locked=rare and not rare_ok
+        detail=(" · 20s" if rare else " · 5s")
+        lock=" · needs a Mineral Extractor" if locked else ""
         rows.append((workbench.clip(f"{'🔒' if locked else '✅'} {seed_content.item_label(key)} ×{owned} · {energy} Energy, {comfort_cost(energy)} Comfort{detail}{lock}"),key))
     return rows
 
@@ -397,7 +396,7 @@ def queue_choice_rows(db,p,query=""):
     """Queue dropdown: every task with its icon, cost and (for recipes) status."""
     module=main;q=str(query or "").casefold().strip()
     ctx=workbench.Context(module,db,p)
-    harvesting=lvl(skill_xp(p,"extraction")) if p else 1
+    rare_ok=ctx.rare_ok
     rows=[]
     for key,label in main.task_queue.choices(module).items():
         if q and q not in (label+" "+key).casefold():continue
@@ -413,9 +412,9 @@ def queue_choice_rows(db,p,query=""):
             energy=task_energy(action,mode) if kind=="work" else (HEAVY_ENERGY if target in crafting_progression.RARE else STANDARD_ENERGY)
             icon={"mine":"⛏️","gather":"🌿","work":"💼"}[kind]
             rare=kind=="mine" and target in crafting_progression.RARE
-            locked=rare and harvesting<crafting_progression.RARE_LEVEL
+            locked=rare and not rare_ok
             if locked:icon="🔒"
-            text=f"{icon} {label} · {energy} Energy, {comfort_cost(energy)} Comfort/attempt"+(" · needs Harvesting Lv3" if locked else "")
+            text=f"{icon} {label} · {energy} Energy, {comfort_cost(energy)} Comfort/attempt"+(" · needs a Mineral Extractor" if locked else "")
             order=({"mine":0,"gather":1,"work":2}[kind],(2 if locked else 1 if rare else 0),label)
         rows.append((order,workbench.clip(text),key))
     return [(text,key) for _,text,key in sorted(rows,key=lambda r:r[0])]

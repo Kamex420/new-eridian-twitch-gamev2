@@ -206,7 +206,8 @@ def craft(m,db,p,key,provider):
     life=m.life_state(db,p);m.spend_life_for_action(life,'make')
     # Every successful catalog craft (button, chat, queue attempt) passes here: crafting the goal completes it.
     p.actions+=1;p.successes+=1;m.craft_record(db,p,key);m.extras.goal_crafted(m,db,p,key);db.commit()
-    colony=m.work_counts(db,p,SKILLS.get(req,('fabrication',None))[0])
+    colony=m.work_counts(db,p,SKILLS.get(req,('fabrication',None))[0],contract='make',action='make',
+                         detail='made '+', '.join(f"{item_label(k)} ×{v}" for k,v in outputs.items()))
     return ('✅ CRAFTING COMPLETE\n\nOUTPUT\n'+ '\n'.join(f"• {item_label(k)} ×{v}" for k,v in outputs.items())+
       (f'\n\n{colony}' if colony else '')+'\n\nUSED\n'+(m.requirement_text(r['inputs']) or 'No ingredients')+'\n\nPRACTICE\n'+', '.join(xp)+(f'\n{found}' if found else '')+
       '\n\nWorkshop: '+(cp.STATIONS[chosen]['name'] if chosen else station(r))+(' · Owned workstation: +1 practice per trained skill included.' if workshop_bonus else '')+'\n'+need_cost(2)+mining_detail)
@@ -231,7 +232,9 @@ def gather(m,db,p,key,provider):
     from . import practice
     found=practice.find(m,db,p,'extraction',cfg['branch'])
     m.spend_life_for_action(life,'make');p.actions+=1;p.successes+=1;db.commit()
-    colony=m.work_counts(db,p,GATHER_SKILL.get(cfg['branch'],'extraction'))
+    mined=cfg['branch']=='ore_mining'
+    colony=m.work_counts(db,p,GATHER_SKILL.get(cfg['branch'],'extraction'),contract='mine' if mined else None,
+                         action='mine' if mined else 'gather',detail=f"{'mined' if mined else 'gathered'} {ITEMS[key]['name']} ×{cfg['amount']}")
     return f"✅ GATHERING COMPLETE\n\nOUTPUT\n• {ITEMS[key]['name']} ×{cfg['amount']}\n\n"+(f"{colony}\n\n" if colony else "")+f"PRACTICE\n+{xp} Harvesting and {cfg['branch'].replace('_',' ').title()} XP\n"+(f"{found}\n" if found else "")+need_cost(2)+detail
 
 # New Eridian adaptations: one primary category per obtainable item.
@@ -398,7 +401,7 @@ def catalog(m,db,p,item='',page=1,owned=False,category=''):
         lines+=['','HOW TO OBTAIN',source_hint(item)]
         if item not in GATHER:
             base,steps=acquisition_plan(item)
-            plan=[f'Gather {item_label(k)}: {n*3 if k in cp.RARE else n} action(s).'+(' Harvesting Lv.3 required.' if k in cp.RARE else '') for k,n in sorted(base.items())]
+            plan=[f'Gather {item_label(k)}: {n} action(s).'+(' Needs a Mineral Extractor.' if k in cp.RARE else '') for k,n in sorted(base.items())]
             plan += [f"Make {RECIPES[rid]['name']}: {n} batch(es) · {rid} · Tier {cp.recipe_tier(rid)} · {station(RECIPES[rid])} · {skill_name(RECIPES[rid]['requirement'].get('Skill'))} Lv.{required_level(RECIPES[rid])}" for rid,n in steps]
             pages=max(1,math.ceil(len(plan)/6));plan_page=max(1,min(int(page),pages))
             lines+=['',f'ACQUISITION PLAN · {plan_page}/{pages} — for 1 item from scratch',*plan[(plan_page-1)*6:plan_page*6],
@@ -501,5 +504,5 @@ def use(m,db,p,key,provider):
         m.spend_life_for_action(life,'make');changes+=[need_cost(2)]
     p.actions+=1;p.successes+=1;db.commit()
     skill={'clinic':'medicine'}.get(mode) or (WORK_LINE[mode][0] if work else None)
-    colony=m.work_counts(db,p,skill,grow=work) if skill else ''
+    colony=m.work_counts(db,p,skill,grow=work,action='use',detail=f'used {name}') if skill else ''
     return '\n'.join([f'✅ {name} — Complete','','RESULT',*['• '+x for x in changes],*(['',colony] if colony else []),'','USED',m.requirement_text(cost) if cost else 'No items were consumed.',*(['The selected durable item was kept.'] if not cfg['consume'] else [])])

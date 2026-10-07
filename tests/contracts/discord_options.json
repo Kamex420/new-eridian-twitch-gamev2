@@ -1001,7 +1001,7 @@
           "value": "bathroom"
         },
         {
-          "name": "👕 Clothing (70)",
+          "name": "👕 Clothing (71)",
           "value": "clothing"
         },
         {
@@ -1013,7 +1013,7 @@
           "value": "tables"
         },
         {
-          "name": "🖼️ Decor & Recreation (112)",
+          "name": "🖼️ Decor & Recreation (122)",
           "value": "decor"
         }
       ]
@@ -1099,7 +1099,7 @@
     {
       "type": 4,
       "name": "count",
-      "description": "Attempts (1–10); rare ores need three successful prospecting attempts per ore",
+      "description": "Attempts (1–10); rare ores need a Mineral Extractor in your bag",
       "required": false,
       "min_value": 1,
       "max_value": 10
@@ -1253,7 +1253,7 @@
           "value": "bathroom"
         },
         {
-          "name": "👕 Clothing (70)",
+          "name": "👕 Clothing (71)",
           "value": "clothing"
         },
         {
@@ -1265,7 +1265,7 @@
           "value": "tables"
         },
         {
-          "name": "🖼️ Decor & Recreation (112)",
+          "name": "🖼️ Decor & Recreation (122)",
           "value": "decor"
         }
       ]
@@ -1675,7 +1675,7 @@
           "value": "scan"
         },
         {
-          "name": "Rare prospecting · Harvesting Lv3",
+          "name": "Rare ore · needs a Mineral Extractor",
           "value": "rare"
         },
         {
