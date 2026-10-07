@@ -1,6 +1,8 @@
-# app/main.py, part 15: overlay page
-# The stream overlay page (/overlay): one large HTML/JS template.
-# Runs inside app.main's namespace, after the parts before it (see main.py). Not a module of its own.
+"""The stream overlay page (/overlay): one large HTML/JS template.
+"""
+from fastapi.responses import HTMLResponse
+from .base import app
+from .. import main      # app.main: names from later modules and settings changed at runtime
 
 @app.get("/overlay",response_class=HTMLResponse)
 def overlay_page(panel:str="",channel:str="new-eridian"):
@@ -10,8 +12,8 @@ def overlay_page(panel:str="",channel:str="new-eridian"):
     # the dashboard's mobile stack inside an individual Browser Source.
     selected=(panel or "").lower().strip()
     if selected in {"society","today","event","ops","activity","telemetry","signal","alerts","ticker","leaders","working","join"}:
-        return standalone_obs_panel(selected,channel)
-    from . import stream_overlay
+        return main.standalone_obs_panel(selected,channel)
+    from .. import stream_overlay
     return stream_overlay.themed(r"""<!doctype html>
 <html lang="en">
 <head>

@@ -1,7 +1,27 @@
-# app/main.py, part 5: world
-# Society Directive, event aftermath, relationships, the world clock and weather, statuses, society projects, goals,
-# shortages, encounters, housing and society tiers.
-# Runs inside app.main's namespace, after the parts before it (see main.py). Not a module of its own.
+"""Society Directive, event aftermath, relationships, the world clock and weather, statuses, society projects, goals,
+shortages, encounters, housing and society tiers.
+"""
+import hashlib
+import math
+import random
+from datetime import timedelta
+from sqlalchemy import func, select
+from ..needs import (
+    blocked_needs, COMFORT_BLOCK, COMFORT_FIXES_DISCORD, COMFORT_FIXES_TWITCH, COMFORT_SLOW,
+    cost_text as need_cost_text, duration_text, HEAVY_ENERGY, RECOVERY_HELP, SLEEP_COOLDOWN_SECONDS, TASK_NEED_MINIMUM)
+from ..occupations import matches as occupation_matches
+from ..settlement import pressures as colony_pressures, state as colony_state, tick as colony_tick
+from ..models import (
+    ActionLog, CollectionItem, DirectiveParticipant, DirectiveProgress, GearFamiliarity, JournalEntry,
+    LifeRelationship, LoreDiscovery, Player, PlayerGoal, PlayerWorld, QualityGear, RelationshipMemory,
+    SocietyAftermath, SocietyProject, StatusEffect, WorldClock)
+from .base import AVESTA_DAY_SECONDS
+from .rules import (
+    COLLECTIBLES, DIRECTIVES, DISTRICTS, ENCOUNTERS, LORE_FRAGMENTS, NPCS, PERSONAL_GOALS, PROJECTS, QUALITY_RECIPES,
+    SHIFT_ROLES, SKILL_LABELS, SOCIETY_TIERS, WORLD_CONDITIONS, WORLD_PHASES)
+from .players import as_utc, check_collection_sets, clamp100, skill_xp, society
+from .life import life_label, life_state
+from .. import main      # app.main: names from later modules and settings changed at runtime
 
 def directive_for(db,channel,day):
     row=db.execute(select(DirectiveProgress).where(DirectiveProgress.channel_id==channel,DirectiveProgress.avesta_day==day)).scalar_one_or_none()
@@ -28,18 +48,18 @@ def directive_note(db,p,s,skill,clock):
     db.commit();return f" 📣 {cfg[1]} {row.progress}/{row.goal}.{personal}"
 
 def set_event_aftermath(db,channel,cfg,result):
-    from .events import incident_effect
+    from ..events import incident_effect
     incident_effect(colony_state(db,channel),cfg["primary"],result)
     positive=result=="success";modifier=3 if positive else (-1 if result=="partial" else -2)
     description=(f"Successful {cfg['name']} response is supporting related work." if positive else
                  f"Recovery from {cfg['name']} is complicating related work.")
     db.add(SocietyAftermath(channel_id=channel,event_name=cfg["name"],result=result,
                             skills=",".join(sorted({cfg["primary"],cfg["support"]})),modifier=modifier,
-                            description=description,expires_at=now()+timedelta(minutes=60)))
+                            description=description,expires_at=main.now()+timedelta(minutes=60)))
     db.commit()
 
 def aftermath_modifier(db,channel,skill):
-    rows=db.execute(select(SocietyAftermath).where(SocietyAftermath.channel_id==channel,SocietyAftermath.expires_at>now())).scalars().all()
+    rows=db.execute(select(SocietyAftermath).where(SocietyAftermath.channel_id==channel,SocietyAftermath.expires_at>main.now())).scalars().all()
     matching=[r for r in rows if skill in set(r.skills.split(","))]
     if not matching:return 0,[]
     # Only the newest relevant aftermath applies; effects never stack.
@@ -66,12 +86,12 @@ def relationship_memory(db,channel,a,b,activity):
     a,b=relationship_pair(a,b)
     row=db.execute(select(RelationshipMemory).where(RelationshipMemory.channel_id==channel,RelationshipMemory.uid_a==a,RelationshipMemory.uid_b==b)).scalar_one_or_none()
     if not row:row=RelationshipMemory(channel_id=channel,uid_a=a,uid_b=b,interactions=0);db.add(row)
-    row.interactions+=1;row.last_activity=activity[:48];row.last_at=now();db.commit()
+    row.interactions+=1;row.last_activity=activity[:48];row.last_at=main.now();db.commit()
     return row
 
 def near_milestone_note(db,p,skill):
     if not skill:return ""
-    from .competencies import next_level_xp
+    from ..competencies import next_level_xp
     xp=skill_xp(p,skill);threshold=next_level_xp(xp)
     if threshold and threshold-xp<=3:return f" 🔔 {SKILL_LABELS[skill]} is {threshold-xp} XP from its next milestone."
     return ""
@@ -98,7 +118,7 @@ def relationship_label(points):
 
 def effective_relationship(db,row):
     memory=db.execute(select(RelationshipMemory).where(RelationshipMemory.channel_id==row.channel_id,RelationshipMemory.uid_a==row.uid_a,RelationshipMemory.uid_b==row.uid_b)).scalar_one_or_none()
-    weeks=max(0,int((now()-as_utc(memory.last_at)).total_seconds()//604800)) if memory else 0
+    weeks=max(0,int((main.now()-as_utc(memory.last_at)).total_seconds()//604800)) if memory else 0
     return max(0,row.familiarity-min(row.familiarity//2,weeks*5))
 
 def relationship_add(db,channel,a,b,amount):
@@ -136,11 +156,11 @@ NEED_EMOJI={"energy":"⚡","nutrition":"🍲","social":"🤝","comfort":"🏠","
 
 def sleep_status(db,p,provider="discord"):
     """Plain wording for the long sleep timer, reused by every recovery hint."""
-    wait=action_wait(db,p,"sleep") if p is not None else 0
+    wait=main.action_wait(db,p,"sleep") if p is not None else 0
     command="/sleep" if provider=="discord" else "!sleep"
     if not wait:return f"{command} (ready now)"
     # Discord timestamps count down on their own; chat gets plain text.
-    return f"{command} (ready <t:{int(now().timestamp()+wait)}:R>)" if provider=="discord" else f"{command} (ready in {duration_text(wait)})"
+    return f"{command} (ready <t:{int(main.now().timestamp()+wait)}:R>)" if provider=="discord" else f"{command} (ready in {duration_text(wait)})"
 
 def need_fix(field,provider="discord",db=None,p=None):
     """The recovery route for one need, identical in gates, guides and queues."""
@@ -160,7 +180,7 @@ def comfort_status_line(life):
     return ""
 
 def life_status_text(db,p,provider):
-    life=life_state(db,p);_,notes,_=life_modifiers(db,p,None)
+    life=life_state(db,p);_,notes,_=main.life_modifiers(db,p,None)
     blocked=[f"{NEED_EMOJI[field]} {label} {value}/100 (needs {minimum}) → {need_fix(field,provider,db,p)}" for field,label,value,minimum in blocked_needs(life)]
     warning=comfort_status_line(life) if life.comfort>=COMFORT_BLOCK else ""
     rules=(f"Work, crafting and gear repair need Energy, Nutrition and Social of {TASK_NEED_MINIMUM}+ and Comfort of {COMFORT_BLOCK}+. "
@@ -203,9 +223,9 @@ def world_clock(db,channel,s=None):
     s=s or society(db,channel)
     row=db.execute(select(WorldClock).where(WorldClock.channel_id==channel)).scalar_one_or_none()
     if not row:
-        row=WorldClock(channel_id=channel,anchor_at=now(),anchor_day=max(1,s.day))
+        row=WorldClock(channel_id=channel,anchor_at=main.now(),anchor_day=max(1,s.day))
         db.add(row);db.commit();db.refresh(row)
-    elapsed=max(0,(now()-as_utc(row.anchor_at)).total_seconds())
+    elapsed=max(0,(main.now()-as_utc(row.anchor_at)).total_seconds())
     day=max(1,row.anchor_day+int(elapsed//AVESTA_DAY_SECONDS))
     sec=int(elapsed%AVESTA_DAY_SECONDS);hour=(sec/AVESTA_DAY_SECONDS)*24
     phase=next((p for p in WORLD_PHASES if p[1]<=hour<p[2]),WORLD_PHASES[-1])
@@ -264,15 +284,15 @@ def active_statuses(db,p):
     rows=db.execute(select(StatusEffect).where(StatusEffect.channel_id==p.channel_id,StatusEffect.canonical_uid==p.twitch_uid)).scalars().all()
     result=[]
     for row in rows:
-        if now()>=as_utc(row.expires_at):db.delete(row)
+        if main.now()>=as_utc(row.expires_at):db.delete(row)
         else:result.append(row)
     db.commit();return result
 
 def add_status(db,p,effect,minutes,modifier,description):
     row=db.execute(select(StatusEffect).where(StatusEffect.channel_id==p.channel_id,StatusEffect.canonical_uid==p.twitch_uid,StatusEffect.effect==effect)).scalar_one_or_none()
     if not row:
-        row=StatusEffect(channel_id=p.channel_id,canonical_uid=p.twitch_uid,effect=effect,expires_at=now(),modifier=modifier,description=description);db.add(row)
-    row.expires_at=max(now(),as_utc(row.expires_at))+timedelta(minutes=minutes);row.modifier=modifier;row.description=description
+        row=StatusEffect(channel_id=p.channel_id,canonical_uid=p.twitch_uid,effect=effect,expires_at=main.now(),modifier=modifier,description=description);db.add(row)
+    row.expires_at=max(main.now(),as_utc(row.expires_at))+timedelta(minutes=minutes);row.modifier=modifier;row.description=description
     db.commit();return row
 
 def status_modifier(db,p):
@@ -318,7 +338,7 @@ def project_cfg(key):
     return next((x for x in PROJECTS if x[0]==key),PROJECTS[0])
 
 def project_contribute(db,p,skill,amount=1):
-    clock=world_clock(db,p.channel_id);row=current_project(db,p.channel_id,clock["day"]);cfg=project_cfg(row.project_key)
+    clock=world_clock(db,p.channel_id);row=main.current_project(db,p.channel_id,clock["day"]);cfg=project_cfg(row.project_key)
     if skill not in cfg[3] or row.progress>=row.goal:return ""
     row.progress=min(row.goal,row.progress+amount)
     note=f" 🏗️ {cfg[1]} {row.progress}/{row.goal}."
@@ -416,10 +436,10 @@ def world_rule_bundle(db,p,s,action,skill,provider="discord"):
     if skill and tbonus.get(skill):
         total+=tbonus[skill];parts.append(f"{next((t for t in traits if True), 'Trait')} +{int(tbonus[skill]*100)}%")
     sb,snotes=status_modifier(db,p);total+=sb;parts.extend(snotes)
-    mb,mnotes=autonomy.mood_modifier(sys.modules[__name__],db,p,clock);total+=mb;parts.extend(mnotes)
+    mb,mnotes=main.autonomy.mood_modifier(main,db,p,clock);total+=mb;parts.extend(mnotes)
     ab,anotes=aftermath_modifier(db,p.channel_id,skill);total+=ab;parts.extend(anotes)
-    cb,cnotes=community.success_modifier(sys.modules[__name__],db,p,skill);total+=cb;parts.extend(cnotes)
-    shared=colony_state(db,p.channel_id);colony_tick(shared,s,now())
+    cb,cnotes=main.community.success_modifier(main,db,p,skill);total+=cb;parts.extend(cnotes)
+    shared=colony_state(db,p.channel_id);colony_tick(shared,s,main.now())
     pressure=colony_pressures(shared,s,pw.siro_exposure)
     for label,value in pressure.items():
         total+=value
@@ -447,7 +467,7 @@ def society_tier_index(s):
     """Zero-based society rank used for recipe unlock requirements."""
     return SOCIETY_TIERS.index(society_tier(s))
 def active_player_count(db,channel):
-    cutoff=now()-timedelta(minutes=30)
+    cutoff=main.now()-timedelta(minutes=30)
     action_users=set(db.execute(select(ActionLog.canonical_uid).where(ActionLog.channel_id==channel,ActionLog.created_at>=cutoff)).scalars().all())
     if action_users:return len(action_users)
     return max(1,len(db.execute(select(Player).where(Player.channel_id==channel,Player.last_seen>=cutoff)).scalars().all()))
@@ -459,4 +479,4 @@ def unique_activity_chatters(db,w,current_uid=None):
     if current_uid:users.add(current_uid)
     return len(users)
 def scaled_auto_event_actions(unique_chatters):
-    return int(math.ceil(AUTO_EVENT_ACTIONS*min(2.0,1+.25*max(0,unique_chatters-1))))
+    return int(math.ceil(main.AUTO_EVENT_ACTIONS*min(2.0,1+.25*max(0,unique_chatters-1))))

@@ -1,6 +1,13 @@
-# app/main.py, part 18: handbook
-# The in-game handbook (SEED_HELP_TOPICS), Twitch help pages and the moderator log.
-# Runs inside app.main's namespace, after the parts before it (see main.py). Not a module of its own.
+"""The in-game handbook (SEED_HELP_TOPICS), Twitch help pages and the moderator log.
+"""
+from sqlalchemy import select
+from .. import notice as fan_notice
+from ..commands import transaction as game_transaction
+from ..db import SessionLocal
+from ..needs import duration_text, SLEEP_COOLDOWN_SECONDS
+from ..models import ModeratorAudit
+from .base import app, clean, out, OWNER_ONLY_TEXT, twitch_owner_ok
+from .. import main      # app.main: names from later modules and settings changed at runtime
 
 # ============================================================
 # Discord Interactions Webhook
@@ -231,8 +238,8 @@ def twitch_seed(topic:str="overview",page:str="1"):
     topic=(topic or "overview").lower().strip()
     if topic not in SEED_HELP_TOPICS:
         return out(f"New Eridian: !start then !job then !guide. Handbook: !seed start, character, property, life, production, operations, society, other, moderator, terms, about. Example: !seed property 2. Work, !eat, !make, !gather: 5s; social/recovery: 20–60s; !sleep: once per {duration_text(SLEEP_COOLDOWN_SECONDS)}.")
-    from .twitch_help import TOPICS
-    content=twitch_lite.topic(topic,TOPICS[topic])
+    from ..twitch_help import TOPICS
+    content=main.twitch_lite.topic(topic,TOPICS[topic])
     return twitch_pages(content,page,f"!seed {topic}")
 
 @app.get("/api/v1/admin/modlog")

@@ -1,7 +1,22 @@
-# app/main.py, part 11: routes life social
-# Routes: life status, display style, hi, hangout, relationships, relax, walk, games, hobby, tutorial, story and
-# titles.
-# Runs inside app.main's namespace, after the parts before it (see main.py). Not a module of its own.
+"""Routes: life status, display style, hi, hangout, relationships, relax, walk, games, hobby, tutorial, story and
+titles.
+"""
+import random
+from fastapi.responses import PlainTextResponse
+from sqlalchemy import select
+from ..commands import command as colony_command, transaction as game_transaction
+from ..db import SessionLocal
+from ..needs import duration_text, RELAX_COMFORT, TASK_NEED_MINIMUM
+from ..models import LifeRelationship, Player, PlayerTitle, RelationshipMemory
+from .base import app, out
+from .rules import HOBBIES, TITLE_DEFS
+from .players import clamp100, hobby_row, player, refresh_titles, story_state, tutorial_advance, tutorial_text
+from .life import hobby_rank, life_state, player_preference
+from .world import (
+    collection_add, exposure_tick, find_player_name, goal_progress, life_status_text, maybe_world_encounter,
+    player_world, relationship_add, relationship_label, relationship_memory, relationship_pair, world_clock)
+from .cooldowns_materials import check_cooldown, item_add
+from .colony_events import log_action
 
 @app.get("/api/v1/life")
 @colony_command

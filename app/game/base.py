@@ -1,6 +1,7 @@
-# app/main.py, part 1: base
-# Imports, settings from the environment, the FastAPI app, small helpers and the database setup.
-# Runs inside app.main's namespace, after the parts before it (see main.py). Not a module of its own.
+"""Imports, settings from the environment, the FastAPI app, small helpers and the database setup.
+"""
+from ..models import AccountLink, Identity
+from .. import main      # app.main: names from later modules and settings changed at runtime
 
 import sys
 
@@ -9,8 +10,8 @@ import os, random, secrets, string, math, re, hashlib, json, time, urllib.reques
 from datetime import datetime, timezone, timedelta
 from fastapi import FastAPI, HTTPException, Request, BackgroundTasks
 from starlette.concurrency import run_in_threadpool
-from . import discord_deferred, message_layout, discord_execution, ui, layout_v2
-from . import notice as fan_notice
+from .. import discord_deferred, message_layout, discord_execution, ui, layout_v2
+from .. import notice as fan_notice
 from fastapi.responses import PlainTextResponse, HTMLResponse, JSONResponse
 from sqlalchemy import create_engine, Column, Integer, String, DateTime, Boolean, UniqueConstraint, select, inspect, func, text as sql_text
 from sqlalchemy.orm import declarative_base, sessionmaker
@@ -25,12 +26,12 @@ ADMIN_KEY=os.getenv("ADMIN_KEY","change-me")
 MOD_KEY=os.getenv("MOD_KEY","").strip()
 
 def valid_admin_key(value):
-    return bool(ADMIN_KEY and ADMIN_KEY!='change-me' and secrets.compare_digest(str(value).encode(),ADMIN_KEY.encode()))
+    return bool(main.ADMIN_KEY and main.ADMIN_KEY!='change-me' and secrets.compare_digest(str(value).encode(),main.ADMIN_KEY.encode()))
 
 def valid_mod_key(value):
     """StreamElements moderator commands (events, next day, live, challenges, recap, modlog) carry MOD_KEY, so
     ADMIN_KEY (character merges) never has to be stored in the chat bot. ADMIN_KEY still works for older commands."""
-    return bool(MOD_KEY and secrets.compare_digest(str(value).encode(),MOD_KEY.encode())) or valid_admin_key(value)
+    return bool(main.MOD_KEY and secrets.compare_digest(str(value).encode(),main.MOD_KEY.encode())) or valid_admin_key(value)
 
 # StreamElements user level of the channel's broadcaster (Twitch moderators are 500, super moderators 1000).
 TWITCH_OWNER_LEVEL=1500
@@ -95,16 +96,16 @@ AUTO_EVENTS_ENABLED=os.getenv("AUTO_EVENTS_ENABLED","true").lower() not in {"0",
 AUTO_EVENT_ACTIONS=env_int("AUTO_EVENT_ACTIONS",12)
 AUTO_EVENT_MINUTES=env_int("AUTO_EVENT_MINUTES",10)
 AUTO_EVENT_COOLDOWN_MINUTES=env_int("AUTO_EVENT_COOLDOWN_MINUTES",30)
-from .db import engine, SessionLocal, Base
+from ..db import engine, SessionLocal, Base
 app=FastAPI(title="New Eridian v2 Unified API",version="7.0.0")
 
 def now(): return datetime.now(timezone.utc)
 PLACEHOLDER_NAME="Citizen"   # the name a call without one gets; never stored over a real name
 def clean(v): return ((v or PLACEHOLDER_NAME).strip()[:30] or PLACEHOLDER_NAME)
 def out(s):
-    from .commands import context
+    from ..commands import context
     if context.get() is not None:return PlainTextResponse(s)
-    from .presentation import chat_fold, fit
+    from ..presentation import chat_fold, fit
     return PlainTextResponse(fit(chat_fold(s)))
 def chat_line(text):
     """One Twitch chat line from a multi-line card: blank lines dropped and
@@ -118,28 +119,28 @@ def chat_line(text):
 def platform_response(provider,discord_text,twitch_text):
     return PlainTextResponse(discord_text) if provider=="discord" else out(twitch_text)
 
-from .models import *
-from .commands import command as colony_command, capture as colony_capture, transaction as game_transaction
-from .settlement import state as colony_state, seedling as colony_seedling, tick as colony_tick, pressures as colony_pressures, produce as colony_produce
-from .needs import productivity
-from .competencies import practice_gain, level as competency_level
-from . import item_identity
-from . import seed_content as seed_content
-from . import crafting_progression as crafting_progression
-from . import task_yields
-from . import practice
-from . import workbench
-from .seed_skills import LABELS as SEED_LABELS, HUBS as SEED_HUBS, TASKS as SEED_TASKS, TREE as SEED_TREE, NEW_JOBS, NEW_SPECS, LEGACY_BRANCH, CRAFT_PRACTICE
-from .models import SkillBranch
-from .occupations import matches as occupation_matches
-from .seedlings import describe as routine_description
-from .progression import announce
+from ..models import *
+from ..commands import command as colony_command, capture as colony_capture, transaction as game_transaction
+from ..settlement import state as colony_state, seedling as colony_seedling, tick as colony_tick, pressures as colony_pressures, produce as colony_produce
+from ..needs import productivity
+from ..competencies import practice_gain, level as competency_level
+from .. import item_identity
+from .. import seed_content
+from .. import crafting_progression
+from .. import task_yields
+from .. import practice
+from .. import workbench
+from ..seed_skills import LABELS as SEED_LABELS, HUBS as SEED_HUBS, TASKS as SEED_TASKS, TREE as SEED_TREE, NEW_JOBS, NEW_SPECS, LEGACY_BRANCH, CRAFT_PRACTICE
+from ..models import SkillBranch
+from ..occupations import matches as occupation_matches
+from ..seedlings import describe as routine_description
+from ..progression import announce
 from sqlalchemy.orm import object_session
 
 
 Base.metadata.create_all(engine)
 
-from .migrations import migrate_schema
+from ..migrations import migrate_schema
 migrate_schema()
 
 def backfill_account_links():

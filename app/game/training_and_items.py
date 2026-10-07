@@ -1,6 +1,26 @@
-# app/main.py, part 21: training and items
-# Training tasks, food and item menus, and the gather/catalog route.
-# Runs inside app.main's namespace, after the parts before it (see main.py). Not a module of its own.
+"""Training tasks, food and item menus, and the gather/catalog route.
+"""
+from datetime import timedelta
+from fastapi.responses import PlainTextResponse
+from sqlalchemy import select
+from .. import crafting_progression, seed_content, task_yields, workbench
+from ..commands import command as colony_command
+from ..db import SessionLocal
+from ..models import SkillBranch
+from ..needs import cost_text as need_cost_text, STANDARD_ENERGY, TASK_NEED_MINIMUM
+from ..seed_skills import HUBS as SEED_HUBS, NEW_JOBS, TASKS as SEED_TASKS
+from ..settlement import state as colony_state
+from ..models import QualityGear, TimedBonus
+from .base import app, out, platform_response
+from .rules import QUALITY_RECIPES, QUALITY_TIERS, SKILL_LABELS
+from .players import as_utc, lvl, player, resource_name, skill_xp
+from .life import life_state, task_energy
+from .cooldowns_materials import action_display_name, material_amount, material_source
+from .routes_player import equipment_count
+from .routes_market import gear_repair_cost
+from .action import action
+from .discord_commands import training_choice_label
+from .. import main      # app.main: names from later modules and settings changed at runtime
 
 def gain_branch(db,p,branch,amount):
     row=db.get(SkillBranch,(p.channel_id,p.twitch_uid,branch))
@@ -16,7 +36,7 @@ def training_tasks(db,p,hub,provider='twitch'):
     status: ✅ ready · ❌ missing items · 🔒 level, tier or workstation lock (the same mark the Start button's colour follows)."""
     key=SEED_HUBS[hub];level=lvl(skill_xp(p,key))
     rows=db.execute(select(SkillBranch).where(SkillBranch.channel_id==p.channel_id,SkillBranch.canonical_uid==p.twitch_uid)).scalars().all();branch_xp={r.branch:r.xp for r in rows}
-    ctx=workbench.Context(sys.modules[__name__],db,p,provider)
+    ctx=workbench.Context(main,db,p,provider)
     found=[]
     for action_key,cfg in SEED_TASKS.items():
         if cfg['hub']!=hub:continue
@@ -26,8 +46,8 @@ def training_tasks(db,p,hub,provider='twitch'):
         if level<cfg['unlock']:locks.append(f"needs {SKILL_LABELS[key]} Lv{cfg['unlock']}")
         cost='; '.join(f"{resource_name(k)} {material_amount(db,p,k)}/{v}" for k,v in cfg['cost'].items()) or 'no items needed'
         where="";makes=""
-        if action_key in MERGED_TRAINING:
-            e=workbench.entry(sys.modules[__name__],MERGED_TRAINING[action_key]);st=ctx.status(e)
+        if action_key in main.MERGED_TRAINING:
+            e=workbench.entry(main,main.MERGED_TRAINING[action_key]);st=ctx.status(e)
             where=f" · recipe: {e.name} at {workbench.station_label(e,ctx)} (T{e.tier}, {e.skill} Lv{e.level})"
             makes=f"makes {e.name} at the {workbench.station_label(e,ctx)} · "   # the task's name alone does not say it
             if st.code=='station':locks.append(f"needs the {workbench.station_label(e,ctx)} (craft its machine, or unlock it in /workshop)");status='🔒'
@@ -37,7 +57,7 @@ def training_tasks(db,p,hub,provider='twitch'):
             if tag:
                 info=crafting_progression.STATIONS[tag];where=f" · station: {info['name']} (T{info['tier']})";makes=f"at the {info['name']} · "
                 if tag not in ctx.access or info['tier']>ctx.tier:locks.append(f"unlock {info['name']}" if info['tier']<=ctx.tier else f"Tier {info['tier']}");status='🔒'
-        batch_outputs=seed_content.production_balance.current_outputs(sys.modules[__name__],db,p,MERGED_TRAINING[action_key]) if action_key in MERGED_TRAINING else cfg['output']
+        batch_outputs=seed_content.production_balance.current_outputs(main,db,p,main.MERGED_TRAINING[action_key]) if action_key in main.MERGED_TRAINING else cfg['output']
         outputs=', '.join(f"{v} {resource_name(k)}" for k,v in batch_outputs.items())
         benefits=', '.join(f"shared {k} +{v}" for k,v in cfg['shared'].items())
         benefits+=(', ' if benefits and cfg['society'] else '')+', '.join(f"society {k} +{v}" for k,v in cfg['society'].items())
@@ -122,8 +142,8 @@ def prepared_food(key):
 
 def grant_rockys_favor(db,p,minutes):
     boost=db.execute(select(TimedBonus).where(TimedBonus.channel_id==p.channel_id,TimedBonus.canonical_uid==p.twitch_uid,TimedBonus.bonus=="rockys_favor")).scalar_one_or_none()
-    if not boost:boost=TimedBonus(channel_id=p.channel_id,canonical_uid=p.twitch_uid,bonus="rockys_favor",expires_at=now(),times_received=0);db.add(boost)
-    boost.expires_at=max(now(),as_utc(boost.expires_at))+timedelta(minutes=minutes);boost.times_received+=1
+    if not boost:boost=TimedBonus(channel_id=p.channel_id,canonical_uid=p.twitch_uid,bonus="rockys_favor",expires_at=main.now(),times_received=0);db.add(boost)
+    boost.expires_at=max(main.now(),as_utc(boost.expires_at))+timedelta(minutes=minutes);boost.times_received+=1
 
 def food_effect(key):
     text=f"+{seed_content.nutrition(key)} Nutrition"
@@ -135,7 +155,7 @@ def edible_inventory(db,p):
         QualityGear.canonical_uid==p.twitch_uid,QualityGear.item_key=="meal_kit",QualityGear.qty>0)).scalars().all()
     best=max(kits,key=lambda row:list(QUALITY_TIERS).index(row.quality)) if kits else None
     kit_gain=75+int(QUALITY_TIERS[best.quality]["special"]*100) if best else 0
-    stock=seed_content.stock(sys.modules[__name__],db,p)
+    stock=seed_content.stock(main,db,p)
     rows=[{"key":key,"name":resource_name(key),"qty":stock[key],"gain":seed_content.nutrition(key),"effect":food_effect(key)}
           for key in seed_content.EDIBLE if stock.get(key,0)>0]
     if best:rows.append({"key":"meal_kit","name":"Meal Kit","qty":sum(row.qty for row in kits),"gain":kit_gain,
@@ -165,7 +185,7 @@ WORK_MENU_OPTIONS={
 def work_option_line(db,p,action_name,mode=""):
     """One consistent line per work option: yield, needs, requirement and readiness."""
     energy=task_energy(action_name,mode);cfg=task_yields.config(action_name,mode)
-    yields=task_yields.output_text(sys.modules[__name__],action_name,mode) if cfg else "society progress and SC"
+    yields=task_yields.output_text(main,action_name,mode) if cfg else "society progress and SC"
     needs=[]
     equipment=task_yields.EQUIPMENT.get((action_name,mode))
     if equipment:
@@ -179,7 +199,7 @@ def work_option_line(db,p,action_name,mode=""):
 def item_command_menu(command,uid,name):
     """Read supplies without executing a task or starting its cooldown."""
     with SessionLocal() as db:
-        _,p=player(db,DISCORD_WORLD_ID,"discord",uid,name)
+        _,p=player(db,main.DISCORD_WORLD_ID,"discord",uid,name)
         shared=colony_state(db,p.channel_id)
         lines=["🍽️ FOOD MENU" if command=="eat" else "🎒 ITEM MENU",f"{p.display_name} — /{command}"]
         if command=="eat":
@@ -240,15 +260,15 @@ def item_command_menu(command,uid,name):
 def seed_supplies(channel:str,uid:str,name:str='Citizen',mode:str='catalog',item:str='',page:int=1,owned:bool=False,provider:str='twitch',category:str=''):
     import sys
     with SessionLocal() as db:
-        _,p=player(db,channel,provider,uid,name);module=sys.modules[__name__]
+        _,p=player(db,channel,provider,uid,name);module=main
         typed=item;item=seed_content.find_item(item)
         if mode=='gather' and item and item not in seed_content.ACTIVE:
-            found,suggestions=qol.fuzzy_item(typed,seed_content.GATHER)
-            if found is None:return out('🛑 Unknown natural resource.'+qol.did_you_mean(suggestions)+(' Browse /gather.' if provider=='discord' else ' !gatherpage 1 lists them.')+' Nothing spent.')
+            found,suggestions=main.qol.fuzzy_item(typed,seed_content.GATHER)
+            if found is None:return out('🛑 Unknown natural resource.'+main.qol.did_you_mean(suggestions)+(' Browse /gather.' if provider=='discord' else ' !gatherpage 1 lists them.')+' Nothing spent.')
             item=found
         if mode=='gather' and item:
             result=seed_content.gather(module,db,p,item,provider)
-            if 'GATHERING COMPLETE' in result:result+=qol.action_hint(module,db,p,provider)
+            if 'GATHERING COMPLETE' in result:result+=main.qol.action_hint(module,db,p,provider)
         elif mode=='gather':result=seed_content.gather_menu(page,provider)
         elif mode=='catalog':
             if provider!='discord' and item in seed_content.ACTIVE:

@@ -1,6 +1,37 @@
-# app/main.py, part 22: discord interactions
-# Discord command dispatch (_discord_call_internal) and the interactions webhook.
-# Runs inside app.main's namespace, after the parts before it (see main.py). Not a module of its own.
+"""Discord command dispatch (_discord_call_internal) and the interactions webhook.
+"""
+from fastapi import BackgroundTasks, HTTPException, Request
+from nacl.exceptions import BadSignatureError
+from nacl.signing import VerifyKey
+from sqlalchemy import select
+from starlette.concurrency import run_in_threadpool
+from .. import discord_deferred, discord_execution, layout_v2, message_layout, seed_content, ui
+from ..db import SessionLocal
+from ..models import ModeratorAudit
+from .base import app
+from .rules import EVENTS
+from .players import owner_link_lookup, player, society, world
+from .cooldowns_materials import audit_moderator
+from .colony_events import cancel_event, resolve_expired_event, start_event
+from .routes_player import (
+    achievements, bonuses, business, business_start, contracts, cooldowns, guide, home, homeup, inventory, job,
+    profile, skills, specialize, start)
+from .routes_crafting import make
+from .routes_life_social import (
+    display_style, games, hangout, hi, hobby, life_status, relationships, relax, story, titles, tutorial, walk)
+from .routes_market import ducks, duo, gear, gearrepair, marketboard, sell, use_item, workshop
+from .routes_world import (
+    bulletin, collection, conditions, district, event, eventhistory, journal, leaderboard, link_claim, meal, mentor,
+    projectstatus, rumor, shift, soc, traits, world_status)
+from .routes_obs_admin import progress
+from .action import action
+from .handbook import discord_seed_help
+from .discord_embeds import DISCORD_PRIVATE_COMMANDS, DISCORD_PUBLIC_COMMANDS
+from .discord_commands import (
+    _discord_allowed_channel, _discord_autocomplete, _discord_is_moderator, _discord_is_owner, _discord_options,
+    _discord_owner_denied, _discord_user, _discord_validate_options, discord_legacy_route)
+from .training_and_items import item_command_menu, seed_supplies, training
+from .. import main      # app.main: names from later modules and settings changed at runtime
 
 # Options a screen's own buttons set that are not typed in the slash command: a page of a skill's training tasks.
 SCREEN_OPTIONS={'training':{'page'}}
@@ -12,14 +43,14 @@ def _discord_call_internal(command: str, uid: str, name: str, options: dict, int
     if error:return error
     options={**options,**screen}
     # Reuse the same game functions the Twitch API uses.
-    channel = DISCORD_WORLD_ID
+    channel = main.DISCORD_WORLD_ID
     if command=='use':
         import sys
         with SessionLocal() as db:
             _,p=player(db,channel,'discord',uid,name)
             category=str(options.get('category') or '')
             if not options.get('item'):
-                menu=seed_content.use_menu(sys.modules[__name__],db,p,category,int(options.get('page') or 1))
+                menu=seed_content.use_menu(main,db,p,category,int(options.get('page') or 1))
                 return menu if category else menu+'\n\n'+item_command_menu('use',uid,name)
             chosen=seed_content.find_item(str(options['item']))
             if category and seed_content.CATEGORY.get(chosen)!=category:return 'ℹ️ That item is not in this category. Nothing spent.'
@@ -34,19 +65,19 @@ def _discord_call_internal(command: str, uid: str, name: str, options: dict, int
     if command=="eat":
         return action("eat",channel,uid,name,msg="food:"+str(options["food"]),provider="discord").body.decode()
     if command=="recover":
-        return recover_needs(channel,uid,name,"discord").body.decode()
-    if command in community.DISCORD|community.MOD:
-        return community.discord(__import__("sys").modules[__name__],command,uid,name,options)
+        return main.recover_needs(channel,uid,name,"discord").body.decode()
+    if command in main.community.DISCORD|main.community.MOD:
+        return main.community.discord(main,command,uid,name,options)
     if command=="menu":
-        return game_menu.home_text(__import__("sys").modules[__name__],uid,name)
+        return main.game_menu.home_text(main,uid,name)
     if command=="menupanel":
-        target=task_queue.queue_notifications.origin_channel.get() or DISCORD_GAME_CHANNEL_ID
-        if ui.post_public_panel(__import__("sys").modules[__name__],target):
+        target=main.task_queue.queue_notifications.origin_channel.get() or main.DISCORD_GAME_CHANNEL_ID
+        if ui.post_public_panel(main,target):
             return "🎛️ Posted the game panel in this channel. Anyone can press it to open their own private menu. Pin it so it stays on top."
         return "⚠️ The game panel could not be posted. Check that the bot can send messages here and that DISCORD_BOT_TOKEN is set."
     if command=="guidepanels":
-        from . import guide_panels
-        target=task_queue.queue_notifications.origin_channel.get() or DISCORD_GAME_CHANNEL_ID
+        from .. import guide_panels
+        target=main.task_queue.queue_notifications.origin_channel.get() or main.DISCORD_GAME_CHANNEL_ID
         sent=guide_panels.post(target)
         total=len(guide_panels.PANELS)
         if sent==total:return f"📖 Posted all {total} guide panels in this channel."
@@ -54,15 +85,15 @@ def _discord_call_internal(command: str, uid: str, name: str, options: dict, int
                 "docs/discord-guide-panels.txt has the same panels to paste by hand.")
 
     if command=='mine':
-        return mining(channel,uid,name,str(options.get('ore') or ''),str(options.get('action') or 'view'),int(options.get('count') or 1),'discord').body.decode()
+        return main.mining(channel,uid,name,str(options.get('ore') or ''),str(options.get('action') or 'view'),int(options.get('count') or 1),'discord').body.decode()
     if command=='queue':
-        return queued_tasks(channel,uid,name,str(options.get('action') or 'view'),str(options.get('task') or ''),int(options.get('count') or 1),'discord').body.decode()
+        return main.queued_tasks(channel,uid,name,str(options.get('action') or 'view'),str(options.get('task') or ''),int(options.get('count') or 1),'discord').body.decode()
     if command=='workshop':
         return workshop(channel,uid,name,str(options.get('action') or 'view'),str(options.get('station') or ''),int(options.get('page') or 1),'discord').body.decode()
     if command in {'catalog','gather'}:
         return seed_supplies(channel,uid,name,command,str(options.get('item') or options.get('resource') or ''),int(options.get('page') or 1),bool(options.get('owned',False)),'discord',str(options.get('category') or '')).body.decode()
     if command == "holiday":
-        from .seasonal import holiday_message
+        from ..seasonal import holiday_message
         return holiday_message()
     if command == "training":
         try:page=max(1,int(options.get('page') or 1))
@@ -98,53 +129,53 @@ def _discord_call_internal(command: str, uid: str, name: str, options: dict, int
         return inventory(channel=channel, uid=uid, name=name, provider="discord",search=str(options.get("search") or ""),
                          sort=str(options.get("sort") or ""),show=str(options.get("show") or ""),page=int(options.get("page") or 1)).body.decode("utf-8")
     if command == "status":
-        return status_view(channel=channel,uid=uid,name=name,provider="discord").body.decode("utf-8")
+        return main.status_view(channel=channel,uid=uid,name=name,provider="discord").body.decode("utf-8")
     if command == "settings":
-        return settings(channel=channel,uid=uid,name=name,alerts=str(options.get("alerts") or ""),autorecover=str(options.get("autorecover") or ""),provider="discord",popups=str(options.get("popups") or ""),feed=str(options.get("feed") or "")).body.decode("utf-8")
+        return main.settings(channel=channel,uid=uid,name=name,alerts=str(options.get("alerts") or ""),autorecover=str(options.get("autorecover") or ""),provider="discord",popups=str(options.get("popups") or ""),feed=str(options.get("feed") or "")).body.decode("utf-8")
     if command == "inbox":
-        from . import inbox as player_inbox
+        from .. import inbox as player_inbox
         with SessionLocal() as db:
             _,p=player(db,channel,"discord",uid,name)
-            text=player_inbox.inbox_text(__import__("sys").modules[__name__],db,p)
+            text=player_inbox.inbox_text(main,db,p)
             player_inbox.mark_all_seen(db,p.channel_id,p.twitch_uid);db.commit()
             return text
     if command == "seedlingstep":
         with SessionLocal() as db:
             _,p=player(db,channel,"discord",uid,name);key=(p.channel_id,p.twitch_uid);db.commit()
-        text=autonomy.live_one(__import__("sys").modules[__name__],key[0],key[1],force=True)
+        text=main.autonomy.live_one(main,key[0],key[1],force=True)
         with SessionLocal() as db:
             _,p=player(db,channel,"discord",uid,name)
-            view=autonomy.view_text(__import__("sys").modules[__name__],db,p);db.commit()
+            view=main.autonomy.view_text(main,db,p);db.commit()
         return ("🎲 YOUR SEEDLING DECIDED\n"+text+"\n\n" if text else "🎲 Your Seedling is busy with your queue right now.\n\n")+view
     if command == "seedling":
-        if options.get("schedule"):seedling_schedule(channel,uid,name,str(options["schedule"]),"discord")
-        if options.get("autonomy"):seedling_autonomy(channel,uid,name,str(options["autonomy"]),"discord")
-        if str(options.get("section") or "")=="diary":return seedling_diary(channel,uid,name,"discord").body.decode()
-        return seedling_view(channel,uid,name,"discord").body.decode()
+        if options.get("schedule"):main.seedling_schedule(channel,uid,name,str(options["schedule"]),"discord")
+        if options.get("autonomy"):main.seedling_autonomy(channel,uid,name,str(options["autonomy"]),"discord")
+        if str(options.get("section") or "")=="diary":return main.seedling_diary(channel,uid,name,"discord").body.decode()
+        return main.seedling_view(channel,uid,name,"discord").body.decode()
     if command == "customize":
-        from . import looks
-        return seedling_looks(channel,uid,name,provider="discord",**{k:str(options.get(k) or "") for k in looks.FIELDS}).body.decode()
+        from .. import looks
+        return main.seedling_looks(channel,uid,name,provider="discord",**{k:str(options.get(k) or "") for k in looks.FIELDS}).body.decode()
     if command == "eatfull":
-        return eat_full(channel,uid,name,"discord").body.decode()
+        return main.eat_full(channel,uid,name,"discord").body.decode()
     if command == "trick":
-        return trick_or_treat(channel,uid,name,"discord").body.decode()
+        return main.trick_or_treat(channel,uid,name,"discord").body.decode()
     if command == "undo":
-        return undo_sale(channel,uid,name,"discord").body.decode()
+        return main.undo_sale(channel,uid,name,"discord").body.decode()
     if command == "find":
-        query=str(options.get("query") or "").strip()[:ask.MAX_QUERY] or "?"
-        module=__import__("sys").modules[__name__]   # this function imports sys locally further down
+        query=str(options.get("query") or "").strip()[:main.ask.MAX_QUERY] or "?"
+        module=main   # this function imports sys locally further down
         with SessionLocal() as db:
-            p=ask.existing_player(module,db,channel,"discord",uid)
-            text=ask.reply(module,db,p,query,"discord",channel)
+            p=main.ask.existing_player(module,db,channel,"discord",uid)
+            text=main.ask.reply(module,db,p,query,"discord",channel)
             db.commit()
         return text
     if command == "asklog":
         with SessionLocal() as db:
-            return ask.log_text(__import__("sys").modules[__name__],db)
+            return main.ask.log_text(main,db)
     if command == "queuedetails":
         with SessionLocal() as db:
             _,p=player(db,channel,"discord",uid,name)
-            return task_queue.status(__import__("sys").modules[__name__],db,p,db.get(task_queue.TaskQueue,(p.channel_id,p.twitch_uid)),detail=True)
+            return main.task_queue.status(main,db,p,db.get(main.task_queue.TaskQueue,(p.channel_id,p.twitch_uid)),detail=True)
     if command == "job":
         return job(channel=channel, uid=uid, name=name, job=str(options.get("job") or ""), provider="discord").body.decode("utf-8")
     if command == "home":
@@ -171,7 +202,7 @@ def _discord_call_internal(command: str, uid: str, name: str, options: dict, int
             count=int(options.get("count") or 1)
         ).body.decode("utf-8")
     if command == "seedindustries":
-        return seed_industries(
+        return main.seed_industries(
             channel=channel,uid=uid,name=name,
             action=str(options.get("action") or "browse"),
             item_name=str(options.get("item") or ""),
@@ -198,7 +229,7 @@ def _discord_call_internal(command: str, uid: str, name: str, options: dict, int
     if command == "market":
         market_action=str(options.get("action") or "view").lower()
         if market_action=="view":return marketboard(channel=channel,provider="discord").body.decode("utf-8")
-        if market_action=="sell":return seed_industries(channel,uid,name,"sell",str(options.get("resource") or options.get("item") or ""),int(options.get("amount") or 1),"discord").body.decode("utf-8")
+        if market_action=="sell":return main.seed_industries(channel,uid,name,"sell",str(options.get("resource") or options.get("item") or ""),int(options.get("amount") or 1),"discord").body.decode("utf-8")
         marker="mode:analyze" if market_action=="analyze" else f"discord-{interaction_id}"
         return action(action="market",channel=channel,uid=uid,name=name,msg=marker,provider="discord").body.decode("utf-8")
     if command == "social":
@@ -306,7 +337,7 @@ def _discord_answer(answer,payload,background_tasks):
 
 @app.post("/discord/interactions")
 async def discord_interactions(request: Request, background_tasks: BackgroundTasks):
-    if not DISCORD_PUBLIC_KEY:
+    if not main.DISCORD_PUBLIC_KEY:
         raise HTTPException(status_code=500, detail="DISCORD_PUBLIC_KEY is not configured")
 
     signature = request.headers.get("X-Signature-Ed25519", "")
@@ -314,7 +345,7 @@ async def discord_interactions(request: Request, background_tasks: BackgroundTas
     body = await request.body()
 
     try:
-        verify_key = VerifyKey(bytes.fromhex(DISCORD_PUBLIC_KEY))
+        verify_key = VerifyKey(bytes.fromhex(main.DISCORD_PUBLIC_KEY))
         verify_key.verify(timestamp.encode() + body, bytes.fromhex(signature))
     except (BadSignatureError, ValueError):
         raise HTTPException(status_code=401, detail="invalid request signature")
@@ -336,12 +367,12 @@ async def discord_interactions(request: Request, background_tasks: BackgroundTas
             return layout_v2.respond({"type":4,"data":{"content":"Use the designated game channel.","flags":64}},payload)
         if discord_deferred.can_answer_later(payload):
             # Acknowledge at once and do the work right after: a press never times out.
-            background_tasks.add_task(discord_deferred.answer_later,sys.modules[__name__],payload)
+            background_tasks.add_task(discord_deferred.answer_later,main,payload)
             return discord_deferred.ack(payload)
         if ui.handles((payload.get("data") or {}).get("custom_id")):
-            answer=await run_in_threadpool(ui.handle_component,sys.modules[__name__],payload,background_tasks.add_task)
+            answer=await run_in_threadpool(ui.handle_component,main,payload,background_tasks.add_task)
         else:
-            answer=await run_in_threadpool(message_layout.open_page,sys.modules[__name__],payload)
+            answer=await run_in_threadpool(message_layout.open_page,main,payload)
         return _discord_answer(answer,payload,background_tasks)
 
     # A submitted pop-up form (search, link code, business name, custom amount).
@@ -349,16 +380,16 @@ async def discord_interactions(request: Request, background_tasks: BackgroundTas
         if not _discord_allowed_channel(payload):
             return layout_v2.respond({"type":4,"data":{"content":"Use the designated game channel.","flags":64}},payload)
         if discord_deferred.can_answer_later(payload):
-            background_tasks.add_task(discord_deferred.answer_later,sys.modules[__name__],payload)
+            background_tasks.add_task(discord_deferred.answer_later,main,payload)
             return discord_deferred.ack(payload)
-        return _discord_answer(await run_in_threadpool(ui.handle_modal,sys.modules[__name__],payload,background_tasks.add_task),payload,background_tasks)
+        return _discord_answer(await run_in_threadpool(ui.handle_modal,main,payload,background_tasks.add_task),payload,background_tasks)
 
     # Application command.
     if payload.get("type") != 2:
-        return layout_v2.respond(_discord_json_message("Unsupported Discord interaction.", ephemeral=True),payload)
+        return layout_v2.respond(main._discord_json_message("Unsupported Discord interaction.", ephemeral=True),payload)
 
     if not _discord_allowed_channel(payload):
-        return layout_v2.respond(_discord_json_message(
+        return layout_v2.respond(main._discord_json_message(
             "🌱 New Eridian commands are only available in the designated game channel.",
             ephemeral=True
         ),payload)
@@ -370,25 +401,25 @@ async def discord_interactions(request: Request, background_tasks: BackgroundTas
     interaction_id = str(payload.get("id") or "")
 
     if not uid:
-        return layout_v2.respond(_discord_json_message("Could not identify your Discord account.", ephemeral=True),payload)
+        return layout_v2.respond(main._discord_json_message("Could not identify your Discord account.", ephemeral=True),payload)
 
     if command not in (DISCORD_PUBLIC_COMMANDS | DISCORD_PRIVATE_COMMANDS):
-        return layout_v2.respond(_discord_json_message("Unknown New Eridian command.", ephemeral=True),payload)
+        return layout_v2.respond(main._discord_json_message("Unknown New Eridian command.", ephemeral=True),payload)
 
-    if command in {"eventstart","eventstop","modlog","asklog","guidepanels","menupanel"}|community.MOD and not _discord_is_moderator(payload):
-        return layout_v2.respond(_discord_json_message(_discord_owner_denied(uid), ephemeral=True, message_type="moderator"),payload)
+    if command in {"eventstart","eventstop","modlog","asklog","guidepanels","menupanel"}|main.community.MOD and not _discord_is_moderator(payload):
+        return layout_v2.respond(main._discord_json_message(_discord_owner_denied(uid), ephemeral=True, message_type="moderator"),payload)
 
     if command == "linklookup" and not _discord_is_owner(payload):
-        return layout_v2.respond(_discord_json_message(
+        return layout_v2.respond(main._discord_json_message(
             f"⛔ Owner access is required for linked-account lookup. "
-            f"Detected Discord ID: {uid} | Owner IDs loaded: {len(DISCORD_OWNER_USER_IDS)}. "
+            f"Detected Discord ID: {uid} | Owner IDs loaded: {len(main.DISCORD_OWNER_USER_IDS)}. "
             f"Make sure Railway DISCORD_OWNER_USER_IDS contains this exact numeric ID, then redeploy.",
             ephemeral=True,
             message_type="moderator"
         ),payload)
 
     if not payload.get('application_id') or not payload.get('token'):
-        return layout_v2.respond(_discord_json_message('Discord response details were missing. Please run the command again.',ephemeral=True),payload)
-    background_tasks.add_task(discord_deferred.finish,sys.modules[__name__],payload,command,uid,name,options)
-    private=discord_execution.private_response(sys.modules[__name__],command,options)
+        return layout_v2.respond(main._discord_json_message('Discord response details were missing. Please run the command again.',ephemeral=True),payload)
+    background_tasks.add_task(discord_deferred.finish,main,payload,command,uid,name,options)
+    private=discord_execution.private_response(main,command,options)
     return {'type':5,'data':{'flags':64} if private else {}}

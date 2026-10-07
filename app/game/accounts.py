@@ -1,6 +1,20 @@
-# app/main.py, part 8: accounts
-# Rare outcomes, merging duplicate accounts, achievements and configuration warnings.
-# Runs inside app.main's namespace, after the parts before it (see main.py). Not a module of its own.
+"""Rare outcomes, merging duplicate accounts, achievements and configuration warnings.
+"""
+import json
+import logging
+import os
+import random
+from sqlalchemy import select
+from .. import item_identity, seed_content
+from ..models import SkillBranch
+from ..models import (
+    Achievement, ActionLog, Business, Cooldown, CraftLedger, Daily, Determination, EventContribution, ExtraItem,
+    Home, Identity, LifeRelationship, LifeState, LinkCode, Player, ProductionOrderCompletion, QualityGear,
+    SeedlingState, Specialization, TimedBonus)
+from .rules import PART_RECIPES, QUALITY_TIERS
+from .players import as_utc, business_xp_needed, lvl, skill_xp, society, specialization_for
+from .cooldowns_materials import item_add
+from .. import main      # app.main: names from later modules and settings changed at runtime
 
 def rare_outcome(db,p,s,skill):
     if not skill:return ""
@@ -24,7 +38,7 @@ def merge_accounts(db,channel,source_uid,target_uid):
     target=db.execute(select(Player).where(Player.channel_id==channel,Player.twitch_uid==target_uid)).scalar_one_or_none()
 
     for account in (source,target):
-        if account:item_identity.migrate_player(sys.modules[__name__],db,account)
+        if account:item_identity.migrate_player(main,db,account)
     if source and not target:
         source.twitch_uid=target_uid
         target=source
@@ -165,7 +179,7 @@ def merge_accounts(db,channel,source_uid,target_uid):
             db.delete(old_state)
         else:old_state.canonical_uid=target_uid
 
-    if 'task_queue' in globals():task_queue.merge_accounts(sys.modules[__name__],db,channel,source_uid,target_uid)
+    if 'task_queue' in vars(main):main.task_queue.merge_accounts(main,db,channel,source_uid,target_uid)
 
     # Redirect every related identity/history row, then remove obsolete link codes.
     for row in db.execute(select(Identity).where(Identity.channel_id==channel,Identity.canonical_uid==source_uid)).scalars().all():row.canonical_uid=target_uid
@@ -200,7 +214,7 @@ def achieve(db,p):
         r=db.execute(select(Achievement).where(Achievement.channel_id==p.channel_id,Achievement.canonical_uid==p.twitch_uid,Achievement.code==code)).scalar_one_or_none()
         if not r:
             db.add(Achievement(channel_id=p.channel_id,canonical_uid=p.twitch_uid,code=code))
-            from . import stream_overlay
+            from .. import stream_overlay
             stream_overlay.highlight(db,p.channel_id,"achievement",f"{p.display_name} earned an achievement",label,p.display_name)
             db.commit();notes.append("🏆 "+label)
     return (" "+" | ".join(notes)) if notes else ""
@@ -213,11 +227,11 @@ def config_warnings():
     if not os.getenv("TWITCH_API_KEY","").strip():
         found.append("TWITCH_API_KEY is not set: anyone can call the game API as any Twitch player. Set it on Railway and put it in the StreamElements commands (k=...).")
     hosted=any(os.getenv(k) for k in ("RAILWAY_ENVIRONMENT","RAILWAY_PROJECT_ID","RENDER","RENDER_SERVICE_ID"))
-    if hosted and engine.dialect.name=="sqlite":
+    if hosted and main.engine.dialect.name=="sqlite":
         found.append("DATABASE_URL is not set: saves are in a SQLite file inside the container and are wiped on every redeploy. Attach a Postgres database.")
-    host=engine.url.host or ""
-    if engine.dialect.name=="postgresql" and (".proxy.rlwy.net" in host or host.endswith(".proxy.railway.app")):
+    host=main.engine.url.host or ""
+    if main.engine.dialect.name=="postgresql" and (".proxy.rlwy.net" in host or host.endswith(".proxy.railway.app")):
         found.append("DATABASE_URL uses Railway's public proxy. A command makes about a hundred small queries, each a round trip over the internet: use the private URL (postgres.railway.internal) instead.")
-    return found+sorted(RUNTIME_WARNINGS)
+    return found+sorted(main.RUNTIME_WARNINGS)
 
 for _warning in config_warnings():logging.getLogger("uvicorn.error").warning("SETUP WARNING: %s",_warning)

@@ -1,7 +1,17 @@
-# app/main.py, part 25: routes extra
-# Routes: status, settings, favorites, fetch, sell-all, recover, trick-or-treat, find, again, craft max, targets,
-# routines, uses, autosell, keep levels, shopping, Seedlings; then fun systems and seasons.
-# Runs inside app.main's namespace, after the parts before it (see main.py). Not a module of its own.
+"""Routes: status, settings, favorites, fetch, sell-all, recover, trick-or-treat, find, again, craft max, targets,
+routines, uses, autosell, keep levels, shopping, Seedlings; then fun systems and seasons.
+"""
+import json
+from .. import (
+    activity_feed, ask, autonomy, extras, halloween, keep_levels, qol, seed_content, shopping_list,
+    task_queue, workbench)
+from ..commands import command as colony_command, transaction as game_transaction
+from ..db import SessionLocal
+from .base import app, out, platform_response
+from .rules import SEED_INDUSTRIES
+from .players import player
+from .routines_queue import first_step_note, queued_tasks
+from .. import main      # app.main: names from later modules and settings changed at runtime
 
 @app.get('/api/v1/status')
 @game_transaction
@@ -9,7 +19,7 @@ def status_view(channel:str,uid:str,name:str='Citizen',provider:str='twitch'):
     """Needs, queue, cooldowns, ready recipes and the next step in one view."""
     with SessionLocal() as db:
         _,p=player(db,channel,provider,uid,name)
-        text=qol.status_text(sys.modules[__name__],db,p,provider);db.commit()
+        text=qol.status_text(main,db,p,provider);db.commit()
         return platform_response(provider,text,text)
 
 
@@ -21,7 +31,7 @@ def settings(channel:str,uid:str,name:str='Citizen',alerts:str='',autorecover:st
         note=''
         if str(feed).lower() in {'on','off'}:
             note=activity_feed.set_hidden(db,p,str(feed).lower()=='off')+'\n\n';db.commit()
-        body=qol.settings_text(sys.modules[__name__],db,p,provider,alerts,autorecover,text,popups)
+        body=qol.settings_text(main,db,p,provider,alerts,autorecover,text,popups)
         if provider=='discord':body+='\n'+('🙈 Channel feed: your activity is hidden (/settings feed:on shows it).' if activity_feed.hidden(db,p) else '📣 Channel feed: your gathering, crafting, level ups and trophies show in the channel (/settings feed:off hides them).')
         return platform_response(provider,note+body,note.strip() or body)
 
@@ -30,7 +40,7 @@ def settings(channel:str,uid:str,name:str='Citizen',alerts:str='',autorecover:st
 @game_transaction
 def favorite(channel:str,uid:str,name:str='Citizen',recipe:str='',provider:str='twitch'):
     """Toggle a favourite recipe; with no recipe, list favourites."""
-    module=sys.modules[__name__]
+    module=main
     with SessionLocal() as db:
         _,p=player(db,channel,provider,uid,name)
         if not recipe.strip():return platform_response(provider,*(qol.favorites_text(module,db,p,provider),)*2)
@@ -53,7 +63,7 @@ def batches_argument(text,batches):
 @game_transaction
 def fetch_ingredients(channel:str,uid:str,name:str='Citizen',recipe:str='',batches:int=0,action:str='plan',provider:str='twitch'):
     """Plan (or start) gathering a recipe's missing ingredients, then crafting it."""
-    module=sys.modules[__name__];recipe,batches=batches_argument(recipe,batches);batches=max(1,min(10,batches))
+    module=main;recipe,batches=batches_argument(recipe,batches);batches=max(1,min(10,batches))
     with SessionLocal() as db:
         _,p=player(db,channel,provider,uid,name)
         found=workbench.resolve(module,db,p,recipe) if recipe else None;note=''
@@ -80,7 +90,7 @@ def sell_all_items(channel:str,uid:str,name:str='Citizen',item:str='',provider:s
         if key is None:return out('🏭 Choose an item Seed Industries buys.'+qol.did_you_mean(suggestions)+' Nothing sold.')
     with SessionLocal() as db:
         _,p=player(db,channel,provider,uid,name)
-        return out(qol.sell_all(sys.modules[__name__],db,p,key,provider))
+        return out(qol.sell_all(main,db,p,key,provider))
 
 
 @app.get('/api/v1/clearout')
@@ -89,7 +99,7 @@ def clearout(channel:str,uid:str,name:str='Citizen',confirm:str='',provider:str=
     """Preview selling surplus materials; confirm=confirm sells them."""
     with SessionLocal() as db:
         _,p=player(db,channel,provider,uid,name)
-        text=qol.clearout(sys.modules[__name__],db,p,provider,str(confirm).strip().casefold() in {'confirm','yes','1','true'})
+        text=qol.clearout(main,db,p,provider,str(confirm).strip().casefold() in {'confirm','yes','1','true'})
         return platform_response(provider,text,text)
 
 
@@ -99,7 +109,7 @@ def recover_needs(channel:str,uid:str,name:str='Citizen',provider:str='twitch'):
     """One press: relax, games, cheapest food, comfort items or sleep for every blocking need."""
     with SessionLocal() as db:
         _,p=player(db,channel,provider,uid,name)
-        text=qol.recover_text(sys.modules[__name__],db,p,provider);db.commit()
+        text=qol.recover_text(main,db,p,provider);db.commit()
         return platform_response(provider,text,text)
 
 
@@ -110,7 +120,7 @@ def trick_or_treat(channel:str,uid:str,name:str='Citizen',provider:str='twitch')
     """Halloween trick-or-treat: a treat or a harmless trick, 5 doors a day while the festival is on (app/halloween.py)."""
     with SessionLocal() as db:
         _,p=player(db,channel,provider,uid,name)
-        text=halloween.trick(sys.modules[__name__],db,p,provider)
+        text=halloween.trick(main,db,p,provider)
         db.commit()
     return platform_response(provider,text,text)
 
@@ -120,7 +130,7 @@ def eat_full(channel:str,uid:str,name:str='Citizen',provider:str='twitch'):
     """Eat the cheapest everyday food until Nutrition reaches 80 (festival foods and Meal Kits are kept)."""
     with SessionLocal() as db:
         _,p=player(db,channel,provider,uid,name)
-        text=extras.eat_full(sys.modules[__name__],db,p,provider);db.commit()
+        text=extras.eat_full(main,db,p,provider);db.commit()
         return platform_response(provider,text,text)
 
 
@@ -130,7 +140,7 @@ def undo_sale(channel:str,uid:str,name:str='Citizen',provider:str='twitch'):
     """Take back your last Seed Industries sale within 60 seconds."""
     with SessionLocal() as db:
         _,p=player(db,channel,provider,uid,name)
-        text=extras.undo_sale(sys.modules[__name__],db,p);db.commit()
+        text=extras.undo_sale(main,db,p);db.commit()
         return platform_response(provider,text,text)
 
 
@@ -139,8 +149,8 @@ def find_anything(query:str='',provider:str='twitch',channel:str='',uid:str='',n
     """Search recipes, items, menu buttons and handbook topics, or answer a question (app/ask.py)."""
     if not query.strip():return out('🔎 Search or ask anything: !find <word or question>, e.g. !find campfire or !find how do I make Iron Nails')
     with SessionLocal() as db:
-        p=ask.existing_player(sys.modules[__name__],db,channel,provider,uid)
-        text=ask.reply(sys.modules[__name__],db,p,query.strip()[:ask.MAX_QUERY],provider,channel)
+        p=ask.existing_player(main,db,channel,provider,uid)
+        text=ask.reply(main,db,p,query.strip()[:ask.MAX_QUERY],provider,channel)
         db.commit()
     return platform_response(provider,text,text)
 
@@ -149,15 +159,15 @@ def find_anything(query:str='',provider:str='twitch',channel:str='',uid:str='',n
 @game_transaction
 def again(channel:str,uid:str,name:str='Citizen',provider:str='twitch'):
     """Repeat your last Twitch action (a task, craft, gather, food or item)."""
-    module=sys.modules[__name__]
+    module=main
     with SessionLocal() as db:
         _,p=player(db,channel,provider,uid,name)
         rows=extras.recent(db,p.channel_id,p.twitch_uid,'twitch',1);db.commit()
     if not rows:return out('🔁 Nothing to repeat yet. Do a task, craft, gather or eat first, then !again repeats it.')
-    last=rows[0];fn=globals().get(last.command)
+    last=rows[0];fn=vars(main).get(last.command)
     if last.command not in extras.TWITCH_AGAIN or fn is None:return out('🔁 Your last action cannot be repeated. Nothing spent.')
     options=json.loads(last.options or '{}')
-    if last.command=='action' and 'msg' not in options:options['msg']=f'again-{int(now().timestamp())}'
+    if last.command=='action' and 'msg' not in options:options['msg']=f'again-{int(main.now().timestamp())}'
     return fn(channel=channel,uid=uid,name=name,provider=provider,**options)
 
 
@@ -165,7 +175,7 @@ def again(channel:str,uid:str,name:str='Citizen',provider:str='twitch'):
 @game_transaction
 def craft_max(channel:str,uid:str,name:str='Citizen',recipe:str='',provider:str='twitch'):
     """Queue as many batches (or gathering attempts) as your items and needs allow, up to 10."""
-    module=sys.modules[__name__]
+    module=main
     if not recipe.strip():return out('🔁 Queue the most you can: !craftmax <recipe or resource>. Nothing spent.')
     with SessionLocal() as db:
         _,p=player(db,channel,provider,uid,name)
@@ -193,7 +203,7 @@ def craft_max(channel:str,uid:str,name:str='Citizen',recipe:str='',provider:str=
 @game_transaction
 def target(channel:str,uid:str,name:str='Citizen',recipe:str='',provider:str='twitch'):
     """Pin a recipe as your goal; blank shows progress, 'clear' removes it."""
-    module=sys.modules[__name__]
+    module=main
     with SessionLocal() as db:
         _,p=player(db,channel,provider,uid,name)
         wanted=recipe.strip()
@@ -217,7 +227,7 @@ def target(channel:str,uid:str,name:str='Citizen',recipe:str='',provider:str='tw
 @game_transaction
 def routines_view(channel:str,uid:str,name:str='Citizen',action:str='view',provider:str='twitch'):
     """Your plan and saved routines; action=save saves the current plan, action=clear empties the plan."""
-    module=sys.modules[__name__]
+    module=main
     with SessionLocal() as db:
         _,p=player(db,channel,provider,uid,name)
         action=str(action or 'view').casefold()
@@ -235,7 +245,7 @@ def routines_view(channel:str,uid:str,name:str='Citizen',action:str='view',provi
 
 def routine_start(channel:str,uid:str,name:str='Citizen',n:str='',provider:str='twitch'):
     """Start saved routine number n (1–5); 'delete n' removes it."""
-    module=sys.modules[__name__]
+    module=main
     words=str(n or '').split()
     remove=bool(words) and words[0].casefold() in {'delete','remove','del'}
     if remove:words=words[1:]
@@ -257,7 +267,7 @@ def routine_start(channel:str,uid:str,name:str='Citizen',n:str='',provider:str='
 @game_transaction
 def item_uses(channel:str,uid:str,name:str='Citizen',item:str='',provider:str='twitch'):
     """Recipes that use an item, ready ones first."""
-    module=sys.modules[__name__]
+    module=main
     key=seed_content.find_item(item or '')
     if key not in seed_content.ITEMS:
         key,suggestions=qol.fuzzy_item(item) if item else (None,[])
@@ -272,7 +282,7 @@ def item_uses(channel:str,uid:str,name:str='Citizen',item:str='',provider:str='t
 @game_transaction
 def autosell(channel:str,uid:str,name:str='Citizen',item:str='',provider:str='twitch'):
     """Toggle selling an item automatically when a queue finishes; blank lists them."""
-    module=sys.modules[__name__]
+    module=main
     with SessionLocal() as db:
         _,p=player(db,channel,provider,uid,name)
         if not item.strip():
@@ -290,7 +300,7 @@ def autosell(channel:str,uid:str,name:str='Citizen',item:str='',provider:str='tw
 @game_transaction
 def keep_level(channel:str,uid:str,name:str='Citizen',text:str='',provider:str='twitch'):
     """Keep levels: blank lists them; '<item> <amount>' sets one (0 clears); 'restock' plans the first short item, 'restock go' starts it."""
-    text=keep_levels.command(sys.modules[__name__],channel,uid,name,provider,text)
+    text=keep_levels.command(main,channel,uid,name,provider,text)
     return platform_response(provider,text,text)
 
 
@@ -298,7 +308,7 @@ def keep_level(channel:str,uid:str,name:str='Citizen',text:str='',provider:str='
 @game_transaction
 def shopping(channel:str,uid:str,name:str='Citizen',text:str='',provider:str='twitch'):
     """Shopping list: blank sums it up; 'add <recipe> [amount]' (0 removes), 'remove <recipe>', 'clear [done]'; 'buy' shows the cost, 'buy confirm' buys every missing material Seed Industries sells."""
-    text=shopping_list.command(sys.modules[__name__],channel,uid,name,provider,text)
+    text=shopping_list.command(main,channel,uid,name,provider,text)
     return platform_response(provider,text,text)
 
 
@@ -309,7 +319,7 @@ def seedling_view(channel:str,uid:str,name:str='Citizen',provider:str='twitch'):
     """Your Seedling: mood, thought, what it is doing where, its schedule and autonomy."""
     with SessionLocal() as db:
         _,p=player(db,channel,provider,uid,name)
-        text=autonomy.view_text(sys.modules[__name__],db,p,provider);db.commit()
+        text=autonomy.view_text(main,db,p,provider);db.commit()
     note=first_step_note(channel,uid,name,provider,'seedling')
     if note:text+=('\n\n' if provider=='discord' else ' | ')+note
     return platform_response(provider,text,text)
@@ -321,7 +331,7 @@ def seedling_diary(channel:str,uid:str,name:str='Citizen',provider:str='twitch')
     """What your Seedling has been doing, newest first."""
     with SessionLocal() as db:
         _,p=player(db,channel,provider,uid,name)
-        text=autonomy.diary_text(sys.modules[__name__],db,p,provider);db.commit()
+        text=autonomy.diary_text(main,db,p,provider);db.commit()
         return platform_response(provider,text,text)
 
 
@@ -358,16 +368,16 @@ def seedling_autonomy(channel:str,uid:str,name:str='Citizen',state:str='',provid
 def seedling_looks(channel:str,uid:str,name:str='Citizen',skin:str='',hair:str='',hair_colour:str='',outfit:str='',accessory:str='',
                    attitude:str='',catchphrase:str='',headwear:str='',provider:str='twitch'):
     """Your Seedling's looks and personality; any option given changes it ("random" puts one back)."""
-    from . import looks
+    from .. import looks
     with SessionLocal() as db:
         _,p=player(db,channel,provider,uid,name)
         changed,problems=looks.change(db,p,skin=skin,hair=hair,hair_colour=hair_colour,outfit=outfit,accessory=accessory,
                                      headwear=headwear,attitude=attitude,catchphrase=catchphrase)
-        text=looks.view_text(sys.modules[__name__],db,p,provider,changed,problems);db.commit()
+        text=looks.view_text(main,db,p,provider,changed,problems);db.commit()
         return platform_response(provider,text,text.replace('**',''))
 
 # Extension registration happens after core routes and models are available.
-from .fun_systems import install as install_fun_systems
-from .seasonal import install as install_seasonal
+from ..fun_systems import install as install_fun_systems
+from ..seasonal import install as install_seasonal
 install_fun_systems(app)
 install_seasonal(app)

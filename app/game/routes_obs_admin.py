@@ -1,18 +1,34 @@
-# app/main.py, part 16: routes obs admin
-# Routes: OBS setup and panels, tick, wallet, progress, Rocky, Siro and admin tools.
-# Runs inside app.main's namespace, after the parts before it (see main.py). Not a module of its own.
+"""Routes: OBS setup and panels, tick, wallet, progress, Rocky, Siro and admin tools.
+"""
+import random
+from datetime import timedelta
+from fastapi import HTTPException
+from fastapi.responses import HTMLResponse, JSONResponse
+from sqlalchemy import select
+from ..commands import command as colony_command, transaction as game_transaction
+from ..db import SessionLocal
+from ..models import Identity, Player, WorldClock
+from .base import (
+    app, AVESTA_DAY_SECONDS, clean, out, OWNER_ONLY_TEXT, platform_response, twitch_owner_ok, valid_admin_key,
+    valid_mod_key)
+from .rules import EVENTS, SOCIETY_TIERS
+from .players import as_utc, player, society, world
+from .world import society_tier, world_clock
+from .cooldowns_materials import audit_moderator
+from .colony_events import cancel_event, maybe_start_auto_event, resolve_expired_event, start_event
+from .. import main      # app.main: names from later modules and settings changed at runtime
 
 @app.get("/obs",response_class=HTMLResponse)
 def obs_setup(channel:str="new-eridian"):
     """Every OBS panel with its URL, size and a live preview."""
-    from . import stream_overlay
+    from .. import stream_overlay
     return HTMLResponse(stream_overlay.setup_page(channel))
 
 @app.get("/obs/{panel}",response_class=HTMLResponse)
 def standalone_obs_panel(panel:str,channel:str="new-eridian"):
     valid={"society","today","event","ops","activity","telemetry","signal"}
     panel=(panel or "").lower().strip()
-    from . import stream_overlay
+    from .. import stream_overlay
     if panel in stream_overlay.PANELS:
         return HTMLResponse(stream_overlay.page(panel,channel))
     if panel not in valid:
@@ -112,7 +128,7 @@ refresh();setInterval(refresh,3500);
 @game_transaction
 def tick(channel:str):
     with SessionLocal() as db:
-        s=society(db,channel);w=world(db,channel);w.heartbeat=now();expired=resolve_expired_event(db,s,w)
+        s=society(db,channel);w=world(db,channel);w.heartbeat=main.now();expired=resolve_expired_event(db,s,w)
         if expired:return out(expired)
         started=maybe_start_auto_event(db,w,add_activity=False)
         if started:return out(started)
@@ -175,8 +191,8 @@ def _player_summary(db,channel,p):
 def admin_duplicates(channel:str="",key:str=""):
     """Characters that share a name (ignoring case and [tags]): usually a Twitch and a Discord character never linked."""
     if not valid_admin_key(key):return JSONResponse({"ok":False,"error":"Invalid game-admin key."},status_code=403)
-    channel=channel or DISCORD_WORLD_ID   # read now: a world merge can change the main world while running
-    from .autonomy import clean_name
+    channel=channel or main.DISCORD_WORLD_ID   # read now: a world merge can change the main world while running
+    from ..autonomy import clean_name
     with SessionLocal() as db:
         groups={}
         for p in db.execute(select(Player).where(Player.channel_id==channel)).scalars().all():
@@ -192,15 +208,15 @@ def admin_merge(keep:str,merge:str,channel:str="",key:str="",confirm:int=0):
     achievements, queues and Seedling life are combined, and both sets of Twitch/Discord IDs point at the kept character.
     Without confirm=1 it only shows what the merged character would look like."""
     if not valid_admin_key(key):return JSONResponse({"ok":False,"error":"Invalid game-admin key."},status_code=403)
-    channel=channel or DISCORD_WORLD_ID
-    me=sys.modules[__name__]
+    channel=channel or main.DISCORD_WORLD_ID
+    me=main
     with SessionLocal() as db:
-        try:pair=force_merge.load(me,db,channel,keep,merge)    # the preview-and-apply core the owner's /menu Force merge button shares
-        except force_merge.Refused as e:return JSONResponse({"ok":False,"error":e.error},status_code=e.status)
+        try:pair=main.force_merge.load(me,db,channel,keep,merge)    # the preview-and-apply core the owner's /menu Force merge button shares
+        except main.force_merge.Refused as e:return JSONResponse({"ok":False,"error":e.error},status_code=e.status)
         if not confirm:
             return JSONResponse({"ok":True,"preview":True,"keep":pair.before[0],"merge":pair.before[1],"after":{**pair.combined,"uid":keep,"name":pair.keep.display_name},
                                  "apply":"repeat this URL with &confirm=1"})
-        return JSONResponse({"ok":True,"merged":True,**force_merge.apply(me,db,channel,pair,"game admin")})
+        return JSONResponse({"ok":True,"merged":True,**main.force_merge.apply(me,db,channel,pair,"game admin")})
 
 @app.get("/api/v1/admin/event/{event}/{state}")
 @game_transaction
@@ -225,7 +241,7 @@ def next_day(channel:str,level:int=0,key:str=""):
         return out(OWNER_ONLY_TEXT)
     with SessionLocal() as db:
         s=society(db,channel);clock=db.execute(select(WorldClock).where(WorldClock.channel_id==channel)).scalar_one_or_none()
-        if not clock:clock=WorldClock(channel_id=channel,anchor_at=now(),anchor_day=s.day);db.add(clock)
+        if not clock:clock=WorldClock(channel_id=channel,anchor_at=main.now(),anchor_day=s.day);db.add(clock)
         clock.anchor_at=as_utc(clock.anchor_at)-timedelta(seconds=AVESTA_DAY_SECONDS)
         db.commit();state=world_clock(db,channel,s);audit_moderator(db,channel,"StreamElements level "+str(level),"daynext",f"day {state['day']}")
         return out(f"🌅 Avesta Day {state['day']} begins in New Eridian.")

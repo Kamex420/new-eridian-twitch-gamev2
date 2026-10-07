@@ -1,19 +1,34 @@
-# app/main.py, part 6: cooldowns materials
-# Cooldowns, action names and routes, materials and the bag, determination, Production Orders, daily contracts.
-# Runs inside app.main's namespace, after the parts before it (see main.py). Not a module of its own.
+"""Cooldowns, action names and routes, materials and the bag, determination, Production Orders, daily contracts.
+"""
+import math
+import random
+from datetime import timedelta
+from sqlalchemy import select
+from .. import crafting_progression, item_identity, seed_content
+from ..needs import duration_text, SLEEP_COOLDOWN_SECONDS
+from ..seed_skills import HUBS as SEED_HUBS, TASKS as SEED_TASKS
+from ..models import (
+    Business, Cooldown, CraftLedger, Daily, Determination, ExtraItem, ModeratorAudit, Player,
+    ProductionOrderCompletion, QualityGear)
+from .rules import (
+    ACTION_COOLDOWNS, CRAFT_OUTPUT_KEYS, CRAFT_PAY, PRODUCTION_ORDERS, QUALITY_RECIPES, QUALITY_TIERS, RECIPES,
+    SEED_INDUSTRIES, SKILL_ACTIONS, SKILL_LABELS, UNIQUE_CORE_ITEMS, UNIQUE_QUALITY_ITEMS)
+from .players import as_utc, lvl, requirement_text, resource_name, skill_xp
+from .world import _stable_index
+from .. import main      # app.main: names from later modules and settings changed at runtime
 
 ACTION_COOLDOWNS['seed_use']=20
 
 def check_cooldown(db,p,action_name):
     row=db.execute(select(Cooldown).where(Cooldown.channel_id==p.channel_id,Cooldown.canonical_uid==p.twitch_uid,Cooldown.action==action_name)).scalar_one_or_none()
     seconds=ACTION_COOLDOWNS.get(action_name,5)
-    if row and as_utc(row.ready_at)>now():
-        remaining=max(1,int(math.ceil((as_utc(row.ready_at)-now()).total_seconds())))
-        if remaining>seconds:row.ready_at=now()+timedelta(seconds=seconds);db.commit();remaining=seconds
-        if 'task_queue' in globals():task_queue.cooldown_wait.set(remaining)
+    if row and as_utc(row.ready_at)>main.now():
+        remaining=max(1,int(math.ceil((as_utc(row.ready_at)-main.now()).total_seconds())))
+        if remaining>seconds:row.ready_at=main.now()+timedelta(seconds=seconds);db.commit();remaining=seconds
+        if 'task_queue' in vars(main):main.task_queue.cooldown_wait.set(remaining)
         return remaining
-    if not row:row=Cooldown(channel_id=p.channel_id,canonical_uid=p.twitch_uid,action=action_name,ready_at=now());db.add(row)
-    row.ready_at=now()+timedelta(seconds=seconds);db.commit();return 0
+    if not row:row=Cooldown(channel_id=p.channel_id,canonical_uid=p.twitch_uid,action=action_name,ready_at=main.now());db.add(row)
+    row.ready_at=main.now()+timedelta(seconds=seconds);db.commit();return 0
 COOLDOWN_LABELS={"seed_work":("/make, /gather and common /mine","!make, !gather and !mine"),"seed_use":("/use","!use"),
     "rare_prospect":("Rare-ore prospecting (/mine)","rare prospecting")}
 
@@ -28,14 +43,14 @@ def cooldown_rules(provider="discord"):
 
 def cooldowns_text(db,p,provider="twitch"):
     rows=db.execute(select(Cooldown).where(Cooldown.channel_id==p.channel_id,Cooldown.canonical_uid==p.twitch_uid)).scalars().all()
-    active=sorted((r.action,min(ACTION_COOLDOWNS.get(r.action,5),max(1,int(math.ceil((as_utc(r.ready_at)-now()).total_seconds()))))) for r in rows if as_utc(r.ready_at)>now())
+    active=sorted((r.action,min(ACTION_COOLDOWNS.get(r.action,5),max(1,int(math.ceil((as_utc(r.ready_at)-main.now()).total_seconds()))))) for r in rows if as_utc(r.ready_at)>main.now())
     rules=cooldown_rules(provider)
     if not active:return "⏱️ No active cooldowns. Tasks still require sufficient needs and materials. "+rules
     if provider=="discord":return f"⏱️ {p.display_name} — Active Cooldowns\n\n"+"\n".join(f"• {cooldown_label(a,provider)} — {duration_text(seconds)}" for a,seconds in active[:15])+"\n\n"+rules
     return "⏱️ Cooldowns: "+" | ".join(f"{cooldown_label(a,provider)} {duration_text(seconds)}" for a,seconds in active[:10])+" | "+rules
 def action_wait(db,p,action_name):
     row=db.execute(select(Cooldown).where(Cooldown.channel_id==p.channel_id,Cooldown.canonical_uid==p.twitch_uid,Cooldown.action==action_name)).scalar_one_or_none()
-    return min(ACTION_COOLDOWNS.get(action_name,5),max(0,int(math.ceil((as_utc(row.ready_at)-now()).total_seconds())))) if row and as_utc(row.ready_at)>now() else 0
+    return min(ACTION_COOLDOWNS.get(action_name,5),max(0,int(math.ceil((as_utc(row.ready_at)-main.now()).total_seconds())))) if row and as_utc(row.ready_at)>main.now() else 0
 DISCORD_ACTION_ROUTES={
     "farm":"/farm action:Tend Fields","forage":"/farm action:Tend Fields",
     "harvest":"/farm action:Harvest Pumpkins","water":"/farm action:Irrigate",
@@ -95,7 +110,7 @@ def guide_action(db,p,skill,provider):
 def audit_moderator(db,channel,moderator,action_name,detail):
     db.add(ModeratorAudit(channel_id=channel,moderator=moderator,action=action_name,detail=detail[:500]));db.commit()
 def live(w):
-    return bool(w.active_event and w.event_ends and now()<as_utc(w.event_ends))
+    return bool(w.active_event and w.event_ends and main.now()<as_utc(w.event_ends))
 def item(db,c,u,name):
     name=item_identity.canonical(name)
     if name in item_identity.FIELD_ITEMS:
@@ -141,7 +156,7 @@ def material_source(key,provider='discord'):
     if key=='cargo':return ('/cargo' if provider=='discord' else '!cargo')+' — successful Cargo Preparation adds 1 personal Cargo.'
     if key in RECIPES or key in QUALITY_RECIPES:
         cost=RECIPES[key] if key in RECIPES else QUALITY_RECIPES[key]['cost']
-        station=crafting_progression.STATIONS[crafting_progression.legacy_station(sys.modules[__name__],key)]
+        station=crafting_progression.STATIONS[crafting_progression.legacy_station(main,key)]
         return (f'/make recipe:{key}' if provider=='discord' else f'!make {key}')+f" — {requirement_text(cost)}; {station['name']} (Tier {station['tier']})."
     for task,cfg in SEED_TASKS.items():
         if key in cfg['output']:
@@ -218,7 +233,7 @@ def unique_bonus_owned(db,p,key):
         )).scalars().first() is not None
     return False
 def daily(db,p):
-    k=now().strftime("%Y-%m-%d")
+    k=main.now().strftime("%Y-%m-%d")
     d=db.execute(select(Daily).where(Daily.channel_id==p.channel_id,Daily.canonical_uid==p.twitch_uid,Daily.day_key==k)).scalar_one_or_none()
     if not d:
         a=random.choice(["harvest","mine","research","make","delivery","explore","water","repair","train_fire_safety","train_seed_cultivation","train_ore_mining"]);t=random.choice([3,4,5])

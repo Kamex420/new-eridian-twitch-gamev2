@@ -6,7 +6,8 @@ The application now has one canonical Python package. Earlier releases stored im
 
 | Module | Main responsibility |
 | --- | --- |
-| `main.py` | ASGI application, HTTP/Discord adapters, existing gameplay orchestration and OBS rendering. Its code is split by topic into `main_parts/` (see below) |
+| `main.py` | ASGI entry point and facade: imports the modules in `game/` in order and offers their names as `app.main.<name>` |
+| `game/` | The game behind `app.main`, one module per topic (see below) |
 | `db.py`, `models.py`, `migrations.py` | Database engine, ORM records and additive schema migration |
 | `commands.py` | Shared response context and before/after state summaries |
 | `seed_content.py` | Catalog lookup, acquisition graph, gathering, recipe execution and item uses |
@@ -48,37 +49,45 @@ HTTP and Discord adapters use the same game functions. Twitch definitions refer 
 
 ## Scope of this cleanup
 
-The large `main.py` remains one orchestration module, but its code now lives in `app/main_parts/`, one file per topic. `main.py` runs the parts in file-name order inside its own namespace, so nothing about the module changed: every name is still `app.main.<name>`, feature modules reach it as `m.<name>`, tests monkeypatch it, and routes register in the same order. The parts are not importable modules; a part may use anything an earlier part defined. Edit the part that holds the code; add a numbered file for a new topic.
+The game code that used to be one 8,000-line `main.py` is now a package of ordinary modules, `app/game/`, one per topic. `app/main.py` is a facade: it imports them in the order listed in `app/game/__init__.py` (`MODULES`) and offers every name they define as `app.main.<name>`, so the feature modules (`m.<name>`), the routes and the tests are unchanged.
 
-| Part | Contents |
+Rules for editing a game module:
+
+- Import what you use from an earlier module (`from .world import world_clock`), from `..models`, or from other `app` modules (`from .. import seed_content`).
+- Read a name from a **later** module through the facade: `main.<name>` (`from .. import main`). The modules import each other only in load order, so this avoids circular imports.
+- Some names are changed on `app.main` while the game runs, by tests (`monkeypatch.setattr(m, 'now', ...)`) or by feature modules (`votes.install` wraps `project_contribute`; a world merge changes `DISCORD_WORLD_ID`). Code reads these through `main` too: `main.now()`, `main.project_contribute(...)`, `main.DISCORD_WORLD_ID`. They are listed below; when you add a setting tests will change, read it as `main.<name>`.
+- Pass `main` (not the module itself) to feature modules that take `m`: `seed_content.stock(main, db, p)`.
+- A new module goes into `MODULES` at the point where everything it imports is already loaded.
+
+| Module | Contents |
 |---|---|
-| `01_base.py` | Imports, settings from the environment, the FastAPI app, small helpers and the database setup. |
-| `02_rules.py` | Game rules as data: jobs, events, skills, recipes, gear, world conditions, projects, directives, story arcs, markets. |
-| `03_players.py` | Names and accounts, titles, collections, the weekly story, market demand, ducks, gear wear, the tutorial, society/world/player lookups, skills and bonuses. |
-| `04_life.py` | Needs and life state, quality gear, success modifiers and progress notes. |
-| `05_world.py` | Society Directive, event aftermath, relationships, the world clock and weather, statuses, society projects, goals, shortages, encounters, housing and society tiers. |
-| `06_cooldowns_materials.py` | Cooldowns, action names and routes, materials and the bag, determination, Production Orders, daily contracts. |
-| `07_colony_events.py` | Live events (start, progress, finish, fail, automatic events) and work_counts: what everyday work does for New Eridian. |
-| `08_accounts.py` | Rare outcomes, merging duplicate accounts, achievements and configuration warnings. |
-| `09_routes_player.py` | Routes: health, start, profile, skills, cooldowns, bonuses, guide, inventory, job, contracts, achievements, home and business. |
-| `10_routes_crafting.py` | Routes and helpers for crafting: recipes, /make and equipment crafting. |
-| `11_routes_life_social.py` | Routes: life status, display style, hi, hangout, relationships, relax, walk, games, hobby, tutorial, story and titles. |
-| `12_routes_market.py` | Routes: market board, selling, workshops, Seed Industries, duo work, ducks, gear and using items. |
-| `13_routes_world.py` | Routes: world status, rumors, collection, traits, districts, shifts, goals, projects, bulletin, meals, mentoring, journal, account links, society, events and the leaderboard. |
-| `14_overlay_state.py` | The stream overlay data (/api/v1/overlay). |
-| `15_overlay_page.py` | The stream overlay page (/overlay): one large HTML/JS template. |
-| `16_routes_obs_admin.py` | Routes: OBS setup and panels, tick, wallet, progress, Rocky, Siro and admin tools. |
-| `17_action.py` | The work action route (/api/v1/action/{action}) used by /work, training and chat commands. |
-| `18_handbook.py` | The in-game handbook (SEED_HELP_TOPICS), Twitch help pages and the moderator log. |
-| `19_discord_embeds.py` | Discord command lists and the classic embed builders. |
-| `20_discord_commands.py` | Discord command schema, legacy routes and copy, JSON messages, autocomplete and option checks. |
-| `21_training_and_items.py` | Training tasks, food and item menus, and the gather/catalog route. |
-| `22_discord_interactions.py` | Discord command dispatch (_discord_call_internal) and the interactions webhook. |
-| `23_routines_queue.py` | Routes: settlement, routines, the task queue and mining. |
-| `24_wiring.py` | Installs the feature modules (ask, inbox, extras, overlay, Seedlings, onboarding, ...) into this module. |
-| `25_routes_extra.py` | Routes: status, settings, favorites, fetch, sell-all, recover, trick-or-treat, find, again, craft max, targets, routines, uses, autosell, keep levels, shopping, Seedlings; then fun systems and seasons. |
+| `game/base.py` | Imports, settings from the environment, the FastAPI app, small helpers and the database setup. |
+| `game/rules.py` | Game rules as data: jobs, events, skills, recipes, gear, world conditions, projects, directives, story arcs, markets. |
+| `game/players.py` | Names and accounts, titles, collections, the weekly story, market demand, ducks, gear wear, the tutorial, society/world/player lookups, skills and bonuses. |
+| `game/life.py` | Needs and life state, quality gear, success modifiers and progress notes. |
+| `game/world.py` | Society Directive, event aftermath, relationships, the world clock and weather, statuses, society projects, goals, shortages, encounters, housing and society tiers. |
+| `game/cooldowns_materials.py` | Cooldowns, action names and routes, materials and the bag, determination, Production Orders, daily contracts. |
+| `game/colony_events.py` | Live events (start, progress, finish, fail, automatic events) and work_counts: what everyday work does for New Eridian. |
+| `game/accounts.py` | Rare outcomes, merging duplicate accounts, achievements and configuration warnings. |
+| `game/routes_player.py` | Routes: health, start, profile, skills, cooldowns, bonuses, guide, inventory, job, contracts, achievements, home and business. |
+| `game/routes_crafting.py` | Routes and helpers for crafting: recipes, /make and equipment crafting. |
+| `game/routes_life_social.py` | Routes: life status, display style, hi, hangout, relationships, relax, walk, games, hobby, tutorial, story and titles. |
+| `game/routes_market.py` | Routes: market board, selling, workshops, Seed Industries, duo work, ducks, gear and using items. |
+| `game/routes_world.py` | Routes: world status, rumors, collection, traits, districts, shifts, goals, projects, bulletin, meals, mentoring, journal, account links, society, events and the leaderboard. |
+| `game/overlay_state.py` | The stream overlay data (/api/v1/overlay). |
+| `game/overlay_page.py` | The stream overlay page (/overlay): one large HTML/JS template. |
+| `game/routes_obs_admin.py` | Routes: OBS setup and panels, tick, wallet, progress, Rocky, Siro and admin tools. |
+| `game/action.py` | The work action route (/api/v1/action/{action}) used by /work, training and chat commands. |
+| `game/handbook.py` | The in-game handbook (SEED_HELP_TOPICS), Twitch help pages and the moderator log. |
+| `game/discord_embeds.py` | Discord command lists and the classic embed builders. |
+| `game/discord_commands.py` | Discord command schema, legacy routes and copy, JSON messages, autocomplete and option checks. |
+| `game/training_and_items.py` | Training tasks, food and item menus, and the gather/catalog route. |
+| `game/discord_interactions.py` | Discord command dispatch (_discord_call_internal) and the interactions webhook. |
+| `game/routines_queue.py` | Routes: settlement, routines, the task queue and mining. |
+| `game/wiring.py` | Installs the feature modules (ask, inbox, extras, overlay, Seedlings, onboarding, ...) into this module. |
+| `game/routes_extra.py` | Routes: status, settings, favorites, fetch, sell-all, recover, trick-or-treat, find, again, craft max, targets, routines, uses, autosell, keep levels, shopping, Seedlings; then fun systems and seasons. |
 
-Moving handlers into real packages with their own globals would still be a separate behavioural refactor; the split only moves text, so the statements and their order are exactly those of the single file.
+The split was made mechanically from the single file and checked against it: the same names with the same values, the same routes in the same order. Names read through `main` because they change at runtime: `now`, `engine`, `ADMIN_KEY`, `MOD_KEY`, `DISCORD_WORLD_ID`, `DISCORD_GAME_CHANNEL_ID`, `DISCORD_PUBLIC_KEY`, `DISCORD_OWNER_USER_IDS`, `RUNTIME_WARNINGS`, `OVERLAY_CACHE_SECONDS`, `AUTO_EVENTS_ENABLED`, `AUTO_EVENT_ACTIONS`, `MERGED_TRAINING`, `current_project`, `project_contribute`, `merge_accounts`, `world_rule_bundle`, `success_chance`, `seed_industries`, `life_modifiers`, `gain_skill`, `determination_bonus`, `demand_day`, `_discord_call_internal`, `_discord_json_message`.
 
 [^1]: Canonical implementations: [`app/`](../app/). The removed loader was `app/_compat.py`.
 [^2]: Registrar: [`scripts/register_discord_commands.py`](../scripts/register_discord_commands.py). Import isolation and the container file layout are covered by `tests/test_repository.py`.

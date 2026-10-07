@@ -1,7 +1,8 @@
-# app/main.py, part 2: rules
-# Game rules as data: jobs, events, skills, recipes, gear, world conditions, projects, directives, story arcs,
-# markets.
-# Runs inside app.main's namespace, after the parts before it (see main.py). Not a module of its own.
+"""Game rules as data: jobs, events, skills, recipes, gear, world conditions, projects, directives, story arcs,
+markets.
+"""
+from .. import crafting_progression, seed_content
+from ..seed_skills import LABELS as SEED_LABELS, NEW_JOBS, NEW_SPECS, TASKS as SEED_TASKS
 
 JOBS={
 # Keep the legacy key so existing citizens retain their profession after the
@@ -41,7 +42,7 @@ ACTION_COOLDOWNS={action_name:5 for action_name in (*ACTION_SKILLS,"eat","sleep"
 ACTION_COOLDOWNS.update({"hi":20,"hangout":60,"relax":30,"walk":20,"games":30,"hobby":30})
 # Sleep fully restores Energy and Comfort, so it runs on a long timer; Comfort
 # otherwise comes from /relax and comfort items (beds, seats, baths, clothing).
-from .needs import SLEEP_COOLDOWN_SECONDS
+from ..needs import SLEEP_COOLDOWN_SECONDS
 ACTION_COOLDOWNS["sleep"]=SLEEP_COOLDOWN_SECONDS
 SKILL_LABELS=dict(SEED_LABELS)
 SKILL_ACTIONS={

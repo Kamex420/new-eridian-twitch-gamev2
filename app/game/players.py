@@ -1,7 +1,31 @@
-# app/main.py, part 3: players
-# Names and accounts, titles, collections, the weekly story, market demand, ducks, gear wear, the tutorial,
-# society/world/player lookups, skills and bonuses.
-# Runs inside app.main's namespace, after the parts before it (see main.py). Not a module of its own.
+"""Names and accounts, titles, collections, the weekly story, market demand, ducks, gear wear, the tutorial,
+society/world/player lookups, skills and bonuses.
+"""
+import json
+import math
+import random
+import time
+from datetime import timedelta, timezone
+from sqlalchemy import select
+from sqlalchemy.orm import object_session
+from .. import crafting_progression, item_identity, seed_content
+from ..commands import capture as colony_capture
+from ..competencies import level as competency_level, practice_gain
+from ..db import SessionLocal
+from ..needs import productivity
+from ..occupations import matches as occupation_matches
+from ..progression import announce
+from ..seed_skills import LEGACY_BRANCH
+from ..settlement import seedling as colony_seedling, state as colony_state, tick as colony_tick
+from ..models import (
+    AccountLink, AccountNameHistory, Business, CollectionItem, CollectionSetClaim, DuckBond, GearFamiliarity,
+    HobbyProgress, Identity, JournalEntry, LifeRelationship, Player, PlayerTitle, ProductionOrderCompletion,
+    QualityGear, Society, SocietyProject, Specialization, TimedBonus, TutorialProgress, WeeklyStory, World)
+from .base import clean, GAME_NAME, PLACEHOLDER_NAME
+from .rules import (
+    COLLECTION_SETS, JOBS, MARKET_BASE, QUALITY_RECIPES, QUALITY_TIERS, SEED_INDUSTRIES, SKILL_EQUIPMENT,
+    SKILL_LABELS, STORY_ARCS, TITLE_DEFS)
+from .. import main      # app.main: names from later modules and settings changed at runtime
 
 def resource_name(key):
     key=item_identity.canonical(key)
@@ -35,7 +59,7 @@ def record_account_name(db,channel,provider,provider_uid,name):
         AccountNameHistory.display_name==display
     )).scalar_one_or_none()
     if row:
-        row.last_seen=now();row.seen_count+=1
+        row.last_seen=main.now();row.seen_count+=1
     else:
         db.add(AccountNameHistory(channel_id=channel,provider=provider,provider_uid=provider_uid,display_name=display))
 
@@ -86,7 +110,7 @@ def hobby_row(db,p,hobby):
     row=db.execute(select(HobbyProgress).where(HobbyProgress.channel_id==p.channel_id,HobbyProgress.canonical_uid==p.twitch_uid,HobbyProgress.hobby==hobby)).scalar_one_or_none()
     if not row:
         legacy={"gardening":"gardening","exploration":"exploration_hobby","mechanics":"mechanics","research":"research_hobby","games":"games_hobby","rockwatching":"rockwatching"}
-        life=life_state(db,p);start=getattr(life,legacy[hobby],0) if hobby in legacy else 0
+        life=main.life_state(db,p);start=getattr(life,legacy[hobby],0) if hobby in legacy else 0
         row=HobbyProgress(channel_id=p.channel_id,canonical_uid=p.twitch_uid,hobby=hobby,points=start);db.add(row);db.commit();db.refresh(row)
     return row
 
@@ -134,17 +158,17 @@ def check_collection_sets(db,p):
 def story_week(clock):return max(0,(clock["day"]-1)//28)
 
 def story_state(db,channel,clock=None):
-    clock=clock or world_clock(db,channel);wk=story_week(clock)
+    clock=clock or main.world_clock(db,channel);wk=story_week(clock)
     row=db.execute(select(WeeklyStory).where(WeeklyStory.channel_id==channel,WeeklyStory.week_index==wk)).scalar_one_or_none()
     if not row:
-        cfg=STORY_ARCS[_stable_index(f"{channel}:{wk}:story",len(STORY_ARCS))]
+        cfg=STORY_ARCS[main._stable_index(f"{channel}:{wk}:story",len(STORY_ARCS))]
         row=WeeklyStory(channel_id=channel,week_index=wk,arc_key=cfg["key"]);db.add(row);db.commit();db.refresh(row)
     cfg=next(x for x in STORY_ARCS if x["key"]==row.arc_key)
     return row,cfg
 
 def story_contribute(db,p,skill):
     if not skill:return ""
-    clock=world_clock(db,p.channel_id);row,cfg=story_state(db,p.channel_id,clock)
+    clock=main.world_clock(db,p.channel_id);row,cfg=story_state(db,p.channel_id,clock)
     if row.resolved:return ""
     tracks=[row.track_a,row.track_b,row.track_c];matched=[]
     for i,(_,skills) in enumerate(cfg["tracks"]):
@@ -169,7 +193,7 @@ def demand_pool():
 
 def market_demand(channel,day):
     keys=demand_pool() or list(MARKET_BASE)
-    primary=keys[_stable_index(f"{channel}:{day}:market",len(keys))];secondary=keys[_stable_index(f"{channel}:{day}:market2",len(keys))]
+    primary=keys[main._stable_index(f"{channel}:{day}:market",len(keys))];secondary=keys[main._stable_index(f"{channel}:{day}:market2",len(keys))]
     if secondary==primary:secondary=keys[(keys.index(primary)+1)%len(keys)]
     return primary,secondary
 
@@ -177,7 +201,7 @@ _demand_day=[0.0,1]
 def demand_day():
     """Today's Avesta day for sale prices, read at most once a minute."""
     if time.monotonic()-_demand_day[0]>60:
-        with SessionLocal() as db:_demand_day[1]=world_clock(db,DISCORD_WORLD_ID)["day"];db.commit()
+        with SessionLocal() as db:_demand_day[1]=main.world_clock(db,main.DISCORD_WORLD_ID)["day"];db.commit()
         _demand_day[0]=time.monotonic()
     return _demand_day[1]
 
@@ -188,7 +212,7 @@ def demand_price(key,day):
     (otherwise a demand day would pay for every buy/sell round trip, with Commerce practice on top)."""
     listing=SEED_INDUSTRIES.get(key) or {}
     base=listing.get('sell',0)
-    mult=market_multiplier(DISCORD_WORLD_ID,day,key)
+    mult=market_multiplier(main.DISCORD_WORLD_ID,day,key)
     if not base or mult==1:return base
     boosted=max(base+1,math.ceil(base*mult))
     buy=listing.get('buy',0)
@@ -196,7 +220,7 @@ def demand_price(key,day):
 
 def sale_price(key):
     """What Seed Industries pays for one today."""
-    try:return demand_price(key,demand_day())
+    try:return demand_price(key,main.demand_day())
     except Exception:return (SEED_INDUSTRIES.get(key) or {}).get('sell',0)
 
 def market_multiplier(channel,day,resource):
@@ -224,7 +248,7 @@ def degrade_gear(db,p,skill):
     if not candidates:return ""
     row=max(candidates,key=lambda x:QUALITY_TIERS.get(x.quality,QUALITY_TIERS["Standard"])["skill"])
     familiarity=db.execute(select(GearFamiliarity).where(GearFamiliarity.channel_id==p.channel_id,GearFamiliarity.canonical_uid==p.twitch_uid,GearFamiliarity.item_key==row.item_key)).scalar_one_or_none()
-    _,wear_reduction=gear_familiarity_rank(familiarity.uses if familiarity else 0)
+    _,wear_reduction=main.gear_familiarity_rank(familiarity.uses if familiarity else 0)
     if random.random()>(.35-wear_reduction):return ""
     loss=random.randint(1,3);row.condition=max(0,row.condition-loss);db.commit()
     return f" 🔧 {row.item_name} condition {row.condition}%." if row.condition in {75,50,25,10,0} else ""
@@ -235,8 +259,8 @@ def tutorial_row(db,p):
     return row
 
 def tutorial_text(db,p,provider):
-    from . import onboarding
-    steps_text=onboarding.status(sys.modules[__name__],db,p,provider)
+    from .. import onboarding
+    steps_text=onboarding.status(main,db,p,provider)
     if steps_text:return steps_text
     row=tutorial_row(db,p);prefix='/' if provider=='discord' else '!'
     if provider=="discord":
@@ -261,14 +285,14 @@ def tutorial_advance(db,p,kind):
 def society(db,c):
     s=db.execute(select(Society).where(Society.channel_id==c)).scalar_one_or_none()
     if not s: s=Society(channel_id=c,name=GAME_NAME); db.add(s); db.commit(); db.refresh(s)
-    shared=colony_state(db,c);colony_tick(shared,s,now());db.commit()
+    shared=colony_state(db,c);colony_tick(shared,s,main.now());db.commit()
     return s
 def world(db,c):
     w=db.execute(select(World).where(World.channel_id==c)).scalar_one_or_none()
     if not w: w=World(channel_id=c); db.add(w); db.commit(); db.refresh(w)
     return w
 def resolve(db,c,provider,uid):
-    if 'task_queue' in globals() and task_queue.actor_context.get()==(c,uid):return uid
+    if 'task_queue' in vars(main) and main.task_queue.actor_context.get()==(c,uid):return uid
     r=db.execute(select(Identity).where(Identity.channel_id==c,Identity.provider==provider,Identity.provider_uid==uid)).scalar_one_or_none()
     if r:return r.canonical_uid
     canon=uid if provider=="twitch" else "discord:"+uid
@@ -278,16 +302,16 @@ def player(db,c,provider,uid,name):
     p=db.execute(select(Player).where(Player.channel_id==c,Player.twitch_uid==canon)).scalar_one_or_none()
     if not p:
         p=Player(channel_id=c,twitch_uid=canon,display_name=clean(name));db.add(p);society(db,c).population+=1
-        from . import stream_overlay
+        from .. import stream_overlay
         stream_overlay.highlight(db,c,"join",f"{clean(name)} arrived in New Eridian","A new citizen joined. Type !start in chat to join them.",clean(name))
         db.commit();db.refresh(p)
-    item_identity.migrate_player(sys.modules[__name__],db,p)
+    item_identity.migrate_player(main,db,p)
     # Background work and a few chat commands call without the viewer's name; they keep the name the citizen already has.
     if clean(name)!=PLACEHOLDER_NAME or not p.display_name:
         record_account_name(db,c,provider,uid,name)
         p.display_name=clean(name)
-    p.last_seen=now();db.commit()
-    life_state(db,p)
+    p.last_seen=main.now();db.commit()
+    main.life_state(db,p)
     colony_capture(db,p)
     return canon,p
 def lvl(x):
@@ -296,30 +320,30 @@ def as_utc(dt):
     if dt is None:return None
     return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
 def skill_xp(p,skill):
-    from .competencies import FIELDS
+    from ..competencies import FIELDS
     return getattr(p,FIELDS[skill])
 
 def gain_skill(p,skill,amount=1):
-    from .competencies import FIELDS
+    from ..competencies import FIELDS
     db=object_session(p);field=FIELDS[skill];old=lvl(getattr(p,field))
     if db is not None:
-        st=colony_seedling(db,p);life=life_state(db,p)
+        st=colony_seedling(db,p);life=main.life_state(db,p)
         project=db.execute(select(SocietyProject).where(SocietyProject.channel_id==p.channel_id)).scalars().first()
-        project_match=bool(project and project.progress<project.goal and skill in project_cfg(project.project_key)[3]) if project else False
+        project_match=bool(project and project.progress<project.goal and skill in main.project_cfg(project.project_key)[3]) if project else False
         quality=getattr(p,"_practice_quality",1.0)
-        living=productivity(life,player_world(db,p).siro_exposure)*(1.10 if min(life.energy,life.nutrition,life.social,life.comfort,life.morale)>=80 else 1.0)
+        living=productivity(life,main.player_world(db,p).siro_exposure)*(1.10 if min(life.energy,life.nutrition,life.social,life.comfort,life.morale)>=80 else 1.0)
         gain=practice_gain(amount,occupation_matches(p.job,skill),living,project_match,quality)
         practice=json.loads(st.practice);total=practice.get(skill,0.0)+gain
         amount=int(total);practice[skill]=round(total-amount,6);st.practice=json.dumps(practice)
-        from .commands import context
+        from ..commands import context
         ctx=context.get()
         if ctx is not None:ctx["practice"].append(f"{p.display_name} {SKILL_LABELS[skill]} +{gain:.2f} ({amount} XP banked)")
     setattr(p,field,getattr(p,field)+amount)
     if db is not None:
-        from .commands import context
+        from ..commands import context
         ctx=context.get() or {}
         branch=LEGACY_BRANCH.get(ctx.get("params",{}).get("action"))
-        if branch:gain_branch(db,p,branch,amount)
+        if branch:main.gain_branch(db,p,branch,amount)
     if skill in {"fabrication","infrastructure"}:p.industry_xp+=amount
     new=lvl(getattr(p,field))
     if db is not None and new>old:
@@ -327,7 +351,7 @@ def gain_skill(p,skill,amount=1):
         # Selling, undoing the sale and selling again would announce (and put on stream) the same level up again.
         if not db.execute(select(JournalEntry.id).where(JournalEntry.channel_id==p.channel_id,JournalEntry.canonical_uid==p.twitch_uid,
                                                         JournalEntry.entry==message[:220])).first():
-            announce(db,p,message,now())
+            announce(db,p,message,main.now())
     return amount
 
 def specialization_for(db,p,skill):
@@ -335,13 +359,13 @@ def specialization_for(db,p,skill):
 def business_for(db,p):
     return db.execute(select(Business).where(Business.channel_id==p.channel_id,Business.canonical_uid==p.twitch_uid)).scalar_one_or_none()
 def active_bonuses(db,p):
-    return db.execute(select(TimedBonus).where(TimedBonus.channel_id==p.channel_id,TimedBonus.canonical_uid==p.twitch_uid,TimedBonus.expires_at>now()).order_by(TimedBonus.expires_at)).scalars().all()
+    return db.execute(select(TimedBonus).where(TimedBonus.channel_id==p.channel_id,TimedBonus.canonical_uid==p.twitch_uid,TimedBonus.expires_at>main.now()).order_by(TimedBonus.expires_at)).scalars().all()
 def bonus_active(db,p,bonus):
-    return db.execute(select(TimedBonus).where(TimedBonus.channel_id==p.channel_id,TimedBonus.canonical_uid==p.twitch_uid,TimedBonus.bonus==bonus,TimedBonus.expires_at>now())).scalar_one_or_none() is not None
+    return db.execute(select(TimedBonus).where(TimedBonus.channel_id==p.channel_id,TimedBonus.canonical_uid==p.twitch_uid,TimedBonus.bonus==bonus,TimedBonus.expires_at>main.now())).scalar_one_or_none() is not None
 def grant_random_bonus(db,p,bonus_chance=0):
     business=business_for(db,p);chance=(.08 if business else .04)+bonus_chance
     if random.random()>=chance:return ""
-    bonus=random.choice(list(BONUS_TYPES));row=db.execute(select(TimedBonus).where(TimedBonus.channel_id==p.channel_id,TimedBonus.canonical_uid==p.twitch_uid,TimedBonus.bonus==bonus)).scalar_one_or_none();start=now()
+    bonus=random.choice(list(BONUS_TYPES));row=db.execute(select(TimedBonus).where(TimedBonus.channel_id==p.channel_id,TimedBonus.canonical_uid==p.twitch_uid,TimedBonus.bonus==bonus)).scalar_one_or_none();start=main.now()
     if not row:row=TimedBonus(channel_id=p.channel_id,canonical_uid=p.twitch_uid,bonus=bonus,expires_at=start,times_received=0);db.add(row)
     if as_utc(row.expires_at)>start:start=as_utc(row.expires_at)
     row.expires_at=start+timedelta(minutes=10);row.times_received+=1;db.commit();label,effect=BONUS_TYPES[bonus]
@@ -352,7 +376,7 @@ def bonuses_text(db,p,provider="twitch"):
     if not rows:return f"⚡ {p.display_name} has no active bonuses. Successful actions can activate one; business owners have double the chance."
     details=[]
     for row in rows:
-        seconds=max(0,int((as_utc(row.expires_at)-now()).total_seconds()));label,effect=BONUS_TYPES.get(row.bonus,(row.bonus.replace("_"," ").title(),"Personal bonus"));details.append((label,effect,seconds,row.times_received))
+        seconds=max(0,int((as_utc(row.expires_at)-main.now()).total_seconds()));label,effect=BONUS_TYPES.get(row.bonus,(row.bonus.replace("_"," ").title(),"Personal bonus"));details.append((label,effect,seconds,row.times_received))
     if provider=="discord":return f"⚡ {p.display_name} — Active Bonuses\n\n"+"\n\n".join(f"{label}\n{effect}\nTime remaining: {seconds//60}:{seconds%60:02d} · Activated {times}x" for label,effect,seconds,times in details)+"\n\nActivating the same bonus again adds another 10 minutes."
     return "⚡ "+" | ".join(f"{label} {seconds//60}:{seconds%60:02d} ({effect})" for label,effect,seconds,_ in details)
 def citizen_title(p):
@@ -373,13 +397,13 @@ def gain_business_xp(b,amount):
     if db is not None and b.level>old:
         p=db.execute(select(Player).where(Player.channel_id==b.channel_id,Player.twitch_uid==b.canonical_uid)).scalar_one_or_none()
         # The business's own name stays out of the announcement: level ups reach the stream overlay.
-        if p:announce(db,p,f"LEVEL UP: {p.display_name}'s business Lv. {old} → Lv. {b.level}",now())
+        if p:announce(db,p,f"LEVEL UP: {p.display_name}'s business Lv. {old} → Lv. {b.level}",main.now())
 def success_chance(db,p,skill,base=.68,cap=.86):
     """Intrinsic chance before situational modifiers; deliberately capped."""
     spec_bonus=.03 if specialization_for(db,p,skill) else 0
-    equipment=SKILL_EQUIPMENT.get(skill);equipment_bonus=.02 if equipment and item(db,p.channel_id,p.twitch_uid,equipment)>0 else 0
-    if skill in {"fabrication","infrastructure"} and item(db,p.channel_id,p.twitch_uid,"toolkit")>0:equipment_bonus+=.02
-    if skill in {"extraction","research","frontier"} and item(db,p.channel_id,p.twitch_uid,"sensor")>0:equipment_bonus+=.02
+    equipment=SKILL_EQUIPMENT.get(skill);equipment_bonus=.02 if equipment and main.item(db,p.channel_id,p.twitch_uid,equipment)>0 else 0
+    if skill in {"fabrication","infrastructure"} and main.item(db,p.channel_id,p.twitch_uid,"toolkit")>0:equipment_bonus+=.02
+    if skill in {"extraction","research","frontier"} and main.item(db,p.channel_id,p.twitch_uid,"sensor")>0:equipment_bonus+=.02
     timed_bonus=.03 if bonus_active(db,p,"rockys_favor") else 0
     level_bonus=min(.12,(lvl(skill_xp(p,skill))-1)*.015)
     return min(cap,base+level_bonus+spec_bonus+equipment_bonus+timed_bonus)

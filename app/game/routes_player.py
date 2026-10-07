@@ -1,12 +1,42 @@
-# app/main.py, part 9: routes player
-# Routes: health, start, profile, skills, cooldowns, bonuses, guide, inventory, job, contracts, achievements, home and
-# business.
-# Runs inside app.main's namespace, after the parts before it (see main.py). Not a module of its own.
+"""Routes: health, start, profile, skills, cooldowns, bonuses, guide, inventory, job, contracts, achievements, home
+and business.
+"""
+import json
+import os
+import re
+from fastapi import HTTPException
+from fastapi.responses import PlainTextResponse
+from sqlalchemy import select, text as sql_text
+from .. import item_identity, seed_content, workbench
+from ..commands import command as colony_command, transaction as game_transaction
+from ..db import SessionLocal
+from ..needs import (
+    blocked_needs, COMFORT_BLOCK, COMFORT_SLOW, cost_text as need_cost_text, duration_text, HEAVY_ENERGY,
+    SLEEP_COOLDOWN_SECONDS, STANDARD_ENERGY, TASK_NEED_MINIMUM)
+from ..seed_skills import TASKS as SEED_TASKS
+from ..settlement import seedling as colony_seedling
+from ..models import Achievement, Business, CraftLedger, Home, ProductionOrderCompletion, QualityGear, Specialization
+from .base import app, GAME_NAME, GAME_TITLE, out, platform_response, valid_mod_key
+from .rules import (
+    ACTION_SKILLS, EVENTS, ITEM_EFFECTS, JOBS, PART_RECIPES, QUALITY_RECIPES, SKILL_ACTIONS, SKILL_LABELS,
+    SOCIETY_TIERS, SPECIALIZATIONS)
+from .players import (
+    active_bonuses, as_utc, bonuses_text, business_for, business_xp_needed, citizen_title, cost_text, equipped_title,
+    home_upgrade_cost, lvl, market_demand, player, resource_name, skill_xp, society, specialization_for, story_state,
+    tutorial_advance, tutorial_text, world)
+from .life import life_state
+from .world import directive_for, need_fix, sleep_status, society_tier, society_tier_index, world_clock
+from .cooldowns_materials import (
+    action_display_name, action_wait, available_production_orders, cooldowns_text, daily, guide_action,
+    guide_command, material_amount, material_source, order_completed)
+from .colony_events import auto_event_status, resolve_expired_event
+from .accounts import achieve, config_warnings, parts_crafted
+from .. import main      # app.main: names from later modules and settings changed at runtime
 
 @app.get("/health")
 def health(key:str=""):
     try:
-        with engine.connect() as conn:conn.execute(sql_text('SELECT 1'))
+        with main.engine.connect() as conn:conn.execute(sql_text('SELECT 1'))
         workers={}
         for name in ('queue_worker','notification_worker','discord_notification_worker','autonomy_worker'):
             worker=getattr(app.state,name,None)
@@ -21,11 +51,11 @@ def health(key:str=""):
 @app.get("/api/v1/start")
 @game_transaction
 def start(channel:str,uid:str,name:str="Citizen",provider:str="twitch"):
-    from . import onboarding
+    from .. import onboarding
     with SessionLocal() as db:
         _,p=player(db,channel,provider,uid,name)
-        if onboarding.welcome(sys.modules[__name__],db,p):
-            text=onboarding.welcome_text(sys.modules[__name__],db,p,provider);db.commit()
+        if onboarding.welcome(main,db,p):
+            text=onboarding.welcome_text(main,db,p,provider);db.commit()
             return platform_response(provider,text,text)
         discord=f"🌱 {p.display_name} — Citizen Ready\n\n🪙 Starting balance: {p.sc} SC\n💼 Next: choose a job with /job\n🧭 Need direction? Use /guide"
         twitch=f"🌱 {p.display_name} is ready in New Eridian with {p.sc} SC. Next: !job to choose work, then !guide for your best action."
@@ -138,7 +168,7 @@ def guide(channel:str,uid:str,name:str="Citizen",goal:str="auto",provider:str="t
         lines=[f"🧭 {p.display_name} — New Eridian Field Guide"]
         event_lines=[]
         if w.active_event:
-            cfg=EVENTS[w.active_event];seconds=max(0,int((as_utc(w.event_ends)-now()).total_seconds()));primary,pwait=guide_action(db,p,cfg["primary"],provider);support,swait=guide_action(db,p,cfg["support"],provider)
+            cfg=EVENTS[w.active_event];seconds=max(0,int((as_utc(w.event_ends)-main.now()).total_seconds()));primary,pwait=guide_action(db,p,cfg["primary"],provider);support,swait=guide_action(db,p,cfg["support"],provider)
             pstate="ready" if not pwait else f"{pwait}s cooldown";sstate="ready" if not swait else f"{swait}s cooldown"
             event_lines=[f"🚨 NOW: {cfg['name']} — {w.event_progress}/{w.event_goal}, {seconds//60}:{seconds%60:02d} left.",f"Best help: {primary} ({SKILL_LABELS[cfg['primary']]}, +1 progress, {pstate}).",f"Support: {support} ({SKILL_LABELS[cfg['support']]}, 2 successes = +1, {sstate})."]
         life=life_state(db,p)
@@ -196,7 +226,7 @@ def guide(channel:str,uid:str,name:str="Citizen",goal:str="auto",provider:str="t
             skill=min(SKILL_LABELS,key=lambda x:skill_xp(p,x));cmd,wait=guide_action(db,p,skill,provider);level=lvl(skill_xp(p,skill))
             lines.extend([f"🧬 Lowest aptitude: {SKILL_LABELS[skill]} Lv. {level} ({skill_xp(p,skill)} XP).",f"Train it with {cmd} "+("now." if not wait else f"in {wait}s.")+(f" At Lv. 10, use {prefix}specialize." if level<10 else f" Use {prefix}specialize if you have not chosen a path.")])
         elif selected=="crafting":
-            lines.extend(workbench.guide_lines(sys.modules[__name__],db,p,provider))
+            lines.extend(workbench.guide_lines(main,db,p,provider))
         elif selected=="home":
             h=db.execute(select(Home).where(Home.channel_id==channel,Home.canonical_uid==p.twitch_uid)).scalar_one_or_none();tier=h.tier if h else 1;cost,component_cost=home_upgrade_cost(tier)
             lines.extend(habitat_upgrade_plan(p,tier,provider))
@@ -223,19 +253,19 @@ def guide(channel:str,uid:str,name:str="Citizen",goal:str="auto",provider:str="t
 def inventory(channel:str,uid:str,name:str="Citizen",provider:str="twitch",search:str="",sort:str="",show:str="",page:int=1,text:str=""):
     with SessionLocal() as db:
         c,p=player(db,channel,provider,uid,name)
-        if text:search,sort,show,page=qol.parse_inventory_text(text)
+        if text:search,sort,show,page=main.qol.parse_inventory_text(text)
         if search or sort or show or page>1:
-            result=qol.inventory_text(sys.modules[__name__],db,p,provider,search,sort or "quantity",show or "all",page)
+            result=main.qol.inventory_text(main,db,p,provider,search,sort or "quantity",show or "all",page)
             return platform_response(provider,result,result)
         equipment=[(key,equipment_count(db,p,key)) for key in ITEM_EFFECTS]
         owned_equipment=[f"{resource_name(key)} ×{qty}: {ITEM_EFFECTS[key]}" for key,qty in equipment if qty]
-        stock=seed_content.stock(sys.modules[__name__],db,p)
+        stock=seed_content.stock(main,db,p)
         if p.cargo>0:stock['cargo']=p.cargo
         gear_keys={item_identity.canonical(k) for k,_ in equipment}
         # One list: Pumpkin, Hematite Ore, Argentite Ore and Iron Nails are ordinary items like any other.
         supplies=sorted(((k,n) for k,n in stock.items() if (k in seed_content.ACTIVE or k=='cargo') and k not in gear_keys),key=lambda row:(-row[1],resource_name(row[0])))
         gear=db.execute(select(QualityGear).where(QualityGear.channel_id==channel,QualityGear.canonical_uid==p.twitch_uid,QualityGear.qty>0)).scalars().all()
-        next_step=workbench.next_step(sys.modules[__name__],db,p,provider)
+        next_step=workbench.next_step(main,db,p,provider)
         discord=(f"🎒 {p.display_name} — Inventory\n\n🪙 {p.sc} SC"+
                  "\n\n🧰 EQUIPMENT\n"+("\n".join("• "+x for x in owned_equipment) if owned_equipment else "• None yet. Equipment appears under /make category:equipment.")+
                  "\n\n🗃️ ITEMS\n"+("\n".join(f"• {resource_name(k)} ×{n}" for k,n in supplies[:15]) if supplies else "• None yet. /gather collects natural materials.")+
@@ -262,9 +292,9 @@ def job(channel:str,uid:str,name:str="Citizen",job:str="",provider:str="twitch")
         if job not in JOBS:return out("💼 Jobs: "+", ".join(k for k in JOBS if k!="cultivator"))
         st=colony_seedling(db,p)
         history=json.loads(st.occupation_history)
-        if p.job!=job:history.append({"from":p.job,"to":job,"at":now().isoformat()})
+        if p.job!=job:history.append({"from":p.job,"to":job,"at":main.now().isoformat()})
         st.occupation_history=json.dumps(history)
-        p.job=job;p.last_job_change=now();db.commit();note=tutorial_advance(db,p,"job");return out(f"💼 {p.display_name} has occupation {JOBS[job][0]}. Matching work earns bonus SC, practice and +2% success."+note)
+        p.job=job;p.last_job_change=main.now();db.commit();note=tutorial_advance(db,p,"job");return out(f"💼 {p.display_name} has occupation {JOBS[job][0]}. Matching work earns bonus SC, practice and +2% success."+note)
 
 @app.get("/api/v1/contracts")
 @game_transaction

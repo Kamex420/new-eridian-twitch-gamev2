@@ -36,19 +36,34 @@ def test_app_imports_from_only_container_source_inputs(tmp_path):
         env=os.environ|{'DATABASE_URL':'sqlite:///'+str(tmp_path/'game.db'),'PYTHONPATH':str(tmp_path)},capture_output=True,text=True,check=True)
 
 
-def test_main_runs_its_topic_parts_inside_one_namespace():
-    """app/main.py is split into app/main_parts/NN_topic.py; the parts share app.main's namespace (docs/architecture.md)."""
-    import re
-    parts=sorted((ROOT/'app'/'main_parts').glob('*.py'))
-    assert len(parts)>10 and all(re.fullmatch(r'\d\d_[a-z_]+\.py',p.name) for p in parts)
-    assert len((ROOT/'app'/'main.py').read_text().splitlines())<40
-    assert m.work_counts.__module__=='app.main' and m.work_counts.__globals__ is vars(m)
-    assert m.work_counts.__code__.co_filename.endswith('07_colony_events.py')     # tracebacks name the part
+def test_the_game_is_split_into_modules_that_app_main_offers():
+    """app/game holds one module per topic; app.main imports them in order and offers their names (docs/architecture.md)."""
+    import importlib
+    from app import game
+    files={p.stem for p in (ROOT/'app'/'game').glob('*.py')}-{'__init__'}
+    assert set(game.MODULES)==files and len(files)>10
+    assert len((ROOT/'app'/'main.py').read_text().splitlines())<60
+    events=importlib.import_module('app.game.colony_events')
+    assert m.work_counts is events.work_counts and events.work_counts.__module__=='app.game.colony_events'
+    assert m.SessionLocal is importlib.import_module('app.game.base').SessionLocal
 
 
-def test_registrar_reads_functions_from_the_parts():
+def test_settings_changed_on_app_main_reach_the_game_modules(monkeypatch):
+    """Tests and feature modules change some names on app.main while the game runs; the modules read those through it."""
+    monkeypatch.setattr(m,'AUTO_EVENTS_ENABLED',False)
+    from app.game import colony_events
+    with m.SessionLocal() as db:
+        assert colony_events.maybe_start_auto_event(db,m.world(db,'test'))==''
+    later=m.now()+m.timedelta(days=3)
+    monkeypatch.setattr(m,'now',lambda:later)
+    from app.game import players
+    with m.SessionLocal() as db:
+        assert players.player(db,'test','twitch','zz','Zed')[1].last_seen==later
+
+
+def test_registrar_reads_function_names_from_the_game_modules():
     from scripts.register_discord_commands import main_functions
     names=main_functions()
     assert {'item_command_menu','work_counts','discord_interactions'}<=names
-    assert names>={n for n,v in vars(m).items() if callable(v) and getattr(v,'__module__','')=='app.main' and getattr(v,'__name__','')==n
-                   and not isinstance(v,type)}
+    assert names>={n for n,v in vars(m).items() if isinstance(v,type(main_functions)) and v.__name__==n
+                   and v.__module__.startswith('app.game.')}

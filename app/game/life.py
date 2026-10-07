@@ -1,17 +1,24 @@
-# app/main.py, part 4: life
-# Needs and life state, quality gear, success modifiers and progress notes.
-# Runs inside app.main's namespace, after the parts before it (see main.py). Not a module of its own.
+"""Needs and life state, quality gear, success modifiers and progress notes.
+"""
+import random
+import re
+from sqlalchemy import select
+from .. import task_yields
+from ..models import DailyVariety, LifeState, PlayerPreference, QualityGear
+from .rules import ACTION_SKILLS, HOBBIES, QUALITY_RECIPES, QUALITY_TIERS, SKILL_LABELS
+from .players import clamp100, hobby_points
+from .. import main      # app.main: names from later modules and settings changed at runtime
 
-from .needs import (decay as decay_needs, RECOVERY_HELP, TASK_NEED_MINIMUM, COMFORT_SLOW, COMFORT_BLOCK,
+from ..needs import (decay as decay_needs, RECOVERY_HELP, TASK_NEED_MINIMUM, COMFORT_SLOW, COMFORT_BLOCK,
     STANDARD_ENERGY, HEAVY_ENERGY, COMFORT_FIXES_DISCORD, COMFORT_FIXES_TWITCH, work_energy, comfort_cost, RELAX_COMFORT,
     cost_text as need_cost_text, duration_text, blocked_needs, finish_forecast)
 
 def life_state(db,p):
     row=db.execute(select(LifeState).where(LifeState.channel_id==p.channel_id,LifeState.canonical_uid==p.twitch_uid)).scalar_one_or_none()
     if not row:
-        row=LifeState(channel_id=p.channel_id,canonical_uid=p.twitch_uid,last_decay_at=now(),updated_at=now())
+        row=LifeState(channel_id=p.channel_id,canonical_uid=p.twitch_uid,last_decay_at=main.now(),updated_at=main.now())
         db.add(row);db.commit();db.refresh(row)
-    if decay_needs(row,now()):db.commit()
+    if decay_needs(row,main.now()):db.commit()
     return row
 
 def life_label(value,kind):
@@ -28,14 +35,14 @@ def task_need_gate(db,p,action,provider="twitch",life=None):
     if not blocked:return ""
     if provider=="discord" and action=="gearrepair":shown="/repair target:Personal Quality Gear"
     elif provider=="discord" and action=="make":shown="/make"
-    else:shown=guide_command(action,"discord") if provider=="discord" and action in ACTION_SKILLS else (("/" if provider=="discord" else "!")+action)
+    else:shown=main.guide_command(action,"discord") if provider=="discord" and action in ACTION_SKILLS else (("/" if provider=="discord" else "!")+action)
     if provider=="discord":
-        lines=[f"• {NEED_EMOJI[field]} {label}: {value}/100 — requires {minimum}. Fix it with {need_fix(field,provider,db,p)}." for field,label,value,minimum in blocked]
+        lines=[f"• {main.NEED_EMOJI[field]} {label}: {value}/100 — requires {minimum}. Fix it with {main.need_fix(field,provider,db,p)}." for field,label,value,minimum in blocked]
         return (f"⛔ TASK BLOCKED — {p.display_name}, {shown} did not start.\n\n"
                 "WHY\n"+"\n".join(lines)+
                 "\n\nWHAT HAPPENED\nNo resources were consumed, no rewards were rolled, and no cooldown started.\n\n"
                 "Fix every need listed above, then try the task again. Check /me section:Life Needs for your full status.")
-    details="; ".join(f"{label} {value}/100 (need {minimum}): {need_fix(field,provider,db,p)}" for field,label,value,minimum in blocked)
+    details="; ".join(f"{label} {value}/100 (need {minimum}): {main.need_fix(field,provider,db,p)}" for field,label,value,minimum in blocked)
     return f"⛔ TASK BLOCKED: {shown} did not start. {details}. Nothing was consumed, no rewards were rolled, and no cooldown started."
 
 def hobby_rank(points):
@@ -150,7 +157,7 @@ def spend_life_for_action(life,action,energy=None):
     life.comfort=clamp100(life.comfort-comfort_cost(energy))
     if life.comfort<COMFORT_SLOW:life.morale=clamp100(life.morale-1)
     if social_action:life.social=clamp100(life.social+1)
-    life.updated_at=now()
+    life.updated_at=main.now()
 
 def life_modifier_text(provider,notes,chance=None):
     if not notes:return ""

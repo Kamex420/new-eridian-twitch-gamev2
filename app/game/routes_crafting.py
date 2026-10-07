@@ -1,6 +1,29 @@
-# app/main.py, part 10: routes crafting
-# Routes and helpers for crafting: recipes, /make and equipment crafting.
-# Runs inside app.main's namespace, after the parts before it (see main.py). Not a module of its own.
+"""Routes and helpers for crafting: recipes, /make and equipment crafting.
+"""
+from fastapi.responses import PlainTextResponse
+from .. import (
+    crafting_progression, item_identity, practice, seed_content, workbench)
+from ..commands import command as colony_command, transaction as game_transaction
+from ..db import SessionLocal
+from ..needs import (
+    blocked_needs, COMFORT_BLOCK, COMFORT_SLOW, cost_text as need_cost_text, productivity, STANDARD_ENERGY)
+from ..occupations import matches as occupation_matches
+from ..seed_skills import CRAFT_PRACTICE
+from ..settlement import produce as colony_produce, state as colony_state
+from .base import app, chat_line, out, platform_response
+from .rules import (
+    CRAFT_PAY, ITEM_EFFECTS, QUALITY_RECIPES, QUALITY_TIERS, RECIPE_TIERS, RECIPES, SKILL_LABELS, SOCIETY_TIERS)
+from .players import lvl, player, requirement_text, resource_name, society, story_contribute, tutorial_advance, world
+from .life import (
+    add_quality_gear, important_progress_notes, life_state, quality_gear_special, quality_roll,
+    spend_life_for_action, task_need_gate)
+from .world import goal_progress, journal_add, need_fix, society_tier_index
+from .cooldowns_materials import (
+    craft_output_key, craft_record, determination_clear, material_amount, material_change, missing_material_sources,
+    progress_daily, unique_bonus_owned)
+from .colony_events import event_note, resolve_expired_event
+from .accounts import achieve
+from .. import main      # app.main: names from later modules and settings changed at runtime
 
 def normalize_craft_category(value):
     """Workbench category key ('' = overview); unknown values return ''."""
@@ -8,7 +31,7 @@ def normalize_craft_category(value):
 
 def craft_item_name(key):
     if key in QUALITY_RECIPES:return QUALITY_RECIPES[key]["name"]
-    found=workbench.entry(sys.modules[__name__],key)
+    found=workbench.entry(main,key)
     return found.name if found else resource_name(craft_output_key(key))
 
 @app.get("/api/v1/recipes")
@@ -18,9 +41,9 @@ def recipes(channel:str="new-eridian",provider:str="twitch",category:str=""):
     key=workbench.normalize_category(category)
     if key is None:return out("⚙️ Unknown Workbench category. Categories: "+", ".join(label for _,_,label,_ in workbench.CATEGORIES)+".")
     with SessionLocal() as db:
-        ctx=workbench.Context(sys.modules[__name__],db,None,provider)
+        ctx=workbench.Context(main,db,None,provider)
         if key:
-            rows=workbench.in_category(sys.modules[__name__],key)
+            rows=workbench.in_category(main,key)
             emoji,label,description=workbench.CATEGORY_INFO[key]
             if provider!="discord":return out(f"{emoji} {label}: "+" · ".join(f"{e.name} T{e.tier}" for e in rows[:12])+" | !make <recipe> crafts.")
             text=f"{emoji} {label}\n{description}\n{len(rows)} recipes, easiest first\n\n"+"\n".join(f"• {e.name} ×{e.quantity} — T{e.tier} · {workbench.station_label(e)} · {e.skill} Lv{e.level}" for e in rows[:40])
@@ -31,7 +54,7 @@ def recipes(channel:str="new-eridian",provider:str="twitch",category:str=""):
 
 def craft_recipe_key(value):
     """Canonical recipe id for a name, id or retired legacy recipe key."""
-    found=workbench.resolve(sys.modules[__name__],None,None,value)
+    found=workbench.resolve(main,None,None,value)
     return found.id if found else (value or "").lower().strip().replace("-","_").replace(" ","_")
 
 def craft_missing_materials(db,p,costs):
@@ -45,22 +68,22 @@ def craft_reward(db,p,s,kind,recipe=""):
     cfg=CRAFT_PAY[kind];job_bonus=1 if p.job=="technician" or occupation_matches(p.job,CRAFT_PRACTICE.get(recipe,("fabrication",None))[0]) else 0
     xp=2 if quality_gear_special(db,p,"assembly_bench")>0 else 1
     p.sc+=cfg["sc"]+job_bonus;p.contribution+=cfg["contribution"];p.actions+=1;p.successes+=1
-    s.development+=cfg["development"];xp=gain_skill(p,"fabrication",xp)
+    s.development+=cfg["development"];xp=main.gain_skill(p,"fabrication",xp)
     colony_produce(colony_state(db,p.channel_id),s,"make",productivity(life_state(db,p)))
     extra=""
     if recipe in CRAFT_PRACTICE:
         extra_skill,branch=CRAFT_PRACTICE[recipe]
-        extra_xp=gain_skill(p,extra_skill,1)
-        gain_branch(db,p,branch,extra_xp)
+        extra_xp=main.gain_skill(p,extra_skill,1)
+        main.gain_branch(db,p,branch,extra_xp)
         extra=f" · +{extra_xp} {SKILL_LABELS[extra_skill]} XP ({branch.replace('_',' ').title()})"
-    found=practice.find(sys.modules[__name__],db,p,"fabrication")
+    found=practice.find(main,db,p,"fabrication")
     return {"extra":extra,"sc":cfg["sc"]+job_bonus,"xp":xp,"contribution":cfg["contribution"],"development":cfg["development"],"job_bonus":job_bonus,
             "found":f"\n• {found}" if found else ""}
 
 def craft_system_notes(db,p,s):
     w=world(db,p.channel_id);resolve_expired_event(db,s,w)
     event=event_note(db,s,w,p,"machine")
-    project=project_contribute(db,p,"fabrication",1)
+    project=main.project_contribute(db,p,"fabrication",1)
     story=story_contribute(db,p,"fabrication")
     return event+important_progress_notes(project,story)
 
@@ -97,7 +120,7 @@ def make_text_arguments(recipe,category,page):
 @app.get("/api/v1/make")
 @colony_command
 def make(channel:str,uid:str,name:str="Citizen",recipe:str="",provider:str="twitch",category:str="",page:int=1,station:str="",action:str="craft",count:int=1):
-    module=sys.modules[__name__]
+    module=main
     recipe,category,page=make_text_arguments(recipe,category,page)
     cat=workbench.normalize_category(category)
     if cat is None:
@@ -116,9 +139,9 @@ def make(channel:str,uid:str,name:str="Citizen",recipe:str="",provider:str="twit
         if found is None:
             gathered=item_identity.RETIRED_GATHERED.get((recipe or "").strip().lower().replace(" ","_"))
             if gathered:return out(f"🌿 {resource_name(recipe)} is now {resource_name(gathered)}, a natural resource. Collect it with {seed_content.source_hint(gathered,provider)} Nothing spent.")
-            found,note,suggestions=qol.fuzzy_recipe(module,db,p,recipe,cat)
+            found,note,suggestions=main.qol.fuzzy_recipe(module,db,p,recipe,cat)
         if found is None:
-            return out(f"⚙️ Unknown recipe.{qol.did_you_mean(suggestions)} Open {'/make' if provider=='discord' else '!make'} and choose a category, then a recipe. Nothing spent.")
+            return out(f"⚙️ Unknown recipe.{main.qol.did_you_mean(suggestions)} Open {'/make' if provider=='discord' else '!make'} and choose a category, then a recipe. Nothing spent.")
         def noted(text):
             if not note:return text
             return text+"\n\n"+note if provider=="discord" else note+"\n"+text
@@ -126,34 +149,34 @@ def make(channel:str,uid:str,name:str="Citizen",recipe:str="",provider:str="twit
             text=noted(workbench.preview_text(ctx,found))
             return platform_response(provider,text,chat_line(text))
         if action=="favorite":
-            text=noted(qol.set_favorite(module,db,p,found.id));db.commit()
+            text=noted(main.qol.set_favorite(module,db,p,found.id));db.commit()
             if provider=="discord":text+="\n\n"+workbench.preview_text(workbench.Context(module,db,p,provider),found)
             return platform_response(provider,text,chat_line(text))
         if action=="fetch":
-            text,_=qol.fetch_plan(ctx,found,max(1,min(10,int(count or 1))))
+            text,_=main.qol.fetch_plan(ctx,found,max(1,min(10,int(count or 1))))
             return platform_response(provider,noted(text),noted(text))
         if action=="queue":
-            return queued_tasks(channel,uid,name,"start","make:"+found.id,count,provider)
+            return main.queued_tasks(channel,uid,name,"start","make:"+found.id,count,provider)
         life=life_state(db,p);blocked=task_need_gate(db,p,"make",provider,life)
         if blocked:return platform_response(provider,blocked,blocked)
         tier_before=ctx.tier
         if found.kind=="seed":
             result=seed_content.craft(module,db,p,found.id,provider)
             if "CRAFTING COMPLETE" in result:
-                hint=qol.action_hint(module,db,p,provider,tier_before)
+                hint=main.qol.action_hint(module,db,p,provider,tier_before)
                 result=result+hint if provider=="discord" else (hint.strip()+"\n"+result if hint else result)
             result=noted(result)
             return platform_response(provider,result,chat_line(result))
         response=craft_legacy(db,p,channel,found.id,provider,life)
         if provider=="discord":
             body=response.body.decode()
-            if "CRAFTING COMPLETE" in body:body+=qol.action_hint(module,db,p,provider,tier_before)
+            if "CRAFTING COMPLETE" in body:body+=main.qol.action_hint(module,db,p,provider,tier_before)
             return PlainTextResponse(noted(body))
         return response
 
 def craft_legacy(db,p,channel,recipe,provider,life):
     """New Eridian equipment without a catalog twin; ingredients are catalog items."""
-    station_block=crafting_progression.legacy_gate(sys.modules[__name__],db,p,recipe,provider)
+    station_block=crafting_progression.legacy_gate(main,db,p,recipe,provider)
     if station_block:return out(station_block)
     if recipe in QUALITY_RECIPES:
         r=QUALITY_RECIPES[recipe];costs=r["cost"]
@@ -166,7 +189,7 @@ def craft_legacy(db,p,channel,recipe,provider,life):
         add_quality_gear(db,p,recipe,quality)
         p._practice_quality={"Standard":1.0,"Fine":1.15,"Excellent":1.3,"Masterwork":1.5}.get(quality,1.1)
         rewards=craft_reward(db,p,society(db,channel),"quality",recipe)
-        craft_record(db,p,recipe,quality);extras.goal_crafted(sys.modules[__name__],db,p,recipe)
+        craft_record(db,p,recipe,quality);main.extras.goal_crafted(main,db,p,recipe)
         spend_life_for_action(life,"make")
         tier=QUALITY_TIERS[quality]
         effects=[]
@@ -196,7 +219,7 @@ def craft_legacy(db,p,channel,recipe,provider,life):
     if missing:return out("⚙️ Still needed: "+", ".join(missing)+". Nothing spent."+missing_material_sources(db,p,costs,provider))
     for key,amount in costs.items():material_change(db,p,key,-amount)
     material_change(db,p,recipe,1)
-    rewards=craft_reward(db,p,society_state,"core",recipe);craft_record(db,p,recipe);extras.goal_crafted(sys.modules[__name__],db,p,recipe)
+    rewards=craft_reward(db,p,society_state,"core",recipe);craft_record(db,p,recipe);main.extras.goal_crafted(main,db,p,recipe)
     spend_life_for_action(life,"make");db.commit();system_notes=craft_system_notes(db,p,society_state)
     goal_note=progress_daily(db,p,"make")+goal_progress(db,p,"make","fabrication",crafted=True)+tutorial_advance(db,p,"craft")
     milestone=achieve(db,p);determination_note=determination_clear(db,p,"fabrication")

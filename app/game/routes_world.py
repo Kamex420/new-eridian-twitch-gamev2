@@ -1,13 +1,35 @@
-# app/main.py, part 13: routes world
-# Routes: world status, rumors, collection, traits, districts, shifts, goals, projects, bulletin, meals, mentoring,
-# journal, account links, society, events and the leaderboard.
-# Runs inside app.main's namespace, after the parts before it (see main.py). Not a module of its own.
+"""Routes: world status, rumors, collection, traits, districts, shifts, goals, projects, bulletin, meals, mentoring,
+journal, account links, society, events and the leaderboard.
+"""
+import secrets
+import string
+from datetime import timedelta
+from fastapi.responses import PlainTextResponse
+from sqlalchemy import select
+from ..commands import command as colony_command, transaction as game_transaction
+from ..db import SessionLocal
+from ..settlement import state as colony_state
+from ..models import (
+    AccountLink, CollectionItem, CollectionSetClaim, CommunityMeal, EventHistory, Identity, JournalEntry, LinkCode,
+    Player, SocietyAftermath)
+from .base import app, clean, out, platform_response
+from .rules import COLLECTION_SETS, DISTRICTS, EVENTS, NPCS, RUMORS, SHIFT_ROLES, SKILL_LABELS
+from .players import (
+    as_utc, clamp100, lvl, player, record_account_name, resolve, skill_xp, society, story_state, tutorial_advance,
+    world)
+from .life import life_state
+from .world import (
+    _stable_index, active_statuses, add_status, directive_for, find_player_name, housing_status_text, journal_add,
+    player_world, project_cfg, shortages, society_tier, trait_data, world_clock)
+from .cooldowns_materials import daily, material_source
+from .colony_events import event_contributors, EVENT_WORK, leader_text, resolve_expired_event, stat_changes_text
+from .. import main      # app.main: names from later modules and settings changed at runtime
 
 @app.get("/api/v1/world")
 @colony_command
 def world_status(channel:str,uid:str="",name:str="Citizen",provider:str="twitch"):
     with SessionLocal() as db:
-        s=society(db,channel);clock=world_clock(db,channel,s);proj=current_project(db,channel,clock["day"]);pcfg=project_cfg(proj.project_key)
+        s=society(db,channel);clock=world_clock(db,channel,s);proj=main.current_project(db,channel,clock["day"]);pcfg=project_cfg(proj.project_key)
         storyrow,storycfg=story_state(db,channel,clock)
         rumor=RUMORS[_stable_index(f"{channel}:{clock['day']}:rumor",len(RUMORS))]
         low=shortages(s);shared=colony_state(db,channel)
@@ -100,7 +122,7 @@ def personal_goal(channel:str,uid:str,name:str="Citizen",provider:str="twitch"):
 @colony_command
 def projectstatus(channel:str,provider:str="twitch"):
     with SessionLocal() as db:
-        clock=world_clock(db,channel);row=current_project(db,channel,clock["day"]);cfg=project_cfg(row.project_key)
+        clock=world_clock(db,channel);row=main.current_project(db,channel,clock["day"]);cfg=project_cfg(row.project_key)
         skills=", ".join(SKILL_LABELS[x] for x in sorted(cfg[3]))
         return out(f"🏗️ {cfg[1]} | {row.progress}/{row.goal} | Useful aptitudes: {skills} | Completed projects: {row.completed}")
 
@@ -108,9 +130,9 @@ def projectstatus(channel:str,provider:str="twitch"):
 @game_transaction
 def bulletin(channel:str,provider:str="twitch"):
     with SessionLocal() as db:
-        clock=world_clock(db,channel);proj=current_project(db,channel,clock["day"]);cfg=project_cfg(proj.project_key)
+        clock=world_clock(db,channel);proj=main.current_project(db,channel,clock["day"]);cfg=project_cfg(proj.project_key)
         directive,dcfg=directive_for(db,channel,clock["day"])
-        aftermath=db.execute(select(SocietyAftermath).where(SocietyAftermath.channel_id==channel,SocietyAftermath.expires_at>now()).order_by(SocietyAftermath.expires_at.desc())).scalars().first()
+        aftermath=db.execute(select(SocietyAftermath).where(SocietyAftermath.channel_id==channel,SocietyAftermath.expires_at>main.now()).order_by(SocietyAftermath.expires_at.desc())).scalars().first()
         tasks=[
             f"Daily Directive: {dcfg[1]} {directive.progress}/{directive.goal} — use {', '.join(SKILL_LABELS[x] for x in sorted(dcfg[2]))}",
             f"Society Project: contribute with {', '.join(SKILL_LABELS[x] for x in cfg[3])}",
@@ -150,7 +172,7 @@ def mentor(channel:str,uid:str,name:str="Citizen",target:str="",provider:str="tw
         # free XP every day.
         if lvl(skill_xp(p,skill))<=lvl(skill_xp(target_p,skill)):
             return out(f"🧑‍🏫 To mentor {target_p.display_name} in {SKILL_LABELS[skill]} you need a higher level than theirs (you Lv.{lvl(skill_xp(p,skill))}, them Lv.{lvl(skill_xp(target_p,skill))}). Nothing changed.")
-        mentored_gain=gain_skill(target_p,skill,2);p.contribution+=2;pw.mentor_day=clock["day"];db.commit()
+        mentored_gain=main.gain_skill(target_p,skill,2);p.contribution+=2;pw.mentor_day=clock["day"];db.commit()
         journal_add(db,p,f"Mentored {target_p.display_name} in {SKILL_LABELS[skill]}.")
         return out(f"🧑‍🏫 {p.display_name} mentors {target_p.display_name}. {target_p.display_name} gains +{mentored_gain} {SKILL_LABELS[skill]} competency XP; mentor gains +2 Contribution.")
 
@@ -169,7 +191,7 @@ def journal(channel:str,uid:str,name:str="Citizen",provider:str="twitch"):
 def link_create(channel:str,uid:str,name:str="Citizen",provider:str="twitch"):
     with SessionLocal() as db:
         c=resolve(db,channel,provider,uid);record_account_name(db,channel,provider,uid,name);code="".join(secrets.choice(string.ascii_uppercase+string.digits) for _ in range(6))
-        db.add(LinkCode(channel_id=channel,canonical_uid=c,code=code,expires_at=now()+timedelta(minutes=15)));db.commit()
+        db.add(LinkCode(channel_id=channel,canonical_uid=c,code=code,expires_at=main.now()+timedelta(minutes=15)));db.commit()
         return out(f"🔗 Link code {code}. In Discord use /link {code} within 15 minutes.")
 
 @app.get("/api/v1/link/claim")
@@ -182,11 +204,11 @@ def link_claim(channel:str,discord_uid:str,name:str="Citizen",code:str=""):
             elsewhere=db.execute(select(LinkCode.channel_id).where(LinkCode.code==code.upper())).scalar_one_or_none()
             if elsewhere:
                 # The code was made in another world: Twitch's channel ID is not DISCORD_WORLD_ID, so linking can never work.
-                RUNTIME_WARNINGS.add(f"A !link code from channel {elsewhere} was used on Discord, whose world is {channel}: Twitch and Discord do not share one world. "
+                main.RUNTIME_WARNINGS.add(f"A !link code from channel {elsewhere} was used on Discord, whose world is {channel}: Twitch and Discord do not share one world. "
                                      f"Merge them (do not only set DISCORD_WORLD_ID={elsewhere}: that hides every Discord character): open "
                                      f"/api/v1/admin/world-merge?source={channel}&target={elsewhere}&key=<ADMIN_KEY> to preview, then add &confirm=1.")
                 return out("⛔ That code is from a different New Eridian world, so it cannot link here. Ask a moderator to check the game's /health page (DISCORD_WORLD_ID).")
-        if not r or as_utc(r.expires_at)<now():return out("⛔ Invalid or expired code.")
+        if not r or as_utc(r.expires_at)<main.now():return out("⛔ Invalid or expired code.")
         discord_link=db.execute(select(AccountLink).where(AccountLink.channel_id==channel,AccountLink.discord_uid==discord_uid)).scalar_one_or_none()
         twitch_link=db.execute(select(AccountLink).where(AccountLink.channel_id==channel,AccountLink.twitch_uid==r.canonical_uid)).scalar_one_or_none()
         if discord_link and discord_link.twitch_uid!=r.canonical_uid:return out("⛔ This Discord account is already permanently linked to another Twitch character.")
@@ -196,7 +218,7 @@ def link_claim(channel:str,discord_uid:str,name:str="Citizen",code:str=""):
         orphan=db.execute(select(Player).where(Player.channel_id==channel,Player.twitch_uid==orphan_uid)).scalar_one_or_none()
         # Prefer a legacy Discord-only row so accounts linked before v5.1.1 can relink once and recover it.
         source_uid=orphan_uid if orphan else (x.canonical_uid if x else orphan_uid)
-        merged=merge_accounts(db,channel,source_uid,r.canonical_uid)
+        merged=main.merge_accounts(db,channel,source_uid,r.canonical_uid)
         if x:x.canonical_uid=r.canonical_uid
         else:db.add(Identity(channel_id=channel,provider="discord",provider_uid=discord_uid,canonical_uid=r.canonical_uid))
         if not discord_link and not twitch_link:db.add(AccountLink(channel_id=channel,twitch_uid=r.canonical_uid,discord_uid=discord_uid))
@@ -223,7 +245,7 @@ def event(channel:str,provider:str="twitch",viewer:str=""):
         s=society(db,channel);w=world(db,channel);expired=resolve_expired_event(db,s,w)
         if expired:return out(expired)
         if not w.active_event:return out("🚨 No active live event.")
-        cfg=EVENTS[w.active_event];seconds=max(0,int((as_utc(w.event_ends)-now()).total_seconds()));pct=int((w.event_progress/w.event_goal)*100) if w.event_goal else 0;leaders=event_contributors(db,w)
+        cfg=EVENTS[w.active_event];seconds=max(0,int((as_utc(w.event_ends)-main.now()).total_seconds()));pct=int((w.event_progress/w.event_goal)*100) if w.event_goal else 0;leaders=event_contributors(db,w)
         penalty=stat_changes_text(cfg["penalty"],"−")
         if provider=="discord":
             return PlainTextResponse(f"🚨 {cfg['emoji']} {cfg['name']}\n\n"+(f"{clean(viewer)}, New Eridian needs your response.\n\n" if viewer else "")+f"📊 STATUS\nProgress: {w.event_progress}/{w.event_goal} ({pct}%)\nTime remaining: {seconds//60}:{seconds%60:02d}\n\n🎯 HOW TO HELP\nPrimary: {SKILL_LABELS[cfg['primary']]} — each success adds +1\n  {EVENT_WORK.get(cfg['primary'],'')}\nSupport: {SKILL_LABELS[cfg['support']]} — {w.event_support_successes}/2 toward +1\n  {EVENT_WORK.get(cfg['support'],'')}\nQueues and Seedlings count too.\n\n⚠️ Full failure penalty: {penalty}\n🏅 Leaders: {leader_text(leaders)}\n\nUse /guide goal:event for your personal best available command.")

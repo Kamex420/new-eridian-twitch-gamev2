@@ -1,6 +1,22 @@
-# app/main.py, part 14: overlay state
-# The stream overlay data (/api/v1/overlay).
-# Runs inside app.main's namespace, after the parts before it (see main.py). Not a module of its own.
+"""The stream overlay data (/api/v1/overlay).
+"""
+import os
+import re
+import time
+from datetime import timedelta
+from sqlalchemy import select
+from ..commands import transaction as game_transaction
+from ..db import SessionLocal
+from ..settlement import pressures as colony_pressures, state as colony_state
+from ..models import (
+    ActionLog, DailyVariety, DirectiveParticipant, GearFamiliarity, LoreDiscovery, Player, PlayerPreference,
+    RelationshipMemory, Society, SocietyAftermath)
+from .base import app
+from .rules import EVENTS, LORE_FRAGMENTS, RUMORS, SKILL_LABELS, SOCIETY_TIERS
+from .players import as_utc, demand_price, market_demand, resource_name, society, story_state, world
+from .world import _stable_index, directive_for, project_cfg, shortages, society_tier, world_clock
+from .colony_events import event_contributors, resolve_expired_event
+from .. import main      # app.main: names from later modules and settings changed at runtime
 
 OVERLAY_CACHE_SECONDS=float(os.getenv("OVERLAY_CACHE_SECONDS","5"))   # the OBS pages poll every 3-5 seconds
 _overlay_cache={};_overlay_lock=__import__("threading").Lock()
@@ -14,13 +30,13 @@ def overlay_state(channel:str):
     world lock the computation takes is not held on every poll (which slowed
     Discord buttons down)."""
     cached=_overlay_cache.get(channel)
-    if cached and time.monotonic()-cached[0]<OVERLAY_CACHE_SECONDS:return cached[1]
-    from . import world_guard
+    if cached and time.monotonic()-cached[0]<main.OVERLAY_CACHE_SECONDS:return cached[1]
+    from .. import world_guard
     # A channel with no world shows the main world (and shares its cache entry) instead of a cache slot of its own.
-    if channel!=DISCORD_WORLD_ID and not world_guard.known(sys.modules[__name__],channel):channel=DISCORD_WORLD_ID
+    if channel!=main.DISCORD_WORLD_ID and not world_guard.known(main,channel):channel=main.DISCORD_WORLD_ID
     with _overlay_lock:
         cached=_overlay_cache.get(channel)
-        if cached and time.monotonic()-cached[0]<OVERLAY_CACHE_SECONDS:return cached[1]
+        if cached and time.monotonic()-cached[0]<main.OVERLAY_CACHE_SECONDS:return cached[1]
         data=overlay_state_fresh(channel)
         while len(_overlay_cache)>=50:_overlay_cache.pop(min(_overlay_cache,key=lambda k:_overlay_cache[k][0]))   # drop the oldest
         _overlay_cache[channel]=(time.monotonic(),data)
@@ -30,17 +46,17 @@ def overlay_state(channel:str):
 def overlay_state_fresh(channel:str):
     """The overlay data, computed now."""
     with SessionLocal() as db:
-        source_ids=list(dict.fromkeys([DISCORD_WORLD_ID,channel]))
+        source_ids=list(dict.fromkeys([main.DISCORD_WORLD_ID,channel]))
 
         # New Eridian's shared world is authoritative for Avesta state.
-        s=society(db,DISCORD_WORLD_ID)
-        clock=world_clock(db,DISCORD_WORLD_ID,s)
-        w=world(db,DISCORD_WORLD_ID)
+        s=society(db,main.DISCORD_WORLD_ID)
+        clock=world_clock(db,main.DISCORD_WORLD_ID,s)
+        w=world(db,main.DISCORD_WORLD_ID)
         resolve_expired_event(db,s,w)
 
         # Combine society telemetry when Twitch and Discord have separate legacy rows.
         sources=[s]
-        if channel!=DISCORD_WORLD_ID:
+        if channel!=main.DISCORD_WORLD_ID:
             other=db.execute(select(Society).where(Society.channel_id==channel)).scalar_one_or_none()
             if other:
                 resolve_expired_event(db,other,world(db,channel))
@@ -61,7 +77,7 @@ def overlay_state_fresh(channel:str):
         }
 
         # Society project.
-        project=current_project(db,DISCORD_WORLD_ID,clock["day"])
+        project=main.current_project(db,main.DISCORD_WORLD_ID,clock["day"])
         pcfg=project_cfg(project.project_key)
         project_data={
             "key":project.project_key,
@@ -74,7 +90,7 @@ def overlay_state_fresh(channel:str):
         }
 
         # Weekly community story.
-        storyrow,storycfg=story_state(db,DISCORD_WORLD_ID,clock)
+        storyrow,storycfg=story_state(db,main.DISCORD_WORLD_ID,clock)
         story_values=[storyrow.track_a,storyrow.track_b,storyrow.track_c]
         story_total=sum(story_values)
         story_tracks=[
@@ -94,10 +110,10 @@ def overlay_state_fresh(channel:str):
         }
 
         # Current market demand.
-        primary_market,secondary_market=market_demand(DISCORD_WORLD_ID,clock["day"])
+        primary_market,secondary_market=market_demand(main.DISCORD_WORLD_ID,clock["day"])
         market_prices={
             k:demand_price(k,clock["day"])
-            for k in market_demand(DISCORD_WORLD_ID,clock["day"])
+            for k in market_demand(main.DISCORD_WORLD_ID,clock["day"])
         }
         market_data={
             "primary":{"key":primary_market,"name":resource_name(primary_market),"price":market_prices[primary_market]},
@@ -107,7 +123,7 @@ def overlay_state_fresh(channel:str):
 
         # Shortage pressure and current rumor.
         pressure=[x[0] for x in shortages(total)]
-        rumor=RUMORS[_stable_index(f"{DISCORD_WORLD_ID}:{clock['day']}:rumor",len(RUMORS))]
+        rumor=RUMORS[_stable_index(f"{main.DISCORD_WORLD_ID}:{clock['day']}:rumor",len(RUMORS))]
 
         # Recent activity feed.
         recent=db.execute(
@@ -138,7 +154,7 @@ def overlay_state_fresh(channel:str):
                 "at":as_utc(row.created_at).isoformat(),
             })
 
-        cutoff=now()-timedelta(minutes=30)
+        cutoff=main.now()-timedelta(minutes=30)
         active_uids=set(db.execute(
             select(ActionLog.canonical_uid).where(
                 ActionLog.channel_id.in_(source_ids),
@@ -158,7 +174,7 @@ def overlay_state_fresh(channel:str):
                 "progress":w.event_progress,
                 "goal":w.event_goal,
                 "percent":min(100,round((w.event_progress/max(1,w.event_goal))*100,1)),
-                "seconds_remaining":max(0,int((as_utc(w.event_ends)-now()).total_seconds())),
+                "seconds_remaining":max(0,int((as_utc(w.event_ends)-main.now()).total_seconds())),
                 "primary":SKILL_LABELS.get(cfg["primary"],cfg["primary"].title()),
                 "support":SKILL_LABELS.get(cfg["support"],cfg["support"].title()),
                 "support_progress":w.event_support_successes,
@@ -172,7 +188,7 @@ def overlay_state_fresh(channel:str):
         # v6.0+ engagement telemetry. These are deliberately summarized at
         # society level so the stream overlay stays useful without exposing a
         # citizen's private inventory or requiring a viewer identity.
-        directive,dcfg=directive_for(db,DISCORD_WORLD_ID,clock["day"])
+        directive,dcfg=directive_for(db,main.DISCORD_WORLD_ID,clock["day"])
         directive_participants=db.execute(
             select(DirectiveParticipant).where(
                 DirectiveParticipant.channel_id.in_(source_ids),
@@ -195,7 +211,7 @@ def overlay_state_fresh(channel:str):
         aftermath_rows=db.execute(
             select(SocietyAftermath).where(
                 SocietyAftermath.channel_id.in_(source_ids),
-                SocietyAftermath.expires_at>now()
+                SocietyAftermath.expires_at>main.now()
             ).order_by(SocietyAftermath.expires_at.desc())
         ).scalars().all()
         aftermath_data=None
@@ -207,7 +223,7 @@ def overlay_state_fresh(channel:str):
                 "modifier":aftermath.modifier,
                 "description":aftermath.description,
                 "skills":[SKILL_LABELS.get(x,x.title()) for x in aftermath.skills.split(",") if x],
-                "seconds_remaining":max(0,int((as_utc(aftermath.expires_at)-now()).total_seconds())),
+                "seconds_remaining":max(0,int((as_utc(aftermath.expires_at)-main.now()).total_seconds())),
             }
 
         variety_rows=db.execute(
@@ -239,10 +255,10 @@ def overlay_state_fresh(channel:str):
             "lore_total":len(LORE_FRAGMENTS),
         }
 
-        from . import stream_overlay
-        stream_overlay.watch(sys.modules[__name__],db,DISCORD_WORLD_ID,tier[0],project_data,story_data,directive_data)
-        stream_extra=stream_overlay.extra(sys.modules[__name__],db,source_ids,DISCORD_WORLD_ID)
-        stream_extra.update(community.overlay_data(sys.modules[__name__],db,stream_extra.get("seedlings",[])))
+        from .. import stream_overlay
+        stream_overlay.watch(main,db,main.DISCORD_WORLD_ID,tier[0],project_data,story_data,directive_data)
+        stream_extra=stream_overlay.extra(main,db,source_ids,main.DISCORD_WORLD_ID)
+        stream_extra.update(main.community.overlay_data(main,db,stream_extra.get("seedlings",[])))
         db.commit()
         return {
             **stream_extra,
@@ -279,8 +295,8 @@ def overlay_state_fresh(channel:str):
             "activity":activity,
             "active_players":len(active_uids),
             "last_action":activity[0] if activity else None,
-            "updated_at":now().isoformat(),
+            "updated_at":main.now().isoformat(),
             "world_sources":source_ids,
-            "primary_world":DISCORD_WORLD_ID,
+            "primary_world":main.DISCORD_WORLD_ID,
             "overlay_version":"6.4.0",
         }

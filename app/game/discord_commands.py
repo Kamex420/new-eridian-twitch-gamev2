@@ -1,9 +1,28 @@
-# app/main.py, part 20: discord commands
-# Discord command schema, legacy routes and copy, JSON messages, autocomplete and option checks.
-# Runs inside app.main's namespace, after the parts before it (see main.py). Not a module of its own.
+"""Discord command schema, legacy routes and copy, JSON messages, autocomplete and option checks.
+"""
+import re
+from sqlalchemy import select
+from .. import (
+    crafting_progression, item_identity, message_layout, seed_content,
+    task_yields, workbench)
+from ..db import SessionLocal
+from ..needs import comfort_cost, HEAVY_ENERGY, STANDARD_ENERGY
+from ..seed_skills import TASKS as SEED_TASKS
+from ..models import Identity, Player, PlayerTitle, QualityGear
+from .base import DISCORD_EMOJI_MAP
+from .rules import ACTION_SKILLS, QUALITY_RECIPES, SEED_INDUSTRIES, SKILL_LABELS, TITLE_DEFS
+from .players import lvl, resource_name, skill_xp, society
+from .life import task_energy
+from .world import society_tier_index, world_clock
+from .cooldowns_materials import available_production_orders, DISCORD_ACTION_ROUTES, material_amount
+from .routes_market import gear_repair_cost, market_item_label
+from .discord_embeds import (
+    _discord_clean_piece, _discord_embed_color, _discord_pretty_embed, discord_message_category,
+    discord_message_status)
+from .. import main      # app.main: names from later modules and settings changed at runtime
 
 # The published flat option schema is also used to validate requests.
-from .command_catalog import commands as DISCORD_COMMAND_CATALOG, legacy_commands as DISCORD_LEGACY_COMMANDS
+from ..command_catalog import commands as DISCORD_COMMAND_CATALOG, legacy_commands as DISCORD_LEGACY_COMMANDS
 # Registered commands plus retired ones that grouped commands translate into.
 DISCORD_OPTION_SCHEMA = {row["name"]: row.get("options", []) for row in DISCORD_COMMAND_CATALOG+DISCORD_LEGACY_COMMANDS}
 DISCORD_REGISTERED = {row["name"] for row in DISCORD_COMMAND_CATALOG}
@@ -65,7 +84,7 @@ def recipe_display_labels():
     """Recipe ids (and retired legacy keys) shown as their item names in Discord copy."""
     global _RECIPE_LABELS
     if _RECIPE_LABELS is None:
-        labels={e.id:e.name for e in workbench.index(sys.modules[__name__])}
+        labels={e.id:e.name for e in workbench.index(main)}
         labels.update({old:labels[rid] for old,rid in item_identity.RETIRED_RECIPES.items() if rid in labels})
         labels.update({name:name for name in set(labels.values())})
         _RECIPE_LABELS=labels
@@ -200,7 +219,7 @@ def _discord_json_message(content: str, ephemeral: bool = False, message_type: s
     if omitted:
         kept.append({"name":"More detail", "value":"This view is long. Choose a specific section, crafting category, or handbook topic to see its full details.", "inline":False})
     embed["fields"]=kept
-    data=message_layout.render(sys.modules[__name__],embed,content,command)
+    data=message_layout.render(main,embed,content,command)
     if ephemeral:
         data["flags"]=64
     return {"type":4,"data":data}
@@ -269,7 +288,7 @@ def _discord_existing_player(payload):
     with SessionLocal() as db:
         ident=db.execute(
             select(Identity).where(
-                Identity.channel_id==DISCORD_WORLD_ID,
+                Identity.channel_id==main.DISCORD_WORLD_ID,
                 Identity.provider=="discord",
                 Identity.provider_uid==uid
             )
@@ -277,7 +296,7 @@ def _discord_existing_player(payload):
         canonical=ident.canonical_uid if ident else "discord:"+uid
         p=db.execute(
             select(Player).where(
-                Player.channel_id==DISCORD_WORLD_ID,
+                Player.channel_id==main.DISCORD_WORLD_ID,
                 Player.twitch_uid==canonical
             )
         ).scalar_one_or_none()
@@ -286,12 +305,12 @@ def _discord_existing_player(payload):
 def _discord_player_autocomplete(payload,query=""):
     uid,_=_discord_user(payload)
     with SessionLocal() as db:
-        identity=db.execute(select(Identity).where(Identity.channel_id==DISCORD_WORLD_ID,Identity.provider=='discord',Identity.provider_uid==uid)).scalar_one_or_none()
+        identity=db.execute(select(Identity).where(Identity.channel_id==main.DISCORD_WORLD_ID,Identity.provider=='discord',Identity.provider_uid==uid)).scalar_one_or_none()
         own_uid=identity.canonical_uid if identity else 'discord:'+uid
         # Only the columns the menu needs; duplicates are counted once instead of comparing every pair per keystroke.
         rows=db.execute(
             select(Player.id,Player.twitch_uid,Player.display_name)
-            .where(Player.channel_id==DISCORD_WORLD_ID)
+            .where(Player.channel_id==main.DISCORD_WORLD_ID)
             .order_by(Player.display_name)
         ).all()
         from collections import Counter
@@ -312,7 +331,7 @@ def _discord_title_autocomplete(payload,query=""):
         rows=db.execute(
             select(PlayerTitle)
             .where(
-                PlayerTitle.channel_id==DISCORD_WORLD_ID,
+                PlayerTitle.channel_id==main.DISCORD_WORLD_ID,
                 PlayerTitle.canonical_uid==p.twitch_uid
             )
             .order_by(PlayerTitle.unlocked_at)
@@ -331,7 +350,7 @@ def _discord_gear_autocomplete(payload,query=""):
         rows=db.execute(
             select(QualityGear)
             .where(
-                QualityGear.channel_id==DISCORD_WORLD_ID,
+                QualityGear.channel_id==main.DISCORD_WORLD_ID,
                 QualityGear.canonical_uid==p.twitch_uid,
                 QualityGear.qty>0
             )
@@ -352,7 +371,7 @@ def _discord_make_autocomplete(payload:dict):
     category=workbench.normalize_category(values.get("category")) or ""
     _,_,current_player=_discord_existing_player(payload)
     with SessionLocal() as db:
-        ctx=workbench.Context(sys.modules[__name__],db,current_player,"discord")
+        ctx=workbench.Context(main,db,current_player,"discord")
         if focused.get("name")=="station":
             return _discord_autocomplete_choices(workbench.station_rows(ctx,query))
         if focused.get("name")!="recipe":return {"type":8,"data":{"choices":[]}}
@@ -363,7 +382,7 @@ def ore_choice_rows(db,p):
     """Mining dropdown: status, owned, needs per attempt, cooldown and locks."""
     harvesting=lvl(skill_xp(p,"extraction")) if p else 1
     rows=[]
-    for key in sorted(task_queue.ores(),key=lambda k:(k in crafting_progression.RARE,seed_content.item_label(k))):
+    for key in sorted(main.task_queue.ores(),key=lambda k:(k in crafting_progression.RARE,seed_content.item_label(k))):
         owned=material_amount(db,p,key) if p else 0
         rare=key in crafting_progression.RARE
         energy=HEAVY_ENERGY if rare else STANDARD_ENERGY
@@ -376,11 +395,11 @@ def ore_choice_rows(db,p):
 
 def queue_choice_rows(db,p,query=""):
     """Queue dropdown: every task with its icon, cost and (for recipes) status."""
-    module=sys.modules[__name__];q=str(query or "").casefold().strip()
+    module=main;q=str(query or "").casefold().strip()
     ctx=workbench.Context(module,db,p)
     harvesting=lvl(skill_xp(p,"extraction")) if p else 1
     rows=[]
-    for key,label in task_queue.choices(module).items():
+    for key,label in main.task_queue.choices(module).items():
         if q and q not in (label+" "+key).casefold():continue
         kind,target=key.split(":",1)
         if kind=="make":
@@ -439,12 +458,12 @@ def _discord_autocomplete(payload:dict):
     if command=='workshop' and option=='station':
         _,_,p=_discord_existing_player(payload)
         with SessionLocal() as db:
-            return _discord_autocomplete_choices(workbench.station_rows(workbench.Context(sys.modules[__name__],db,p),query))
+            return _discord_autocomplete_choices(workbench.station_rows(workbench.Context(main,db,p),query))
     if command in {'catalog','gather'} and option in {'item','resource'}:
         import sys
         _,_,p=_discord_existing_player(payload)
         with SessionLocal() as db:
-            return _discord_autocomplete_choices(seed_content.choices(sys.modules[__name__],db,p,gather_only=command=='gather',category=selected.get('category',''),owned=bool(selected.get('owned',False))),query)
+            return _discord_autocomplete_choices(seed_content.choices(main,db,p,gather_only=command=='gather',category=selected.get('category',''),owned=bool(selected.get('owned',False))),query)
     if command=='training' and option=='task':
         hub=selected.get('skill')
         _,_,p=_discord_existing_player(payload)
@@ -458,20 +477,20 @@ def _discord_autocomplete(payload:dict):
         _,_,p=_discord_existing_player(payload)
         if not p:return _discord_autocomplete_choices([])
         with SessionLocal() as db:
-            foods=edible_inventory(db,p)
+            foods=main.edible_inventory(db,p)
             rows=[(f"{row['name']} ×{row['qty']} — {row['effect']}",row['key']) for row in foods if row['qty']>0]
-            if emergency_food_available(db,p,foods):rows.append(("Emergency Meal — free; restores Nutrition to 40","emergency"))
+            if main.emergency_food_available(db,p,foods):rows.append(("Emergency Meal — free; restores Nutrition to 40","emergency"))
             return _discord_autocomplete_choices(rows,query)
 
     if command=="seedindustries" and option=="item":
         values=_discord_options(payload);mode=values.get("action","browse")
         with SessionLocal() as db:
             if mode=="fulfill":
-                state=society(db,DISCORD_WORLD_ID);clock=world_clock(db,DISCORD_WORLD_ID)
-                rows=[(data["name"],key) for key,data in available_production_orders(DISCORD_WORLD_ID,clock["day"],society_tier_index(state))]
+                state=society(db,main.DISCORD_WORLD_ID);clock=world_clock(db,main.DISCORD_WORLD_ID)
+                rows=[(data["name"],key) for key,data in available_production_orders(main.DISCORD_WORLD_ID,clock["day"],society_tier_index(state))]
             elif mode in {"buy","sell"}:
                 _,_,p=_discord_existing_player(payload)
-                stock=seed_content.stock(sys.modules[__name__],db,p)
+                stock=seed_content.stock(main,db,p)
                 def owned(key):return (p.cargo if p else 0) if key=="cargo" else stock.get(key,0)
                 rows=[(f"{market_item_label(key)} — {data[mode]} SC each · you have {owned(key)}",key) for key,data in sorted(SEED_INDUSTRIES.items(),key=lambda kv:(-owned(kv[0]) if mode=="sell" else 0,market_item_label(kv[0]))) if data.get(mode,0)>0 and (values.get("category","all")=="all" or data.get("category","legacy")==values["category"]) and (mode=="buy" or owned(key)>0)]
             else:rows=[]
@@ -481,9 +500,9 @@ def _discord_autocomplete(payload:dict):
         _,_,p=_discord_existing_player(payload)
         if not p:return _discord_autocomplete_choices([])
         with SessionLocal() as db:
-            owned=owned_life_items(db,p)
+            owned=main.owned_life_items(db,p)
             import sys
-            source=seed_content.choices(sys.modules[__name__],db,p,category=selected.get('category',''),owned=True,usable=True)
+            source=seed_content.choices(main,db,p,category=selected.get('category',''),owned=True,usable=True)
             effects={"meal_kit":"+75 Nutrition, +5 Morale","recreation_set":"+28 Social, +12 Morale","comfort_pack":"+40 Comfort, +8 Energy"}
             legacy=[] if selected.get('category') else [(f"{QUALITY_RECIPES[key]['name']} ×{sum(row.qty for row in rows)} — consumes 1: {effects[key]} (best quality first)",key) for key,rows in owned.items() if rows]
             return _discord_autocomplete_choices(source+legacy,query)
@@ -508,9 +527,9 @@ def _discord_autocomplete(payload:dict):
     return {"type":8,"data":{"choices":[]}}
 
 def _discord_allowed_channel(payload: dict):
-    if not DISCORD_GAME_CHANNEL_ID:
+    if not main.DISCORD_GAME_CHANNEL_ID:
         return True
-    return str(payload.get("channel_id") or "") == str(DISCORD_GAME_CHANNEL_ID)
+    return str(payload.get("channel_id") or "") == str(main.DISCORD_GAME_CHANNEL_ID)
 
 def _discord_is_moderator(payload:dict):
     """Moderator tools (events, challenges, live, recap, feed, panels, the moderator log) are the owner's alone:
@@ -519,11 +538,11 @@ def _discord_is_moderator(payload:dict):
 
 def _discord_is_owner(payload:dict):
     uid,_=_discord_user(payload)
-    return bool(DISCORD_OWNER_USER_IDS) and str(uid) in DISCORD_OWNER_USER_IDS
+    return bool(main.DISCORD_OWNER_USER_IDS) and str(uid) in main.DISCORD_OWNER_USER_IDS
 
 def _discord_owner_denied(uid,what="moderator tools"):
     """Why a Discord account cannot use an owner-only tool, with the ID to put in DISCORD_OWNER_USER_IDS."""
-    return (f"⛔ Only the game owner can use {what}. Detected Discord ID: {uid} | Owner IDs loaded: {len(DISCORD_OWNER_USER_IDS)}. "
+    return (f"⛔ Only the game owner can use {what}. Detected Discord ID: {uid} | Owner IDs loaded: {len(main.DISCORD_OWNER_USER_IDS)}. "
             f"If this is you, make sure Railway DISCORD_OWNER_USER_IDS contains this exact numeric ID, then redeploy.")
 
 def _discord_validate_options(command,options):

@@ -21,9 +21,9 @@ def signature(command):
 
 
 def main_functions():
-    """Top-level function names of app.main, read without importing it (main.py runs the files in app/main_parts)."""
+    """Top-level function names of app.main, read without importing it (app.main offers those of app/game/*.py)."""
     app_dir = Path(__file__).resolve().parents[1] / 'app'
-    sources = [app_dir / 'main.py', *sorted((app_dir / 'main_parts').glob('[0-9][0-9]_*.py'))]
+    sources = [app_dir / 'main.py', *sorted((app_dir / 'game').glob('*.py'))]
     return {n.name for source in sources for n in ast.parse(source.read_text(encoding='utf-8')).body
             if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
 

@@ -1,12 +1,36 @@
-# app/main.py, part 12: routes market
-# Routes: market board, selling, workshops, Seed Industries, duo work, ducks, gear and using items.
-# Runs inside app.main's namespace, after the parts before it (see main.py). Not a module of its own.
+"""Routes: market board, selling, workshops, Seed Industries, duo work, ducks, gear and using items.
+"""
+import math
+from fastapi.responses import PlainTextResponse
+from sqlalchemy import select
+from .. import crafting_progression, item_identity, practice, seed_content
+from ..commands import command as colony_command, transaction as game_transaction
+from ..db import SessionLocal
+from ..needs import cost_text as need_cost_text, duration_text, work_energy
+from ..models import GearFamiliarity, LifeRelationship, ProductionOrderCompletion, QualityGear
+from .base import app, chat_line, out, platform_response
+from .rules import (
+    DELIVERY_DUCKS, DUCK_PERSONALITY, DUO_ACTIVITIES, LIFE_GEAR, QUALITY_RECIPES, QUALITY_TIERS, SEED_INDUSTRIES)
+from .players import (
+    clamp100, cost_text, demand_price, duck_bond, duck_rank, lvl, market_demand, player, requirement_text,
+    resource_name, sale_price, skill_xp, society)
+from .life import life_state, player_preference, spend_life_for_action, task_need_gate
+from .world import (
+    effective_relationship, find_player_name, gear_familiarity_rank, journal_add, relationship_add,
+    relationship_memory, society_tier_index, world_clock)
+from .cooldowns_materials import (
+    available_production_orders, check_cooldown, material_amount, material_change, material_source, order_completed,
+    production_order_numbers)
+from .colony_events import work_counts
+from .accounts import achieve
+from .routes_crafting import craft_missing_materials, task_readiness_warning
+from .. import main      # app.main: names from later modules and settings changed at runtime
 
 @app.get("/api/v1/marketboard")
 @game_transaction
 def marketboard(channel:str,provider:str="twitch"):
     with SessionLocal() as db:
-        clock=world_clock(db,DISCORD_WORLD_ID);a,b=market_demand(DISCORD_WORLD_ID,clock["day"])
+        clock=world_clock(db,main.DISCORD_WORLD_ID);a,b=market_demand(main.DISCORD_WORLD_ID,clock["day"])
         def row(k,tag):
             base=SEED_INDUSTRIES[k]['sell'];now_=demand_price(k,clock["day"])
             return f"{tag} {resource_name(k)}: {now_} SC each (usually {base})"
@@ -19,14 +43,14 @@ def marketboard(channel:str,provider:str="twitch"):
 def sell(channel:str,uid:str,name:str="Citizen",resource:str="",amount:int=1,provider:str="twitch"):
     """!sell <item> [amount]: sells any item to Seed Industries at today's price (old resource names still work)."""
     if not str(resource or '').strip():return out("🏪 Sell anything Seed Industries buys: !sell <item> [amount], or !sellall <item>. !marketboard shows today's demand.")
-    return seed_industries(channel,uid,name,'sell',str(resource),max(1,min(25,int(amount or 1))),provider)
+    return main.seed_industries(channel,uid,name,'sell',str(resource),max(1,min(25,int(amount or 1))),provider)
 
 @app.get('/api/v1/workshop')
 @colony_command
 def workshop(channel:str,uid:str,name:str='Citizen',action:str='view',station:str='',page:int=1,provider:str='twitch'):
     with SessionLocal() as db:
         _,p=player(db,channel,provider,uid,name)
-        result=crafting_progression.workshop(sys.modules[__name__],db,p,action,station,page,provider)
+        result=crafting_progression.workshop(main,db,p,action,station,page,provider)
         return platform_response(provider,result,result.replace('\n',' | '))
 
 def market_item_label(key):
@@ -37,8 +61,8 @@ def market_item_label(key):
 def seed_industries(channel:str,uid:str,name:str="Citizen",action:str="browse",item_name:str="",amount:int=1,provider:str="twitch",page:int=1,category:str="all"):
     action=(action or "browse").lower().strip();key=(item_name or "").lower().strip().replace(" ","_");amount=max(1,min(25,int(amount or 1)))
     if action not in {"browse","buy","sell","orders","fulfill","starters","sellall","clearout"}:return out("🏭 Seed Industries actions: browse, buy, sell, sellall, clearout, orders, fulfill, starters.")
-    if action=="sellall":return sell_all_items(channel,uid,name,item_name,provider)
-    if action=="clearout":return clearout(channel,uid,name,"",provider)
+    if action=="sellall":return main.sell_all_items(channel,uid,name,item_name,provider)
+    if action=="clearout":return main.clearout(channel,uid,name,"",provider)
     if action=='starters':
         result=crafting_progression.starter_routes(page,provider)
         return platform_response(provider,result,result.replace('\n',' | '))
@@ -80,8 +104,8 @@ def seed_industries(channel:str,uid:str,name:str="Citizen",action:str="browse",i
             if missing:return out(f"🏭 {data['name']} still needs "+", ".join(missing)+(". Use /guide goal:crafting for a production route." if provider=="discord" else ". Use !guide crafting for a production route."))
             for material,qty in data["cost"].items():material_change(db,p,material,-qty)
             numbers=production_order_numbers(data);p.sc+=numbers["sc"];p.contribution+=numbers["contribution"];p.actions+=1;p.successes+=1
-            gain_skill(p,"fabrication",2);gain_skill(p,"commerce",1);society(db,channel).development+=numbers["development"]
-            found=practice.find(sys.modules[__name__],db,p,"fabrication")
+            main.gain_skill(p,"fabrication",2);main.gain_skill(p,"commerce",1);society(db,channel).development+=numbers["development"]
+            found=practice.find(main,db,p,"fabrication")
             db.add(ProductionOrderCompletion(channel_id=channel,canonical_uid=p.twitch_uid,avesta_day=clock["day"],order_key=order_key));db.commit()
             journal_add(db,p,f"Completed Seed Industries order: {data['name']}.");milestone=achieve(db,p)
             colony=work_counts(db,p,"commerce",grow=False)
@@ -92,8 +116,8 @@ def seed_industries(channel:str,uid:str,name:str="Citizen",action:str="browse",i
                   f"WHY IT MATTERED\n• {data['purpose']}\n\n"+(colony+"\n\n" if colony else "")+f"NEXT\n• View the remaining Day {clock['day']} orders or continue your daily contract."+milestone)
             return PlainTextResponse(text) if provider=="discord" else out(chat_line(text))
     if key not in SEED_INDUSTRIES and item_name:
-        key,suggestions=qol.fuzzy_item(item_name,SEED_INDUSTRIES)
-        if key is None:return out("🏭 Seed Industries does not trade that item."+qol.did_you_mean(suggestions)+" Browse the market for item names. Nothing spent.")
+        key,suggestions=main.qol.fuzzy_item(item_name,SEED_INDUSTRIES)
+        if key is None:return out("🏭 Seed Industries does not trade that item."+main.qol.did_you_mean(suggestions)+" Browse the market for item names. Nothing spent.")
     if key not in SEED_INDUSTRIES:return out("🏭 Seed Industries trades: "+", ".join(resource_name(k) for k in SEED_INDUSTRIES)+".")
     listing=SEED_INDUSTRIES[key]
     if category!='all' and listing.get('category','legacy')!=category:return out('That item is in another market category. Nothing spent.')
@@ -110,7 +134,7 @@ def seed_industries(channel:str,uid:str,name:str="Citizen",action:str="browse",i
             return out(f"🏭 {p.display_name} bought {amount} {resource_name(key)} from Seed Industries for {total} SC. Balance: {p.sc} SC. Use: {listing['purpose'].rstrip('.')}.")
         owned=material_amount(db,p,key)
         if owned<amount:return out(f"🏭 {p.display_name} only has {owned} {resource_name(key)}.")
-        unit=sale_price(key);total=unit*amount;material_change(db,p,key,-amount);p.sc+=total;gain_skill(p,"commerce",max(1,amount//3));db.commit()
+        unit=sale_price(key);total=unit*amount;material_change(db,p,key,-amount);p.sc+=total;main.gain_skill(p,"commerce",max(1,amount//3));db.commit()
         demand=" (today's demand price)" if unit>listing["sell"] else ""
         colony=work_counts(db,p,"commerce",grow=False)
         return out(f"🏭 {p.display_name} sold {amount} {resource_name(key)} to Seed Industries for {total} SC{demand}. Balance: {p.sc} SC. +{max(1,amount//3)} Commerce XP."+(" "+colony.split("\n",1)[1].replace("\n"," ") if colony else ""))
@@ -131,13 +155,13 @@ def duo(channel:str,uid:str,name:str="Citizen",target:str="",activity:str="walk"
         wait=check_cooldown(db,p,"duo_"+act)
         if wait:return out(f"⏱️ Duo {act} is ready in {duration_text(wait)}.")
         lp,lo=life_state(db,p),life_state(db,other);reward=""
-        if act=="walk":lp.morale=clamp100(lp.morale+8);lo.morale=clamp100(lo.morale+6);gain_skill(p,"frontier",1);reward="+8 Morale; Frontier practice"
+        if act=="walk":lp.morale=clamp100(lp.morale+8);lo.morale=clamp100(lo.morale+6);main.gain_skill(p,"frontier",1);reward="+8 Morale; Frontier practice"
         elif act=="games":lp.social=clamp100(lp.social+10);lo.social=clamp100(lo.social+8);reward="+10 Social"
-        elif act=="research":gain_skill(p,"research",2);gain_skill(other,"research",1);society(db,channel).knowledge+=2;reward="Research practice for both; +2 Knowledge"
+        elif act=="research":main.gain_skill(p,"research",2);main.gain_skill(other,"research",1);society(db,channel).knowledge+=2;reward="Research practice for both; +2 Knowledge"
         elif act=="delivery":
             if p.cargo<=0:return out("📦 You need 1 Cargo for a duo delivery.")
-            p.cargo-=1;p.sc+=8;other.sc+=3;gain_skill(p,"logistics",2);society(db,channel).reputation+=2;reward="+8 SC; Logistics practice; partner +3 SC"
-        elif act=="explore":gain_skill(p,"frontier",2);gain_skill(other,"frontier",1);reward="Frontier practice for both"
+            p.cargo-=1;p.sc+=8;other.sc+=3;main.gain_skill(p,"logistics",2);society(db,channel).reputation+=2;reward="+8 SC; Logistics practice; partner +3 SC"
+        elif act=="explore":main.gain_skill(p,"frontier",2);main.gain_skill(other,"frontier",1);reward="Frontier practice for both"
         before_relationship=rel.familiarity if rel else 0
         updated_relationship=relationship_add(db,channel,p.twitch_uid,other.twitch_uid,6);relationship_gain=updated_relationship.familiarity-before_relationship
         memory=relationship_memory(db,channel,p.twitch_uid,other.twitch_uid,"Duo "+act.title());db.commit();
@@ -187,8 +211,8 @@ def gearrepair(channel:str,uid:str,name:str="Citizen",item:str="",provider:str="
         cost=gear_repair_cost(row.condition)
         if p.components<cost:return out(f"🔧 Repair needs {cost} Iron Nails. You have {p.components}. Iron Nails: {material_source('components',provider)} Nothing spent.")
         p.components-=cost;row.condition=100;spend_life_for_action(life,"repair")
-        xp=gain_skill(p,"infrastructure",1);gain_branch(db,p,"maintenance_repair",xp)
-        found=practice.find(sys.modules[__name__],db,p,"infrastructure","maintenance_repair");db.commit()
+        xp=main.gain_skill(p,"infrastructure",1);main.gain_branch(db,p,"maintenance_repair",xp)
+        found=practice.find(main,db,p,"infrastructure","maintenance_repair");db.commit()
         text=(f"🔧 Repaired {row.quality} {row.item_name} to 100% (-{cost} Iron Nails · {need_cost_text(work_energy('repair'))}). "
               f"+{xp} Engineering and Maintenance & Repair XP."+(f" {found}." if found else "")+task_readiness_warning(life,provider))
         return PlainTextResponse(text) if provider=="discord" else out(text)
@@ -198,11 +222,11 @@ def gearrepair(channel:str,uid:str,name:str="Citizen",item:str="",provider:str="
 def use_item(channel:str,uid:str,name:str="Citizen",item:str="",provider:str="twitch"):
     source_item=seed_content.find_item(item or '')
     if source_item in seed_content.ACTIVE:
-        if source_item in seed_content.EDIBLE:return action('eat',channel,uid,name,msg='food:'+source_item,provider=provider)
+        if source_item in seed_content.EDIBLE:return main.action('eat',channel,uid,name,msg='food:'+source_item,provider=provider)
         import sys
         with SessionLocal() as db:
             _,p=player(db,channel,provider,uid,name)
-            result=seed_content.use(sys.modules[__name__],db,p,source_item,provider)
+            result=seed_content.use(main,db,p,source_item,provider)
             return platform_response(provider,result,result.replace('\n',' | '))
     key=(item or "").lower().strip().replace(" ","_")
     key=next((k for k in LIFE_GEAR if key in {k,QUALITY_RECIPES[k]["name"].lower().replace(" ","_")}),key)

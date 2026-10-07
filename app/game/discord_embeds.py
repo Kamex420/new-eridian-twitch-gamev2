@@ -1,6 +1,8 @@
-# app/main.py, part 19: discord embeds
-# Discord command lists and the classic embed builders.
-# Runs inside app.main's namespace, after the parts before it (see main.py). Not a module of its own.
+"""Discord command lists and the classic embed builders.
+"""
+import re
+from .. import notice as fan_notice
+from .rules import ACTION_SKILLS
 
 DISCORD_PUBLIC_COMMANDS = {
     "society", "event", "eventstart", "eventstop", "holiday",
