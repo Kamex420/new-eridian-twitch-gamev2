@@ -1,5 +1,12 @@
 # Release notes
 
+## Seedlings help the colony, and main.py in smaller files
+
+- **Seedlings answer events.** While an event is on, a Seedling that is awake (work or free time, not asleep) does work that counts for it: Primary work first, Support work when it can do no Primary work. During a Mining Boom it brings in stone, clay or wood; during a Food Crisis, wild plants. Its diary says why: “The Mining Boom is on and Harvesting work counts, so I am bringing in Clay.” Seedlings still never start an automatic event.
+- **Seedlings help the Society Directive and the weakest stat.** On about a third of their collecting turns, Seedlings help today's Society Directive (their own trade's skills first). Once the Directive is done, they help the society stat New Eridian is lowest on. The other turns still follow their job, and goal materials still come first.
+- **Gathering, mining and Workbench crafting now count for the Society Directive**, like work tasks always did.
+- **Behind the scenes: `app/main.py` is split into 25 smaller files** in `app/main_parts/`, one per topic (rules, events, crafting routes, Discord commands, the overlay page, ...). `main.py` runs them in order inside its own namespace, so the game behaves exactly as before: same routes in the same order, same names, same saves. Future changes only need to read the file for their topic. `docs/architecture.md` lists the parts.
+
 ## Everyday work wins events and builds New Eridian
 
 - **Events can be won by normal play.** Gathering, mining, Workbench crafting, item jobs (/use), selling to Seed Industries and Production Orders now count for the live event by their skill, whether you press the button, type in chat, run a queue or your Seedling does it. A Mining Boom used to end 0/16 while three Seedlings mined ore; quarrying stone or mining ore now counts as Primary for it.

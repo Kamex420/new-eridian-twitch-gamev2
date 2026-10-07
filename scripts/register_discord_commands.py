@@ -20,6 +20,14 @@ def signature(command):
     return (command['description'], [option(x) for x in command.get('options', [])])
 
 
+def main_functions():
+    """Top-level function names of app.main, read without importing it (main.py runs the files in app/main_parts)."""
+    app_dir = Path(__file__).resolve().parents[1] / 'app'
+    sources = [app_dir / 'main.py', *sorted((app_dir / 'main_parts').glob('[0-9][0-9]_*.py'))]
+    return {n.name for source in sources for n in ast.parse(source.read_text(encoding='utf-8')).body
+            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
+
+
 def main():
     if '--dry-run' in sys.argv:
         print(json.dumps(commands, ensure_ascii=False, indent=2))
@@ -32,10 +40,7 @@ def main():
     life = next(c for c in commands if c['name'] == 'life')
     if not any(o['name'] == 'food' and o.get('autocomplete') for o in life.get('options', [])):
         raise RuntimeError('The deployed command catalog does not define /life Food autocomplete.')
-    source = Path(__file__).resolve().parents[1] / 'app' / 'main.py'
-    functions = {n.name for n in ast.parse(source.read_text()).body
-                 if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
-    if 'item_command_menu' not in functions:
+    if 'item_command_menu' not in main_functions():
         raise RuntimeError('The deployed app/main.py does not implement the current food-menu contract.')
     session = requests.Session()
     session.headers.update(Authorization=f'Bot {token}')

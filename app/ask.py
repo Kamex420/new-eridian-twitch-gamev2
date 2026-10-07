@@ -253,7 +253,8 @@ EXTRA_TERMS = {
     'Morale': 'Your spirits. 85 or more gives +2% success (Inspired); below 20 gives −7% (Demoralized). '
               'Prepared meals, /walk, /hobby, /games and hangouts raise it.',
     "Rocky's Favor": '+3 percentage points of success for 10 minutes. Eating a prepared meal grants it, and the time stacks.',
-    'Seedling': 'Your citizen on the stream map. It has moods and thoughts, and keeps working, eating and sleeping while you are away.',
+    'Seedling': 'Your citizen on the stream map. It has moods and thoughts, and keeps working, eating and sleeping while you are away. '
+                'It helps live events, the Society Directive and the colony\'s weakest stat.',
     'Personal tier': 'Your crafting tier. It rises with the batches you craft from ingredients; higher-tier recipes and workstations need it.',
     'Lucky find': 'Successful tasks sometimes turn up one extra item from the same line of work (more often when a task goes especially well). '
                   'Life and social actions never do.',

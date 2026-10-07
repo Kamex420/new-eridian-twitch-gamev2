@@ -34,3 +34,21 @@ def test_app_imports_from_only_container_source_inputs(tmp_path):
     code="from app.main import app; from app.task_queue import TaskQueue; paths={r.path for r in app.routes}; assert {'/health','/api/v1/queue','/api/v1/mining','/api/v1/fun/daily'}<=paths; assert TaskQueue.__table__.name=='task_queues_v1'"
     subprocess.run([sys.executable,'-c',code],cwd=tmp_path,
         env=os.environ|{'DATABASE_URL':'sqlite:///'+str(tmp_path/'game.db'),'PYTHONPATH':str(tmp_path)},capture_output=True,text=True,check=True)
+
+
+def test_main_runs_its_topic_parts_inside_one_namespace():
+    """app/main.py is split into app/main_parts/NN_topic.py; the parts share app.main's namespace (docs/architecture.md)."""
+    import re
+    parts=sorted((ROOT/'app'/'main_parts').glob('*.py'))
+    assert len(parts)>10 and all(re.fullmatch(r'\d\d_[a-z_]+\.py',p.name) for p in parts)
+    assert len((ROOT/'app'/'main.py').read_text().splitlines())<40
+    assert m.work_counts.__module__=='app.main' and m.work_counts.__globals__ is vars(m)
+    assert m.work_counts.__code__.co_filename.endswith('07_colony_events.py')     # tracebacks name the part
+
+
+def test_registrar_reads_functions_from_the_parts():
+    from scripts.register_discord_commands import main_functions
+    names=main_functions()
+    assert {'item_command_menu','work_counts','discord_interactions'}<=names
+    assert names>={n for n,v in vars(m).items() if callable(v) and getattr(v,'__module__','')=='app.main' and getattr(v,'__name__','')==n
+                   and not isinstance(v,type)}
