@@ -11,6 +11,10 @@ from .needs import cost_text as need_cost
 TIERS=((1,'Starter',0),(2,'Skilled',25),(3,'Industrial',100),(4,'Advanced',250))
 FEES={1:15,2:45,3:120,4:300}
 from .station_tiers import SURVIVAL, TAG_TIERS, OVERRIDES
+from . import runtime
+from .models import CraftLedger
+from sqlalchemy import select
+import random
 STATIONS={tag:{'name':next((s.ITEMS[k]['name'] for k in sorted(s.MACHINE_RECIPES) if tag in s.machine_tags(k)),tag.replace('TAG_MACHINE_','').replace('TAG_MACH_','').replace('_',' ').title()),
               'tier':tier,'cost':0 if tag==SURVIVAL else FEES[tier]} for tag,tier in TAG_TIERS.items()}
 STATIONS['TAG_MACHINE_EXTRACTOR']['name']='Mineral Extractor'
@@ -23,18 +27,22 @@ def permit_key(tag):return 'workshop:'+tag
 def manufactured_batches(m,db,p):
     # Retired legacy recipes (ration, crate, sensor, ...) keep counting for the
     # batches players already made with them.
-    valid={k for k,r in s.RECIPES.items() if r['inputs']}|set(m.PART_RECIPES)|set(m.RECIPES)|set(m.QUALITY_RECIPES)|set(m.item_identity.LEGACY_OUTPUTS)
-    return sum(row.qty for row in db.execute(m.select(m.CraftLedger).where(m.CraftLedger.channel_id==p.channel_id,m.CraftLedger.canonical_uid==p.twitch_uid)).scalars() if row.recipe in valid)
+    from . import item_identity
+    from .game.rules import PART_RECIPES, QUALITY_RECIPES, RECIPES
+    valid={k for k,r in s.RECIPES.items() if r['inputs']}|set(PART_RECIPES)|set(RECIPES)|set(QUALITY_RECIPES)|set(item_identity.LEGACY_OUTPUTS)
+    return sum(row.qty for row in db.execute(select(CraftLedger).where(CraftLedger.channel_id==p.channel_id,CraftLedger.canonical_uid==p.twitch_uid)).scalars() if row.recipe in valid)
 
 def personal_tier(m,db,p):
     count=manufactured_batches(m,db,p)
     return max(t for t,_,n in TIERS if count>=n)
 
 def station_owned(m,db,p,tag):
-    return any(tag in s.machine_tags(k) and m.material_amount(db,p,k)>0 for k in s.MACHINE_RECIPES)
+    from .game.cooldowns_materials import material_amount
+    return any(tag in s.machine_tags(k) and material_amount(db,p,k)>0 for k in s.MACHINE_RECIPES)
 
 def has_access(m,db,p,tag):
-    return tag==SURVIVAL or m.material_amount(db,p,permit_key(tag))>0 or station_owned(m,db,p,tag)
+    from .game.cooldowns_materials import material_amount
+    return tag==SURVIVAL or material_amount(db,p,permit_key(tag))>0 or station_owned(m,db,p,tag)
 
 def tier_hint(tier):
     _,name,count=TIERS[tier-1]
@@ -64,6 +72,7 @@ def unlock_text(m,db,p,recipe):
     return f'{tier_hint(tier)} · Yours: {count}\nWORKSTATION · {station_names(recipe)}\n'+(status or 'Station and tier ready.')
 
 def workshop(m,db,p,action='view',station='',page=1,provider='discord'):
+    from .game.cooldowns_materials import material_change
     if action not in {'view','unlock'}:return 'Choose View or Unlock. Nothing spent.'
     station=station.strip()
     if station.upper() in STATIONS:station=station.upper()
@@ -76,7 +85,7 @@ def workshop(m,db,p,action='view',station='',page=1,provider='discord'):
         if personal_tier(m,db,p)<cfg['tier']:return f"🔒 {tier_hint(cfg['tier'])} required. Nothing spent."
         if has_access(m,db,p,station):return f"{cfg['name']}: access already available. Nothing spent."
         if p.sc<cfg['cost']:return f"Need {cfg['cost']} SC for {cfg['name']}; you have {p.sc}. Nothing spent."
-        p.sc-=cfg['cost'];m.material_change(db,p,permit_key(station),1);db.commit()
+        p.sc-=cfg['cost'];material_change(db,p,permit_key(station),1);db.commit()
         return f"✅ {cfg['name']} unlocked permanently for {cfg['cost']} SC. Balance: {p.sc} SC. Recipes still require their listed skill and tier."
     count=manufactured_batches(m,db,p);tier=personal_tier(m,db,p)
     rows=[station] if station in STATIONS else sorted(STATIONS,key=lambda t:(STATIONS[t]['tier'],STATIONS[t]['name']))
@@ -106,8 +115,9 @@ RARE_LOCK=('🔒 Rare ores need a Mineral Extractor in your bag: a Small Mineral
 
 def extractor(m,db,p):
     """The best Mineral Extractor a citizen owns (Frontiers first), or None."""
+    from .game.cooldowns_materials import material_amount
     if p is None:return None
-    return next((k for k in EXTRACTOR_YIELD if m.material_amount(db,p,k)>0),None)
+    return next((k for k in EXTRACTOR_YIELD if material_amount(db,p,k)>0),None)
 
 def rare_unlocked(m,db,p):
     return extractor(m,db,p) is not None
@@ -120,53 +130,63 @@ mining_outcome=ContextVar('mining_outcome',default=None)
 
 def mining_roll(m,db,p,provider):
     """Use the work-task chance model before needs are spent; never roll a wait."""
-    bonus,notes,life=m.life_modifiers(db,p,'extraction')
-    society=m.society(db,p.channel_id)
-    world=m.world(db,p.channel_id)
-    m.resolve_expired_event(db,society,world)
-    _,_,world_bonus,world_notes=m.world_rule_bundle(db,p,society,'mine','extraction',provider)
-    world=m.world(db,p.channel_id)
-    relevant=bool(world.active_event and 'extraction' in {m.EVENTS[world.active_event]['primary'],m.EVENTS[world.active_event]['support']})
-    determination=m.determination_bonus(db,p,'extraction')
-    chance=min(.92,max(.10,m.success_chance(db,p,'extraction',.68)+bonus+world_bonus+determination+(.05 if relevant else 0)))
+    from .game import players
+    from .game.colony_events import resolve_expired_event
+    from .game.life import life_modifier_text
+    from .game.rules import EVENTS
+    bonus,notes,life=runtime.life_modifiers(db,p,'extraction')
+    society=players.society(db,p.channel_id)
+    world=players.world(db,p.channel_id)
+    resolve_expired_event(db,society,world)
+    _,_,world_bonus,world_notes=runtime.world_rule_bundle(db,p,society,'mine','extraction',provider)
+    world=players.world(db,p.channel_id)
+    relevant=bool(world.active_event and 'extraction' in {EVENTS[world.active_event]['primary'],EVENTS[world.active_event]['support']})
+    determination=runtime.determination_bonus(db,p,'extraction')
+    chance=min(.92,max(.10,runtime.success_chance(db,p,'extraction',.68)+bonus+world_bonus+determination+(.05 if relevant else 0)))
     notes+=world_notes
     if determination:notes.append(f'Determination +{determination*100:g}%')
     if relevant:notes.append('Relevant event +5%')
-    success=m.random.random()<chance
+    success=random.random()<chance
     mining_outcome.set('success' if success else 'failed')
-    return success,m.life_modifier_text(provider,notes,chance)
+    return success,life_modifier_text(provider,notes,chance)
 
 def mining_failure(m,db,p,provider,detail,rare=False):
     """A failed roll costs needs and one attempt, but preserves ore progress."""
-    m.material_change(db,p,STONE_DUST,1)
-    life=m.life_state(db,p);m.spend_life_for_action(life,'rare' if rare else 'make')
+    from .game.cooldowns_materials import determination_fail, material_change
+    from .game.life import life_state, spend_life_for_action
+    material_change(db,p,STONE_DUST,1)
+    life=life_state(db,p);spend_life_for_action(life,'rare' if rare else 'make')
     p.actions+=1
-    grit=m.determination_fail(db,p,'extraction');db.commit()
+    grit=determination_fail(db,p,'extraction');db.commit()
     return ('❌ MINING FAILED\n\nOUTPUT\n• Stone Dust ×1\nNo ore was recovered.'+
             "\n"+need_cost(3 if rare else 2)+
             f"\nCooldown: {20 if rare else 5} seconds. Stone Dust is a crafting ingredient."+grit+detail)
 
 def rare_gather(m,db,p,key,provider='discord',workshop_bonus=0):
     """Mine a rare ore: one roll like any ore, with a Mineral Extractor in the bag (/mine, queues, /make and Seedlings)."""
+    from .game.colony_events import work_counts
+    from .game.cooldowns_materials import check_cooldown, determination_clear, material_amount, material_change
+    from .game.life import life_state, spend_life_for_action, task_need_gate
+    from .game.training_and_items import gain_branch
     machine=extractor(m,db,p)
     if machine is None:return RARE_LOCK
-    life=m.life_state(db,p);blocked=m.task_need_gate(db,p,'make',provider,life)
+    life=life_state(db,p);blocked=task_need_gate(db,p,'make',provider,life)
     if blocked:return blocked
-    wait=m.check_cooldown(db,p,'rare_prospect')
+    wait=check_cooldown(db,p,'rare_prospect')
     if wait:return f'⏳ Rare ore mining will be ready in {wait}s. Nothing spent.'
     success,detail=mining_roll(m,db,p,provider)
     if not success:return mining_failure(m,db,p,provider,detail,rare=True)
-    m.determination_clear(db,p,'extraction')
+    determination_clear(db,p,'extraction')
     leftover='prospect:'+key            # progress from the retired three-step prospecting
-    if m.material_amount(db,p,leftover):m.material_change(db,p,leftover,-m.material_amount(db,p,leftover))
+    if material_amount(db,p,leftover):material_change(db,p,leftover,-material_amount(db,p,leftover))
     amount=EXTRACTOR_YIELD[machine]
-    m.material_change(db,p,key,amount)
+    material_change(db,p,key,amount)
     mining_outcome.set('success')
-    xp=m.gain_skill(p,'extraction',1+workshop_bonus);m.gain_branch(db,p,'ore_mining',xp)
+    xp=runtime.gain_skill(p,'extraction',1+workshop_bonus);gain_branch(db,p,'ore_mining',xp)
     from . import practice
     found=practice.find(m,db,p,'extraction','ore_mining')
-    m.spend_life_for_action(life,'rare');p.actions+=1;p.successes+=1;db.commit()
-    colony=m.work_counts(db,p,'extraction',contract='mine',action='mine',detail=f'mined {s.item_label(key)} ×{amount}')
+    spend_life_for_action(life,'rare');p.actions+=1;p.successes+=1;db.commit()
+    colony=work_counts(db,p,'extraction',contract='mine',action='mine',detail=f'mined {s.item_label(key)} ×{amount}')
     return (f"✅ RARE ORE MINED\n\nOUTPUT\n• {s.item_label(key)} ×{amount}\n\n"+(f"{colony}\n\n" if colony else "")+
             f"PRACTICE\n+{xp} Harvesting/Ore Mining XP\n"+(f"{found}\n" if found else "")+
             f"Extractor: {s.ITEMS[machine]['name']} ({amount} ore a success) · "+need_cost(3)+' · 20s cooldown'+detail)
@@ -213,8 +233,9 @@ LEGACY_STATIONS={'component':SURVIVAL,'biofiber':SURVIVAL,'alloy_plate':'TAG_MAC
  'duck_crate':'TAG_MACH_SIMPLE_CARPENTRY_STATION','spaceport_manifest':'TAG_MACHINE_ELECTRONICS_TABLE',
  'meal_kit':'TAG_MACHINE_STOVE','recreation_set':'TAG_MACH_SIMPLE_CARPENTRY_STATION','comfort_pack':'TAG_MACHINE_TAILORING_BENCH'}
 def legacy_station(m,recipe):
+    from .game.rules import QUALITY_RECIPES
     if recipe in LEGACY_STATIONS:return LEGACY_STATIONS[recipe]
-    cfg=m.QUALITY_RECIPES.get(recipe,{})
+    cfg=QUALITY_RECIPES.get(recipe,{})
     if recipe=='chef_tools':return 'TAG_MACHINE_METALWORKING_BENCH'
     if recipe=='medical_bag':return 'TAG_MACHINE_TAILORING_BENCH'
     if recipe=='fire_gear':return 'TAG_MACHINE_TAILORING_BENCH'

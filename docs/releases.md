@@ -1,5 +1,10 @@
 # Release notes
 
+## Behind the scenes: explicit dependencies, step two
+
+- **Crafting progression and the seed catalog now import exactly what they use** and read nothing from app.main. Values tests swap at runtime (the clock, success chances, mining modifiers) come through `app/runtime.py`. The record of dependencies on app.main shrank from 678 to 631 names. No gameplay changes.
+- `python -m scripts.explicit_imports app/<system>.py` now does most of a conversion, so the next systems cost less.
+
 ## Behind the scenes: explicit dependencies, step one
 
 - **Every system's dependencies on the shared app.main interface are now recorded** (`tests/contracts/main_dependencies.json`, 678 names across 62 files) and checked by a test, so new coupling is always a deliberate change and the record shrinks as systems are converted. `python -m scripts.main_dependencies` shows the map.

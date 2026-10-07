@@ -10,7 +10,7 @@ from scripts import main_dependencies as deps
 
 ROOT = Path(__file__).resolve().parents[1]
 # Systems that import what they need instead of reading app.main (docs/architecture.md, "Dependencies on app.main").
-EXPLICIT = ('halloween', 'readable_names')
+EXPLICIT = ('halloween', 'readable_names', 'crafting_progression', 'seed_content')
 
 
 def test_the_record_matches_the_code():

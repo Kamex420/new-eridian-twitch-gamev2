@@ -9,6 +9,11 @@ from pathlib import Path
 
 DATA=json.loads((Path(__file__).parent/'data/seed_catalog.json').read_text())
 from . import seasonal as _seasonal
+from . import runtime
+from .models import SkillBranch
+from .settlement import state as colony_state
+from sqlalchemy import select
+import sys
 _seasonal.extend_catalog(DATA,station_tiers.SURVIVAL)
 ITEMS=DATA['items']; RECIPES=copy.deepcopy(DATA['recipes']); GATHER={k:dict(v) for k,v in DATA['gather'].items()}
 # Gameplay classification: coal is mined; the imported catalog stays historical.
@@ -54,10 +59,11 @@ def find_recipe(value):
     return matches[0] if len(matches)==1 else None
 
 def level_for(m,db,p,skill):
+    from .game.players import lvl, skill_xp
     main,branch=SKILLS.get(skill,('fabrication',None))
-    if not branch:return m.lvl(m.skill_xp(p,main))
-    row=db.execute(m.select(m.SkillBranch).where(m.SkillBranch.channel_id==p.channel_id,m.SkillBranch.canonical_uid==p.twitch_uid,m.SkillBranch.branch==branch)).scalar_one_or_none()
-    return m.lvl(row.xp if row else 0)
+    if not branch:return lvl(skill_xp(p,main))
+    row=db.execute(select(SkillBranch).where(SkillBranch.channel_id==p.channel_id,SkillBranch.canonical_uid==p.twitch_uid,SkillBranch.branch==branch)).scalar_one_or_none()
+    return lvl(row.xp if row else 0)
 
 def base_tier(recipe):
     """Personal tier a recipe itself needs: its station tier or skill band."""
@@ -149,20 +155,29 @@ def gather_menu(page=1,provider='discord'):
     return '\n'.join(lines)
 
 def preview(m,db,p,key):
+    from .game.cooldowns_materials import material_amount
+    from .game.players import requirement_text
     from . import crafting_progression as cp
     r=RECIPES[key];req=r['requirement'].get('Skill','SK_CRAFTING')
     outputs=production_balance.current_outputs(m,db,p,key)
     chosen=production_balance.selected_station(m,db,p,key)
-    lines=[f"🛠️ {r['name']}", '', 'ONE BATCH',m.requirement_text(outputs),production_balance.quote(m,db,p,key), '', 'MATERIALS']
-    lines += ['BATCH OPTIONS · '+ '; '.join(cp.STATIONS[tag]['name']+': '+m.requirement_text(production_balance.outputs_at(m.seed_content,cp,key,tag)) for tag in cp.tags(key))]
+    lines=[f"🛠️ {r['name']}", '', 'ONE BATCH',requirement_text(outputs),production_balance.quote(m,db,p,key), '', 'MATERIALS']
+    lines += ['BATCH OPTIONS · '+ '; '.join(cp.STATIONS[tag]['name']+': '+requirement_text(production_balance.outputs_at(sys.modules[__name__],cp,key,tag)) for tag in cp.tags(key))]
     lines += ['Selected station: '+(cp.STATIONS[chosen]['name'] if chosen else 'Locked; output shown is the base batch.')]
-    lines += [f"• {item_label(k)}: {m.material_amount(db,p,k)}/{v}\n  Get it: {source_hint(k)}" for k,v in r['inputs'].items()] or ['• No ingredients; extraction uses your work cooldown.']
+    lines += [f"• {item_label(k)}: {material_amount(db,p,k)}/{v}\n  Get it: {source_hint(k)}" for k,v in r['inputs'].items()] or ['• No ingredients; extraction uses your work cooldown.']
     lines += ['',f"SKILL · {skill_name(req)} Lv.{required_level(r)} · Yours: {level_for(m,db,p,req)}",cp.unlock_text(m,db,p,key), '', 'Use /make and select this recipe to craft one batch.', 'Use /gather for natural materials; /catalog to look up ingredients.']
     if any(k in GATHER and GATHER[k]['branch']=='ore_mining' for k in r['outputs']):lines+=['MINING · Uses your work success chance. Failure gives 1 Stone Dust instead of ore.']
     if any(k in cp.RARE for k in r['outputs']):lines+=['RARE EXTRACTION · '+cp.rare_hint(next(k for k in r['outputs'] if k in cp.RARE))]
     return '\n'.join(lines)
 
 def craft(m,db,p,key,provider):
+    from . import extras
+    from .game.colony_events import work_counts
+    from .game.cooldowns_materials import check_cooldown, craft_record, determination_clear, material_amount, material_change
+    from .game.life import life_state, spend_life_for_action
+    from .game.players import requirement_text
+    from .game.routes_crafting import craft_missing_materials
+    from .game.training_and_items import gain_branch
     from . import crafting_progression as cp
     blocked=cp.recipe_gate(m,db,p,key,provider)
     if blocked:return blocked
@@ -170,70 +185,74 @@ def craft(m,db,p,key,provider):
     if level_for(m,db,p,req)<required_level(r):return f"🔒 {r['name']} needs {skill_name(req)} Lv.{required_level(r)}. Train this branch with /training. Nothing spent."
     rare_output=next((k for k in r['outputs'] if k in cp.RARE),None)
     if rare_output:
-        bonus=int(any(m.material_amount(db,p,k)>0 and key in recipes for k,recipes in MACHINE_RECIPES.items()))
-        before=m.material_amount(db,p,rare_output)
+        bonus=int(any(material_amount(db,p,k)>0 and key in recipes for k,recipes in MACHINE_RECIPES.items()))
+        before=material_amount(db,p,rare_output)
         result=cp.rare_gather(m,db,p,rare_output,provider,bonus)
-        if m.material_amount(db,p,rare_output)>before:m.extras.goal_crafted(m,db,p,key);db.commit()   # the third step recovers the ore
+        if material_amount(db,p,rare_output)>before:extras.goal_crafted(m,db,p,key);db.commit()   # the third step recovers the ore
         return result
-    missing=m.craft_missing_materials(db,p,r['inputs'])
+    missing=craft_missing_materials(db,p,r['inputs'])
     if missing:
-        hints=[f'• {item_label(k)}: {source_hint(k,provider)}' for k,n in r['inputs'].items() if m.material_amount(db,p,k)<n]
+        hints=[f'• {item_label(k)}: {source_hint(k,provider)}' for k,n in r['inputs'].items() if material_amount(db,p,k)<n]
         return '🛑 Materials needed — nothing spent\n'+ '\n'.join('• '+s for s in missing)+'\nHOW TO GET THEM\n'+'\n'.join(hints)
-    wait=m.check_cooldown(db,p,'seed_work')
+    wait=check_cooldown(db,p,'seed_work')
     if wait:return f'⏳ The workshop will be ready in {wait}s. Nothing spent.'
     mining_detail=''
     if any(k in GATHER and GATHER[k]['branch']=='ore_mining' for k in r['outputs']):
         success,mining_detail=cp.mining_roll(m,db,p,provider)
         if not success:return cp.mining_failure(m,db,p,provider,mining_detail)
-        m.determination_clear(db,p,'extraction')
+        determination_clear(db,p,'extraction')
     owned=stock(m,db,p)
     workshop_bonus=int(any(owned.get(machine,0)>0 and key in recipes for machine,recipes in MACHINE_RECIPES.items()))
-    for k,v in r['inputs'].items():m.material_change(db,p,k,-v)
+    for k,v in r['inputs'].items():material_change(db,p,k,-v)
     outputs=production_balance.current_outputs(m,db,p,key)
     chosen=production_balance.selected_station(m,db,p,key)
-    for k,v in outputs.items():m.material_change(db,p,k,v)
+    for k,v in outputs.items():material_change(db,p,k,v)
     # Keep Pharmacy practice separate from healing practice; a declared minigame rule.
     xp=[];line=None
     for sk in dict.fromkeys(r['xp'].get('TrainedSkills') or [req]):
         if sk not in SKILLS:continue
         if sk=='SK_MEDICINE' and req=='SK_PHARMACY':continue
         main,branch=SKILLS[sk];line=line or (main,branch)
-        amount=1+workshop_bonus if branch else m.gain_skill(p,main,1+workshop_bonus)
-        if branch:m.gain_branch(db,p,branch,amount)
+        amount=1+workshop_bonus if branch else runtime.gain_skill(p,main,1+workshop_bonus)
+        if branch:gain_branch(db,p,branch,amount)
         xp.append(f'+{amount} {skill_name(sk)} XP')
     from . import practice
     found=practice.find(m,db,p,*(line or ('fabrication',None)))
-    life=m.life_state(db,p);m.spend_life_for_action(life,'make')
+    life=life_state(db,p);spend_life_for_action(life,'make')
     # Every successful catalog craft (button, chat, queue attempt) passes here: crafting the goal completes it.
-    p.actions+=1;p.successes+=1;m.craft_record(db,p,key);m.extras.goal_crafted(m,db,p,key);db.commit()
-    colony=m.work_counts(db,p,SKILLS.get(req,('fabrication',None))[0],contract='make',action='make',
+    p.actions+=1;p.successes+=1;craft_record(db,p,key);extras.goal_crafted(m,db,p,key);db.commit()
+    colony=work_counts(db,p,SKILLS.get(req,('fabrication',None))[0],contract='make',action='make',
                          detail='made '+', '.join(f"{item_label(k)} ×{v}" for k,v in outputs.items()))
     return ('✅ CRAFTING COMPLETE\n\nOUTPUT\n'+ '\n'.join(f"• {item_label(k)} ×{v}" for k,v in outputs.items())+
-      (f'\n\n{colony}' if colony else '')+'\n\nUSED\n'+(m.requirement_text(r['inputs']) or 'No ingredients')+'\n\nPRACTICE\n'+', '.join(xp)+(f'\n{found}' if found else '')+
+      (f'\n\n{colony}' if colony else '')+'\n\nUSED\n'+(requirement_text(r['inputs']) or 'No ingredients')+'\n\nPRACTICE\n'+', '.join(xp)+(f'\n{found}' if found else '')+
       '\n\nWorkshop: '+(cp.STATIONS[chosen]['name'] if chosen else station(r))+(' · Owned workstation: +1 practice per trained skill included.' if workshop_bonus else '')+'\n'+need_cost(2)+mining_detail)
 
 # The work a gathering trip counts as for New Eridian: wild plants feed the colony, water keeps it running.
 GATHER_SKILL={'botanical_harvesting':'cultivation','water_collection':'environmental'}
 
 def gather(m,db,p,key,provider):
+    from .game.colony_events import work_counts
+    from .game.cooldowns_materials import check_cooldown, determination_clear, material_change
+    from .game.life import life_state, spend_life_for_action, task_need_gate
+    from .game.training_and_items import gain_branch
     if key not in GATHER:return '🛑 Choose a natural resource from /gather. Manufactured parts must be crafted.'
     from . import crafting_progression as cp
     if key in cp.RARE:return cp.rare_gather(m,db,p,key,provider)
-    life=m.life_state(db,p);blocked=m.task_need_gate(db,p,'make',provider,life)
+    life=life_state(db,p);blocked=task_need_gate(db,p,'make',provider,life)
     if blocked:return blocked
-    wait=m.check_cooldown(db,p,'seed_work')
+    wait=check_cooldown(db,p,'seed_work')
     if wait:return f'⏳ Gathering will be ready in {wait}s. Nothing spent.'
     detail=''
     if GATHER[key]['branch']=='ore_mining':
         success,detail=cp.mining_roll(m,db,p,provider)
         if not success:return cp.mining_failure(m,db,p,provider,detail)
-        m.determination_clear(db,p,'extraction')
-    cfg=GATHER[key];m.material_change(db,p,key,cfg['amount']);xp=m.gain_skill(p,'extraction',1);m.gain_branch(db,p,cfg['branch'],xp)
+        determination_clear(db,p,'extraction')
+    cfg=GATHER[key];material_change(db,p,key,cfg['amount']);xp=runtime.gain_skill(p,'extraction',1);gain_branch(db,p,cfg['branch'],xp)
     from . import practice
     found=practice.find(m,db,p,'extraction',cfg['branch'])
-    m.spend_life_for_action(life,'make');p.actions+=1;p.successes+=1;db.commit()
+    spend_life_for_action(life,'make');p.actions+=1;p.successes+=1;db.commit()
     mined=cfg['branch']=='ore_mining'
-    colony=m.work_counts(db,p,GATHER_SKILL.get(cfg['branch'],'extraction'),contract='mine' if mined else None,
+    colony=work_counts(db,p,GATHER_SKILL.get(cfg['branch'],'extraction'),contract='mine' if mined else None,
                          action='mine' if mined else 'gather',detail=f"{'mined' if mined else 'gathered'} {ITEMS[key]['name']} ×{cfg['amount']}")
     return f"✅ GATHERING COMPLETE\n\nOUTPUT\n• {ITEMS[key]['name']} ×{cfg['amount']}\n\n"+(f"{colony}\n\n" if colony else "")+f"PRACTICE\n+{xp} Harvesting and {cfg['branch'].replace('_',' ').title()} XP\n"+(f"{found}\n" if found else "")+need_cost(2)+detail
 
@@ -389,6 +408,7 @@ def recipe_category(key):return CATEGORY[next(iter(RECIPES[key]['outputs']))]
 
 # Override the first release's flat browser. Every item stays reachable via pages.
 def catalog(m,db,p,item='',page=1,owned=False,category=''):
+    from .game.players import requirement_text
     from . import crafting_progression as cp
     if category and display_category(category) is None:return '🛑 Choose a category from the list. Nothing spent.'
     category=display_category(category) or ''
@@ -410,7 +430,7 @@ def catalog(m,db,p,item='',page=1,owned=False,category=''):
         made=[r for r in RECIPES.values() if item in r['outputs']]
         if made:
             lines+=['','MAKE IT']
-            for r in made[:3]:lines += [f"• {r['name']} → {production_balance.current_outputs(m,db,p,next(k for k,v in RECIPES.items() if v is r))[item]} with current access",m.requirement_text(r['inputs']) or 'Extraction; no ingredients',f"Tier {cp.recipe_tier(next(k for k,v in RECIPES.items() if v is r))} · {skill_name(r['requirement'].get('Skill'))} Lv.{required_level(r)} · {station(r)}"]
+            for r in made[:3]:lines += [f"• {r['name']} → {production_balance.current_outputs(m,db,p,next(k for k,v in RECIPES.items() if v is r))[item]} with current access",requirement_text(r['inputs']) or 'Extraction; no ingredients',f"Tier {cp.recipe_tier(next(k for k,v in RECIPES.items() if v is r))} · {skill_name(r['requirement'].get('Skill'))} Lv.{required_level(r)} · {station(r)}"]
             if len(made)>3:lines+=['More variants appear in /make Recipe search.']
         if USED_BY[item]:
             users=[RECIPES[r]['name'] for r in USED_BY[item]]
@@ -456,53 +476,59 @@ WORK_LINE={'plant':('cultivation','seed_cultivation'),'scan':('research',None),'
            'vend':('commerce',None),'build':('infrastructure','maintenance_repair'),'research':('research',None)}
 
 def use(m,db,p,key,provider):
+    from .game.colony_events import work_counts
+    from .game.cooldowns_materials import check_cooldown, material_amount, material_change
+    from .game.life import life_state, spend_life_for_action, task_need_gate
+    from .game.players import requirement_text
+    from .game.routes_crafting import craft_missing_materials
+    from .game.training_and_items import gain_branch
     if key not in ACTIVE:return '🛑 Unknown item. Nothing spent.'
     cfg=PURPOSE[key];mode=cfg['mode'];name=item_label(key)
-    if m.material_amount(db,p,key)<1:return f'🛑 You do not own {name}. Nothing spent.'
+    if material_amount(db,p,key)<1:return f'🛑 You do not own {name}. Nothing spent.'
     if mode in {'ingredient','workshop','eat'}:return 'ℹ️ '+cfg['label']+' Nothing spent.'
     water=source_key('GMT_MATERIAL_PROCESSED_WATER');cost={key:1} if cfg['consume'] else {}
     if mode in {'plant','wash'}:cost[water]=cost.get(water,0)+1
     if mode=='scan':cost[source_key('GMT_PRODUCT_TOOL_SCANNER_BATTERY')]=1
     if mode in {'meal','vend'}:cost['crops']=1
     if mode=='pack':cost['cargo']=1
-    life=m.life_state(db,p)
+    life=life_state(db,p)
     if cfg.get('boost') and not any(getattr(life,f)<100 for f in cfg['boost']):return 'ℹ️ These needs are already full. Nothing spent; no cooldown started.'
     work=mode in {'plant','scan','pack','vend','build','research'}
     if work:
-        blocked=m.task_need_gate(db,p,'make',provider,life)
+        blocked=task_need_gate(db,p,'make',provider,life)
         if blocked:return blocked
-    missing=m.craft_missing_materials(db,p,cost)
+    missing=craft_missing_materials(db,p,cost)
     if missing:return '🛑 Still needed: '+', '.join(missing)+'. Nothing spent.'
-    wait=m.check_cooldown(db,p,'seed_use')
+    wait=check_cooldown(db,p,'seed_use')
     if wait:return f'⏳ Item use ready in {wait}s. Nothing spent.'
-    for k,n in cost.items():m.material_change(db,p,k,-n)
+    for k,n in cost.items():material_change(db,p,k,-n)
     changes=[]
     for field,amount in cfg.get('boost',{}).items():
         before=getattr(life,field);setattr(life,field,min(100,before+amount));changes.append(f'{field.title()} {before}→{getattr(life,field)}')
-    shared=m.colony_state(db,p.channel_id)
+    shared=colony_state(db,p.channel_id)
     if mode=='clinic':
-        shared.medicines+=cfg['units'];p.contribution+=1;xp=m.gain_skill(p,'medicine',1)
+        shared.medicines+=cfg['units'];p.contribution+=1;xp=runtime.gain_skill(p,'medicine',1)
         changes+=[f"+{cfg['units']} shared Medicines",'+1 Contribution',f'+{xp} Medicine XP']
     if mode=='plant':
-        m.material_change(db,p,cfg['output'],3);xp=m.gain_skill(p,'cultivation',1);m.gain_branch(db,p,'seed_cultivation',xp)
+        material_change(db,p,cfg['output'],3);xp=runtime.gain_skill(p,'cultivation',1);gain_branch(db,p,'seed_cultivation',xp)
         changes += [f"+3 {ITEMS[cfg['output']]['name']}",f'+{xp} Farming and Seed Cultivation XP']
     if mode=='scan':
-        m.material_change(db,p,source_key('GMT_MATERIAL_ORE_HEMATITE'),2);xp=m.gain_skill(p,'research',1);changes += ['+2 Hematite Ore',f'+{xp} Research XP']
-    if mode=='pack':shared.cargo+=2;xp=m.gain_skill(p,'logistics',1);changes += ['+2 shared Cargo',f'+{xp} Logistics XP']
-    if mode=='vend':p.sc+=1;xp=m.gain_skill(p,'commerce',1);changes += ['+1 SC',f'+{xp} Commerce XP']
+        material_change(db,p,source_key('GMT_MATERIAL_ORE_HEMATITE'),2);xp=runtime.gain_skill(p,'research',1);changes += ['+2 Hematite Ore',f'+{xp} Research XP']
+    if mode=='pack':shared.cargo+=2;xp=runtime.gain_skill(p,'logistics',1);changes += ['+2 shared Cargo',f'+{xp} Logistics XP']
+    if mode=='vend':p.sc+=1;xp=runtime.gain_skill(p,'commerce',1);changes += ['+1 SC',f'+{xp} Commerce XP']
     if mode=='build':
         before=shared.infrastructure;shared.infrastructure+=1;housing=shared.infrastructure//5-before//5;shared.housing+=housing;changes+=['+1 shared Infrastructure']
         if housing:changes+=['+1 housing space']
-        xp=m.gain_skill(p,'infrastructure',1);m.gain_branch(db,p,'maintenance_repair',xp);changes+=[f'+{xp} Engineering XP']
+        xp=runtime.gain_skill(p,'infrastructure',1);gain_branch(db,p,'maintenance_repair',xp);changes+=[f'+{xp} Engineering XP']
     if mode=='research':
-        xp=m.gain_skill(p,'research',1);changes += [f'+{xp} Research XP']   # +1 Knowledge comes from work_counts
+        xp=runtime.gain_skill(p,'research',1);changes += [f'+{xp} Research XP']   # +1 Knowledge comes from work_counts
     if work:
         from . import practice
         line=WORK_LINE.get(mode)
         found=practice.find(m,db,p,*line) if line else ''
         if found:changes.append(found)
-        m.spend_life_for_action(life,'make');changes+=[need_cost(2)]
+        spend_life_for_action(life,'make');changes+=[need_cost(2)]
     p.actions+=1;p.successes+=1;db.commit()
     skill={'clinic':'medicine'}.get(mode) or (WORK_LINE[mode][0] if work else None)
-    colony=m.work_counts(db,p,skill,grow=work,action='use',detail=f'used {name}') if skill else ''
-    return '\n'.join([f'✅ {name} — Complete','','RESULT',*['• '+x for x in changes],*(['',colony] if colony else []),'','USED',m.requirement_text(cost) if cost else 'No items were consumed.',*(['The selected durable item was kept.'] if not cfg['consume'] else [])])
+    colony=work_counts(db,p,skill,grow=work,action='use',detail=f'used {name}') if skill else ''
+    return '\n'.join([f'✅ {name} — Complete','','RESULT',*['• '+x for x in changes],*(['',colony] if colony else []),'','USED',requirement_text(cost) if cost else 'No items were consumed.',*(['The selected durable item was kept.'] if not cfg['consume'] else [])])
