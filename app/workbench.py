@@ -474,8 +474,8 @@ def home_text(ctx):
         for e in gather_first(ctx):
             missing = ', '.join(f'{n - ctx.have(k)} {resource_name(k)}' for k, n in e.inputs.items() if ctx.have(k) < n)
             lines.append(f'❌ {e.name} at {station_label(e, ctx)} — gather {missing} first, then craft it.')
-        lines.append('The Survival Workbench is free. Other workstations unlock from the recipes that need them (15 SC each at Tier 1); '
-                     'Seed Industries sells starter supplies.')
+        lines.append('The Survival Workbench is free. Other workstations cost 15 SC each at Tier 1: a recipe that needs one has an '
+                     'Unlock button. Seed Industries sells starter supplies.')
     return '\n'.join(lines)
 
 

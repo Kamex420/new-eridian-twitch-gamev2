@@ -137,7 +137,8 @@ def test_filtered_bag_view_points_at_buttons_and_one_page_shows_no_paging(newer)
 @BOTH
 def test_full_status_has_a_button_for_each_thing_it_mentions(newer):
     citizen(lumber=12)
-    set_life(energy=50, comfort=50)                       # Sleep only does something when you are tired
+    assert 'Sleep' not in labels(screen('st', newer))      # rested: Sleep's long cooldown is not offered
+    set_life(energy=40, comfort=40)                       # Sleep only does something when you are tired
     data = screen('st', newer)
     text = words(data)
     assert 'Sleep: ready now' in text and 'Settings (below) changes these' in text and 'Campfire is ready at Survival Workbench.' in text

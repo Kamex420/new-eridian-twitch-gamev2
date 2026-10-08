@@ -573,7 +573,9 @@ def status_components(db, p, owner):
         second.append(button('Recover now', cid(owner, 't', ticket), style=3, emoji='🩹'))
     if p is not None:
         second.append(next_step_button(db, p, owner))
-        if not qol.sleep_wait(db, p):
+        life = life_state(db, p)
+        if not qol.sleep_wait(db, p) and min(life.energy, life.comfort) < SLEEP_BELOW:
+            # Sleep has a long cooldown, so it is offered only when Energy or Comfort is low enough to need it.
             second.append(button('Sleep', cid(owner, 't', issue(owner, {'do': 'cmd', 'leaf': 'sleep'})), style=3, emoji='🛏️'))
     second.append(repeat_button(owner, queue_row))
     if p is not None:
@@ -583,6 +585,9 @@ def status_components(db, p, owner):
     second.append(button('Settings', cid(owner, 'mn', 'settings'), emoji='⚙️'))
     second = [b for b in second if b]
     return [row(*first)] + [row(*second[i:i + 5]) for i in range(0, len(second), 5)]
+
+
+SLEEP_BELOW = 50
 
 
 def next_step_button(db, p, owner):
@@ -1395,7 +1400,7 @@ def goal_components(db, p, owner):
             if found.name not in names and len(starts) < 4:
                 names.add(found.name)
                 starts.append(button(f'Set goal: {found.name}', cid(owner, 'gs', found.id), style=3, emoji='🎯'))
-        return [row(*starts),
+        return ([row(*starts)] if starts else []) + [
                 row(button('Ready to craft', cid(owner, 'wc', 'ready', 1, ''), emoji='✅'), button('All recipes', cid(owner, 'wh'), emoji='🛠️')),
                 _menu_row(owner, ('craft', 'Craft'))]
     step, action = more.next_step(db, p)

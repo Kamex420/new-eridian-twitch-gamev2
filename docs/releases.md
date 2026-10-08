@@ -1,5 +1,17 @@
 # Release notes
 
+## Easier menu screens: a button for every next step
+
+- **Your daily contract has a button that does it.** The Daily contract screen names the task (Mining, Harvest Pumpkins, Fire Safety…) with a green button beside it, and Home's Do this next does the task straight away. A delivery contract offers Prepare Cargo first when you have none.
+- **No more "type this command" lines on button screens.** My bag, Full status, All recipes, recipe pages and Queue status say things in plain words, and each fix has its button: Full status adds Craft (your next recipe), Recover now, Sleep (when you need it), My goal and Settings.
+- **Empty screens show the way forward.** My goal with no goal offers a few first goals to pick with one tap. Queue status with nothing queued has Gather and Mine buttons.
+- **All recipes is shorter.** Ready to craft comes first. The Start here list shows only when nothing is ready, and the closing paragraph is gone.
+- **Lists that fit on one page don't show Previous / Page 1/1 / Next.**
+- **My bag has its own buttons:** Sort & filter, Search bag, Sell, Use and Buy, instead of the whole Bag & Shop menu again.
+- **More says how many things you can unlock** (More · 7 to unlock), and Not yet lists the closest ones first.
+- **Moderator** (owner only) groups its buttons under Events, Posts and Records.
+- Behind the scenes: the PostgreSQL test can no longer hang a test run for 30 minutes; a stuck thread fails it within two minutes.
+
 ## Craft screens use the same names as the menu
 
 - **One name for each Craft screen.** The buttons and titles that said Workbench, Ready now and Goal now say **All recipes**, **Ready to craft** and **My goal**, the same as the Craft menu, so a button always names the screen it opens. `/make` opens All recipes, and its Category list starts with ✅ Ready to craft. The Survival Workbench station keeps its name.

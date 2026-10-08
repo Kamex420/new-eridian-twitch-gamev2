@@ -1033,7 +1033,8 @@ def _home_next(db, p):
         return step('recover your needs: work and crafting wait until they are back up', do={'do': 'recover'}, label='Recover')
     q = db.get(task_queue.TaskQueue, (p.channel_id, p.twitch_uid))
     if q is not None and q.state == 'paused':
-        why = (q.result or 'requirements not met').splitlines()[0][:80]
+        from .qol import without_fix
+        why = without_fix((q.result or 'requirements not met').splitlines()[0])[:80]    # Fix my queue fixes it, so no commands to type
         return step(f'your queue paused: {why}', view=('qv',), label='Fix my queue')
     first = onboarding.row(db, p) if onboarding.ENABLED else None
     if first is not None and not first.finished:
