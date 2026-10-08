@@ -28,6 +28,13 @@ from . import runtime, ui, workbench as wb
 from .db import SessionLocal
 from .models import AccountLink, PlayerTitle
 
+# Groups: an area's lines can sit under ALL-CAPS headings (they show as section headings). area -> [(HEADING, [keys])];
+# the area's main list must keep each group's keys together, in this order (the buttons follow the lines).
+# A heading shows only when at least one of its keys is visible to the citizen.
+GROUPS = {'mod': [('EVENTS', ['m_eventstart', 'm_eventstop', 'm_chalstart', 'm_chalstop', 'm_live']),
+                  ('POSTS', ['m_recap', 'm_recappost', 'm_feed', 'm_guidepanels', 'm_menupanel']),
+                  ('RECORDS', ['m_modlog', 'm_asklog', 'm_lookup', 'm_force', 'h_moderator'])]}
+
 # Areas: key -> (emoji, title, description, main buttons). Children are area keys or leaf keys; the order is
 # the button order. Everything else of an area is in MORE (see below). 16 areas; nothing is more than two taps
 # below Home (Home > area > sub-area).
@@ -62,8 +69,7 @@ AREAS = {
     'help': ('📖', 'Help', 'What to do next, a guide for any goal, search, the handbook, and who made the game.',
              ['guide', 'guidegoal', 'find', 'h_topics', 'h_about']),
     'mod': ('🛡️', 'Moderator', 'Events, the moderator log, account lookups and the channel panels. Game owner only.',
-            ['m_eventstart', 'm_eventstop', 'm_chalstart', 'm_chalstop', 'm_live', 'm_recap', 'm_recappost', 'm_feed', 'm_modlog', 'm_asklog', 'm_lookup', 'm_force',
-             'm_guidepanels', 'm_menupanel', 'h_moderator']),
+            [k for _, keys in GROUPS['mod'] for k in keys]),
 }
 # The short line beside an area's button on Home (and on the area lists): what is inside.
 BLURB = {'work': 'gather, mine, farm, train skills, queues', 'craft': 'your goal, recipes, shopping list',
@@ -85,6 +91,9 @@ MORE = {
     'me': ['me_achievements', 'status', 'me_collection', 'me_bonuses', 'me_traits', 'me_relationships', 'me_journal', 'me_titles', 'me_tutorial'],
     'settings': ['start'],
 }
+# The row under every view of the bag (menu.show): its own tools instead of the Bag & Shop grid. A button the citizen cannot
+# use yet (Sell and Use with nothing to sell or use) is left out.
+BAG_TOOLS = ('inv_views', 'search', 'sell', 'use', 'buy')
 # Lists of jobs: one dropdown-like screen of the leaves below (each with what it gives and a button). A job the
 # citizen cannot do yet is not on the list; it is under Not yet in the area's More.
 JOBS = {
@@ -722,22 +731,28 @@ def _members(area):
     return list(dict.fromkeys(keys + MORE.get(area, [])))
 
 
+def _closeness(key):
+    """How close a locked button is to being fixed: 0 when another button fixes it (HOW_GO), 1 when an item to get does (HOW), else 2."""
+    return 0 if key in HOW_GO else 1 if key in HOW else 2
+
+
 def more_split(area, ctx):
     """(Also here, Not yet) for an area's More screen: the extras the citizen can use, and (key, reason) for every button
-    of the area they cannot use yet. Switches are never listed: their hidden side is just the current state."""
+    of the area they cannot use yet, the ones they can fix right now first (another button, then an item to get, then the
+    rest; each group keeps the area's order). Switches are never listed: their hidden side is just the current state."""
     if ctx is None:
         return [], []
     also = [k for k in MORE.get(area, []) if can(ctx, k)]
     locked = [(k, WHEN[k][1]) for k in _members(area) if k in WHEN and k not in TOGGLES and k not in MOD_AREAS and not can(ctx, k)]
-    return also, locked
+    return also, sorted(locked, key=lambda found: _closeness(found[0]))
 
 
 def more_button(owner, area, ctx):
-    """The area's More button, saying what is inside (More · 4 locked); None when there is nothing behind it."""
+    """The area's More button, saying what is inside (More · 4 to unlock); None when there is nothing behind it."""
     also, locked = more_split(area, ctx)
     if not also and not locked:
         return None
-    return ui.button('More' + (f' · {len(locked)} locked' if locked else ''), ui.cid(owner, 'mn', area, 'more'), emoji='➕')
+    return ui.button('More' + (f' · {len(locked)} to unlock' if locked else ''), ui.cid(owner, 'mn', area, 'more'), emoji='➕')
 
 
 def area_rows(owner, area, ctx, rows=3):
@@ -754,6 +769,30 @@ def _line(key):
     return f"{item['emoji']} **{item['label']}** — {item['hint']}" if item['hint'] else ''
 
 
+def group_of(area, key):
+    """The heading `key` sits under in `area` (see GROUPS), or ''."""
+    for heading, keys in GROUPS.get(area, ()):
+        if key in keys:
+            return heading
+    return ''
+
+
+def _listing(area, children):
+    """The lines that explain an area's buttons, in the buttons' order, with an ALL-CAPS heading before each group
+    that has a visible button (see GROUPS). An area without groups is just its lines."""
+    lines, current = [], ''
+    for key in children:
+        line = _line(key)
+        if not line:
+            continue
+        heading = group_of(area, key)
+        if heading and heading != current:
+            lines.append(heading)
+        current = heading
+        lines.append(line)
+    return lines
+
+
 def area_text(db, p, area, ctx=None):
     emoji, title, text, _ = AREAS[area]
     ctx = ctx or context(p.twitch_uid if p is not None else '', db, p)
@@ -768,7 +807,7 @@ def area_text(db, p, area, ctx=None):
         lines = [f'{emoji} NEW ERIDIAN — {p.display_name}', step['line'],
                  f'⚡ {life.energy} · 🍲 {life.nutrition} · 💬 {life.social} · 🛋️ {life.comfort} · 🪙 {p.sc} SC',
                  qol.queue_summary(db, p, 'discord')[0].split('\n')[0], '']
-    lines += [x for x in (_line(key) for key in children) if x]
+    lines += _listing(area, children)
     return '\n'.join(lines).rstrip()
 
 
@@ -898,6 +937,69 @@ def vote_panel(db, p, owner, text, where):
 
 ONBOARDING_LEAF = {'gather': 'gather', 'eat': 'eat', 'job': 'job', 'queue': 'queue', 'seedling': 'seedling'}
 
+# Today's contract (game.cooldowns_materials.daily): contract action -> (the leaf whose button does that task, the word on the button).
+# Each one was checked against where game.cooldowns_materials.progress_daily is called, not against the contract's name:
+#   harvest   /farm harvest (action 'harvest')                    mine      gathering an ore (seed_content.gather, rare ore) = Mine
+#   research  /research, standard or Field analysis ('research')   make      any recipe crafted (seed_content.craft, routes_crafting.make)
+#   delivery  /delivery ('delivery', uses 1 Cargo)                explore   Scout ('explore'; Survey is its own action and does not count)
+#   water     /farm irrigate or Hydroponics ('water')              repair    /repair society ('repair')
+# 'craft' is the name contracts made before /make was one command still carry. Training contracts (train_*) are not in the
+# table: daily_how finds the task itself (daily_leaf says 'trainskill' for them, the list of a skill's tasks).
+DAILY_LEAF = {'harvest': ('w_farm_harvest', 'Harvest'), 'mine': ('mine', 'Mine'), 'research': ('w_research', 'Research'),
+              'make': ('ready', 'Ready to craft'), 'craft': ('ready', 'Ready to craft'), 'delivery': ('w_delivery', 'Deliver'),
+              'explore': ('w_scout', 'Scout'), 'water': ('w_farm_irrigate', 'Irrigate'), 'repair': ('repair', 'Fix infrastructure')}
+# A delivery uses Cargo (WHEN says so): until the citizen has some, the button prepares it. That does not count for the contract.
+DAILY_FIRST = {'delivery': ('w_cargo', 'Prepare Cargo')}
+
+
+def daily_leaf(action, has_cargo=True):
+    """The leaf whose button does the task of a daily contract ('mine' -> 'mine', 'make' -> 'ready', a training contract ->
+    'trainskill'); '' for a contract with no button. Without Cargo, a delivery is w_cargo."""
+    if str(action).startswith('train_'):
+        return ui.TRAIN_PICK
+    if action in DAILY_FIRST and not has_cargo:
+        return DAILY_FIRST[action][0]
+    return DAILY_LEAF.get(action, ('', ''))[0]
+
+
+def daily_how(db, p, d, ctx=None):
+    """What the green button for an unfinished contract does, in the form home_button takes (`key`, `do` or `pick`, and
+    `label`); {} when the contract has no button. A training contract starts its task straight away when one ticket can do it,
+    else it opens the skill's list of tasks (which says what is missing)."""
+    from .seed_skills import TASKS as seed_tasks
+    cfg = seed_tasks.get(d.action)
+    if cfg is not None:
+        from .game.training_and_items import training_tasks
+        label = f"Train {cfg['label']}"
+        if any(t['key'] == d.action and t['status'] == '✅' for t in training_tasks(db, p, cfg['hub'], 'discord')):
+            return {'label': label, 'do': {'do': 'train', 'skill': cfg['hub'], 'task': d.action}}
+        return {'label': label, 'pick': (ui.TRAIN_PICK, cfg['hub'])}
+    ctx = ctx or context(p.twitch_uid, db, p)
+    key, label = DAILY_LEAF.get(d.action, ('', ''))
+    if d.action in DAILY_FIRST and not can(ctx, key):
+        key, label = DAILY_FIRST[d.action]
+    return {'label': label, 'key': key} if key else {}
+
+
+def daily_controls(db, p, owner, ctx):
+    """(rows, items, note) for the Daily contract screen: the button that does today's task as the first row and, in the
+    newer layout, beside the Task line. Nothing once the contract is done, or when its task has no button."""
+    from .game.cooldowns_materials import daily
+    try:
+        d = daily(db, p)
+        how = {} if d.complete else daily_how(db, p, d, ctx)
+        b = home_button(owner, how) if how else None
+    except Exception:    # a check that fails must not take the screen down: it just has no button
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        return [], [], ''
+    if b is None:
+        return [], [], ''
+    note = '📦 A delivery uses 1 Cargo and you have none: prepare some first.' if how.get('key') == DAILY_FIRST['delivery'][0] else ''
+    return [ui.row(b)], [{'match': 'Task:', 'button': b}], note
+
 
 FIND_GOAL = 'choose a goal: open any recipe and press 🎯 Set goal; the goal then walks you through every step'
 
@@ -955,8 +1057,9 @@ def _home_next(db, p):
         db.rollback()
         d = daily(db, p)
     if not d.complete:
+        # The button does the task itself (Mine, Harvest, Train Fire Safety…); a contract with no button opens its screen.
         return step(f"today's contract: {action_display_name(d.action)} {d.progress}/{d.target} · {d.reward_sc} SC",
-                    view=('mv', 'me_daily'), label='Daily contract')
+                    **(daily_how(db, p, d) or dict(view=('mv', 'me_daily'), label='Daily contract')))
     if q is not None and q.state == 'completed':
         return step(f"your last queue finished: {task_queue.choices().get(q.task, q.task)} ×{q.total}", do={'do': 'cmd', 'leaf': 'repeat'},
                     label='Repeat last queue')
@@ -964,7 +1067,7 @@ def _home_next(db, p):
 
 
 def home_button(owner, step):
-    """The green button for home_next's step (a one-time ticket when it does something)."""
+    """The green button for home_next's step (a one-time ticket when it does something; a `pick` step chooses from a list)."""
     if 'step' in step:
         b = ui.step_button(owner, step['step'], first=True)
         if b is not None:
@@ -977,6 +1080,8 @@ def home_button(owner, step):
         b.pop('emoji', None)
         b['label'], b['style'] = step['label'], 3
         return b
+    if 'pick' in step:
+        return ui.pick_button(ui.cid(owner, 'mp', step['pick'][0]), step['pick'][1], step['label'], style=3)
     return ui.button(step['label'], ui.cid(owner, *step['view']), style=3)
 
 
@@ -1400,9 +1505,19 @@ def show(db, p, owner, command, options, area, name, key=''):
         rows = [r for r in panel.get('components', []) if r.get('components')]
         panel['components'] = rows[:4] + [bottom]
         return ui.with_crumb(panel, where)
-    # Every view of the bag keeps Sort & filter and Search under it.
-    tools = [ui.row(_button(owner, 'inv_views'), _button(owner, 'search'))] if legacy == 'inventory' else []
-    data = reply(text, legacy, tools + area_rows(owner, area, context(owner, db, p), rows=3 - len(tools)) + [bottom])
+    ctx = context(owner, db, p)
+    items = []
+    if legacy == 'inventory':
+        # Every view of the bag has the bag's own tools under it (Sell and Use only when there is something to sell or use),
+        # not the whole Bag & Shop grid with this very screen in it.
+        rows = [ui.row(*[_button(owner, k, ctx=ctx) for k in BAG_TOOLS if can(ctx, k)]), bottom]
+    else:
+        lead = []
+        if key == 'me_daily':
+            lead, items, note = daily_controls(db, p, owner, ctx)
+            text += ('\n' + note) if note else ''
+        rows = lead + area_rows(owner, area, ctx, rows=3 - len(lead)) + [bottom]
+    data = ui.with_items(reply(text, legacy, rows), items)
     return ui.with_crumb(ui.add_list_items(data, owner, legacy, legacy_options, name), where)
 
 

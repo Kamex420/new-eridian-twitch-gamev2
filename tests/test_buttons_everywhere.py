@@ -105,7 +105,7 @@ def test_views_behind_dropdowns():
     assert 'Crafting' in text_of(press(ui.cid('111', 'mp', 'trainskill'), values=['crafting'])['data'])
     assert press(ui.cid('111', 'mk', 'unlock'))['data']['components'][0]['components'][0]['options']
     work = press(ui.cid('111', 'mn', 'work'))['data']
-    assert 'Fix a tool' not in labels(work) and any(x.startswith('More · ') and x.endswith(' locked') for x in labels(work))
+    assert 'Fix a tool' not in labels(work) and any(x.startswith('More · ') and x.endswith(' to unlock') for x in labels(work))
     more = text_of(press(ui.cid('111', 'mn', 'work', 'more'))['data'])        # hidden until they own gear, with the reason
     assert 'Fix a tool' in more and 'you have no quality gear' in more and 'not yet' in more.lower()      # the heading shows as Not Yet
 

@@ -66,7 +66,7 @@ DISCORD_ACTION_ROUTES={
 ACTION_DISPLAY_NAMES={
     "farm":"Tend Fields","forage":"Tend Fields","harvest":"Harvest Pumpkins","water":"Irrigate",
     "scan":"Environmental Scan","mine":"Mining","rare":"Rare-ore Prospecting","scavenge":"Mining",
-    "craft":"Crafting","machine":"Crafting","work":"Crafting",
+    "craft":"Crafting","machine":"Crafting","work":"Crafting","make":"Crafting",
     "repair":"Society Infrastructure Repair","project":"Society Infrastructure Repair","build":"Society Infrastructure Repair",
     "cargo":"Cargo Preparation","delivery":"Delivery","spaceport":"Spaceport Operations",
     "explore":"Frontier Scout","survey":"Advanced Survey","market":"Commerce Work",

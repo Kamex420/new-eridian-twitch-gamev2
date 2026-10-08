@@ -302,7 +302,8 @@ def contracts(channel:str,uid:str,name:str="Citizen",provider:str="twitch"):
     with SessionLocal() as db:
         _,p=player(db,channel,provider,uid,name);d=daily(db,p);st="COMPLETE" if d.complete else f"{d.progress}/{d.target}"
         cmd=guide_command(d.action,provider)
-        discord=f"📋 {p.display_name} — Daily Contract\n\nTask: {cmd}\nProgress: {st}\nReward: {d.reward_sc} SC + 1 Contribution"+("\n\n✅ Contract complete." if d.complete else f"\n\nNext: use {cmd}.")
+        # The task by name; the menu puts the button that does it beside this line (menu.daily_controls).
+        discord=f"📋 {p.display_name} — Daily Contract\n\nTask: {action_display_name(d.action)}\nProgress: {st}\nReward: {d.reward_sc} SC + 1 Contribution"+("\n\n✅ Contract complete." if d.complete else "")
         twitch=f"📋 Daily Contract | {cmd} {st} | Reward {d.reward_sc} SC +1 Contribution"+(" | Complete!" if d.complete else "")
         return platform_response(provider,discord,twitch)
 
