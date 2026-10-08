@@ -13,7 +13,9 @@ same whether a player uses a slash option, a Workbench button, Twitch or a queue
 import math
 from itertools import islice
 from dataclasses import dataclass, field
+from sqlalchemy import select
 from . import seed_content as s, crafting_progression as cp, production_balance
+from .models import ExtraItem, QualityGear, SkillBranch
 
 # Categories are shared with /catalog and /use (defined with the catalog).
 CATEGORIES = s.DISPLAY_CATEGORIES
@@ -69,10 +71,12 @@ _BY_ID = None
 
 
 def _legacy_entries(m):
+    from .game.players import resource_name
+    from .game.rules import QUALITY_RECIPES, RECIPES
     rows = []
-    for key, cost in m.RECIPES.items():
-        rows.append((key, m.resource_name(key), cost, 'equipment'))
-    for key, data in m.QUALITY_RECIPES.items():
+    for key, cost in RECIPES.items():
+        rows.append((key, resource_name(key), cost, 'equipment'))
+    for key, data in QUALITY_RECIPES.items():
         rows.append((key, data['name'], data['cost'], 'food' if key == 'meal_kit' else 'equipment'))
     for key, name, cost, category in rows:
         tag = cp.legacy_station(m, key)
@@ -152,6 +156,8 @@ class Context:
     """One player's crafting situation, loaded once per screen."""
 
     def __init__(self, m, db, p, provider='discord'):
+        from .game.players import lvl, skill_xp, society
+        from .game.world import society_tier_index
         self.m, self.db, self.p, self.provider = m, db, p, provider
         self.stock = s.stock(m, db, p) if p is not None else {}
         self.batches = cp.manufactured_batches(m, db, p) if p is not None else 0
@@ -160,8 +166,8 @@ class Context:
         self.access = {tag for tag in cp.STATIONS if tag == cp.SURVIVAL or self.stock.get(cp.permit_key(tag), 0) > 0
                        or any(tag in s.machine_tags(k) for k in owned_machines)}
         self._levels = {}
-        self.society_tier = m.society_tier_index(m.society(db, p.channel_id)) if p is not None else 0
-        self.harvesting = m.lvl(m.skill_xp(p, 'extraction')) if p is not None else 1
+        self.society_tier = society_tier_index(society(db, p.channel_id)) if p is not None else 0
+        self.harvesting = lvl(skill_xp(p, 'extraction')) if p is not None else 1
         self.rare_ok = cp.rare_unlocked(m, db, p)            # a Mineral Extractor in the bag
         self._statuses = {}
         self._unique = None
@@ -173,21 +179,23 @@ class Context:
     def _owned(self):
         """Quality gear and stored items, read once per screen instead of once per recipe."""
         if self._gear is None:
-            m, db, p = self.m, self.db, self.p
+            db, p = self.db, self.p
             self._gear, self._extra = {}, {}
-            for row in db.execute(m.select(m.QualityGear).where(m.QualityGear.channel_id == p.channel_id, m.QualityGear.canonical_uid == p.twitch_uid,
-                                                                m.QualityGear.qty > 0)).scalars():
+            for row in db.execute(select(QualityGear).where(QualityGear.channel_id == p.channel_id, QualityGear.canonical_uid == p.twitch_uid,
+                                                            QualityGear.qty > 0)).scalars():
                 self._gear[row.item_key] = self._gear.get(row.item_key, 0) + row.qty
-            for row in db.execute(m.select(m.ExtraItem).where(m.ExtraItem.channel_id == p.channel_id,
-                                                              m.ExtraItem.canonical_uid == p.twitch_uid)).scalars():
+            for row in db.execute(select(ExtraItem).where(ExtraItem.channel_id == p.channel_id,
+                                                          ExtraItem.canonical_uid == p.twitch_uid)).scalars():
                 self._extra[row.item] = row.qty
         return self._gear, self._extra
 
     def _material(self, key):
         """The same count as m.material_amount, from the snapshot."""
-        ident = self.m.item_identity
+        from . import item_identity
+        from .game.cooldowns_materials import PLAYER_MATERIAL_FIELDS
+        ident = item_identity
         key = ident.FIELD_ITEMS.get(ident.canonical(key), ident.canonical(key))
-        if key in self.m.PLAYER_MATERIAL_FIELDS:
+        if key in PLAYER_MATERIAL_FIELDS:
             return max(0, int(getattr(self.p, key)))
         return max(0, self._owned()[1].get(key, 0))
 
@@ -202,34 +210,37 @@ class Context:
         return '⭐' if e.id in self.favorites else ''
 
     def have(self, key):
-        key = self.m.item_identity.canonical(key)
-        if key in self.m.QUALITY_RECIPES:
+        from . import item_identity
+        from .game.rules import QUALITY_RECIPES
+        key = item_identity.canonical(key)
+        if key in QUALITY_RECIPES:
             return self._owned()[0].get(key, 0) if self.p is not None else 0
         if key == 'cargo':
             return self.p.cargo if self.p is not None else 0
         return self.stock.get(key, 0)
 
     def level(self, skill_key):
+        from .game.players import lvl, skill_xp
         if skill_key not in self._levels:
             if self.p is None:
                 self._levels[skill_key] = 1
             else:
                 main, branch = s.SKILLS.get(skill_key, ('fabrication', None))
                 if branch and self._branches is None:
-                    m = self.m
-                    self._branches = {r.branch: r.xp for r in self.db.execute(m.select(m.SkillBranch).where(
-                        m.SkillBranch.channel_id == self.p.channel_id, m.SkillBranch.canonical_uid == self.p.twitch_uid)).scalars()}
-                xp = self._branches.get(branch, 0) if branch else self.m.skill_xp(self.p, main)
-                self._levels[skill_key] = self.m.lvl(xp)
+                    self._branches = {r.branch: r.xp for r in self.db.execute(select(SkillBranch).where(
+                        SkillBranch.channel_id == self.p.channel_id, SkillBranch.canonical_uid == self.p.twitch_uid)).scalars()}
+                xp = self._branches.get(branch, 0) if branch else skill_xp(self.p, main)
+                self._levels[skill_key] = lvl(xp)
         return self._levels[skill_key]
 
     def owned_unique(self, key):
+        from .game.rules import UNIQUE_CORE_ITEMS, UNIQUE_QUALITY_ITEMS
         if self.p is None:
             return False
         if self._unique is None:
             gear = self._owned()[0]
-            self._unique = {k for k in self.m.UNIQUE_CORE_ITEMS if self._material(k) > 0}
-            self._unique |= {k for k in self.m.UNIQUE_QUALITY_ITEMS if gear.get(k, 0) > 0}
+            self._unique = {k for k in UNIQUE_CORE_ITEMS if self._material(k) > 0}
+            self._unique |= {k for k in UNIQUE_QUALITY_ITEMS if gear.get(k, 0) > 0}
         return key in self._unique
 
     def unlock_option(self, e):
@@ -266,6 +277,8 @@ class Context:
 
     def _status(self, e):
         from . import seasonal
+        from .game.players import resource_name
+        from .game.rules import RECIPE_TIERS, SOCIETY_TIERS
         if not seasonal.festival_open(e.id):
             holiday = seasonal.FESTIVAL_RECIPES[e.id]
             start, _ = seasonal.festival_window(holiday)
@@ -281,9 +294,9 @@ class Context:
         if e.kind == 'seed' and any(k in cp.RARE for k in s.RECIPES[e.id]['outputs']) and not self.rare_ok:
             return Status('locked', '🔒', 'Mineral Extractor', 'Rare ores need a Small or Frontiers Expedition Mineral Extractor.')
         if e.kind == 'legacy':
-            society_need = self.m.RECIPE_TIERS.get(e.id)
+            society_need = RECIPE_TIERS.get(e.id)
             if society_need and self.society_tier < society_need:
-                label = self.m.SOCIETY_TIERS[society_need][0]
+                label = SOCIETY_TIERS[society_need][0]
                 return Status('locked', '🔒', f'Society: {label}', f'Unlocks when New Eridian reaches {label}.')
             if self.owned_unique(e.id):
                 return Status('owned', '✅', 'owned (limit 1)', 'You already own one; bonus equipment is limited to one of each.')
@@ -296,8 +309,8 @@ class Context:
         if missing:
             key, short = missing[0]
             more = f' +{len(missing) - 1} more' if len(missing) > 1 else ''
-            return Status('missing', '❌', f'need {short} {self.m.resource_name(key)}{more}',
-                          'Missing: ' + ', '.join(f'{n} {self.m.resource_name(k)}' for k, n in missing) + '.')
+            return Status('missing', '❌', f'need {short} {resource_name(key)}{more}',
+                          'Missing: ' + ', '.join(f'{n} {resource_name(k)}' for k, n in missing) + '.')
         return Status('ready', '✅', 'ready', 'Ready to craft.')
 
 
@@ -309,9 +322,10 @@ def station_label(e, ctx=None):
 
 
 def inputs_text(ctx, e, multiplier=1):
+    from .game.players import resource_name
     if not e.inputs:
         return 'no ingredients (extraction)'
-    return ', '.join(f'{ctx.m.resource_name(k)} {ctx.have(k)}/{n * multiplier}' for k, n in e.inputs.items())
+    return ', '.join(f'{resource_name(k)} {ctx.have(k)}/{n * multiplier}' for k, n in e.inputs.items())
 
 
 def clip(text, limit=100):
@@ -348,13 +362,14 @@ def autocomplete_rows(ctx, category='', station='', query=''):
 
 def resolve(m, db, p, value, category=''):
     """Recipe id, legacy key, retired legacy name or item name -> Entry."""
+    from . import item_identity
     value = str(value or '').strip()
     if not value:
         return None
     key = value.casefold().replace(' ', '_')
     if category not in CATEGORY_INFO:
         category = ''   # Ready now / Favourites filter the same recipes
-    retired = m.item_identity.RETIRED_RECIPES.get(key)
+    retired = item_identity.RETIRED_RECIPES.get(key)
     for candidate in (value, key, retired):
         found = entry(m, candidate) if candidate else None
         if found:
@@ -409,7 +424,7 @@ def gather_first(ctx, limit=3):
 
 
 def home_text(ctx):
-    m = ctx.m
+    from .game.players import resource_name
     counts = category_counts(ctx)
     if ctx.provider != 'discord':
         # Category keys are what players type, so they are shown instead of labels.
@@ -436,7 +451,7 @@ def home_text(ctx):
         lines += [f'✅ {e.name} ×{ctx.batch_size(e)} — {station_label(e, ctx)} · uses {inputs_text(ctx, e)}' for e in easy]
     else:
         for e in gather_first(ctx):
-            missing = ', '.join(f'{n - ctx.have(k)} {m.resource_name(k)}' for k, n in e.inputs.items() if ctx.have(k) < n)
+            missing = ', '.join(f'{n - ctx.have(k)} {resource_name(k)}' for k, n in e.inputs.items() if ctx.have(k) < n)
             lines.append(f'❌ {e.name} at {station_label(e, ctx)} — gather {missing} with /gather or /mine, then craft it.')
         lines.append('The Survival Workbench is free. Unlock more workstations with /workshop (15 SC each at Tier 1); Seed Industries sells starter supplies.')
     lines += ['', 'Open a category (or /make category:<name>), then a recipe. Every list runs from the easiest recipe to the most complex. '
@@ -522,6 +537,11 @@ def used_for(m, key):
 
 
 def preview_text(ctx, e, count=1):
+    from .game.cooldowns_materials import material_source
+    from .game.life import task_energy
+    from .game.players import resource_name
+    from .game.rules import RECIPE_TIERS, SOCIETY_TIERS
+    from .needs import cost_text as need_cost_text
     m = ctx.m
     st = ctx.status(e)
     outputs = ctx.outputs(e)
@@ -533,7 +553,7 @@ def preview_text(ctx, e, count=1):
     lines = [f'🛠️ {e.name.upper()} — {emoji} {label}',
              f"{st.emoji} {st.detail}", '',
              'OUTPUT PER BATCH']
-    lines += [f'• {m.resource_name(k)} ×{n}' for k, n in outputs.items()]
+    lines += [f'• {resource_name(k)} ×{n}' for k, n in outputs.items()]
     if e.kind == 'seed':
         options = '; '.join(f"{cp.STATIONS[t]['name']} ×{production_balance.outputs_at(s, cp, e.id, t).get(e.output, e.quantity)}" for t in e.tags)
         lines.append(f'• Batch size by workstation: {options}')
@@ -558,9 +578,9 @@ def preview_text(ctx, e, count=1):
         have = ctx.level(e.skill_key)
         lines.append(f"{'✅' if have >= e.level else '🔒'} Skill: {e.skill} Lv.{e.level} — you are Lv.{have}")
     else:
-        society_need = m.RECIPE_TIERS.get(e.id)
+        society_need = RECIPE_TIERS.get(e.id)
         if society_need:
-            name = m.SOCIETY_TIERS[society_need][0]
+            name = SOCIETY_TIERS[society_need][0]
             lines.append(f"{'✅' if ctx.society_tier >= society_need else '🔒'} Society tier: {name}")
     lines += ['', 'INGREDIENTS · have / need']
     if not e.inputs:
@@ -568,12 +588,12 @@ def preview_text(ctx, e, count=1):
     for k, n in e.inputs.items():
         have = ctx.have(k)
         mark = '✅' if have >= n * count else '❌'
-        line = f'{mark} {m.resource_name(k)} {have}/{n * count}'
+        line = f'{mark} {resource_name(k)} {have}/{n * count}'
         if have < n * count:
-            line += f' — get it: {m.material_source(k, ctx.provider)}'
+            line += f' — get it: {material_source(k, ctx.provider)}'
         lines.append(line)
-    energy = m.task_energy('rare' if e.kind == 'seed' and any(k in cp.RARE for k in s.RECIPES[e.id]['outputs']) else 'make')
-    lines += ['', 'COST PER BATCH', f"{m.need_cost_text(energy)} · 5-second workshop cooldown · ingredients are used only on success"]
+    energy = task_energy('rare' if e.kind == 'seed' and any(k in cp.RARE for k in s.RECIPES[e.id]['outputs']) else 'make')
+    lines += ['', 'COST PER BATCH', f"{need_cost_text(energy)} · 5-second workshop cooldown · ingredients are used only on success"]
     users = used_for(m, e.output)
     if users:
         lines += ['', f'USED IN {len(users)} RECIPES', ', '.join(users[:8]) + (' …' if len(users) > 8 else '')]
@@ -583,15 +603,20 @@ def preview_text(ctx, e, count=1):
 
 
 def legacy_effect(m, key):
-    if key in m.QUALITY_RECIPES:
-        data = m.QUALITY_RECIPES[key]
-        skills = ', '.join(m.SKILL_LABELS[k] for k in data['skills']) or 'life recovery'
+    from .game.rules import ITEM_EFFECTS, QUALITY_RECIPES, SKILL_LABELS
+    if key in QUALITY_RECIPES:
+        data = QUALITY_RECIPES[key]
+        skills = ', '.join(SKILL_LABELS[k] for k in data['skills']) or 'life recovery'
         return f"Quality gear (rolls Crude→Masterwork): improves {skills}; special: {data['special']}."
-    return m.ITEM_EFFECTS.get(key, 'Equipment')
+    return ITEM_EFFECTS.get(key, 'Equipment')
 
 
 def queue_plan_text(ctx, e, count):
     """Totals for a queue of `count` batches, shown before it starts."""
+    from . import task_queue
+    from .game.life import life_state
+    from .game.players import resource_name
+    from .needs import cost_text as need_cost_text, finish_forecast
     m = ctx.m
     lines = [f'⏱️ QUEUE {count} × {e.name.upper()}', f'Output: up to {ctx.batch_size(e) * count} {e.name} ({ctx.batch_size(e)} per successful batch).', '',
              'INGREDIENTS FOR THE WHOLE QUEUE · have / need']
@@ -600,14 +625,14 @@ def queue_plan_text(ctx, e, count):
     for k, n in e.inputs.items():
         have = ctx.have(k)
         total = n * count
-        lines.append(f"{'✅' if have >= total else '⚠️'} {m.resource_name(k)} {have}/{total}" + ('' if have >= total else f' — enough for {have // n} batch(es); the queue pauses when it runs out'))
+        lines.append(f"{'✅' if have >= total else '⚠️'} {resource_name(k)} {have}/{total}" + ('' if have >= total else f' — enough for {have // n} batch(es); the queue pauses when it runs out'))
     # Same per-attempt cost and pace the queue worker uses (rare outputs are heavier).
-    _, energy, interval = m.task_queue.specification(m, 'make:' + e.id)
-    need = m.finish_forecast(energy, count)
-    life = m.life_state(ctx.db, ctx.p)
+    _, energy, interval = task_queue.specification(m, 'make:' + e.id)
+    need = finish_forecast(energy, count)
+    life = life_state(ctx.db, ctx.p)
     lines += ['', 'NEEDS · now / needed to finish without recovery',
               f"Energy {life.energy}/{need['energy']} · Nutrition {life.nutrition}/{need['nutrition']} · Social {life.social}/{need['social']} · Comfort {life.comfort}/{need['comfort']}",
-              f"Each batch costs {m.need_cost_text(energy)}. The queue works one batch every {interval} seconds, pauses if a need or ingredient runs short, and resumes by itself.",
+              f"Each batch costs {need_cost_text(energy)}. The queue works one batch every {interval} seconds, pauses if a need or ingredient runs short, and resumes by itself.",
               '', 'Press Start to begin, or go back. Only one queue can run at a time.']
     return '\n'.join(lines)
 

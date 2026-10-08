@@ -99,33 +99,6 @@
   "current_project",
   "project_contribute"
  ],
- "app/workbench.py": [
-  "ExtraItem",
-  "ITEM_EFFECTS",
-  "PLAYER_MATERIAL_FIELDS",
-  "QUALITY_RECIPES",
-  "QualityGear",
-  "RECIPES",
-  "RECIPE_TIERS",
-  "SKILL_LABELS",
-  "SOCIETY_TIERS",
-  "SkillBranch",
-  "UNIQUE_CORE_ITEMS",
-  "UNIQUE_QUALITY_ITEMS",
-  "finish_forecast",
-  "item_identity",
-  "life_state",
-  "lvl",
-  "material_source",
-  "need_cost_text",
-  "resource_name",
-  "select",
-  "skill_xp",
-  "society",
-  "society_tier_index",
-  "task_energy",
-  "task_queue"
- ],
  "app/world_merge.py": [
   "DISCORD_WORLD_ID"
  ],

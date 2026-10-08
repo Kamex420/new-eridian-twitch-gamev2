@@ -98,7 +98,7 @@ Most systems in `app/` receive app.main as `m` and read whatever they need from 
 - **Values that change at runtime.** Tests swap the clock and some settings on app.main, a world merge changes the main world, and `votes.install` wraps `project_contribute`; a direct import would keep the old value. Converted systems read these through `app/runtime.py` (`runtime.now()`), which looks them up on app.main at call time. Add an accessor there when a converted system needs another one.
 - **`install(m)`** stays the one wiring hook every system has, even when it no longer needs `m`.
 
-Converted so far: 40 of 43 systems (`EXPLICIT` and `SETS_ONLY` in `tests/test_main_dependencies.py`; the three in `SETS_ONLY` still set a value on app.main on purpose). Left: `workbench`, `autonomy` and `menu`, which also reach app.main through objects (`self.m`, `c.m`). `python -m scripts.explicit_imports app/<system>.py` does most of a conversion (it keeps the `m` parameters so callers do not change).
+Converted so far: 41 of 43 systems (`EXPLICIT` and `SETS_ONLY` in `tests/test_main_dependencies.py`; the three in `SETS_ONLY` still set a value on app.main on purpose). Left: `autonomy` and `menu`, which also reach app.main through objects (`self.m`, `c.m`). `python -m scripts.explicit_imports app/<system>.py` does most of a conversion (it keeps the `m` parameters so callers do not change).
 
 [^1]: Canonical implementations: [`app/`](../app/). The removed loader was `app/_compat.py`.
 [^2]: Registrar: [`scripts/register_discord_commands.py`](../scripts/register_discord_commands.py). Import isolation and the container file layout are covered by `tests/test_repository.py`.
