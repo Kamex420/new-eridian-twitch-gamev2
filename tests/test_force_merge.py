@@ -40,9 +40,10 @@ def button(answer, prefix):
 
 
 def description(answer):
-    """The card's title and text as one string (the formatter turns /commands into `code`)."""
+    """The card's title and text as one string, sections included (the formatter turns /commands into `code`)."""
     e = answer['data']['embeds'][0]
-    return (e.get('title', '') + '\n' + e.get('description', '')).replace('`', '')
+    sections = ''.join('\n' + f.get('name', '') + '\n' + f.get('value', '') for f in e.get('fields', []))
+    return (e.get('title', '') + '\n' + e.get('description', '') + sections).replace('`', '')
 
 
 def select_values(answer):
