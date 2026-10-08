@@ -44,11 +44,11 @@ assert not errors, errors[:3]
 # One lock for the whole game: a transaction naming another channel waits for the main world's.
 held = threading.Event()
 def hold():
-    with task_queue.atomic(m, 'some-twitch-channel'):
+    with task_queue.atomic('some-twitch-channel'):
         held.set(); time.sleep(1.0)
 t = threading.Thread(target=hold); t.start(); held.wait()
 start = time.monotonic()
-with task_queue.atomic(m, W):
+with task_queue.atomic(W):
     waited = time.monotonic() - start
 t.join()
 assert waited > 0.7, waited
@@ -90,7 +90,7 @@ assert 'want 3 Campfire (was 2' in client.get('/api/v1/shopping', params=params(
 assert 'SHOPPING LIST · 1/10' in client.get('/api/v1/shopping', params=params('keeper', provider='discord')).text
 with m.SessionLocal() as db:
     campfire = shopping_list._rows(db, W, keeper)[0].recipe_id
-    plate = m.workbench.entry(m, 'sr_1018791011').id
+    plate = m.workbench.entry('sr_1018791011').id
     db.add_all([shopping_list.ShoppingEntry(channel_id=W, canonical_uid='pg-src', recipe_id=r, want=n, added_at=m.now() - timedelta(days=1))
                 for r, n in ((campfire, 9), (plate, 30))])
     db.commit()
@@ -109,11 +109,11 @@ with m.SessionLocal() as db:
     found = db.get(extras.GoalProgress, (W, goaler))
     assert (found.recipe_id, found.start_steps, found.ready_alerted) == (campfire, 2, 0)
     m.material_change(db, p, lumber, 2 - m.material_amount(db, p, lumber)); db.commit()
-    assert extras.goal_text(m, db, p, 'twitch').startswith('🎯 Goal Campfire 1/2 steps | Next: Craft Campfire')
-    assert extras.goal_ready_check(m, db, p) and not extras.goal_ready_check(m, db, p); db.commit()
+    assert extras.goal_text(db, p, 'twitch').startswith('🎯 Goal Campfire 1/2 steps | Next: Craft Campfire')
+    assert extras.goal_ready_check(db, p) and not extras.goal_ready_check(db, p); db.commit()
 assert 'CRAFTING COMPLETE' in client.get('/api/v1/make', params=goal_params(recipe='campfire')).text
 with m.SessionLocal() as db:
-    assert extras.goal_entry(m, db, m.player(db, W, 'discord', 'goalpg', 'Citizengoalpg')[1]) is None
+    assert extras.goal_entry(db, m.player(db, W, 'discord', 'goalpg', 'Citizengoalpg')[1]) is None
     assert db.get(extras.GoalProgress, (W, goaler)) is None
     db.add_all([extras.GoalProgress(channel_id=W, canonical_uid=uid, recipe_id=rid, start_steps=n, set_at=m.now(), ready_alerted=0)
                 for uid, rid, n in (('pg-goal-src', plate, 7), ('pg-goal-other', campfire, 2))])
@@ -140,16 +140,16 @@ with m.SessionLocal() as db:
         db.add(qn.Notice(id=f'pgquiet{i:025d}', provider='discord', recipient='4242', channel_id=W, message_channel=qn.DM_PREFIX,
                          content='TASK QUEUE — COMPLETED\nGather Lumber\nAttempts completed: 1/1; remaining: 0.\nSucceeded: 1; failed: 0.', next_at=now))
         db.add(qn.NoticeEvent(notice_id=f'pgquiet{i:025d}', run_id=f'pgrun{i}', kind='completed', created_at=now))
-    assert 'Quiet hours set' in quiet_hours.set_hours(m, db, p, 'UTC', f'{(now.hour - 1) % 24:02d}', f'{(now.hour + 2) % 24:02d}')
+    assert 'Quiet hours set' in quiet_hours.set_hours(db, p, 'UTC', f'{(now.hour - 1) % 24:02d}', f'{(now.hour + 2) % 24:02d}')
     db.commit()
-asyncio.run(dqw.deliver(m, dm_client))
+asyncio.run(dqw.deliver(dm_client))
 with m.SessionLocal() as db:
     rows = db.query(qn.Notice).filter(qn.Notice.recipient == '4242').all()
     assert not sent and all(r.state == 'pending' and r.attempts == 0 and r.next_at > m.now() for r in rows)
     assert db.query(quiet_hours.HeldAlert).count() == 3
-    assert '3 held alerts are on their way' in quiet_hours.turn_off(m, db, m.player(db, W, 'discord', '4242', 'Citizen4242')[1])
+    assert '3 held alerts are on their way' in quiet_hours.turn_off(db, m.player(db, W, 'discord', '4242', 'Citizen4242')[1])
     db.commit()
-workers = [threading.Thread(target=lambda: asyncio.run(dqw.deliver(m, dm_client))) for _ in range(2)]
+workers = [threading.Thread(target=lambda: asyncio.run(dqw.deliver(dm_client))) for _ in range(2)]
 [t.start() for t in workers]; [t.join() for t in workers]
 assert len(sent) == 1 and '3 queue alerts waited' in json.dumps(sent[0], ensure_ascii=False), sent
 with m.SessionLocal() as db:
@@ -167,16 +167,16 @@ with m.SessionLocal() as db:
     db.commit()
     ids = (a.id, b.id)
 with m.SessionLocal() as db:
-    pair = force_merge.load(m, db, W, 'pg-tw', 'discord:5151')
+    pair = force_merge.load(db, W, 'pg-tw', 'discord:5151')
     assert pair.combined['sc'] == 420 and db.query(m.Player).filter(m.Player.id.in_(ids)).count() == 2
 real = m.merge_accounts
 def boom(db, channel, source, target):
     real(db, channel, source, target); raise RuntimeError('boom')
 m.merge_accounts = boom
 try:
-    with task_queue.atomic(m, W):
+    with task_queue.atomic(W):
         with m.SessionLocal() as db:
-            force_merge.apply(m, db, W, force_merge.load(m, db, W, 'pg-tw', 'discord:5151'), 'owner 6161 via /menu')
+            force_merge.apply(db, W, force_merge.load(db, W, 'pg-tw', 'discord:5151'), 'owner 6161 via /menu')
     raise AssertionError('the failing merge did not raise')
 except RuntimeError:
     pass
@@ -186,7 +186,7 @@ with m.SessionLocal() as db:
     assert db.query(m.Player).filter(m.Player.id.in_(ids)).count() == 2 and db.query(m.ModeratorAudit).count() == 0
     assert db.query(m.AccountLink).filter_by(channel_id=W, twitch_uid='pg-tw').count() == 0
 m.DISCORD_OWNER_USER_IDS = {'6161'}
-press = lambda cid, values=(): ui.handle_component(m, {'type': 3, 'data': {'custom_id': cid, 'values': list(values)}, 'message': {'flags': 64, 'id': 'pg'},
+press = lambda cid, values=(): ui.handle_component({'type': 3, 'data': {'custom_id': cid, 'values': list(values)}, 'message': {'flags': 64, 'id': 'pg'},
                                                        'member': {'user': {'id': '6161', 'username': 'Owner'}, 'permissions': str(0x20)}})
 for forged in (ui.cid('6161', 'xm', '99999999999999999999', ids[1]), ui.cid('6161', 'xm', ids[0], '99999999999999999999')):
     assert 'That character no longer exists. Choose again. Nothing changed.' in press(forged)['data']['embeds'][0]['description']
@@ -217,7 +217,7 @@ with m.SessionLocal() as db:
         db.add(m.JournalEntry(channel_id=W, canonical_uid='u', entry=f'e{i}', created_at=now - timedelta(days=200, minutes=25 - i)))
     db.commit()
 maintenance.BATCH = 7
-done = maintenance.prune(m)
+done = maintenance.prune()
 assert done == {'action_logs': 30, 'command_receipts': 1, 'link_codes': 1, 'journal': 5}, done
 print('POSTGRES OK')
 '''
