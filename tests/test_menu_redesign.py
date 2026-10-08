@@ -34,6 +34,13 @@ def next_step():
         return step
 
 
+def set_daily(action, target=3):
+    with m.SessionLocal() as db:
+        d = daily(db, m.player(db, W, 'discord', '111', 'Kam')[1])
+        d.action, d.target, d.progress, d.complete = action, target, 0, False
+        db.commit()
+
+
 def finish_daily():
     with m.SessionLocal() as db:
         daily(db, m.player(db, W, 'discord', '111', 'Kam')[1]).complete = True
@@ -71,7 +78,11 @@ def test_home_leads_with_a_green_do_this_next_button_and_has_no_status():
 
 def test_do_this_next_takes_the_first_step_that_applies():
     citizen()
-    assert next_step()['label'] == 'Daily contract' and next_step()['view'] == ('mv', 'me_daily')
+    set_daily('mine')
+    step = next_step()
+    assert step['label'] == 'Mine' and step['key'] == 'mine' and "today's contract: Mining 0/3" in step['line']      # the button does the task
+    set_daily('no_such_task')
+    assert next_step()['label'] == 'Daily contract' and next_step()['view'] == ('mv', 'me_daily')        # no button for it: its screen
     finish_daily()
     assert next_step()['label'] == 'Find a goal'
     make_queue('completed')
@@ -105,7 +116,7 @@ def test_repeat_last_queue_from_home_runs_the_repeat():
 def test_work_more_lists_extras_and_locked_jobs_with_a_way_to_get_each():
     citizen()
     more_label = next(label for label in labels(area('work')) if label.startswith('More'))
-    assert more_label.startswith('More · ') and more_label.endswith(' locked')
+    assert more_label.startswith('More · ') and more_label.endswith(' to unlock')
     more = area('work', 'more')
     body = text_of(more)
     assert more['embeds'][0]['author']['name'] == '🏠 Menu › ⛏️ Work › More'
@@ -144,7 +155,7 @@ def test_home_and_business_lists_the_business_buttons_as_locked_until_you_start_
     body = text_of(more)
     assert 'also here' not in body.lower() and 'not yet' in body.lower() and 'start a business first' in body
     assert labels(more).count('Start a business') == 1                                    # one fix for the three locked buttons
-    assert 'More · 3 locked' in labels(area('property'))
+    assert 'More · 3 to unlock' in labels(area('property'))
 
 
 def test_every_area_with_something_behind_it_has_a_more_button_and_a_back_button():

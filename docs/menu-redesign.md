@@ -72,7 +72,7 @@ It picks the first of these that applies. 1, 3, 4 and 7 exist today; 2, 5 and 6 
 2. *(new)* Your queue is paused → **Fix my queue**: opens Queue status, which shows why it paused.
 3. First steps not finished → that step (+SC shown).
 4. You have a goal → the goal's next step.
-5. *(new)* Today's daily contract isn't done → **Daily contract**.
+5. *(new)* Today's daily contract isn't done → a green button that does the task itself (Mine, Harvest, Irrigate, Train Fire Safety…; `menu.DAILY_LEAF` lists them). The Daily contract screen has the same button beside its Task line.
 6. *(new)* Your last queue finished and nothing is running → **Repeat last queue**.
 7. Otherwise → **Find a goal**.
 
@@ -86,7 +86,7 @@ Every hidden button is one of three kinds, and each kind is handled one way:
 | **Locked** (needs an item, tool, business or festival) | Hydroponics: needs a Small Water Filter | More › **Not yet**, with the reason and **How to get it** |
 | **Extra** (works, used less) | Fix the town, Weather & time | More › **Also here** |
 
-The More button shows what is inside, e.g. **More · 4 locked**. When a locked option becomes usable it moves to its
+The More button shows what is inside, e.g. **More · 4 to unlock**. Not yet lists the ones you can fix right now first (another button fixes it, then an item to get, then the rest). When a locked option becomes usable it moves to its
 own spot automatically (the same `can()` checks as today). The "🔒 Not available right now" line goes away.
 
 **How to get it** opens Find with the question already asked ("how do I get a Small Water Filter?"), so it uses the
@@ -140,7 +140,7 @@ Replaces the Social sub-area. Relationships moves to You.
 
 ### 🎒 Bag & Shop
 - **Main:** My bag · Use · Buy · Sell · Orders · Home & business
-- **My bag** opens the inventory with Sort & filter and Search on it.
+- **My bag** opens the inventory with Sort & filter, Search bag, Sell, Use and Buy under it (Sell and Use only when there is something to sell or use).
 - **Sell** is one flow: pick an item, then Sell 1 / 5 / 10 / 25 / all N / other amount. It keeps today's keep-level
   note and the "Sell it after my queue" button. Undo sale stays on the result of every sale, where it is needed.
 - **More:** Sell extras · Shop by category · Starter shopping · Best prices today · Trade for SC · What can I make
@@ -178,7 +178,7 @@ Replaces the Account sub-area (Link Twitch moves into Settings).
 
 - **Help:** What next? · Guide for… · Ask or search · Handbook · About (only Find is renamed).
 - **Do again** is today's Recent actions, renamed.
-- **Moderator** is unchanged; only you see it.
+- **Moderator** keeps its buttons; only you see it. Its lines sit under three headings: EVENTS, POSTS and RECORDS (`menu.GROUPS`).
 
 ## Renames
 
