@@ -525,7 +525,7 @@
       "required": false,
       "choices": [
         {
-          "name": "✅ Ready now",
+          "name": "✅ Ready to craft",
           "value": "ready"
         },
         {

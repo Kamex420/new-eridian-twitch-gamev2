@@ -117,7 +117,7 @@ def test_ready_now_view_lists_only_ready_recipes_on_every_platform():
         m.material_change(db, m.player(db, W, 'twitch', 'tw', 'Kam')[1], LUMBER, 10)
         db.commit()
     chat = m.make(W, 'tw', 'Kam', 'ready', 'twitch').body.decode()
-    assert 'Ready now' in chat and 'Campfire' in chat and len(chat.encode()) <= 380
+    assert 'Ready to craft' in chat and 'Campfire' in chat and len(chat.encode()) <= 380
     empty = m.make(W, 'tw', 'Kam', 'favs', 'twitch').body.decode()
     assert '!fav' in empty
 
