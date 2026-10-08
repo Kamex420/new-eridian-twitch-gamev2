@@ -11,6 +11,7 @@ functions, so stations, tiers, skills, needs, cooldowns and rewards are the
 same whether a player uses a slash option, a Workbench button, Twitch or a queue.
 """
 import math
+import re
 from itertools import islice
 from dataclasses import dataclass, field
 from sqlalchemy import select
@@ -290,7 +291,8 @@ class Context:
                           f'Needs personal Tier {base_tier}: {need} manufacturing batches (you have {self.batches}).')
         if e.kind == 'seed' and self.level(e.skill_key) < e.level:
             return Status('locked', '🔒', f'{e.skill} Lv{e.level} (you {self.level(e.skill_key)})',
-                          f'Needs {e.skill} Lv.{e.level}; you are Lv.{self.level(e.skill_key)}. Train it with lower-level recipes or /training.')
+                          f'Needs {e.skill} Lv.{e.level}; you are Lv.{self.level(e.skill_key)}. Train it with lower-level recipes or '
+                          + ('from Train skills in the Work menu.' if self.provider == 'discord' else '/training.'))
         if e.kind == 'seed' and any(k in cp.RARE for k in s.RECIPES[e.id]['outputs']) and not self.rare_ok:
             return Status('locked', '🔒', 'Mineral Extractor', 'Rare ores need a Small or Frontiers Expedition Mineral Extractor.')
         if e.kind == 'legacy':
@@ -304,7 +306,8 @@ class Context:
             cheapest = self.unlock_option(e)
             fee = cp.STATIONS[cheapest]['cost']
             return Status('station', '🔑', f"unlock {cp.STATIONS[cheapest]['name']} {fee} SC",
-                          f"Unlock {cp.STATIONS[cheapest]['name']} once for {fee} SC with /workshop, or own the matching machine.")
+                          f"Unlock {cp.STATIONS[cheapest]['name']} once for {fee} SC"
+                          + (', or own the matching machine.' if self.provider == 'discord' else ' with /workshop, or own the matching machine.'))
         missing = [(k, n - self.have(k)) for k, n in e.inputs.items() if self.have(k) < n]
         if missing:
             key, short = missing[0]
@@ -331,6 +334,25 @@ def inputs_text(ctx, e, multiplier=1):
 def clip(text, limit=100):
     text = str(text)
     return text if len(text) <= limit else text[:limit - 1].rstrip() + '…'
+
+
+def plain_source(text):
+    """A material's source (material_source) for a Discord screen with buttons: the slash command it starts with
+    becomes plain words, '/gather resource:Flaxa → 1 per action' -> 'gather Flaxa → 1 per action'."""
+    def craft(found):
+        e = entry(found[1])
+        return 'craft ' + (e.name if e else found[1].replace('_', ' '))
+
+    def train(found):
+        from .seed_skills import TASKS
+        cfg = TASKS.get(found[2])
+        return 'train ' + (cfg['label'] if cfg else found[2].replace('_', ' '))
+    text = re.sub(r'/gather resource:(.+?)(?= →)', r'gather \1', str(text))
+    text = re.sub(r'/mine ore:(.+?) action:Mine', r'mine \1', text)
+    text = re.sub(r'/make recipe:(\S+)', craft, text)
+    text = re.sub(r'/training skill:(\S+) task:(\S+)', train, text)
+    return (text.replace('/farm action:Harvest Pumpkins', 'harvest Pumpkins').replace('/cargo — successful', 'successful')
+            .replace('Inspect the item in /catalog.', 'Look it up in the Item list.'))
 
 
 def choice_label(ctx, e):
@@ -437,25 +459,23 @@ def home_text(ctx):
             if len(text.encode()) <= 380:
                 return text
         return text
-    lines = [f'🛠️ ALL RECIPES — {ctx.p.display_name if ctx.p else "Citizen"}', tier_line(ctx),
-             f"Workstations unlocked: {len(ctx.access)} of {len(cp.STATIONS)} (Survival Workbench is free). /workshop unlocks more.", '',
+    # Ready to craft and Favourites lead (each gets a Browse button beside it), then the categories. START HERE is only for
+    # a citizen with nothing ready: with recipes ready it would just repeat Ready to craft.
+    lines = [f'🛠️ ALL RECIPES — {ctx.p.display_name if ctx.p else "Citizen"}', tier_line(ctx), '',
              f"✅ **Ready to craft** — {counts['ready'][0]} recipes you can craft right now",
              f"⭐ **Favourites** — {counts['favorites'][1]} of {counts['favorites'][0]} starred recipes ready", '',
+             f"Workstations unlocked: {len(ctx.access)} of {len(cp.STATIONS)} (Survival Workbench is free).", '',
              'CATEGORIES · ready now / recipes, from the easiest tier']
     for key, emoji, label, text in CATEGORIES:
         total, ready, lowest = counts.get(key, (0, 0, 1))
         lines.append(f'{emoji} **{label}** — {ready}/{total} ready · from T{lowest}')
-    easy = start_here(ctx)
-    lines += ['', 'START HERE']
-    if easy:
-        lines += [f'✅ {e.name} ×{ctx.batch_size(e)} — {station_label(e, ctx)} · uses {inputs_text(ctx, e)}' for e in easy]
-    else:
+    if not counts['ready'][0]:
+        lines += ['', 'START HERE']
         for e in gather_first(ctx):
             missing = ', '.join(f'{n - ctx.have(k)} {resource_name(k)}' for k, n in e.inputs.items() if ctx.have(k) < n)
-            lines.append(f'❌ {e.name} at {station_label(e, ctx)} — gather {missing} with /gather or /mine, then craft it.')
-        lines.append('The Survival Workbench is free. Unlock more workstations with /workshop (15 SC each at Tier 1); Seed Industries sells starter supplies.')
-    lines += ['', 'Open a category (or /make category:<name>), then a recipe. Every list runs from the easiest recipe to the most complex. '
-              'Previews show ingredients you have and need, the workstation, tier, skill and where to get each ingredient.']
+            lines.append(f'❌ {e.name} at {station_label(e, ctx)} — gather {missing} first, then craft it.')
+        lines.append('The Survival Workbench is free. Other workstations unlock from the recipes that need them (15 SC each at Tier 1); '
+                     'Seed Industries sells starter supplies.')
     return '\n'.join(lines)
 
 
@@ -474,7 +494,8 @@ def category_text(ctx, category, page=1, station=''):
     page, pages, start, end = page_bounds(len(rows), page)
     shown = rows[start:end]
     ready = sum(ctx.status(e).code == 'ready' for e in rows)
-    lines = [f'{emoji} {label.upper()} · Page {page}/{pages}{station_note}',
+    paging = f' · Page {page}/{pages}' if pages > 1 else ''      # a one-page list shows no paging
+    lines = [f'{emoji} {label.upper()}{paging}{station_note}',
              f'{description} {len(rows)} recipes, easiest first · {ready} ready now · {tier_line(ctx)}', '']
     for number, e in enumerate(shown, start + 1):
         st = ctx.status(e)
@@ -483,7 +504,7 @@ def category_text(ctx, category, page=1, station=''):
     if not rows:
         lines.append(empty_view_text(category))
     lines += ['', '✅ ready · ❌ missing ingredients · 🔑 workstation to unlock · 🔒 tier, skill or society lock',
-              'Open a recipe (or /make recipe:<name>) to see its full preview before crafting.']
+              'Open a recipe to see its full preview before crafting.']
     return '\n'.join(lines)
 
 
@@ -525,7 +546,7 @@ def empty_view_text(category, provider='discord'):
         return ('No favourites yet. Open a recipe and press ⭐ Favourite.' if provider == 'discord'
                 else 'No favourites yet. !fav <recipe name> stars one.')
     if category == 'ready':
-        return ('Nothing is ready yet. Open a ❌ recipe and press 🧺 Fetch missing, or /gather materials.' if provider == 'discord'
+        return ('Nothing is ready yet. Open a ❌ recipe and press 🧺 Fetch missing to see what to gather.' if provider == 'discord'
                 else 'Nothing is ready yet. !fetch <recipe> shows how to get its ingredients.')
     return 'No recipes match this filter.'
 
@@ -570,7 +591,7 @@ def preview_text(ctx, e, count=1):
         elif t in ctx.access:
             state = f"🔒 owned; usable at Tier {station['tier']}"
         else:
-            state = f"🔑 unlock once for {station['cost']} SC (button below, or /workshop action:Unlock Station station:{t})"
+            state = f"🔑 unlock once for {station['cost']} SC (button below)"
         lines.append(f"{'✅' if state.startswith('✅') else '•'} Workstation: {station['name']} (T{station['tier']}) — {state}")
     if e.kind == 'seed':
         have = ctx.level(e.skill_key)
@@ -588,15 +609,14 @@ def preview_text(ctx, e, count=1):
         mark = '✅' if have >= n * count else '❌'
         line = f'{mark} {resource_name(k)} {have}/{n * count}'
         if have < n * count:
-            line += f' — get it: {material_source(k, ctx.provider)}'
+            line += f' — get it: {plain_source(material_source(k, ctx.provider))}'
         lines.append(line)
     energy = task_energy('rare' if e.kind == 'seed' and any(k in cp.RARE for k in s.RECIPES[e.id]['outputs']) else 'make')
     lines += ['', 'COST PER BATCH', f"{need_cost_text(energy)} · 5-second workshop cooldown · ingredients are used only on success"]
     users = used_for(e.output)
     if users:
         lines += ['', f'USED IN {len(users)} RECIPES', ', '.join(users[:8]) + (' …' if len(users) > 8 else '')]
-    lines += ['', 'Craft one batch now, or queue up to 10 batches with the buttons below '
-              f'(or /make recipe:{e.id} action:Craft / action:Queue count:<1–10>).']
+    lines += ['', 'Craft one batch now, or queue up to 10 batches with the buttons below.']
     return '\n'.join(line for line in lines if line is not None)
 
 

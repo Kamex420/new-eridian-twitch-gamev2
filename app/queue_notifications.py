@@ -185,11 +185,12 @@ def renew(db,row):
     row.run_id=uuid.uuid4().hex
 
 
-def delivery_status(db,queue):
+def delivery_status(db,queue,provider='discord'):
     from .game.base import app
     from . import qol, quiet_hours
     mode=qol.alert_mode(db,queue.channel_id,queue.canonical_uid)
-    if mode=='off':return 'Queue alerts are off (/settings or !settings alerts dm turns them back on). Your results are saved here.'
+    if mode=='off':return ('Queue alerts are off (Settings › Queue alerts turns them back on). Your results are saved here.' if provider=='discord'
+                           else 'Queue alerts are off (/settings or !settings alerts dm turns them back on). Your results are saved here.')
     dest=db.get(Destination,(queue.channel_id,queue.canonical_uid))
     notice=None
     if dest:

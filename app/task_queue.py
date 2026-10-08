@@ -198,8 +198,13 @@ def specification(task):
         if mode=='expedite':cost={item_identity.canonical('power_cell'):1}
     return cost,energy,max(ATTEMPT_SECONDS,cooldown)
 
-def requirements(db,p,task,count):
-    from .game.cooldowns_materials import material_amount, material_source
+def requirements(db,p,task,count,provider='discord'):
+    """What a queue of `count` attempts of `task` needs. On Discord the pointers name menu screens (its queue screens have
+    buttons); other providers keep the commands."""
+    from .game.cooldowns_materials import material_amount, material_source as source_of
+    from .workbench import plain_source
+    discord=provider=='discord'
+    material_source=lambda key:plain_source(source_of(key)) if discord else source_of(key)
     from .game.life import life_state
     from .game.players import resource_name
     from .game.routes_player import equipment_count
@@ -216,14 +221,16 @@ def requirements(db,p,task,count):
         have=material_amount(db,p,key)
         lines.append(f'{resource_name(key)}: have {have}; need {n} for the next attempt (missing {max(0,n-have)}); up to {n*count} for the queue (missing {max(0,n*count-have)}). Get it: {material_source(key)}')
     if not costs:lines.append('Consumable materials: none required.')
-    lines.append(f'Morale may also fall by up to {count} if Comfort drops below {needs.COMFORT_SLOW}; recover Comfort with {needs.COMFORT_FIXES_DISCORD}, or /sleep when it is ready.')
+    fixes='Relax in the Life menu or by using a bed, seat, bath, clothing item or Comfort Pack' if discord else needs.COMFORT_FIXES_DISCORD
+    lines.append(f'Morale may also fall by up to {count} if Comfort drops below {needs.COMFORT_SLOW}; recover Comfort with {fixes}, or {"Sleep" if discord else "/sleep"} when it is ready.')
     kind,target=task.split(':',1)
     if kind=='make' and target in s.RECIPES:
         r=s.RECIPES[target];req=r['requirement'].get('Skill','SK_CRAFTING')
-        lines.append(f"Requires {s.station(r)}, tier {cp.recipe_tier(target)}, and {s.skill_name(req)} level {s.required_level(r)}. Use /workshop and /training.")
+        lines.append(f"Requires {s.station(r)}, tier {cp.recipe_tier(target)}, and {s.skill_name(req)} level {s.required_level(r)}. "
+                     +('Workstation access is under Craft › More › Workstations, and skills are trained under Work › Train skills.' if discord else 'Use /workshop and /training.'))
     if kind=='make' and target not in s.RECIPES:
         tag=cp.legacy_station(target);station=cp.STATIONS[tag]
-        lines.append(f"Requires {station['name']} and tier {station['tier']}. Use /workshop for access.")
+        lines.append(f"Requires {station['name']} and tier {station['tier']}. "+('Workstation access is under Craft › More › Workstations.' if discord else 'Use /workshop for access.'))
     if kind=='work':
         action,mode=task_yields.split(target)
         equipment=task_yields.EQUIPMENT.get((action,mode))
@@ -232,7 +239,8 @@ def requirements(db,p,task,count):
             lines.append(f'{resource_name(equipment)}: need 1, have {have}, missing {max(0,1-have)}. This equipment is kept. Get it: '+material_source(equipment))
     if kind=='work' and target in SEED_TASKS:
         cfg=SEED_TASKS[target]
-        lines.append(f"Requires {SKILL_LABELS[cfg['skill']]} level {cfg['unlock']}. Use /training to see the task's skill and workstation requirements.")
+        lines.append(f"Requires {SKILL_LABELS[cfg['skill']]} level {cfg['unlock']}. "
+                     +("Train skills, in the Work menu, shows the task's skill and workstation requirements." if discord else "Use /training to see the task's skill and workstation requirements."))
     if kind=='work':
         action,mode=task_yields.split(target)
         detail=task_yields.requirements(action,mode)
@@ -242,11 +250,15 @@ def requirements(db,p,task,count):
     lines.append('These are task costs, excluding other activities, passive recovery and incident effects. Failed attempts count; blocked attempts do not.')
     return '\n'.join(lines)
 
-def status(db,p,row,detail=False):
+def status(db,p,row,detail=False,provider='discord'):
     """Queue status. The short view shows progress, results and only the warnings
-    that apply; `detail` adds every requirement and rule (the Details button)."""
+    that apply; `detail` adds every requirement and rule (the Details button).
+    On Discord the screen has buttons for everything, so its text names no commands to type."""
     from .game.players import as_utc
-    if row is None:return 'You have no task queue. Start one from /mine, /gather or /make with Queue 5 or Queue 10, or /queue action:Start.'
+    discord=provider=='discord'
+    if row is None:
+        if discord:return '📋 QUEUE STATUS\nNothing is queued. Pick a material or an ore to gather or mine up to 10 times in a row, or queue a recipe from its page.'
+        return 'You have no task queue. Start one from /mine, /gather or /make with Queue 5 or Queue 10, or /queue action:Start.'
     name=choices().get(row.task,row.task)
     text=f'TASK QUEUE — {row.state.upper()}\n{name}\nAttempts completed: {row.total-row.remaining}/{row.total}; remaining: {row.remaining}.'
     if row.state=='running' and row.remaining and row.task in choices():
@@ -255,19 +267,22 @@ def status(db,p,row,detail=False):
     text+='\n'+totals_text(db,row,compact=not detail)
     following=qol.next_label(db,row.channel_id,row.canonical_uid)
     if following:text+=f'\n\nNEXT QUEUE\n{following} starts automatically when this queue completes.'
-    if detail and row.state not in ACTIVE:text+='\n\nRepeat this queue with the Repeat button, /queue action:Repeat last, or !queuerepeat.'
+    if detail and row.state not in ACTIVE:text+='\n\n'+('Repeat this queue with the Repeat button.' if discord else 'Repeat this queue with the Repeat button, /queue action:Repeat last, or !queuerepeat.')
     health=db.get(QueueHealth,(row.channel_id,row.canonical_uid))
     if health and health.failures and row.state in ACTIVE:
         wait=max(0,int((as_utc(row.next_at)-runtime.now()).total_seconds()))
         text+=f'\n\nRETRY STATUS\nTemporary system error ({health.failures}/3). Retrying in about {wait}s; the interrupted attempt was not spent.'
-    if row.state in {'paused','error'}:text+='\n\nPAUSE REASON\n'+row.result
+    if row.state in {'paused','error'}:text+='\n\nPAUSE REASON\n'+(qol.without_fix(row.result) if discord else row.result)
     if detail and row.remaining and row.state in ACTIVE:
-        text+='\n\n'+requirements(db,p,row.task,row.remaining)+'\n\nThe queue resumes automatically when needs and requirements are met. Recover faster with /relax, /eat, /games or comfort items (/sleep when ready); /queue action:Cancel stops the remaining attempts.'
+        resumes='The queue resumes automatically when needs and requirements are met. '
+        resumes+=('Recover faster with Relax, Eat or Games in the Life menu, or comfort items from Use (Sleep when it is ready); Stop queue cancels the remaining attempts.' if discord
+                  else 'Recover faster with /relax, /eat, /games or comfort items (/sleep when ready); /queue action:Cancel stops the remaining attempts.')
+        text+='\n\n'+requirements(db,p,row.task,row.remaining,provider)+'\n\n'+resumes
     elif row.remaining and row.state=='running':
         from .inbox import queue_warnings
-        warnings=queue_warnings(db,p,row.task,row.remaining)
+        warnings=queue_warnings(db,p,row.task,row.remaining,provider)
         if warnings:text+='\n\n⚠️ HEADS UP\n'+'\n'.join('• '+w for w in warnings)
-    delivery=queue_notifications.delivery_status(db,row)
+    delivery=queue_notifications.delivery_status(db,row,provider)
     if detail or not delivery.startswith(('You will be','Queue notification sent')):text+='\n'+delivery
     return text
 
@@ -322,7 +337,7 @@ def control(channel,uid,name,provider,action='view',task='',count=1):
         prefix='/' if provider=='discord' else '!'
         if action=='repeat':
             if row is None:return f'You have no earlier queue to repeat. Start one with {prefix}queue, {prefix}mine or {prefix}make.'
-            if row.state in ACTIVE:return 'Your queue is still active. Use Queue next to run another task after it. No queue was changed.\n'+status(db,p,row)
+            if row.state in ACTIVE:return 'Your queue is still active. Use Queue next to run another task after it. No queue was changed.\n'+status(db,p,row,provider=provider)
             action,task,count='start',row.task,row.total
         if action=='start':
             if not 1<=count<=10:return 'Count must be a whole number from 1 to 10. No queue was changed.'
@@ -330,16 +345,16 @@ def control(channel,uid,name,provider,action='view',task='',count=1):
             if task not in choices():return 'Choose a valid Task from /queue. No queue was changed.'
             if row and row.state in ACTIVE:
                 hint='/queue action:Queue next' if provider=='discord' else '!queuenext <task ID> <1–10>'
-                return f'You already have a queue. Only one task type can run at a time. Cancel it, or use {hint} to run this task after it.\n'+status(db,p,row)
+                return f'You already have a queue. Only one task type can run at a time. Cancel it, or use {hint} to run this task after it.\n'+status(db,p,row,provider=provider)
             row=begin(db,p,row,task,count,target=(provider,uid))
         elif action=='next':
             if not row or row.state not in ACTIVE:return f'You have no active queue, so there is nothing to follow. Start this task with {prefix}queue action:Start instead.' if provider=='discord' else 'No active queue. Use !queueadd <task ID> <1–10> to start now.'
             ok,text=qol.set_next(db,p,task,count)
             if not ok:return text
-            db.commit();return text+'\n\n'+status(db,p,row)
+            db.commit();return text+'\n\n'+status(db,p,row,provider=provider)
         elif action=='clearnext':
             cleared=qol.clear_next(db,channel,p.twitch_uid);db.commit()
-            return ('⏭️ Next queue cleared.' if cleared else 'No next queue was set.')+('\n\n'+status(db,p,row) if row else '')
+            return ('⏭️ Next queue cleared.' if cleared else 'No next queue was set.')+('\n\n'+status(db,p,row,provider=provider) if row else '')
         note=''
         if action=='cancel':
             if row and row.state in ACTIVE|{'error'}:
@@ -354,7 +369,7 @@ def control(channel,uid,name,provider,action='view',task='',count=1):
                     row.result+=' '+note.strip()
                 queue_notifications.stopped(db,p,row,'cancelled',row.result)
         elif action not in {'view','start'}:return 'Choose View, Start, Queue next, Repeat last, Clear next or Cancel. No queue was changed.'
-        db.commit();return note+status(db,p,row)
+        db.commit();return note+status(db,p,row,provider=provider)
 
 def run_one(channel,uid):
     # Existing handlers commit internally. Binding their sessions to this outer

@@ -195,7 +195,7 @@ def inbox_text(db, p):
 
 # ---------------------------------------------------------------- when information is needed
 
-def queue_warnings(db, p, task, count):
+def queue_warnings(db, p, task, count, provider='discord'):
     """Short warnings for a queue that will not finish as it stands; [] when it will."""
     from . import qol, task_queue
     from .game.cooldowns_materials import material_amount, material_source
@@ -212,7 +212,7 @@ def queue_warnings(db, p, task, count):
     out = []
     if short:
         fix = 'auto-recover will top them up' if qol.autorecover_on(db, p.channel_id, p.twitch_uid) else \
-              'relax or eat first, or turn on /settings → Autorecover'
+              ('relax or eat first, or turn on Auto-recover in Settings' if provider == 'discord' else 'relax or eat first, or turn on /settings → Autorecover')
         out.append(f"Needs won't last all {count} attempts ({', '.join(short)}). It will pause; {fix}.")
     for key, n in costs.items():
         have = material_amount(db, p, key)

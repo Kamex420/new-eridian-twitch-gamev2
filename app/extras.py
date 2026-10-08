@@ -337,7 +337,8 @@ def start_goal(db, p, recipe, provider='discord'):
     if not kept:
         # Already craftable when set: the screen says so, so no ready note follows.
         _new_progress(db, p, e, len(plan[1]), wb.Context(db, p, provider).status(e).code == 'ready')
-    return f'🎯 Goal set: **{e.name}**. /status and My goal track everything still needed.', plan
+    where = '/status and My goal' if provider != 'discord' else 'Full status and My goal'
+    return f'🎯 Goal set: **{e.name}**. {where} track everything still needed.', plan
 
 
 def clear_goal(db, p):
@@ -818,8 +819,10 @@ def goal_text(db, p, provider='discord', plan=None):
     (goal, steps) when the caller already has them, so the goal is planned once per screen."""
     e, steps = plan if plan is not None else walkthrough(db, p, provider)
     if e is None:
-        how = 'Open a recipe and press 🎯 Set goal.' if provider == 'discord' else '!target <recipe name> sets one.'
-        return f'🎯 No goal yet. {how} The goal then walks you through every step, with a button for each.'
+        if provider == 'discord':
+            # A titled card; the Set goal buttons under it are a good first goal each (ui.goal_components).
+            return '🎯 MY GOAL\nNo goal yet. Pick a recipe and the goal walks you through every step.'
+        return '🎯 No goal yet. !target <recipe name> sets one. The goal then walks you through every step, with a button for each.'
     done, total = progress(db, p, e, len(steps))
     unit = 'step' if total == 1 else 'steps'
     if provider != 'discord':

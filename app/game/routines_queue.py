@@ -134,7 +134,8 @@ def mining(channel:str,uid:str,name:str='Citizen',ore:str='',action:str='view',c
         with SessionLocal() as db:
             _,p=player(db,channel,provider,uid,name)
             rule='Needs a Mineral Extractor in your bag: a Small Mineral Extractor brings up 1 ore a success, a Frontiers Expedition Mineral Extractor 2. Failures give 1 Stone Dust; shared 20-second cooldown.\n' if key in crafting_progression.RARE else 'No skill unlock, materials or tools required; shared 5-second gathering cooldown.\n'
-            text=seed_content.item_label(key)+' — MINING REQUIREMENTS\n'+rule+task_queue.requirements(db,p,'mine:'+key,count)+'\nSelect Mine to start. Use /queue to check progress or cancel.'
+            text=(seed_content.item_label(key)+' — MINING REQUIREMENTS\n'+rule+task_queue.requirements(db,p,'mine:'+key,count,provider)+
+                  ('\nSelect Mine to start. Queue status (below) shows progress and can stop the queue.' if provider=='discord' else '\nSelect Mine to start. Use /queue to check progress or cancel.'))
     return platform_response(provider,text,text.replace('\n',' | '))
 
 task_queue.install(main)
