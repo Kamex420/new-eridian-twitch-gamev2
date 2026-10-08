@@ -107,7 +107,7 @@ def test_views_behind_dropdowns():
     work = press(ui.cid('111', 'mn', 'work'))['data']
     assert 'Fix a tool' not in labels(work) and any(x.startswith('More · ') and x.endswith(' locked') for x in labels(work))
     more = text_of(press(ui.cid('111', 'mn', 'work', 'more'))['data'])        # hidden until they own gear, with the reason
-    assert 'Fix a tool' in more and 'you have no quality gear' in more and 'NOT YET' in more
+    assert 'Fix a tool' in more and 'you have no quality gear' in more and 'not yet' in more.lower()      # the heading shows as Not Yet
 
 
 def test_public_panel_opens_each_citizens_own_private_menu():

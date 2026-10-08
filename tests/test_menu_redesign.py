@@ -109,7 +109,7 @@ def test_work_more_lists_extras_and_locked_jobs_with_a_way_to_get_each():
     more = area('work', 'more')
     body = text_of(more)
     assert more['embeds'][0]['author']['name'] == '🏠 Menu › ⛏️ Work › More'
-    assert 'ALSO HERE' in body and 'Fix the town' in body and 'NOT YET' in body
+    assert 'also here' in body.lower() and 'Fix the town' in body and 'not yet' in body.lower()     # headings show as Also Here / Not Yet
     assert 'Hydroponics' in body and 'needs a Small Water Filter' in body
     how = find(more, 'Hydroponics')
     assert how['custom_id'].endswith('|fd|where do I get a Small Water Filter')
@@ -133,7 +133,7 @@ def test_switches_and_situational_buttons_hide_and_are_never_listed_as_locked():
     assert not {'Stop queue', 'Repeat last', 'Clear what runs next'} & set(labels(area('queue')))
     town = area('community')
     assert 'Event' not in labels(town) and 'Stream challenge' not in labels(town)         # only while one runs
-    assert 'NOT YET' not in text_of(area('community', 'more'))
+    assert 'not yet' not in text_of(area('community', 'more')).lower()
     assert 'Recover' not in labels(area('life')) and 'Recover' not in text_of(area('life', 'more'))
 
 
@@ -142,7 +142,7 @@ def test_home_and_business_lists_the_business_buttons_as_locked_until_you_start_
     assert {'Your home', 'Upgrade home', 'Your business', 'Start a business'} <= set(labels(area('property')))
     more = area('property', 'more')
     body = text_of(more)
-    assert 'ALSO HERE' not in body and 'NOT YET' in body and 'start a business first' in body
+    assert 'also here' not in body.lower() and 'not yet' in body.lower() and 'start a business first' in body
     assert labels(more).count('Start a business') == 1                                    # one fix for the three locked buttons
     assert 'More · 3 locked' in labels(area('property'))
 
@@ -272,7 +272,7 @@ def test_looks_sits_under_you_with_pickers_grouped_by_what_they_change():
     picker = skin['components'][0]['components'][0]
     assert picker['custom_id'] == ui.cid('111', 'mp', 'lk_skin') and len(picker['options']) > 3
     hats = text_of(area('looks', 'more'))
-    assert 'NOT YET' in hats and 'Wear a hat' in hats and 'Pin a badge' in hats
+    assert 'not yet' in hats.lower() and 'Wear a hat' in hats and 'Pin a badge' in hats
 
 
 # ---------------------------------------------------------------- the shape of the whole menu

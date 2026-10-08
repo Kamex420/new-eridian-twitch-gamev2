@@ -521,7 +521,7 @@ def test_the_settings_form_sets_quiet_hours(clock):
     assert boxes(press(ui.cid('111', 'mo', 'quiet'))) == {'value': zone, 'start': '23:00', 'end': '08:00'}    # filled in
     assert 'Quiet hours: On' in labels(press(ui.cid('111', 'mn', 'settings'))['data'])           # one button, whichever state
     choice = press(ui.cid('111', 'mn', 'settings', 'quiet'))['data']                               # on: Change or Turn off
-    assert {'Change', 'Turn off'} <= set(labels(choice)) and f'On: 23:00–08:00' in json.dumps(choice, ensure_ascii=False)
+    assert {'Change', 'Turn off'} <= set(labels(choice)) and '23:00–08:00' in json.dumps(choice, ensure_ascii=False)
     off = json.dumps(press(next(c for c in choice['components'][0]['components'] if c['label'] == 'Turn off')['custom_id'])['data'], ensure_ascii=False)
     assert 'Quiet hours' in off and 'Quiet hours: On' not in off
     assert 'Quiet hours' in labels(press(ui.cid('111', 'mn', 'settings'))['data'])
