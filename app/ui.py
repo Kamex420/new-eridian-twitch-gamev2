@@ -283,7 +283,7 @@ def _code(station):
 def category_menu(ctx, owner, current=''):
     counts = wb.category_counts(ctx)
     total, ready, _ = counts['ready']
-    options = [option('Ready now', 'ready', f'{total} recipes you can craft right now · favourites first', '✅', current == 'ready')]
+    options = [option('Ready to craft', 'ready', f'{total} recipes you can craft right now · favourites first', '✅', current == 'ready')]
     total, ready, _ = counts['favorites']
     options.append(option('Favourites', 'favorites', f'{ready} ready of {total}/{qol.MAX_FAVORITES} starred recipes', '⭐', current == 'favorites'))
     for key, emoji, label, text in wb.CATEGORIES:
@@ -298,7 +298,7 @@ def home_components(ctx, owner):
 
 def home_items(ctx, owner):
     """Ready now, Favourites and every category, each with an Open button beside it."""
-    keys = [('Ready now', 'ready'), ('Favourites', 'favorites')] + [(label, key) for key, _, label, _ in wb.CATEGORIES]
+    keys = [('Ready to craft', 'ready'), ('Favourites', 'favorites')] + [(label, key) for key, _, label, _ in wb.CATEGORIES]
     return [{'match': f'**{label}**', 'button': button('Browse', cid(owner, 'wc', key, 1, ''))} for label, key in keys], [cid(owner, 'sc')]
 
 
@@ -421,7 +421,7 @@ def category_components(ctx, owner, category, page, station=''):
         button('Previous', cid(owner, 'wc', category, page - 1, st), disabled=page <= 1, emoji='◀️'),
         button(f'Page {page}/{pages}', cid(owner, 'wc', category, page, st), disabled=True),
         button('Next', cid(owner, 'wc', category, page + 1, st), disabled=page >= pages, emoji='▶️'),
-        button('Workbench', cid(owner, 'wh'), emoji='🛠️')))
+        button('All recipes', cid(owner, 'wh'), emoji='🛠️')))
     return components
 
 
@@ -478,8 +478,8 @@ def after_craft_components(ctx, owner, e, back):
     return [row(button('Craft again', cid(owner, 't', ticket), style=3, emoji='🛠️'),
                 button('Queue 5', cid(owner, 'qp', 'make:' + e.id, 5), emoji='⏱️'),
                 button('Recipe', cid(owner, 'wr', e.id, category or e.category, page, st), emoji='📋'),
-                button('Ready now', cid(owner, 'wc', 'ready', 1, ''), emoji='✅'),
-                button('Workbench', cid(owner, 'wh'), emoji='🛠️'))]
+                button('Ready to craft', cid(owner, 'wc', 'ready', 1, ''), emoji='✅'),
+                button('All recipes', cid(owner, 'wh'), emoji='🛠️'))]
 
 
 # ---------------------------------------------------------------- queue views
@@ -553,9 +553,9 @@ def status_components(db, p, owner):
     tq = task_queue
     queue_row = db.get(tq.TaskQueue, (p.channel_id, p.twitch_uid)) if p is not None else None
     first = [button('Refresh', cid(owner, 'st'), emoji='🔄'),
-             button('Ready now', cid(owner, 'wc', 'ready', 1, ''), emoji='✅'),
+             button('Ready to craft', cid(owner, 'wc', 'ready', 1, ''), emoji='✅'),
              button('Favourites', cid(owner, 'wc', 'favorites', 1, ''), emoji='⭐'),
-             button('Workbench', cid(owner, 'wh'), emoji='🛠️'),
+             button('All recipes', cid(owner, 'wh'), emoji='🛠️'),
              button('Queue', cid(owner, 'qv'), emoji='📋')]
     second = [repeat_button(owner, queue_row)]
     if p is not None and blocked_needs(life_state(db, p)):
@@ -965,7 +965,7 @@ def _navigate(payload, uid, name, owner, verb, args, values):
         db.commit()
         from .menu import crumb
         if verb == 'wh':
-            return _reply(with_crumb(workbench_message(ctx, owner, wb.home_text(ctx)), crumb('craft', 'Workbench')), payload)
+            return _reply(with_crumb(workbench_message(ctx, owner, wb.home_text(ctx)), crumb('craft', 'All recipes')), payload)
         if verb in {'wc', 'sc', 'ss'}:
             if verb == 'sc':
                 category, page, station = (values[0] if values else ''), 1, ''
@@ -982,7 +982,7 @@ def _navigate(payload, uid, name, owner, verb, args, values):
             db.commit()
             text = wb.category_text(ctx, category, page, station)
             return _reply(with_crumb(workbench_message(ctx, owner, text, category, page, station),
-                                     crumb('craft', 'Workbench › ' + wb.VIEW_INFO[category][1] if isinstance(wb.VIEW_INFO.get(category), tuple) else 'Workbench')), payload)
+                                     crumb('craft', 'All recipes › ' + wb.VIEW_INFO[category][1] if isinstance(wb.VIEW_INFO.get(category), tuple) else 'All recipes')), payload)
         if verb in {'wr', 'sr'}:
             if verb == 'sr':
                 recipe = values[0] if values else ''
@@ -994,7 +994,7 @@ def _navigate(payload, uid, name, owner, verb, args, values):
             if e is None:
                 return _notice('That recipe is no longer available. Open /make again.')
             text = wb.preview_text(ctx, e)
-            return _reply(with_crumb(message(text, recipe_components(ctx, owner, e, category, page, station)), crumb('craft', 'Workbench › ' + e.name)), payload)
+            return _reply(with_crumb(message(text, recipe_components(ctx, owner, e, category, page, station)), crumb('craft', 'All recipes › ' + e.name)), payload)
         if verb in {'qp', 'sq'}:
             task = args[0]
             count = int(values[0]) if verb == 'sq' and values else int(args[1] if len(args) > 1 else 1)
@@ -1323,7 +1323,7 @@ def goal_message(db, p, owner, note='', plan=None):
         tools.insert(0, button('Goal recipe', cid(owner, *recipe), emoji='📋'))
     rows = [row(*buttons[i:i + 5]) for i in range(0, min(len(buttons), 10), 5)] + [row(*tools), _menu_row(owner, ('craft', 'Craft'))]
     from .menu import crumb
-    return with_crumb(message(text, rows, 'goal', items), crumb('craft', '🎯 Goal'))
+    return with_crumb(message(text, rows, 'goal', items), crumb('craft', '🎯 My goal'))
 
 
 def goal_shopping_button(db, p, owner, e):
@@ -1335,8 +1335,8 @@ def goal_shopping_button(db, p, owner, e):
     return button('Add to shopping list', cid(owner, 'la', e.id), emoji='🛒')
 
 
-def with_goal_button(data, owner, verb='gv', label='Goal', emoji='🎯'):
-    """Add 🎯 Goal (or another screen: 🛒 Shopping list) to a result reached from it, so the next step is one press away."""
+def with_goal_button(data, owner, verb='gv', label='My goal', emoji='🎯'):
+    """Add 🎯 My goal (or another screen: 🛒 Shopping list) to a result reached from it, so the next step is one press away."""
     goal = cid(owner, verb)
     rows = [r for r in data.get('components') or [] if r and r.get('components')]
     if any(c.get('custom_id') == goal for r in rows for c in r['components']):
@@ -1354,7 +1354,7 @@ def goal_components(db, p, owner):
     from . import extras as more
     e = more.goal_entry(db, p)
     if e is None:
-        return [row(button('Ready now', cid(owner, 'wc', 'ready', 1, ''), emoji='✅'), button('Workbench', cid(owner, 'wh'), emoji='🛠️')),
+        return [row(button('Ready to craft', cid(owner, 'wc', 'ready', 1, ''), emoji='✅'), button('All recipes', cid(owner, 'wh'), emoji='🛠️')),
                 _menu_row(owner, ('craft', 'Craft'))]
     step, action = more.next_step(db, p)
     buttons = []
@@ -1554,7 +1554,7 @@ def shopping_item_message(db, p, owner, recipe_id, note=''):
     second += [button('Recipe', cid(owner, 'wr', e.id, e.category, 1, ''), emoji='📋'), button('Shopping list', cid(owner, 'lv'), style=1, emoji='🛒')]
     from . import extras
     goal = extras.goal_entry(db, p)
-    second.append(button('Goal', cid(owner, 'gv'), emoji='🎯') if goal is not None and goal.id == e.id
+    second.append(button('My goal', cid(owner, 'gv'), emoji='🎯') if goal is not None and goal.id == e.id
                   else button('Set as goal', cid(owner, 'gs', e.id), emoji='🎯'))
     rows = [row(*first), row(*second), row(back_button(owner, 'lv'), button('Menu', cid(owner, 'mn', 'home'), emoji='🏠'))]
     return with_crumb(message(shop.item_text(db, p, e.id, note), rows, 'goal'), crumb('craft', '🛒 Shopping list › ' + e.name))
@@ -1587,7 +1587,7 @@ def ask_components(owner, result):
         elif kind == 'goal':
             buttons.append(button('Set as goal', cid(owner, 'gs', a['entry'].id), style=1, emoji='🎯'))
         elif kind == 'goalview':
-            buttons.append(button('Goal', cid(owner, 'gv'), style=1, emoji='🎯'))
+            buttons.append(button('My goal', cid(owner, 'gv'), style=1, emoji='🎯'))
         elif kind == 'gather':
             key = a['item']
             mine = key in task_queue.ores()

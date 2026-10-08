@@ -66,7 +66,7 @@ def test_on_a_first_screen_back_goes_one_level_up():
     recipe = press(ui.cid('111', 'wr', e.id, e.category, 1, ''), message='fresh')
     assert back(recipe) == ui.cid('111', 'bk', 'wc', e.category, 1, '')
     listing = press(back(recipe), message='fresh')
-    assert listing['type'] == 7 and 'Workbench ›' in where(listing) and e.name not in where(listing)
+    assert listing['type'] == 7 and 'All recipes ›' in where(listing) and e.name not in where(listing)
     farming = press(ui.cid('111', 'mn', 'farming'), message='other')
     assert where(press(back(farming), message='other')) == '🏠 Menu › ⛏️ Work'           # an area: up to its parent
 

@@ -78,7 +78,7 @@ Follow these in order. Steps 2–7 each pay SC, and finishing them all gives a b
 - **1 · /start:** Make your citizen. You get 2 Lumber and 4 Berries.
 - **2 · /job:** Pick a profession. Any is fine; you can change it later.
 - **3 · /gather → Lumber:** Your first material.
-- **4 · /make → Ready now → Campfire:** Your first craft. The welcome kit has the Lumber it needs.
+- **4 · /make → Ready to craft → Campfire:** Your first craft. The welcome kit has the Lumber it needs.
 - **5 · /life → Eat → Berries:** Food keeps your Nutrition up.
 - **6 · /gather → Lumber → Queue 5:** Five gathers in a row while you read on.
 - **7 · /seedling:** Meet the one who plays while you are away.
@@ -228,7 +228,7 @@ The Workbench lists every recipe from easiest to hardest, with what you have and
 **The Workbench**
 
 - `/make` Categories, then recipes. Nothing is spent until you press Craft.
-- `/make → Ready now` Everything you can craft this moment.
+- `/make → Ready to craft` Everything you can craft this moment.
 - `/make → Favourites` Star recipes to keep them on top.
 - **🧺 Fetch missing:** Gathers what a recipe still needs, then crafts it.
 - **🎯 Set goal:** Pin a recipe. /status shows the next step toward it.

@@ -263,7 +263,7 @@ def test_workbench_pages_open_each_recipe_from_beside_it():
     opened = press(found[0]['accessory']['custom_id'])
     assert opened['type'] == 7 and 'OUTPUT PER BATCH' in v2.text_of(opened['data']).upper()
     home = v2.convert(press(ui.cid('111', 'wh'))['data'])
-    assert assert_valid(home) and sections(home)[0]['components'][0]['content'].startswith('✅ **Ready now**')
+    assert assert_valid(home) and sections(home)[0]['components'][0]['content'].startswith('✅ **Ready to craft**')
 
 
 def test_a_skills_tasks_each_get_a_start_button():

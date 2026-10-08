@@ -337,7 +337,7 @@ def start_goal(db, p, recipe, provider='discord'):
     if not kept:
         # Already craftable when set: the screen says so, so no ready note follows.
         _new_progress(db, p, e, len(plan[1]), wb.Context(db, p, provider).status(e).code == 'ready')
-    return f'🎯 Goal set: **{e.name}**. /status and the Goal view track everything still needed.', plan
+    return f'🎯 Goal set: **{e.name}**. /status and My goal track everything still needed.', plan
 
 
 def clear_goal(db, p):
@@ -833,13 +833,13 @@ def goal_text(db, p, provider='discord', plan=None):
         _, machine = _machine(ctx, e)
         if machine is not None:
             state = f'🔑 needs a {machine.name}: made in the steps below'
-    lines = [f'🎯 GOAL — {e.name.upper()}', f'{progress_bar(done, total)} {done} of {total} {unit} done · {state}',
+    lines = [f'🎯 MY GOAL — {e.name.upper()}', f'{progress_bar(done, total)} {done} of {total} {unit} done · {state}',
              '', f'STEPS · {len(steps)} TO GO' if len(steps) != 1 else 'LAST STEP']
     for i, st in enumerate(steps[:STEPS_SHOWN], 1):
         lines.append(f"`{i}` {st['mark']} {st['name']}" + (f" — {'next · ' if i == 1 else ''}{st['detail']}" if st['detail'] else ''))
     if len(steps) > STEPS_SHOWN:
         lines.append(f'…and {len(steps) - STEPS_SHOWN} more after these.')
-    lines += ['', 'Each button does that step once, or opens where it is done. After a step, the result has a 🎯 Goal button back here.']
+    lines += ['', 'Each button does that step once, or opens where it is done. After a step, the result has a 🎯 My goal button back here.']
     return '\n'.join(lines)
 
 

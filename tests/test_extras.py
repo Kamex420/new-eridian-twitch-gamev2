@@ -105,7 +105,7 @@ def test_goal_tracks_next_step_in_view_status_and_twitch():
     body = text_of(view['data'])
     assert 'Goal set' in body and 'Gather Lumber' in body and 'Craft Campfire' in body          # every step, in order
     assert 'Gather' in labels(view['data'])                                                       # each with its button
-    assert '🎯 GOAL' in m.status_view(W, '111', 'Kam', 'discord').body.decode()
+    assert '🎯 MY GOAL' in m.status_view(W, '111', 'Kam', 'discord').body.decode()
     seed()
     chat = m.target('test', 'u', 'Kamex', 'campfire', 'twitch').body.decode()
     assert 'Goal' in chat and 'Next' in chat

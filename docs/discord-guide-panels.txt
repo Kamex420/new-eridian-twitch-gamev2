@@ -97,7 +97,7 @@ The Holidays panel's COMING UP part is worked out when the bot posts it; the cop
 [0mPick a profession. Any is fine; you can change it later.
 [0;33m3 · /gather → Lumber
 [0mYour first material.
-[0;33m4 · /make → Ready now → Campfire
+[0;33m4 · /make → Ready to craft → Campfire
 [0mYour first craft. The welcome kit has the Lumber it needs.
 [0;33m5 · /life → Eat → Berries
 [0mFood keeps your Nutrition up.
@@ -280,7 +280,7 @@ The Holidays panel's COMING UP part is worked out when the bot posts it; the cop
 [0;33m/make
 [0mCategories, then recipes. Nothing is spent until you press
 [0mCraft.
-[0;33m/make → Ready now
+[0;33m/make → Ready to craft
 [0mEverything you can craft this moment.
 [0;33m/make → Favourites
 [0mStar recipes to keep them on top.

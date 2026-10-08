@@ -140,7 +140,7 @@ def set_favorite(db, p, recipe, on=None):
     """Add (on=True), remove (on=False) or toggle (None). Returns the message."""
     e = wb.entry(recipe) if recipe else None
     if e is None:
-        return 'That recipe is not available. Choose one from the Workbench. Nothing changed.'
+        return 'That recipe is not available. Choose one from All recipes (/make). Nothing changed.'
     row = prefs(db, p.channel_id, p.twitch_uid, create=True)
     ids = [i for i in json.loads(row.favorites) if wb.entry(i) is not None]
     if on is None:
@@ -151,7 +151,7 @@ def set_favorite(db, p, recipe, on=None):
         if len(ids) >= MAX_FAVORITES:
             return f'⭐ You already have {MAX_FAVORITES} favourites. Remove one before adding {e.name}. Nothing changed.'
         ids.append(e.id)
-        text = f'⭐ {e.name} added to favourites ({len(ids)}/{MAX_FAVORITES}). Favourites are listed first in the Workbench, Ready now and status.'
+        text = f'⭐ {e.name} added to favourites ({len(ids)}/{MAX_FAVORITES}). Favourites are listed first in All recipes, Ready to craft and status.'
     else:
         if e.id not in ids:
             return f'☆ {e.name} is not a favourite. Nothing changed.'
@@ -864,7 +864,7 @@ def status_text(db, p, provider='discord'):
     lines += [f"{'⭐' if e in favs else '✅'} {e.name} ×{ctx.batch_size(e)} — {wb.station_label(e, ctx)}" for e in ready] or ['• Nothing is ready yet.']
     goal = extras.goal_entry(db, p)
     if goal is not None:
-        lines += ['', f'🎯 GOAL — {goal.name}', extras.next_step(db, p, provider)[0] + ' · /menu → Craft → My goal']
+        lines += ['', f'🎯 MY GOAL — {goal.name}', extras.next_step(db, p, provider)[0] + ' · /menu → Craft → My goal']
     lines += ['', 'NEXT STEP', next_step(db, p, provider, ctx),
               '', 'SETTINGS', f'Alerts: {ALERT_LABELS[mode]}{quiet} · Auto-recover: {"on" if auto else "off"} · Favourites: {len(favs)}/{MAX_FAVORITES} · /settings changes these.']
     return '\n'.join(lines)

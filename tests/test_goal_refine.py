@@ -313,7 +313,7 @@ def test_the_goal_screen_adds_the_goal_to_the_shopping_list():
     with m.SessionLocal() as db:
         p = m.player(db, W, 'discord', '111', 'Kam')[1]
         assert [(r.recipe_id, r.want) for r in shop.entries(db, p)] == [(CAMPFIRE.id, 1)]
-    assert find(entry, 'Goal')['custom_id'] == ui.cid('111', 'gv')            # it is the goal: back to it
+    assert find(entry, 'My goal')['custom_id'] == ui.cid('111', 'gv')            # it is the goal: back to it
     again = press(ui.cid('111', 'gv'))['data']
     listed = find(again, 'On shopping list')
     assert listed['label'] == 'On shopping list · want 1' and listed['custom_id'] == ui.cid('111', 'li', CAMPFIRE.id)

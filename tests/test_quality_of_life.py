@@ -48,7 +48,7 @@ def test_status_shows_needs_queue_ready_recipes_and_next_step():
 def test_status_panel_offers_recover_only_when_blocked():
     citizen()
     panel = ui.slash_panel('status', '111', 'Kam', {}, '📊 STATUS\nbody')
-    assert {'Refresh', 'Ready now', 'Favourites', 'Workbench', 'Queue'} <= set(labels(panel))
+    assert {'Refresh', 'Ready to craft', 'Favourites', 'All recipes', 'Queue'} <= set(labels(panel))
     assert 'Recover now' not in labels(panel)
     set_life(energy=5)
     panel = press(ui.cid('111', 'st'))
@@ -107,7 +107,7 @@ def test_ready_now_view_lists_only_ready_recipes_on_every_platform():
     citizen()
     view = press(ui.cid('111', 'sc'), values=['ready'])
     text = json.dumps(view['data']['embeds'][0], ensure_ascii=False)
-    assert 'Ready Now' in text and 'Campfire' in text
+    assert 'Ready to Craft' in text and 'Campfire' in text
     db, p = player()
     with db:
         ctx = wb.Context(db, p)

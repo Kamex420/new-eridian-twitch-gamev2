@@ -1,5 +1,9 @@
 # Release notes
 
+## Craft screens use the same names as the menu
+
+- **One name for each Craft screen.** The buttons and titles that said Workbench, Ready now and Goal now say **All recipes**, **Ready to craft** and **My goal**, the same as the Craft menu, so a button always names the screen it opens. `/make` opens All recipes, and its Category list starts with ✅ Ready to craft. The Survival Workbench station keeps its name.
+
 ## /menu fixes: Society, Stream live, and Sell amounts
 
 - **Town is now called Society.** Inside it, Town news is **Society news**, Town's next tier is **Next society tier**, and the Society view in News & story is **Society stats**. Work's Fix the town is **Fix infrastructure**.

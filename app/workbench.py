@@ -25,11 +25,11 @@ CATEGORY_ALIASES = s.DISPLAY_ALIASES
 # Personal views listed before the categories: what you can craft right now,
 # and the recipes you starred. They are filters over the same recipe index.
 VIEWS = (
-    ('ready', '✅', 'Ready now', 'Every recipe you can craft right now, favourites first.'),
+    ('ready', '✅', 'Ready to craft', 'Every recipe you can craft right now, favourites first.'),
     ('favorites', '⭐', 'Favourites', 'Your starred recipes (up to 10), in the order you added them.'),
 )
 VIEW_INFO = {**CATEGORY_INFO, **{key: (emoji, label, text) for key, emoji, label, text in VIEWS}}
-VIEW_ALIASES = {'ready': 'ready', 'ready_now': 'ready', 'craftable': 'ready', 'can_craft': 'ready',
+VIEW_ALIASES = {'ready': 'ready', 'ready_now': 'ready', 'ready_to_craft': 'ready', 'craftable': 'ready', 'can_craft': 'ready',
                 'favorites': 'favorites', 'favourites': 'favorites', 'favs': 'favorites', 'fav': 'favorites',
                 'favorite': 'favorites', 'favourite': 'favorites', 'starred': 'favorites', 'stars': 'favorites'}
 
@@ -437,9 +437,9 @@ def home_text(ctx):
             if len(text.encode()) <= 380:
                 return text
         return text
-    lines = [f'🛠️ WORKBENCH — {ctx.p.display_name if ctx.p else "Citizen"}', tier_line(ctx),
+    lines = [f'🛠️ ALL RECIPES — {ctx.p.display_name if ctx.p else "Citizen"}', tier_line(ctx),
              f"Workstations unlocked: {len(ctx.access)} of {len(cp.STATIONS)} (Survival Workbench is free). /workshop unlocks more.", '',
-             f"✅ **Ready now** — {counts['ready'][0]} recipes you can craft right now",
+             f"✅ **Ready to craft** — {counts['ready'][0]} recipes you can craft right now",
              f"⭐ **Favourites** — {counts['favorites'][1]} of {counts['favorites'][0]} starred recipes ready", '',
              'CATEGORIES · ready now / recipes, from the easiest tier']
     for key, emoji, label, text in CATEGORIES:
