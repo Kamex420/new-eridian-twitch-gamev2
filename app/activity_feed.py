@@ -212,7 +212,7 @@ def payload(lines):
                         'footer': {'text': 'Press My menu to play (only you see your menu) · Twitch: type !start'}}],
             'components': [ui.row(ui.button('My menu', ui.cid(ui.PUBLIC, 'mn', 'home'), style=1, emoji='🏠'),
                                   ui.button('Status', ui.cid(ui.PUBLIC, 'st'), emoji='📊'),
-                                  ui.button('Town', ui.cid(ui.PUBLIC, 'mn', 'community'), emoji='🏘️'))],
+                                  ui.button('Society', ui.cid(ui.PUBLIC, 'mn', 'community'), emoji='🏘️'))],
             'allowed_mentions': {'parse': []}}
     return layout_v2.new_message(data)      # Discord's newer layout when it is on
 

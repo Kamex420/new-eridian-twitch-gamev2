@@ -1,5 +1,13 @@
 # Release notes
 
+## /menu fixes: Society, Stream live, and Sell amounts
+
+- **Town is now called Society.** Inside it, Town news is **Society news**, Town's next tier is **Next society tier**, and the Society view in News & story is **Society stats**. Work's Fix the town is **Fix infrastructure**.
+- **Moderator › Stream live… and Channel feed… work.** Choosing Stream is live, Stream is offline or Automatic (or Post the feed here / Feed off) now does it. Before, the choice did nothing.
+- **Other amount… asks for 1 to 25**, which is what Seed Industries buys or sells at a time. It used to accept up to 100 and quietly trade 25. For a bigger stack, use Sell all.
+- **The vote card is titled Today's vote**, the same as its button.
+- Behind the scenes: a new test opens every area, More screen and list of /menu, and the choices in each, in both Discord layouts.
+
 ## A simpler /menu: sixteen areas, a More button where there is more, and Do this next at the top
 
 - **/menu is shorter and easier to scan.** The 24 areas became 16, and nothing is more than two taps below Home. Farming, Research, Logistics and Frontier now live inside Work (as **Farm** and **Other jobs**); Workshops moved to Craft › More, Social became **Friends** in Life, and Bag and Account became **My bag** and Settings. Buttons on older messages still work and take you to the new place.

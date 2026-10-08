@@ -270,7 +270,8 @@ menu in some way.
 Answered by Kamex on 2026-10-08.
 
 1. **Names:** Town or keep Colony? Bag & Shop or keep Bag & Trade?
-   → **Town** (replaces Colony) and **Bag & Shop** (replaces Bag & Trade).
+   → **Society** (replaces Colony; the first build used Town by mistake, fixed the same day) and **Bag & Shop**
+   (replaces Bag & Trade).
 2. **Status off Home** (still in You › More and on the public panel): OK?
    → **Yes.**
 3. **Do this next:** which of the new checks to add: paused queue, daily contract, repeat last queue (all, some or

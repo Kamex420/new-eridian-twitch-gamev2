@@ -921,9 +921,14 @@ def handle_component(payload, schedule=None):
     if verb == 'mp':
         from . import menu
         item = menu.LEAVES.get(args[0] if args else '')
+        action = None
         if item is not None and item.get('then') == 'do':
             # Choosing from an action list (a food, a hobby…) performs it, like a slash command.
             action = {'do': 'cmd', 'leaf': args[0], 'value': values[0] if values else ''}
+        elif item is not None and item.get('then') == 'leaf' and values and menu.grouped_action(args[0], values[0]):
+            # A grouped list of actions (Stream live…, Channel feed…): the chosen entry runs, like its own button would.
+            action = {'do': 'cmd', 'leaf': values[0]}
+        if action is not None:
             _left_screen(payload, owner)
             if schedule is None:
                 return _reply(run_ticket(uid, name, action, payload), payload)
@@ -1241,13 +1246,13 @@ def public_panel():
             '🏠 **Menu** — every part of the game, starting with what to do next\n📊 **Status** — needs, queue and what to do next\n'
             '⛏️ **Work** — gather, mine, farm, train and run queues\n🛠️ **Craft** — your goal walks you through it; every recipe\n'
             '❤️ **Life** — relax, sleep, eat, recover\n🎒 **Bag & Shop** — what you own, buying and selling\n'
-            '🏘️ **Town** — events, the vote, the season and trophies\n👤 **You** — your citizen, Seedling and looks\n'
+            '🏘️ **Society** — events, the vote, the season and trophies\n👤 **You** — your citizen, Seedling and looks\n'
             '🔎 **Ask or search** — find anything, or ask how to do it\n⚙️ **Settings** — alerts, quiet hours and linking Twitch\n\n'
             'ℹ️ A free, unofficial fan project by Kamex. Not affiliated with Klang Games, the makers of SEED.')
     rows = [row(button('Menu', cid(PUBLIC, 'mn', 'home'), style=1, emoji='🏠'), button('Status', cid(PUBLIC, 'st'), style=1, emoji='📊'),
                 button('Work', cid(PUBLIC, 'mn', 'work'), emoji='⛏️'), button('Craft', cid(PUBLIC, 'mn', 'craft'), emoji='🛠️'),
                 button('Life', cid(PUBLIC, 'mn', 'life'), emoji='❤️')),
-            row(button('Bag & Shop', cid(PUBLIC, 'mn', 'trade'), emoji='🎒'), button('Town', cid(PUBLIC, 'mn', 'community'), emoji='🏘️'),
+            row(button('Bag & Shop', cid(PUBLIC, 'mn', 'trade'), emoji='🎒'), button('Society', cid(PUBLIC, 'mn', 'community'), emoji='🏘️'),
                 button('You', cid(PUBLIC, 'mn', 'me'), emoji='👤'), button('Ask or search', cid(PUBLIC, 'mo', 'find'), emoji='🔎'),
                 button('Settings', cid(PUBLIC, 'mn', 'settings'), emoji='⚙️'))]
     items = [{'match': f"**{b['label']}**", 'button': {k: v for k, v in b.items() if k != 'emoji'}}

@@ -1,6 +1,6 @@
 """Button menus for the whole game: one window with every area, then each area's actions.
 
-`/menu` opens Home: a green Do this next button, then six areas (Work, Craft, Life, Bag & Shop, Town, You). An area
+`/menu` opens Home: a green Do this next button, then six areas (Work, Craft, Life, Bag & Shop, Society, You). An area
 shows its 5-7 main buttons and one More button for everything else: less-used options under "Also here" and the
 ones you cannot use yet under "Not yet", each with the reason and a How to get it button. Actions that need a
 choice (which food, which ore, which citizen) open a dropdown first. After any action the result is shown with the
@@ -47,13 +47,13 @@ AREAS = {
               ['inventory', 'use', 'buy', 'sell', 'orders', 'property']),
     'property': ('🏡', 'Home & business', 'Your home and your company.',
                  ['habitat', 'homeup', 'business', 'bstart', 'bwork', 'bcontract', 'binvest']),
-    'community': ('🏘️', 'Town', 'Everyone together: the active event, the vote, the stream challenge, the season, trophies and news.',
+    'community': ('🏘️', 'Society', 'Everything New Eridian does together: the active event, the vote, the stream challenge, the season, trophies and news.',
                   ['wd_event', 'c_challenge', 'c_vote', 'c_season', 'c_trophies', 'wd_overview']),
     'me': ('👤', 'You', 'Your citizen, your Seedling, how it looks and your settings.',
            ['me_overview', 'me_skills', 'me_daily', 'seedling', 'looks', 'choices', 'settings']),
     'seedling': ('🌱', 'My Seedling', 'Your Seedling lives its own day: mood, thoughts, schedule and diary.',
                  ['sl_view', 'sl_decide', 'sl_diary', 'sl_schedule', 'sl_auto']),
-    'looks': ('🎨', 'Looks', 'Make your Seedling yours: how it looks on the stream map and how it talks. Purely cosmetic.',
+    'looks': ('🎨', 'Looks', 'How your Seedling looks on the stream map and how it talks. Purely cosmetic.',
               ['lk_view', 'lk_body', 'lk_clothes', 'lk_voice', 'c_hat', 'c_badge', 'title']),
     'choices': ('🧭', 'Job & role', 'Job, district, shift, delivery partner and specialization.',
                 ['job', 'district', 'shift', 'duck', 'specialize']),
@@ -149,7 +149,7 @@ for _task, _label, _emoji in WORK:
 # One button for training: every skill with its level, then a skill's tasks, each with its own Start button.
 leaf('trainskill', 'Train skills', '🎓', 'pick', 'training', pick='skills', then='view', option='skill',
      hint='pick a skill to see every task that trains it, each with a Start button')
-leaf('repair', 'Fix the town', '🔧', 'do', 'repair', {'target': 'society'}, hint='repair settlement systems (Engineering)')
+leaf('repair', 'Fix infrastructure', '🔧', 'do', 'repair', {'target': 'society'}, hint='repair settlement systems (Engineering)')
 leaf('gearrepair', 'Fix a tool', '🪛', 'pick', 'repair', {'target': 'gear'}, pick='gear', then='do', option='item',
      hint='restore a quality tool with Iron Nails')
 # Craft
@@ -214,8 +214,8 @@ leaf('bwork', 'Business work', '💼', 'do', 'business', {'action': 'work'}, hin
 leaf('bcontract', 'Contract', '📝', 'do', 'business', {'action': 'contract'}, hint='')
 leaf('binvest', 'Invest', '💹', 'do', 'business', {'action': 'invest'}, hint='')
 # World
-for _section, _label, _emoji in [('overview', 'Town news', '🌎'), ('conditions', 'Weather & time', '☁️'), ('society', 'Society', '🏛️'),
-                                 ('society_progress', "Town's next tier", '📈'), ('leaderboard', 'Top helpers', '🏆'), ('event', 'Event', '🚨'),
+for _section, _label, _emoji in [('overview', 'Society news', '🌎'), ('conditions', 'Weather & time', '☁️'), ('society', 'Society stats', '🏛️'),
+                                 ('society_progress', 'Next society tier', '📈'), ('leaderboard', 'Top helpers', '🏆'), ('event', 'Event', '🚨'),
                                  ('event_history', 'Past events', '📜'), ('holidays', 'Holidays', '🎉'), ('project', 'Project', '🏗️'),
                                  ('story', 'Story', '📖'), ('bulletin', 'Bulletin', '📰'), ('rumor', 'Rumor', '👂'), ('market', 'Market', '🪙')]:
     leaf('wd_' + _section, _label, _emoji, 'view', 'world', {'section': _section}, hint='')
@@ -307,7 +307,7 @@ leaf('feed_on', 'Activity feed: Shown', '📣', 'do', 'settings', {'feed': 'on'}
 leaf('feed_off', 'Activity feed: Hidden', '🙈', 'do', 'settings', {'feed': 'off'})
 leaf('h_moderator', 'Moderator help', '📖', 'view', 'seed', {'topic': 'moderator'}, hint='')
 # Community
-leaf('c_vote', "Today's vote", '🗳️', 'view', 'vote', hint='vote for what the town builds or celebrates next; change it any time today')
+leaf('c_vote', "Today's vote", '🗳️', 'view', 'vote', hint='vote for what New Eridian builds or celebrates next; change it any time today')
 leaf('c_vote_pick', "Today's vote", '✅', 'pick', 'vote', pick='ballot', then='do', option='choice')
 leaf('c_challenge', 'Stream challenge', '⚡', 'view', 'challenge', hint='the live shared goal and how to help')
 leaf('c_season', 'Season', '🏁', 'view', 'season', hint='your season points, rank and next reward')
@@ -369,8 +369,8 @@ _HINTS = {
     'w_survey': 'gives 2 Stone + 1 Clay + 1 Coal; needs a Resource Scanner',
     'bwork': 'gives 1 Cargo', 'bcontract': 'gives 2 Cargo + 1 Lumber', 'binvest': 'put SC into your company',
     'wd_overview': 'the day, weather, project and news', 'wd_conditions': 'weather and time of day, and the work they favour',
-    'wd_society': 'the settlement and its stats', 'wd_society_progress': 'what the town needs for its next tier',
-    'wd_leaderboard': 'who has helped the town most', 'wd_event': 'the active event and how to help', 'wd_event_history': 'past events',
+    'wd_society': 'the settlement and its stats', 'wd_society_progress': 'what it takes to reach the next tier',
+    'wd_leaderboard': 'who has helped New Eridian most', 'wd_event': 'the active event and how to help', 'wd_event_history': 'past events',
     'wd_holidays': 'festivals now and next', 'wd_project': 'the society project', 'wd_story': 'the colony story so far',
     'wd_bulletin': 'news from the settlement', 'wd_rumor': 'what people are whispering', 'wd_market': "today's prices and demand",
     'me_overview': 'your citizen at a glance', 'me_skills': 'every skill and its level', 'me_daily': "today's contract",
@@ -388,7 +388,7 @@ HOME_COMPACT = {'inbox', 'recent', 'help', 'mod'}
 VERBS = {'gather': 'Gather', 'mine': 'Mine', 'trainskill': 'Train', 'guidegoal': 'Guide', 'catalogcat': 'Browse', 'eat': 'Eat', 'hobby': 'Practice', 'gearrepair': 'Fix', 'unlock': 'Unlock', 'use': 'Use', 'sell': 'Sell', 'buy': 'Buy',
          'sellsome': 'Sell', 'fulfill': 'Deliver', 'title': 'Show', 'c_vote_pick': 'Vote', 'c_hat': 'Wear', 'c_badge': 'Pin',
          'farm': 'Do it', 'jobs': 'Do it', 'lk_body': 'Change', 'lk_clothes': 'Change', 'lk_voice': 'Change', 'sl_schedule': 'Use',
-         'm_eventstart': 'Start', 'm_chalstart': 'Start'}
+         'm_eventstart': 'Start', 'm_chalstart': 'Start', 'm_live': 'Set', 'm_feed': 'Do it'}
 # The word on the button beside a line of a More screen (otherwise Do it, Open, Choose or Enter by kind).
 MORE_VERBS = {'repair': 'Fix', 'gearrepair': 'Fix', 'unlock': 'Unlock', 'catalogcat': 'Browse', 'walk': 'Walk', 'hobby': 'Practice', 'meal': 'Share',
               'recreation': 'Play', 'clearout': 'Preview', 'browse': 'Browse', 'commerce': 'Work', 'fulfill': 'Deliver', 'analyze': 'Analyze',
@@ -1153,7 +1153,8 @@ def pick_message(db, p, owner, key, page=1):
         then = item.get('then')
         verb = VERBS.get(key) or ('View' if then in {'view', 'leaf', 'uses'} else 'Meet' if then == 'social' else 'Choose')
         for o in select['options']:
-            b = ui.pick_button(select['custom_id'], o['value'], verb, style=3 if then == 'do' else 2)
+            runs = then == 'do' or grouped_action(key, o['value'])      # actions are green, everything else grey
+            b = ui.pick_button(select['custom_id'], o['value'], verb, style=3 if runs else 2)
             if b is None:
                 items = []
                 break
@@ -1161,6 +1162,15 @@ def pick_message(db, p, owner, key, page=1):
             items.append({'line': f'**{head}**' + (f' — {tail}' if sep else ''), 'button': b})
     data = ui.message(text, rows, 'menu', items, [select['custom_id']] if items else ())
     return ui.with_crumb(data, crumb(PARENT.get(key, 'home'), item['label'].rstrip('…')))
+
+
+def grouped_action(key, value):
+    """Whether `value` is an action listed in the grouped list `key` (Stream live… holds Stream is live, offline and
+    Automatic): choosing it runs that action. Only the list's own entries count, so a stray value runs nothing."""
+    item = LEAVES.get(key) or {}
+    pick = str(item.get('pick', ''))
+    return (item.get('then') == 'leaf' and pick.startswith('leaves:') and value in pick.split(':', 1)[1].split(',')
+            and LEAVES.get(value, {}).get('kind') == 'do')
 
 
 def options_for(key, value=None):
@@ -1262,6 +1272,7 @@ def navigate(db, p, owner, verb, args, values, name):
 
 
 AMOUNTS = (1, 5, 10, 25)
+MAX_AMOUNT = 25    # Seed Industries buys and sells at most 25 at a time (the slash command's limit too)
 
 
 def amount_view(db, p, owner, key, value):
@@ -1314,7 +1325,7 @@ def modal(owner, key, args=()):
                         more=[ui.text_box('amount', 'How many to have (blank: one batch)', 'e.g. 30', 0, 3, required=False)])
     if item.get('then') == 'amount':
         value = args[0] if args else ''
-        return ui.modal(ui.cid(owner, 'md', key, value), 'How many?', 'Amount (1–100)', 'e.g. 12', 1, 3)
+        return ui.modal(ui.cid(owner, 'md', key, value), 'How many?', f'Amount (1–{MAX_AMOUNT})', 'e.g. 12', 1, len(str(MAX_AMOUNT)))
     if item['kind'] != 'modal':
         return None
     title, label, placeholder = item['modal']
@@ -1344,8 +1355,11 @@ def submit(db, p, owner, name, key, args, value, fields=None):
         db.flush()
         return ui.shopping_message(db, p, owner, note)
     if item.get('then') == 'amount':
-        if not value.isdigit() or not 1 <= int(value) <= 100:
-            return ui.message('✏️ Enter a whole number from 1 to 100. Nothing was spent.', [nav(owner, PARENT.get(key, 'home'), PARENT.get(key, 'home'))], 'menu')
+        if not value.strip().isdecimal() or not 1 <= int(value) <= MAX_AMOUNT:
+            hint = ' For more, use Sell all.' if options_for(key)[1].get('action') == 'sell' else ' For more, buy again.'
+            return ui.message(f'✏️ Enter a whole number from 1 to {MAX_AMOUNT}.{hint} Nothing was spent.',
+                              [nav(owner, PARENT.get(key, 'home'), PARENT.get(key, 'home'))], 'menu')
+        value = value.strip()
         return {'do': 'cmd', 'leaf': key, 'value': args[0] if args else '', 'amount': int(value)}
     command, options = options_for(key, value)
     if key == 'find':

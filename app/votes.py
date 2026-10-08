@@ -269,7 +269,7 @@ def view(db, p=None, provider='discord', prefix=''):
         text = prefix + f'🗳️ Day {row.day} vote: {body} | {cmd}1-3 · closes in {_left(db)}'
         last = last_result(db)
         return (text + (f' | {last}' if last and len((text + last).encode()) < 195 else ''))[:200]
-    lines = [prefix + f'🗳️ **COLONY VOTE · Avesta Day {row.day}**', 'What should New Eridian do next? The ballot closes when the day ends.', '']
+    lines = [prefix + f"🗳️ **TODAY'S VOTE · Avesta Day {row.day}**", 'What should New Eridian do next? The ballot closes when the day ends.', '']
     for i, (o, c) in enumerate(zip(options, counts), 1):
         emoji, name, text = label(o)
         mark = ' ✅ your vote' if mine and mine.choice == i else ''

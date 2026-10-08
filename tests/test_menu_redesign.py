@@ -64,7 +64,7 @@ def test_home_leads_with_a_green_do_this_next_button_and_has_no_status():
     first_row = home['components'][0]['components']
     assert len(first_row) == 1 and first_row[0]['style'] == 3                    # the first button, green
     assert 'Do this next' in text_of(home)
-    assert {'Work', 'Craft', 'Life', 'Bag & Shop', 'Town', 'You', 'Help', 'Notifications', 'Do again'} <= set(labels(home))
+    assert {'Work', 'Craft', 'Life', 'Bag & Shop', 'Society', 'You', 'Help', 'Notifications', 'Do again'} <= set(labels(home))
     assert 'Status' not in labels(home)                                           # Full status is in You > More
     assert 'Full status' in labels(area('me', 'more'))
 
@@ -109,7 +109,7 @@ def test_work_more_lists_extras_and_locked_jobs_with_a_way_to_get_each():
     more = area('work', 'more')
     body = text_of(more)
     assert more['embeds'][0]['author']['name'] == '🏠 Menu › ⛏️ Work › More'
-    assert 'also here' in body.lower() and 'Fix the town' in body and 'not yet' in body.lower()     # headings show as Also Here / Not Yet
+    assert 'also here' in body.lower() and 'Fix infrastructure' in body and 'not yet' in body.lower()     # headings show as Also Here / Not Yet
     assert 'Hydroponics' in body and 'needs a Small Water Filter' in body
     how = find(more, 'Hydroponics')
     assert how['custom_id'].endswith('|fd|where do I get a Small Water Filter')
@@ -228,7 +228,7 @@ def test_merged_buttons_open_their_replacement():
 def test_the_public_panel_uses_the_new_names_and_settings_replaces_account():
     panel = ui.public_panel()
     names = labels(panel)
-    assert {'Menu', 'Status', 'Work', 'Craft', 'Life', 'Bag & Shop', 'Town', 'You', 'Ask or search', 'Settings'} <= set(names)
+    assert {'Menu', 'Status', 'Work', 'Craft', 'Life', 'Bag & Shop', 'Society', 'You', 'Ask or search', 'Settings'} <= set(names)
     assert 'Bag & Trade' not in text_of(panel) and 'Colony' not in text_of(panel) and 'Account' not in text_of(panel)
     assert find(panel, 'Settings')['custom_id'] == ui.cid('*', 'mn', 'settings')
 

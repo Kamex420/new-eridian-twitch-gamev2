@@ -62,7 +62,7 @@ def test_ballot_has_two_projects_and_a_festival_and_the_first_vote_pays_once():
     assert db.query(votes.Cast).one().choice == 3
     db.close()
     discord = call('/api/v1/vote', provider='discord')
-    assert 'COLONY VOTE' in discord and '1.' in discord and '3.' in discord
+    assert "TODAY'S VOTE" in discord and '1.' in discord and '3.' in discord
 
 
 def test_a_voted_project_is_queued_then_built_and_its_helpers_are_credited():

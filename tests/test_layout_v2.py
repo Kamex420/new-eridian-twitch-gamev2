@@ -207,7 +207,7 @@ def test_every_menu_area_and_choice_list_fits_with_buttons_beside_items():
             assert assert_valid(v2.convert(answer['data'])), key
     home = v2.convert(moderator(ui.cid('111', 'mn', 'home'))['data'])
     beside = [s['accessory']['label'] for s in sections(home)]
-    assert beside[1:7] == ['Work', 'Craft', 'Life', 'Bag & Shop', 'Town', 'You']                 # six areas, after Do this next
+    assert beside[1:7] == ['Work', 'Craft', 'Life', 'Bag & Shop', 'Society', 'You']                 # six areas, after Do this next
     top = sections(home)[0]
     assert top['components'][0]['content'].startswith('➡️ ') and '**' not in top['components'][0]['content']    # the button carries the name
     assert top['accessory']['style'] == 3                                                          # Do this next is green
