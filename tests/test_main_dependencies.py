@@ -14,7 +14,7 @@ EXPLICIT = ('halloween', 'readable_names', 'crafting_progression', 'seed_content
             'presentation', 'production_balance', 'practice', 'seasons', 'task_yields', 'activity_feed', 'message_layout',
             'quiet_hours', 'stream_overlay', 'world_guard', 'discord_execution', 'discord_queue_worker', 'discord_deferred',
             'live_events', 'recap', 'onboarding', 'community', 'knowledge', 'trophies', 'keep_levels', 'inbox', 'commands',
-            'ask', 'force_merge', 'shopping_list', 'queue_notifications', 'task_queue', 'qol', 'ui', 'extras', 'workbench')
+            'ask', 'force_merge', 'shopping_list', 'queue_notifications', 'task_queue', 'qol', 'ui', 'extras', 'workbench', 'autonomy')
 # These only set a value on app.main (a world merge switches the main world, votes wraps the project hooks, item
 # identities replace MERGED_TRAINING); they read nothing from it.
 SETS_ONLY = ('votes', 'world_merge', 'item_identity')

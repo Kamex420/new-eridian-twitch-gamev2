@@ -1,5 +1,9 @@
 # Release notes
 
+## Behind the scenes: explicit dependencies, step six
+
+- **The Workbench and the Seedling autonomy now import exactly what they use.** 42 of 43 systems are converted; the record of dependencies on app.main shrank from 241 to 180 names. Left: menu. No gameplay changes.
+
 ## Behind the scenes: explicit dependencies, step five
 
 - **The task queue, quality-of-life tools, the Discord UI and extras now import exactly what they use.** 40 of 43 systems are converted; the record of dependencies on app.main shrank from 371 to 241 names. Left: workbench, autonomy and menu. No gameplay changes.
