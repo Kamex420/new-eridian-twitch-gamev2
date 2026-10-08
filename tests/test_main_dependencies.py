@@ -14,7 +14,7 @@ EXPLICIT = ('halloween', 'readable_names', 'crafting_progression', 'seed_content
             'presentation', 'production_balance', 'practice', 'seasons', 'task_yields', 'activity_feed', 'message_layout',
             'quiet_hours', 'stream_overlay', 'world_guard', 'discord_execution', 'discord_queue_worker', 'discord_deferred',
             'live_events', 'recap', 'onboarding', 'community', 'knowledge', 'trophies', 'keep_levels', 'inbox', 'commands',
-            'ask', 'force_merge', 'shopping_list', 'queue_notifications', 'task_queue', 'qol', 'ui', 'extras', 'workbench', 'autonomy')
+            'ask', 'force_merge', 'shopping_list', 'queue_notifications', 'task_queue', 'qol', 'ui', 'extras', 'workbench', 'autonomy', 'menu')
 # These only set a value on app.main (a world merge switches the main world, votes wraps the project hooks, item
 # identities replace MERGED_TRAINING); they read nothing from it.
 SETS_ONLY = ('votes', 'world_merge', 'item_identity')
@@ -39,6 +39,9 @@ def test_a_converted_system_reads_nothing_from_app_main(name):
     tree = ast.parse((ROOT / 'app' / f'{name}.py').read_text(encoding='utf-8'))
     reads = {n.attr for n in ast.walk(tree) if isinstance(n, ast.Attribute) and isinstance(n.value, ast.Name)
              and n.value.id == 'm' and isinstance(n.ctx, ast.Load) and n.attr in vars(m)}
+    # an object that holds app.main (self.m, c.m) is the same dependency, reached another way
+    reads |= {n.attr for n in ast.walk(tree) if isinstance(n, ast.Attribute) and isinstance(n.value, ast.Attribute)
+              and n.value.attr == 'm' and isinstance(n.ctx, ast.Load) and n.attr in vars(m)}
     assert not reads
 
 

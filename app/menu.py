@@ -19,7 +19,10 @@ nothing and carry their target in the custom_id:
   mo|<leaf>            a pop-up form (search, link code, business name, custom amount)
 """
 import secrets
-from . import ui, workbench as wb
+from sqlalchemy import select
+from . import runtime, ui, workbench as wb
+from .db import SessionLocal
+from .models import AccountLink, PlayerTitle
 
 # Areas: key -> (emoji, title, one-line description, children). Children are
 # area keys or leaf keys; the order is the button order.
@@ -388,24 +391,29 @@ class Ctx:
 
     def equipment(self, action, mode=''):
         from . import task_yields
+        from .game.routes_player import equipment_count
         key = task_yields.EQUIPMENT.get((action, mode))
-        return self.get('eq:' + str(key), lambda: self.m.equipment_count(self.db, self.p, key) > 0)
+        return self.get('eq:' + str(key), lambda: equipment_count(self.db, self.p, key) > 0)
 
     def has(self, source):
         return self.get('has:' + source, lambda: bool(choices(self.m, self.db, self.p, source, self.uid)))
 
     def queue(self):
-        return self.get('queue', lambda: self.db.get(self.m.task_queue.TaskQueue, (self.p.channel_id, self.p.twitch_uid)))
+        from . import task_queue
+        return self.get('queue', lambda: self.db.get(task_queue.TaskQueue, (self.p.channel_id, self.p.twitch_uid)))
 
     def prefs(self):
-        return self.get('prefs', lambda: self.m.qol.prefs(self.db, self.p.channel_id, self.p.twitch_uid))
+        from . import qol
+        return self.get('prefs', lambda: qol.prefs(self.db, self.p.channel_id, self.p.twitch_uid))
 
     def business(self):
-        return self.get('business', lambda: self.m.business_for(self.db, self.p) is not None)
+        from .game.players import business_for
+        return self.get('business', lambda: business_for(self.db, self.p) is not None)
 
     def autonomy_on(self):
         def read():
-            row = self.m.autonomy.row(self.db, self.p.channel_id, self.p.twitch_uid)
+            from . import autonomy
+            row = autonomy.row(self.db, self.p.channel_id, self.p.twitch_uid)
             return row is None or bool(row.enabled)
         return self.get('autonomy', read)
 
@@ -413,9 +421,11 @@ class Ctx:
         def read():
             import json
             from datetime import datetime
-            row = self.m.extras.row(self.db, self.p.channel_id, self.p.twitch_uid)
+            from . import extras
+            from .game.players import as_utc
+            row = extras.row(self.db, self.p.channel_id, self.p.twitch_uid)
             sale = json.loads(row.last_sale) if row is not None and row.last_sale else None
-            return bool(sale) and (self.m.now() - self.m.as_utc(datetime.fromisoformat(sale['at']))).total_seconds() <= self.m.extras.UNDO_SECONDS
+            return bool(sale) and (runtime.now() - as_utc(datetime.fromisoformat(sale['at']))).total_seconds() <= extras.UNDO_SECONDS
         return self.get('undo', read)
 
     def quiet_on(self):
@@ -423,51 +433,86 @@ class Ctx:
         return self.get('quiet', lambda: quiet_hours.row(self.db, self.p.channel_id, self.p.twitch_uid) is not None)
 
     def feed_hidden(self):
-        return self.get('feed', lambda: self.m.activity_feed.hidden(self.db, self.p))
+        from . import activity_feed
+        return self.get('feed', lambda: activity_feed.hidden(self.db, self.p))
 
     def challenge_active(self):
-        return self.get('challenge', lambda: self.m.live_events.active(self.m, self.db) is not None)
+        from . import live_events
+        return self.get('challenge', lambda: live_events.active(self.m, self.db) is not None)
 
     def event_active(self):
-        return self.get('event', lambda: bool(self.m.world(self.db, self.p.channel_id).active_event))
+        from .game.players import world
+        return self.get('event', lambda: bool(world(self.db, self.p.channel_id).active_event))
 
     def linked(self):
         def read():
-            m, p = self.m, self.p
-            return self.db.execute(m.select(m.AccountLink).where(m.AccountLink.channel_id == p.channel_id,
-                                                                 m.AccountLink.twitch_uid == p.twitch_uid)).scalars().first() is not None
+            p = self.p
+            return self.db.execute(select(AccountLink).where(AccountLink.channel_id == p.channel_id,
+                                                             AccountLink.twitch_uid == p.twitch_uid)).scalars().first() is not None
         return self.get('linked', read)
 
 
 def _food(c):
-    return c.get('food', lambda: any(r['qty'] > 0 for r in c.m.edible_inventory(c.db, c.p)))
+    from .game.training_and_items import edible_inventory
+    return c.get('food', lambda: any(r['qty'] > 0 for r in edible_inventory(c.db, c.p)))
+
+
+def _emergency_meal(c):
+    from .game.training_and_items import emergency_food_available
+    return c.get('emergency', lambda: emergency_food_available(c.db, c.p))
 
 
 def _queue_active(c):
+    from . import task_queue
     q = c.queue()
-    return q is not None and q.state in c.m.task_queue.ACTIVE
+    return q is not None and q.state in task_queue.ACTIVE
 
 
 def _planned(c):
+    from . import extras
     pref = c.prefs()
-    return bool((pref is not None and pref.next_task) or c.get('steps', lambda: c.m.extras.playlist(c.db, c.p.channel_id, c.p.twitch_uid)))
+    return bool((pref is not None and pref.next_task) or c.get('steps', lambda: extras.playlist(c.db, c.p.channel_id, c.p.twitch_uid)))
+
+
+def _trick_open(c):
+    from . import halloween
+    return halloween.open_now() and halloween.tries_left(c.db, c.p) > 0
+
+
+def _has_recreation_set(c):
+    from .game.training_and_items import owned_life_items
+    return c.get('rec', lambda: bool(owned_life_items(c.db, c.p).get('recreation_set')))
+
+
+def _has_power_cell(c):
+    from .game.cooldowns_materials import material_amount
+    return c.get('cell', lambda: material_amount(c.db, c.p, 'power_cell') > 0)
+
+
+def _rare_unlocked(c):
+    from . import crafting_progression
+    return crafting_progression.rare_unlocked(c.m, c.db, c.p)
+
+
+def _result_style(c):
+    from .game.life import player_preference
+    return player_preference(c.db, c.p).result_style
 
 
 # key -> (can the citizen use it now?, why not). Keys not listed are always available.
 WHEN = {
-    'eat': (lambda c: _food(c) or c.get('emergency', lambda: c.m.emergency_food_available(c.db, c.p)), 'you have no food'),
+    'eat': (lambda c: _food(c) or _emergency_meal(c), 'you have no food'),
     'eatfull': (_food, 'you have no food'),
     'meal': (lambda c: c.p.crops > 0, 'needs 1 Pumpkin'),
-    'trick': (lambda c: c.m.halloween.open_now() and c.m.halloween.tries_left(c.db, c.p) > 0,
-              'Halloween festival only, 5 doors a day'),
-    'recreation': (lambda c: c.get('rec', lambda: bool(c.m.owned_life_items(c.db, c.p).get('recreation_set'))), 'needs a Recreation Set'),
+    'trick': (_trick_open, 'Halloween festival only, 5 doors a day'),
+    'recreation': (_has_recreation_set, 'needs a Recreation Set'),
     'w_farm_hydroponics': (lambda c: c.equipment('water', 'hydroponics'), 'needs a Small Water Filter'),
     'w_field_analysis': (lambda c: c.equipment('research', 'field_analysis'), 'needs a Siro Sampler'),
     'w_survey': (lambda c: c.equipment('survey'), 'needs a Resource Scanner'),
     'analyze': (lambda c: c.equipment('market', 'analyze'), 'needs a Market Analyzer'),
     'w_delivery': (lambda c: c.p.cargo > 0, 'needs Cargo: Prepare cargo first'),
-    'w_expedite': (lambda c: c.get('cell', lambda: c.m.material_amount(c.db, c.p, 'power_cell') > 0), 'needs a Power Cell'),
-    'w_rare': (lambda c: c.m.crafting_progression.rare_unlocked(c.m, c.db, c.p), 'needs a Mineral Extractor'),
+    'w_expedite': (_has_power_cell, 'needs a Power Cell'),
+    'w_rare': (_rare_unlocked, 'needs a Mineral Extractor'),
     'gearrepair': (lambda c: c.has('gear'), 'you have no quality gear'),
     'use': (lambda c: c.has('use'), 'you own nothing usable yet'),
     'sell': (lambda c: c.has('sell'), 'you have nothing Seed Industries buys'),
@@ -488,8 +533,8 @@ WHEN = {
     'auto_off': (lambda c: bool(c.prefs() is not None and c.prefs().autorecover), 'auto-recover is already off'),
     'sl_on': (lambda c: not c.autonomy_on(), 'autonomy is already on'),
     'sl_off': (lambda c: c.autonomy_on(), 'autonomy is already off'),
-    'display_compact': (lambda c: c.m.player_preference(c.db, c.p).result_style != 'compact', 'already compact'),
-    'display_detailed': (lambda c: c.m.player_preference(c.db, c.p).result_style == 'compact', 'already detailed'),
+    'display_compact': (lambda c: _result_style(c) != 'compact', 'already compact'),
+    'display_detailed': (lambda c: _result_style(c) == 'compact', 'already detailed'),
     'm_eventstart': (lambda c: not c.event_active(), 'an event is already running'),
     'm_eventstop': (lambda c: c.event_active(), 'no event is running'),
     'm_chalstart': (lambda c: not c.challenge_active(), 'a stream challenge is running'),
@@ -520,8 +565,9 @@ def context(m, uid, db=None, p=None):
 
 def with_context(m, uid, fn, name='Citizen'):
     """For callers without a session: open one, read what the citizen can do, and close it."""
-    with m.SessionLocal() as db:
-        p = m.player(db, m.DISCORD_WORLD_ID, 'discord', uid, name)[1]
+    from .game.players import player
+    with SessionLocal() as db:
+        p = player(db, runtime.DISCORD_WORLD_ID, 'discord', uid, name)[1]
         result = fn(Ctx(m, db, p, uid))
         db.commit()
         return result
@@ -582,15 +628,17 @@ def unavailable(m, area, ctx):
 
 
 def area_text(m, db, p, area, ctx=None):
+    from . import qol
+    from .game.life import life_state
     emoji, title, text, _ = AREAS[area]
     ctx = ctx or context(m, p.twitch_uid if p is not None else '', db, p)
     children = children_of(m, area, ctx)
     lines = [f'{emoji} {title.upper()}', text, '']
     if area == 'home' and p is not None:
-        life = m.life_state(db, p)
+        life = life_state(db, p)
         lines = [f'{emoji} NEW ERIDIAN — {p.display_name}',
                  f'⚡ {life.energy} · 🍲 {life.nutrition} · 💬 {life.social} · 🛋️ {life.comfort} · 🪙 {p.sc} SC',
-                 m.qol.queue_summary(m, db, p, 'discord')[0].split('\n')[0], '', text, '']
+                 qol.queue_summary(m, db, p, 'discord')[0].split('\n')[0], '', text, '']
         step = (ctx.get('home_next', lambda: home_next(m, db, p)) if ctx is not None else home_next(m, db, p))
         lines.insert(3, step['line'])
     for key in children:
@@ -650,15 +698,18 @@ ONBOARDING_LEAF = {'gather': 'gather', 'eat': 'eat', 'job': 'job', 'queue': 'que
 def home_next(m, db, p):
     """The one thing to do next, for the top of Home: get needs back up, finish the first steps,
     the goal's next step, or choose a goal. A dict with 'line' and what its button does (home_button)."""
-    life = m.life_state(db, p)
-    if m.blocked_needs(life):
+    from . import extras, onboarding
+    from .game.life import life_state
+    from .needs import blocked_needs
+    life = life_state(db, p)
+    if blocked_needs(life):
         return {'line': '➡️ **Next step** — recover your needs: work and crafting wait until they are back up', 'do': {'do': 'recover'},
                 'label': 'Recover'}
-    first = m.onboarding.row(m, db, p) if m.onboarding.ENABLED else None
+    first = onboarding.row(m, db, p) if onboarding.ENABLED else None
     if first is not None and not first.finished:
-        key = m.onboarding.next_step(first)
-        _, goal, _, _, sc, _ = m.onboarding.INFO[key]
-        line = f'➡️ **Next step** — {goal} · first steps {len(m.onboarding.done_of(first))}/{len(m.onboarding.STEPS)}, +{sc} SC'
+        key = onboarding.next_step(first)
+        _, goal, _, _, sc, _ = onboarding.INFO[key]
+        line = f'➡️ **Next step** — {goal} · first steps {len(onboarding.done_of(first))}/{len(onboarding.STEPS)}, +{sc} SC'
         if key == 'craft':
             from . import crafting_progression as cp
             e = next((x for x in wb.index(m) if x.name == 'Campfire' and cp.SURVIVAL in x.tags), None)
@@ -667,7 +718,7 @@ def home_next(m, db, p):
             return {'line': line, 'view': ('wh',), 'label': 'Workbench'}
         leaf_ = ONBOARDING_LEAF[key]
         return {'line': line, 'key': leaf_, 'label': AREAS[leaf_][1] if leaf_ in AREAS else LEAVES[leaf_]['label']}
-    e, steps = m.extras.walkthrough(m, db, p)
+    e, steps = extras.walkthrough(m, db, p)
     if steps:
         return {'line': f"➡️ **Next step** — {steps[0]['name']} · for your goal: {e.name}", 'step': steps[0]}
     return {'line': '➡️ **Next step** — choose a goal: open any recipe and press 🎯 Set goal; the goal then walks you through every step',
@@ -713,7 +764,7 @@ def with_next(m, db, p, owner, ctx, rows, items):
 
 def reply(m, text, command, rows):
     """A result card (with Details pages when long) followed by menu rows; five rows at most."""
-    data = m._discord_json_message(text, message_type=command)['data']
+    data = runtime._discord_json_message(text, message_type=command)['data']
     own = [r for r in (data.get('components') or []) if r and r.get('components')]
     extra = [r for r in rows if r and r.get('components')]
     # Keep the result's own controls (e.g. Details) and the navigation row; drop grid rows if needed.
@@ -726,88 +777,96 @@ def reply(m, text, command, rows):
 
 def choices(m, db, p, source, uid):
     """(label, value) rows for a leaf's dropdown, at most 25."""
+    from . import inbox, qol, seasons, seed_content, task_queue, trophies, votes, workbench
+    from .game.cooldowns_materials import available_production_orders
+    from .game.discord_commands import DISCORD_OPTION_SCHEMA, _discord_gear_autocomplete, _discord_player_autocomplete, ore_choice_rows
+    from .game.players import resource_name, society
+    from .game.routes_market import market_item_label
+    from .game.rules import QUALITY_RECIPES, SEED_INDUSTRIES, TITLE_DEFS
+    from .game.training_and_items import edible_inventory, emergency_food_available, owned_life_items, training_skills
+    from .game.world import society_tier_index, world_clock
     if source == 'food':
-        foods = m.edible_inventory(db, p)
+        foods = edible_inventory(db, p)
         rows = [(f"{r['name']} ×{r['qty']} — {r['effect']}", r['key']) for r in foods if r['qty'] > 0]
-        if m.emergency_food_available(db, p, foods):
+        if emergency_food_available(db, p, foods):
             rows.append(('Emergency meal — free; restores Nutrition to 40', 'emergency'))
         return rows
     if source == 'hobby':
-        return [(c['name'], c['value']) for c in m.DISCORD_OPTION_SCHEMA['hobby'][0]['choices']]
+        return [(c['name'], c['value']) for c in DISCORD_OPTION_SCHEMA['hobby'][0]['choices']]
     if source == 'use':
-        rows = m.seed_content.choices(m, db, p, owned=True, usable=True)
-        owned = m.owned_life_items(db, p)
-        rows += [(m.QUALITY_RECIPES[k]['name'] + f" ×{sum(r.qty for r in v)}", k) for k, v in owned.items() if v]
+        rows = seed_content.choices(m, db, p, owned=True, usable=True)
+        owned = owned_life_items(db, p)
+        rows += [(QUALITY_RECIPES[k]['name'] + f" ×{sum(r.qty for r in v)}", k) for k, v in owned.items() if v]
         return rows
     if source == 'ore':
-        return m.ore_choice_rows(db, p)
+        return ore_choice_rows(db, p)
     if source == 'resource':
-        return [row for row in m.seed_content.choices(m, db, p, gather_only=True) if row[1] not in m.task_queue.ores()]
+        return [row for row in seed_content.choices(m, db, p, gather_only=True) if row[1] not in task_queue.ores()]
     if source == 'sell':
-        stock = m.seed_content.stock(m, db, p)
-        rows = [(k, n, m.qol.sell_price(m, k)) for k, n in stock.items() if n > 0 and m.qol.sell_price(m, k)]
+        stock = seed_content.stock(m, db, p)
+        rows = [(k, n, qol.sell_price(m, k)) for k, n in stock.items() if n > 0 and qol.sell_price(m, k)]
         rows.sort(key=lambda r: -r[1] * r[2])
-        return [(f'{m.resource_name(k)} ×{n} — {n * price} SC', k) for k, n, price in rows]
+        return [(f'{resource_name(k)} ×{n} — {n * price} SC', k) for k, n, price in rows]
     if source == 'owned':
-        stock = m.seed_content.stock(m, db, p)
-        return [(f'{m.resource_name(k)} ×{n}', k) for k, n in sorted(stock.items(), key=lambda kv: -kv[1]) if n > 0 and k in m.seed_content.ACTIVE]
+        stock = seed_content.stock(m, db, p)
+        return [(f'{resource_name(k)} ×{n}', k) for k, n in sorted(stock.items(), key=lambda kv: -kv[1]) if n > 0 and k in seed_content.ACTIVE]
     if source == 'order':
-        clock = m.world_clock(db, p.channel_id)
-        orders = m.available_production_orders(p.channel_id, clock['day'], m.society_tier_index(m.society(db, p.channel_id)))
+        clock = world_clock(db, p.channel_id)
+        orders = available_production_orders(p.channel_id, clock['day'], society_tier_index(society(db, p.channel_id)))
         return [(data['name'], key) for key, data in orders]
     if source == 'player':
-        found = m._discord_player_autocomplete({'member': {'user': {'id': uid}}, 'data': {'name': 'social'}}, '')
+        found = _discord_player_autocomplete({'member': {'user': {'id': uid}}, 'data': {'name': 'social'}}, '')
         return [(c['name'], c['value']) for c in found['data']['choices']]
     if source == 'title':
-        rows = db.execute(m.select(m.PlayerTitle).where(m.PlayerTitle.channel_id == p.channel_id,
-                                                        m.PlayerTitle.canonical_uid == p.twitch_uid)).scalars().all()
-        return [(m.TITLE_DEFS.get(r.title_key, r.title_key.replace('_', ' ').title()), r.title_key) for r in rows]
+        rows = db.execute(select(PlayerTitle).where(PlayerTitle.channel_id == p.channel_id,
+                                                    PlayerTitle.canonical_uid == p.twitch_uid)).scalars().all()
+        return [(TITLE_DEFS.get(r.title_key, r.title_key.replace('_', ' ').title()), r.title_key) for r in rows]
     if source == 'skills':
         return [(f'{label} — Lv {level} · {ready} of {total} task{"s" if total != 1 else ""} ready now', hub)
-                for hub, label, level, ready, total in m.training_skills(db, p)]
+                for hub, label, level, ready, total in training_skills(db, p)]
     if source.startswith('field:'):
         _, command, field = source.split(':', 2)
-        return [(c['name'], c['value']) for f in m.DISCORD_OPTION_SCHEMA.get(command, []) if f['name'] == field for c in f.get('choices', [])]
+        return [(c['name'], c['value']) for f in DISCORD_OPTION_SCHEMA.get(command, []) if f['name'] == field for c in f.get('choices', [])]
     if source == 'buy':
-        stock = m.seed_content.stock(m, db, p)
-        rows = [(k, d) for k, d in m.SEED_INDUSTRIES.items() if d.get('buy', 0) > 0]
-        rows.sort(key=lambda kv: (kv[1].get('category', 'legacy') != 'seed', m.market_item_label(kv[0])))
-        return [(f"{m.market_item_label(k)} — {d['buy']} SC · you have {stock.get(k, 0)}", k) for k, d in rows]
+        stock = seed_content.stock(m, db, p)
+        rows = [(k, d) for k, d in SEED_INDUSTRIES.items() if d.get('buy', 0) > 0]
+        rows.sort(key=lambda kv: (kv[1].get('category', 'legacy') != 'seed', market_item_label(kv[0])))
+        return [(f"{market_item_label(k)} — {d['buy']} SC · you have {stock.get(k, 0)}", k) for k, d in rows]
     if source == 'gear':
-        found = m._discord_gear_autocomplete({'member': {'user': {'id': uid}}, 'data': {}}, '')
+        found = _discord_gear_autocomplete({'member': {'user': {'id': uid}}, 'data': {}}, '')
         return [(c['name'], c['value']) for c in found['data']['choices']]
     if source == 'station':
-        return list(m.workbench.station_rows(wb.Context(m, db, p), ''))
+        return list(workbench.station_rows(wb.Context(m, db, p), ''))
     if source == 'player_name':
-        found = m._discord_player_autocomplete({'member': {'user': {'id': uid}}, 'data': {'name': 'linklookup'}}, '')
+        found = _discord_player_autocomplete({'member': {'user': {'id': uid}}, 'data': {'name': 'linklookup'}}, '')
         return [(c['name'], c['value']) for c in found['data']['choices']]
     if source.startswith('leaves:'):
         return [(f"{LEAVES[k]['emoji']} {LEAVES[k]['label']}" + (f" — {LEAVES[k]['hint']}" if LEAVES[k]['hint'] else ''), k)
                 for k in source.split(':', 1)[1].split(',') if k in LEAVES]
     if source == 'alerts':
-        pref = m.qol.prefs(db, p.channel_id, p.twitch_uid)
-        now = pref.alerts if pref is not None and pref.alerts in m.qol.ALERT_MODES else m.qol.DEFAULT_ALERTS
-        return [(f"{m.qol.ALERT_LABELS[k].capitalize()}{' (current)' if k == now else ''} — {d}", k) for k, d in m.qol.ALERT_MODES.items()]
+        pref = qol.prefs(db, p.channel_id, p.twitch_uid)
+        now = pref.alerts if pref is not None and pref.alerts in qol.ALERT_MODES else qol.DEFAULT_ALERTS
+        return [(f"{qol.ALERT_LABELS[k].capitalize()}{' (current)' if k == now else ''} — {d}", k) for k, d in qol.ALERT_MODES.items()]
     if source == 'popups':
-        now = m.inbox.popup_mode(db, p.channel_id, p.twitch_uid)
-        return [(f"{k.capitalize()}{' (current)' if k == now else ''} — {d}", k) for k, d in m.inbox.POPUP_MODES.items()]
+        now = inbox.popup_mode(db, p.channel_id, p.twitch_uid)
+        return [(f"{k.capitalize()}{' (current)' if k == now else ''} — {d}", k) for k, d in inbox.POPUP_MODES.items()]
     if source == 'ballot':
         import json
-        row = m.votes.ballot(m, db)
-        counts = m.votes.tally(db, row)
-        return [(f"{i}. {m.votes.label(o)[0]} {m.votes.label(o)[1]} — {c} vote{'s' if c != 1 else ''}", str(i))
+        row = votes.ballot(m, db)
+        counts = votes.tally(db, row)
+        return [(f"{i}. {votes.label(o)[0]} {votes.label(o)[1]} — {c} vote{'s' if c != 1 else ''}", str(i))
                 for i, (o, c) in enumerate(zip(json.loads(row.options), counts), 1)]
     if source == 'hats':
-        owned, worn = m.seasons.hats_of(db, p)
-        return [(f"{m.seasons.HATS[h][0]} {m.seasons.HATS[h][1]}{' (wearing)' if h == worn else ''}", h) for h in owned if h in m.seasons.HATS] + \
+        owned, worn = seasons.hats_of(db, p)
+        return [(f"{seasons.HATS[h][0]} {seasons.HATS[h][1]}{' (wearing)' if h == worn else ''}", h) for h in owned if h in seasons.HATS] + \
             ([('💼 My job hat', 'job')] if owned else [])
     if source == 'badges':
-        m.trophies._build(m)
-        mine = m.trophies.owned(db, p)
-        return [(f"{t['emoji']} {t['name']}", k) for k, t in m.trophies.TROPHIES.items() if k in mine]
+        trophies._build(m)
+        mine = trophies.owned(db, p)
+        return [(f"{t['emoji']} {t['name']}", k) for k, t in trophies.TROPHIES.items() if k in mine]
     if source.startswith('choices:'):
         command = source.split(':', 1)[1]
-        return [(c['name'], c['value']) for c in m.DISCORD_OPTION_SCHEMA[command][0]['choices']]
+        return [(c['name'], c['value']) for c in DISCORD_OPTION_SCHEMA[command][0]['choices']]
     return []
 
 
@@ -874,12 +933,14 @@ MERGED = {'training': ('mk', 'trainskill')}
 
 def navigate(m, db, p, owner, verb, args, values, name):
     """Handle mn/mv/mk/mp controls. Returns message data, or None when the choice must run as an action."""
+    from . import extras, keep_levels
+    from .game.players import as_utc
     if verb == 'mn':
         area = args[0] if args and args[0] in AREAS else 'home'
         if area == 'recent':
-            actions = m.extras.recent(db, p.channel_id, p.twitch_uid)
+            actions = extras.recent(db, p.channel_id, p.twitch_uid)
             text = '🔁 RECENT ACTIONS\nTap one to do it again. Each button works once; the result brings fresh buttons.\n\n' + (
-                '\n'.join(f'• {a.label} · <t:{int(m.as_utc(a.created_at).timestamp())}:R>' for a in actions) or 'Nothing yet. Actions you take appear here.')
+                '\n'.join(f'• {a.label} · <t:{int(as_utc(a.created_at).timestamp())}:R>' for a in actions) or 'Nothing yet. Actions you take appear here.')
             rows = ui.recent_components(m, db, p, owner)
             buttons = [c for r in rows[:-1] for c in r['components']]
             items = [{'match': f'{a.label} · <t:', 'button': dict(b, label='Again')} for a, b in zip(actions, buttons)]
@@ -923,7 +984,7 @@ def navigate(m, db, p, owner, verb, args, values, name):
             later = None
             if key == 'sell':
                 later = ui.button('Sell it after my queue', ui.cid(owner, 't', ui.issue(m, owner, {'do': 'sellstep', 'item': value})), emoji='🗺️')
-                kept = m.keep_levels.keep_for(m, db, p, value)
+                kept = keep_levels.keep_for(m, db, p, value)
                 if kept:
                     text += f'\n🛡️ Your keep level keeps {kept}; only the rest is sold.'
             return ui.message(m, text, [ui.row(ui.button('Confirm', ui.cid(owner, 't', ticket), style=3, emoji='✔️'), later,
@@ -933,10 +994,10 @@ def navigate(m, db, p, owner, verb, args, values, name):
             if item['pick'] == 'ore':
                 command, options = 'mine', {'ore': value}
                 return show(m, db, p, owner, command, options, area, name, key)
-            text = m._discord_call_internal('catalog', owner, name, {'item': value}, '')
+            text = runtime._discord_call_internal('catalog', owner, name, {'item': value}, '')
             return reply(m, text, 'catalog', ui.work_components(m, owner, 'gather:' + value) + [nav(owner, area, area)])
         if then == 'uses':
-            text, rows = m.extras.uses_text(m, db, p, value)
+            text, rows = extras.uses_text(m, db, p, value)
             return ui.message(m, text, ui.uses_components(owner, rows), 'catalog')
         if then == 'social':
             label = dict((v, l) for l, v in choices(m, db, p, 'player', owner)).get(value, 'that citizen')
@@ -953,11 +1014,13 @@ AMOUNTS = (1, 5, 10, 25)
 
 def amount_view(m, db, p, owner, key, value):
     """How many? Buttons for 1, 5, 10, 25, All (when selling) and a custom amount."""
+    from .game.cooldowns_materials import material_amount
+    from .game.players import resource_name
     item = LEAVES[key]
     command, options = options_for(key, value)
-    label = dict((v, l) for l, v in choices(m, db, p, item['pick'], owner)).get(value) or m.resource_name(value)
+    label = dict((v, l) for l, v in choices(m, db, p, item['pick'], owner)).get(value) or resource_name(value)
     selling = options.get('action') == 'sell'
-    have = (getattr(p, value, 0) if command == 'market' else m.material_amount(db, p, value)) if selling else 0
+    have = (getattr(p, value, 0) if command == 'market' else material_amount(db, p, value)) if selling else 0
     buttons = []
     for n in AMOUNTS:
         if selling and n > have:
@@ -1001,12 +1064,13 @@ def modal(owner, key, args=(), m=None):
 
 def submit(m, db, p, owner, name, key, args, value, fields=None):
     """A submitted form: message data to show, or a {'do': ...} action to run once. `fields`: every text box of the form."""
+    from . import ask, keep_levels, shopping_list
     item = LEAVES.get(key)
     if item is None:
         return None
     if key == 'keep':
         # A keep level only changes the citizen's own setting, so it needs no one-time ticket.
-        return ui.keep_message(m, db, p, owner, m.keep_levels.set_level(m, db, p, args[0] if args else '', value))
+        return ui.keep_message(m, db, p, owner, keep_levels.set_level(m, db, p, args[0] if args else '', value))
     if key == 'quiet':
         # Quiet hours too: three boxes (time zone, start, end); a refusal changes nothing.
         from . import quiet_hours
@@ -1016,7 +1080,7 @@ def submit(m, db, p, owner, name, key, args, value, fields=None):
         return ui.quiet_message(m, db, p, owner, note)
     if key == 'shopping':
         # So does the shopping list: a recipe's amount (Custom…), or a recipe and an amount (Add recipe…).
-        shop = m.shopping_list
+        shop = shopping_list
         note = shop.set_entry(m, db, p, args[0], value) if args else shop.add_typed(m, db, p, value, (fields or {}).get('amount', ''))
         db.flush()
         return ui.shopping_message(m, db, p, owner, note)
@@ -1026,8 +1090,8 @@ def submit(m, db, p, owner, name, key, args, value, fields=None):
         return {'do': 'cmd', 'leaf': key, 'value': args[0] if args else '', 'amount': int(value)}
     command, options = options_for(key, value)
     if key == 'find':
-        query = value[:m.ask.MAX_QUERY]
-        return ui.message(m, m.ask.reply(m, db, p, query), ui.find_components(m, owner, query, db, p), 'find')
+        query = value[:ask.MAX_QUERY]
+        return ui.message(m, ask.reply(m, db, p, query), ui.find_components(m, owner, query, db, p), 'find')
     if item['kind'] == 'modal' and command in {'inventory'}:
         return show(m, db, p, owner, command, options, PARENT.get(key, 'home'), name, key)
     return {'do': 'cmd', 'leaf': key, 'value': value}
@@ -1043,11 +1107,12 @@ def _denied(m, command):
 
 def show(m, db, p, owner, command, options, area, name, key=''):
     """Run a view command and show it with its own panel (if any) and this area's buttons."""
-    denied = _denied(m, m.discord_legacy_route(command, options)[0])
+    from .game.discord_commands import discord_legacy_route
+    denied = _denied(m, discord_legacy_route(command, options)[0])
     if denied:
         return ui.message(m, denied, [nav(owner, area, area)], 'moderator')
-    text = m._discord_call_internal(command, owner, name, options, '')
-    legacy, legacy_options = m.discord_legacy_route(command, options)
+    text = runtime._discord_call_internal(command, owner, name, options, '')
+    legacy, legacy_options = discord_legacy_route(command, options)
     panel = ui.slash_panel(m, legacy, owner, name, legacy_options, text)
     bottom = nav(owner, area, area)
     shared = ui.share_button(owner, legacy, legacy_options)
@@ -1066,9 +1131,10 @@ def show(m, db, p, owner, command, options, area, name, key=''):
 
 def run(m, uid, name, action, token=''):
     """Run a menu action; returns message data with the result and the area's buttons again."""
+    from .game.discord_commands import discord_legacy_route
     if 'raw' in action:
         command, options = action['raw']
-        area = COMMAND_AREA.get(m.discord_legacy_route(command, options)[0], 'home')
+        area = COMMAND_AREA.get(discord_legacy_route(command, options)[0], 'home')
     else:
         key = action['leaf']
         command, options = options_for(key, action.get('value'))
@@ -1077,11 +1143,11 @@ def run(m, uid, name, action, token=''):
         area = PARENT.get(key, 'home')
         if key.startswith('s_'):
             area = 'social'
-    legacy, legacy_options = m.discord_legacy_route(command, options)
+    legacy, legacy_options = discord_legacy_route(command, options)
     denied = _denied(m, legacy)
     if denied:
         return reply(m, denied, 'moderator', [nav(uid, area, area)])
-    text = m._discord_call_internal(command, uid, name, options, 'menu-' + (token or secrets.token_hex(8)))
+    text = runtime._discord_call_internal(command, uid, name, options, 'menu-' + (token or secrets.token_hex(8)))
     panel = ui.slash_panel(m, legacy, uid, name, legacy_options, text)
     if panel is not None:
         rows = [r for r in panel.get('components', []) if r.get('components')]
@@ -1099,7 +1165,8 @@ def run(m, uid, name, action, token=''):
 
 def after_command(m, command, options, uid):
     """The button row added under every slash command reply: Again, its area, and Menu."""
-    legacy, legacy_options = m.discord_legacy_route(command, options)
+    from .game.discord_commands import discord_legacy_route
+    legacy, legacy_options = discord_legacy_route(command, options)
     buttons = []
     if legacy in REPEATABLE and not (legacy == 'eat' and not legacy_options.get('food')) and not (legacy == 'use' and not legacy_options.get('item')):
         ticket = ui.issue(m, uid, {'do': 'cmd', 'raw': [command, dict(options or {})]})
@@ -1121,8 +1188,9 @@ OWN_ROWS = {'training'}
 
 def after_rows(m, command, options, uid, room=2):
     """Rows under a slash reply: the area's most-used buttons, then Again / area / Menu."""
+    from .game.discord_commands import discord_legacy_route
     last = after_command(m, command, options, uid)
-    legacy = m.discord_legacy_route(command, options)[0]
+    legacy = discord_legacy_route(command, options)[0]
     if room < 2 or legacy in OWN_ROWS:
         return [last]
     area = COMMAND_AREA.get(legacy, 'home')
@@ -1133,8 +1201,9 @@ def after_rows(m, command, options, uid, room=2):
 
 
 def home_text(m, uid, name):
-    with m.SessionLocal() as db:
-        p = m.player(db, m.DISCORD_WORLD_ID, 'discord', uid, name)[1]
+    from .game.players import player
+    with SessionLocal() as db:
+        p = player(db, runtime.DISCORD_WORLD_ID, 'discord', uid, name)[1]
         text = area_text(m, db, p, 'home')
         db.commit()
         return text

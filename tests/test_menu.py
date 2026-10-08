@@ -106,3 +106,12 @@ def test_cast_your_vote_counts_the_option_picked(monkeypatch):
     assert 'Vote counted' in result and 'whole number' not in result
     with m.SessionLocal() as db:
         assert db.query(m.votes.Cast).one().choice == 2
+
+
+def test_every_availability_rule_runs_without_failing(monkeypatch):
+    """Ctx.get shows a button when its check fails, so a broken check (a bad import, a renamed function) would hide
+    nothing and say nothing. Run every rule with failures raised instead."""
+    citizen()
+    monkeypatch.setattr(menu.Ctx, 'get', lambda self, name, make: self._cache.setdefault(name, make()))
+    answers = menu.with_context(m, '111', lambda c: {key: bool(rule(c)) for key, (rule, _) in menu.WHEN.items()})
+    assert set(answers) == set(menu.WHEN)

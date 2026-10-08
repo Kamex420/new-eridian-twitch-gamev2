@@ -1,5 +1,9 @@
 # Release notes
 
+## Behind the scenes: explicit dependencies, step seven
+
+- **The /menu button tree now imports exactly what it uses, which finishes all 43 systems.** The record of dependencies on app.main shrank from 180 to 127 names; what is left is the game modules in `app/game/` (they read the few values that change while the game runs through `main`) and the three systems that only set a value on app.main. The test that keeps converted systems clean now also catches reads through an object that holds app.main (`c.m`, `self.m`). A new test runs every menu availability check with failures raised, since a check that fails otherwise just shows its button. No gameplay changes.
+
 ## Behind the scenes: explicit dependencies, step six
 
 - **The Workbench and the Seedling autonomy now import exactly what they use.** 42 of 43 systems are converted; the record of dependencies on app.main shrank from 241 to 180 names. Left: menu. No gameplay changes.
