@@ -149,7 +149,7 @@ PANELS = NEWCOMER_PANELS + [
       ('GOOD TO KNOW', [
           ('Autonomy', 'After 10 minutes without a command it works, eats, sleeps and meets friends on its own. At work it thinks it through: your goal first, then it takes turns collecting and training its skills, and its diary says why. It never crafts recipes, buys or sells.'),
           ('Mood', 'A happy Seedling works a little better; a miserable one a little worse.'),
-          ('Autonomy off', '/seedling → Autonomy: Off makes it wait for you.')])],
+          ('Autonomy off', '/seedling → Lives on its own: Off makes it wait for you.')])],
      'PLAY → WALK AWAY → READ THE DIARY'),
     ('Gathering & work',
      'Raw materials come from gathering and mining. Every success gives items and practice in its skill.',

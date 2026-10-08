@@ -230,7 +230,7 @@ def test_queue_plan_offers_queue_next_when_busy():
     result = press(button['custom_id'])
     assert 'Next queue set' in json.dumps(result, ensure_ascii=False)
     status = press(ui.cid('111', 'qv'))
-    assert 'Clear next' in labels(status['data'])
+    assert 'Clear what runs next' in labels(status['data'])
     cleared = press(ui.cid('111', 'cn'))
     assert 'Next queue cleared' in json.dumps(cleared['data']['embeds'][0], ensure_ascii=False)
 

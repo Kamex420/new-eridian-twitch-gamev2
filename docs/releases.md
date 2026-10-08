@@ -1,5 +1,16 @@
 # Release notes
 
+## A simpler /menu: sixteen areas, a More button where there is more, and Do this next at the top
+
+- **/menu is shorter and easier to scan.** The 24 areas became 16, and nothing is more than two taps below Home. Farming, Research, Logistics and Frontier now live inside Work (as **Farm** and **Other jobs**); Workshops moved to Craft › More, Social became **Friends** in Life, and Bag and Account became **My bag** and Settings. Buttons on older messages still work and take you to the new place.
+- **Each area shows its main buttons (at most seven) and, where there is more, one More button.** More holds the rest: less-used options under "Also here", and things you can't do yet under "Not yet", with the reason and a **How to get it** button that asks Find for you. Areas with nothing extra have no More button.
+- **Do this next is the green button at the top of Home.** It now also points you at a paused queue, today's daily contract, and repeating your last finished queue. Status moved to You › More, where it is called **Full status** (it is still on the public game panel).
+- **On/off pairs are one button that shows the state**, for example *Auto-recover: On*, *Lives on its own: On*, *Results: Short*, *Activity feed: Shown*. Press it to flip it. *Quiet hours* is one button too: it sets them when they are off, and offers Change or Turn off when they are on.
+- **Plainer names.** Colony is **Town**, Bag & Trade is **Bag & Shop**, Recent actions is **Do again**, Inventory is **My bag**, Keep levels is **Always keep**, Cancel queue is **Stop queue**, Prospect is **Mine rare ore**, Expedite is **Spaceport rush**, and Find is **Ask or search**. No two buttons in the same area share a name any more (the two Leaderboards are **Top helpers** and **Season top ten**).
+- **One Sell, one vote.** Sell some and Sell all of… are a single **Sell** flow, and the Colony vote and Cast your vote are one **Today's vote** screen.
+- **Looks moved up to You**, one tap from your Seedling, with hats, badges and titles next to it. Body, Clothes and Voice each open their own pickers.
+- Commands, cooldowns, prices and one-time tickets are unchanged; only the buttons and their layout moved. Help messages that mention a menu path (selling, the bag, Looks) use the new names.
+
 ## Behind the scenes: explicit dependencies, the last step
 
 - **Systems no longer pass app.main around.** Once every system imported what it needs, the `m` parameter that carried app.main through the code was unused almost everywhere. 547 functions lost it, and every call (about 2,000 of them, in `app/`, `app/game/` and the tests) was updated to match. What still takes `m` is deliberate: the `install(m)` wiring hook each system has, and the few places that set a value on app.main (`item_identity.configure`, and the world merge switch, alias and run steps). Two small functions that used to ask "did I get app.main?" now just do the work (`find_item` takes an explicit `ranked` flag; the Discord queue worker no longer keeps a `self.m`). No gameplay changes.

@@ -27,11 +27,11 @@ DISCORD_ONLY = {
     '/api/v1/shopping': ('Shopping lists', '/menu → Craft'),
     '/api/v1/recipes': ('Recipes', '/make'), '/api/v1/workshop': ('Workshops', '/workshop'), '/api/v1/uses': ('Item uses', '/find'),
     '/api/v1/queue': ('Queues', '/queue'), '/api/v1/queue-tasks': ('Queues', '/queue'), '/api/v1/routines': ('Routines', '/queue'),
-    '/api/v1/routine': ('Routines', '/queue'), '/api/v1/again': ('Repeat last action', '/menu → Recent'),
+    '/api/v1/routine': ('Routines', '/queue'), '/api/v1/again': ('Repeat last action', '/menu → Do again'),
     '/api/v1/seedindustries': ('Trading', '/seedindustries'), '/api/v1/sell': ('Selling', '/seedindustries'),
     '/api/v1/sellall': ('Selling', '/seedindustries'), '/api/v1/clearout': ('Selling', '/seedindustries'),
-    '/api/v1/autosell': ('Auto-selling', '/menu → Bag & Trade → Bag'), '/api/v1/undo': ('Selling', '/seedindustries'),
-    '/api/v1/keep': ('Keep levels', '/menu → Bag & Trade → Bag'),
+    '/api/v1/autosell': ('Auto-selling', '/menu → Bag & Shop → More → Auto-sell'), '/api/v1/undo': ('Selling', '/seedindustries'),
+    '/api/v1/keep': ('Keep levels', '/menu → Bag & Shop → More → Always keep'),
     '/api/v1/marketboard': ('Market prices', '/market'),
     '/api/v1/business': ('Businesses', '/business'), '/api/v1/business/start': ('Businesses', '/business'),
     '/api/v1/home': ('Homes', '/home'), '/api/v1/home/upgrade': ('Homes', '/home'),
@@ -191,4 +191,4 @@ def join_tips():
             ['!status', 'Needs and your next step'], ['!vote 1', "Vote on the colony's next project"],
             ['!seedling', 'Your Seedling on the map'], ['!challenge', 'Join the stream challenge'],
             ['Discord', 'Crafting, queues, trading and more: ' + invite()],
-            ['Discord /menu', 'Craft → Shopping list · Bag → Keep levels · Settings → Quiet hours']]
+            ['Discord /menu', 'Craft → Shopping list · Bag & Shop → More → Always keep · You → Settings → Quiet hours']]

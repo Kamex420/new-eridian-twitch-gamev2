@@ -389,7 +389,7 @@ def test_newest_discord_features_are_named_but_never_shown_as_data(monkeypatch):
         assert keep_levels.levels(db, p.channel_id, p.twitch_uid) and shopping_list.entries(db, p)
     data = overlay()
     tips = ' '.join(t[1] for t in data['join']['tips'])
-    assert 'Shopping list' in tips and 'Keep levels' in tips and 'Quiet hours' in tips
+    assert 'Shopping list' in tips and 'Always keep' in tips and 'Quiet hours' in tips
     page = client.get('/obs/join', params={'channel': 'test'}).text
     assert 'shopping lists, keep levels and quiet hours on Discord' in page
     def keys(v):

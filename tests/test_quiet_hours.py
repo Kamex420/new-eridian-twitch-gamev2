@@ -517,9 +517,14 @@ def test_the_settings_form_sets_quiet_hours(clock):
     zone = 'Europe/London' if LONDON else 'UTC'
     assert f'🌙 **Quiet hours set:** 23:00–08:00 ({zone}).' in words and 'They are on now, until <t:' in words
     assert f'• **Quiet hours:** 23:00–08:00 ({zone}) — 🌙 on now' in words
-    assert {'Turn off quiet hours', 'Quiet hours', 'Back', 'Menu'} <= set(labels(data))
+    assert {'Quiet hours: On', 'Back', 'Menu'} <= set(labels(data)) and 'Turn off quiet hours' not in labels(data)
     assert boxes(press(ui.cid('111', 'mo', 'quiet'))) == {'value': zone, 'start': '23:00', 'end': '08:00'}    # filled in
-    assert 'Turn off quiet hours' in labels(press(ui.cid('111', 'mn', 'settings'))['data'])
+    assert 'Quiet hours: On' in labels(press(ui.cid('111', 'mn', 'settings'))['data'])           # one button, whichever state
+    choice = press(ui.cid('111', 'mn', 'settings', 'quiet'))['data']                               # on: Change or Turn off
+    assert {'Change', 'Turn off'} <= set(labels(choice)) and f'On: 23:00–08:00' in json.dumps(choice, ensure_ascii=False)
+    off = json.dumps(press(next(c for c in choice['components'][0]['components'] if c['label'] == 'Turn off')['custom_id'])['data'], ensure_ascii=False)
+    assert 'Quiet hours' in off and 'Quiet hours: On' not in off
+    assert 'Quiet hours' in labels(press(ui.cid('111', 'mn', 'settings'))['data'])
 
 
 @pytest.mark.parametrize('tz,start,end,why', [('Mars/Base', '23', '08', 'not a time zone'), ('UTC', '23', '23:00', 'no quiet window'),

@@ -42,7 +42,7 @@ def test_every_slash_command_option_has_a_button():
         if leaf.get('option'):
             reached[command].add(leaf['option'] + '=*')
     expected = {
-        'seedindustries': {'action=buy', 'action=sell', 'action=sellall', 'action=browse', 'action=fulfill', 'action=clearout'},
+        'seedindustries': {'action=buy', 'action=sell', 'action=browse', 'action=fulfill', 'action=clearout'},      # Sell all N runs sellall (see test_menu_redesign)
         'market': {'action=view', 'action=work', 'action=analyze'},
         'workshop': {'action=unlock', 'station=*'},
         'repair': {'target=society', 'target=gear'},
@@ -68,7 +68,7 @@ def test_buy_with_pages_amount_buttons_and_a_custom_amount():
     amounts = press(select['custom_id'], values=[item])['data']
     assert {'Buy 1', 'Buy 5', 'Buy 10', 'Buy 25', 'Other amount…'} <= set(labels(amounts))
     bought = press(button(amounts, 'Buy 5')['custom_id'])['data']
-    assert 'bought 5' in text_of(bought) and 'Browse shop' in labels(bought)    # stays in Trade
+    assert 'bought 5' in text_of(bought) and 'Buy' in labels(bought) and 'My bag' in labels(bought)    # stays in Bag & Shop
     form = press(ui.cid('111', 'mo', 'buy', item))
     assert form['type'] == 9
     assert 'bought 3' in text_of(submit(form['data']['custom_id'], '3')['data'])
@@ -78,7 +78,7 @@ def test_buy_with_pages_amount_buttons_and_a_custom_amount():
         assert m.material_amount(db, p, item) == 8
 
 
-def test_sell_some_offers_only_amounts_you_have():
+def test_the_older_sell_some_button_offers_only_amounts_you_have():
     citizen(lumber=7)
     amounts = press(ui.cid('111', 'mp', 'sellsome'), values=[LUMBER])['data']
     assert 'Sell 1' in labels(amounts) and 'Sell 5' in labels(amounts) and 'Sell all 7' in labels(amounts)
@@ -105,7 +105,9 @@ def test_views_behind_dropdowns():
     assert 'Crafting' in text_of(press(ui.cid('111', 'mp', 'trainskill'), values=['crafting'])['data'])
     assert press(ui.cid('111', 'mk', 'unlock'))['data']['components'][0]['components'][0]['options']
     work = press(ui.cid('111', 'mn', 'work'))['data']
-    assert 'Repair gear' not in labels(work) and 'Repair gear (you have no quality gear)' in text_of(work)   # hidden until they own gear, with the reason
+    assert 'Fix a tool' not in labels(work) and any(x.startswith('More · ') and x.endswith(' locked') for x in labels(work))
+    more = text_of(press(ui.cid('111', 'mn', 'work', 'more'))['data'])        # hidden until they own gear, with the reason
+    assert 'Fix a tool' in more and 'you have no quality gear' in more and 'NOT YET' in more
 
 
 def test_public_panel_opens_each_citizens_own_private_menu():
@@ -236,28 +238,27 @@ def test_grouped_dropdowns_keep_every_view_and_setting():
     with m.SessionLocal() as db:
         p = m.player(db, W, 'discord', '111', 'Kam')[1]
         assert m.qol.prefs(db, p.channel_id, p.twitch_uid).alerts == 'quiet'
-    for key in ('wd_more', 'me_more', 'h_topics', 'popups'):
+    for key in ('wd_more', 'h_topics', 'popups'):
         assert press(ui.cid('111', 'mk', key))['data']['components'][0]['components'][0]['options'], key
 
 
 def test_buttons_appear_only_when_the_citizen_can_use_them():
     citizen()
-    assert 'Autonomy off' in area_labels('seedling') and 'Autonomy on' not in area_labels('seedling')
-    press(button(press(ui.cid('111', 'mn', 'seedling'))['data'], 'Autonomy off')['custom_id'])
-    assert 'Autonomy on' in area_labels('seedling') and 'Autonomy off' not in area_labels('seedling')
-    assert 'Undo sale' not in area_labels('trade')
-    m.sell_all_items(W, '111', 'Kam', 'lumber', 'discord')
-    assert 'Undo sale' in area_labels('trade')
-    assert 'Business work' not in area_labels('property') and 'Start business' in area_labels('property')
+    assert 'Lives on its own: On' in area_labels('seedling') and 'Lives on its own: Off' not in area_labels('seedling')
+    press(button(press(ui.cid('111', 'mn', 'seedling'))['data'], 'Lives on its own')['custom_id'])       # one button: it flips the setting
+    assert 'Lives on its own: Off' in area_labels('seedling') and 'Lives on its own: On' not in area_labels('seedling')
+    assert 'Business work' not in area_labels('property') and 'Start a business' in area_labels('property')
     submit(ui.cid('111', 'md', 'bstart'), 'Rocky Repairs')
-    assert 'Business work' in area_labels('property') and 'Start business' not in area_labels('property')
-    assert 'Cancel queue' not in area_labels('queue')
+    assert 'Business work' in area_labels('property') and 'Start a business' not in area_labels('property')
+    assert 'Stop queue' not in area_labels('queue')
     m.queued_tasks(W, '111', 'Kam', 'start', 'gather:' + LUMBER, '3', 'discord')
-    assert 'Cancel queue' in area_labels('queue')
+    assert 'Stop queue' in area_labels('queue')
 
 
-def test_no_button_is_listed_in_two_areas():
+def test_no_button_is_listed_in_two_places():
     from collections import Counter
     counts = Counter(k for area, (_, _, _, kids) in menu.AREAS.items() for k in kids if area != 'home')
+    counts.update(k for keys in menu.MORE.values() for k in keys)
+    counts.update(k for keys in menu.JOBS.values() for k in keys)
     assert [k for k, n in counts.items() if n > 1] == []
     assert all(len(kids) <= 15 for area, (_, _, _, kids) in menu.AREAS.items() if area != 'home')

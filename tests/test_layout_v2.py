@@ -207,10 +207,13 @@ def test_every_menu_area_and_choice_list_fits_with_buttons_beside_items():
             assert assert_valid(v2.convert(answer['data'])), key
     home = v2.convert(moderator(ui.cid('111', 'mn', 'home'))['data'])
     beside = [s['accessory']['label'] for s in sections(home)]
-    assert beside[1:7] == ['Work', 'Craft', 'Life', 'Bag & Trade', 'Colony', 'You']               # six areas, after the next step
-    assert sections(home)[0]['components'][0]['content'].startswith('➡️ **Next step** —')
-    assert {'Status', 'Notifications', 'Help'} <= {c['label'] for c in v2.controls(home)}   # quick buttons stay in a row
-    assert 'Status** —' not in v2.text_of(home)                                    # ...without their line
+    assert beside[1:7] == ['Work', 'Craft', 'Life', 'Bag & Shop', 'Town', 'You']                 # six areas, after Do this next
+    top = sections(home)[0]
+    assert top['components'][0]['content'].startswith('➡️ ') and '**' not in top['components'][0]['content']    # the button carries the name
+    assert top['accessory']['style'] == 3                                                          # Do this next is green
+    assert {'Notifications', 'Help', 'Do again'} <= {c['label'] for c in v2.controls(home)}      # quick buttons stay in a row
+    assert 'Status' not in {c['label'] for c in v2.controls(home)}                                # Status is in You > More now
+    assert 'Help** —' not in v2.text_of(home)                                                    # ...without their line
 
 
 def test_menu_buttons_beside_lines():
@@ -219,11 +222,11 @@ def test_menu_buttons_beside_lines():
     found = {s['accessory']['label']: s for s in sections(life)}
     assert found['Relax']['accessory']['custom_id'].startswith('ne|111|t|') and found['Relax']['accessory']['style'] == 3   # actions: green
     assert found['Relax']['components'][0]['content'] == '🛋️ +25 Energy, +20 Comfort'                 # the button names it; the line says what it does
-    assert found['Needs']['accessory']['style'] == 2                                                  # views: grey
+    assert found['Friends']['accessory']['style'] == 2                                                # lists and views: grey
     assert sections(v2.convert(press(ui.cid('111', 'mn', 'home'))['data']))[1]['accessory']['style'] == 1        # areas: blue
-    farming = v2.convert(press(ui.cid('111', 'mn', 'farming'))['data'])
-    assert '🌱 Gives 1 Pumpkin + 1 Pumpkin Seeds' in v2.text_of(farming)                              # every button has a line
-    assert len(sections(farming)) == 3
+    farm = v2.convert(press(ui.cid('111', 'mn', 'farming'))['data'])                                 # an older Farming button opens the Farm list
+    assert 'gives 1 Pumpkin + 1 Pumpkin Seeds' in v2.text_of(farm)                                    # every job has a line
+    assert len(sections(farm)) == 3 and {s['accessory']['label'] for s in sections(farm)} == {'Do it'}
 
 
 def test_recent_actions_each_get_an_again_button():

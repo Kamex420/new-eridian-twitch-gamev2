@@ -30,7 +30,7 @@ def test_back_returns_to_each_screen_before_in_turn():
     press(ui.cid('111', 'mn', 'home'))
     press(ui.cid('111', 'mn', 'work'))
     farming = press(ui.cid('111', 'mn', 'farming'))
-    assert where(farming) == '🏠 Menu › ⛏️ Work › 🌾 Farming'
+    assert where(farming) == '🏠 Menu › ⛏️ Work › Farm'               # an older Farming button opens the Farm list
     work = press(back(farming))
     assert work['type'] == 7 and where(work) == '🏠 Menu › ⛏️ Work'
     home = press(back(work))
@@ -77,4 +77,4 @@ def test_the_home_menu_has_back_once_there_is_somewhere_to_go_back_to():
     assert not any(i.split('|')[2] == 'bk' for i in ids(home))
     press(ui.cid('111', 'mn', 'trade'), message='M5')
     home = press(ui.cid('111', 'mn', 'home'), message='M5')
-    assert where(press(back(home), message='M5')).endswith('Trade')
+    assert where(press(back(home), message='M5')).endswith('Bag & Shop')

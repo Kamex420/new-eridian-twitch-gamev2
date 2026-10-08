@@ -452,9 +452,9 @@ def three_entries():
     add(STEEL_FRAME.id, 2)
 
 
-def test_the_craft_area_opens_the_shopping_list_after_the_goal():
+def test_the_craft_area_opens_the_shopping_list_among_its_main_buttons():
     citizen()
-    assert menu.AREAS['craft'][3][:2] == ['goal', 'shopping']
+    assert menu.AREAS['craft'][3] == ['goal', 'ready', 'workbench', 'shopping', 'favs']
     craft = press(ui.cid('111', 'mn', 'craft'))['data']
     assert find(craft, 'Shopping list')['custom_id'] == ui.cid('111', 'lv')
     empty = press(ui.cid('111', 'lv'))['data']

@@ -206,7 +206,7 @@ def test_discord_seedling_screens():
     citizen()
     view = press(ui.cid('111', 'mv', 'sl_view'))['data']
     labels = [c.get('label') for c in controls(view)]
-    assert {'Let it decide', 'Diary', 'Schedule', 'Autonomy off'} <= set(labels)
+    assert {'Let it decide', 'Diary', 'Schedule', 'Lives on its own: On'} <= set(labels)
     editor = press(ui.cid('111', 'lp'))['data']
     assert len([c for c in controls(editor) if c['type'] == 3]) == 4
     press(ui.cid('111', 'lp', 'Evening'), values=['free'])

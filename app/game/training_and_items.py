@@ -245,7 +245,7 @@ def item_command_menu(command,uid,name):
                 if equipment and not equipment_count(db,p,equipment):
                     lines.append(f"Get {resource_name(equipment)}: {material_source(equipment,'discord')}")
             if command=="market":
-                lines.append("Selling: /seedindustries action:Sell (or /menu → Bag & Trade → Sell some / Sell all of…). /market action:view shows which two materials are in demand today.")
+                lines.append("Selling: /seedindustries action:Sell (or /menu → Bag & Shop → Sell). /market action:view shows which two materials are in demand today.")
         elif command=="social":
             owned=owned_life_items(db,p)
             lines += [f"• Recreation Set ×{sum(r.qty for r in owned['recreation_set'])} — /social action:group_games consumes 1, highest quality first.",

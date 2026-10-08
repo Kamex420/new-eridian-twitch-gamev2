@@ -35,7 +35,7 @@ def marketboard(channel:str,provider:str="twitch"):
             base=SEED_INDUSTRIES[k]['sell'];now_=demand_price(k,clock["day"])
             return f"{tag} {resource_name(k)}: {now_} SC each (usually {base})"
         text=(f"🏪 MARKET — AVESTA DAY {clock['day']}\nSeed Industries pays extra today for:\n{row(a,'🔥')}\n{row(b,'↑')}\n"
-              "Sell anything else at its usual price with /seedindustries action:Sell, or /menu → Bag & Trade.")
+              "Sell anything else at its usual price with /seedindustries action:Sell, or /menu → Bag & Shop.")
         return platform_response(provider,text,f"🏪 Day {clock['day']} demand: 🔥 {row(a,'').strip()} | ↑ {row(b,'').strip()} | !sellall <item> sells at today's price")
 
 @app.get("/api/v1/sell")

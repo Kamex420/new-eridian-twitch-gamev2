@@ -94,7 +94,7 @@ def test_home_opens_with_one_next_step():
     citizen()
     home = v2.convert(press(ui.cid('111', 'mn', 'home'))['data'])
     top = sections(home)[0]
-    assert top['components'][0]['content'].startswith('➡️ **Next step** — ') and top['accessory']['style'] in {1, 3}
+    assert top['components'][0]['content'].startswith('➡️ ') and top['accessory']['style'] == 3                  # Do this next: first, green
     # With the first steps done and a goal set, the next step is the goal's.
     with m.SessionLocal() as db:
         p = db.query(m.Player).one()
@@ -108,8 +108,8 @@ def test_home_opens_with_one_next_step():
 def test_every_screen_shows_where_it_is_and_ends_with_menu():
     citizen()
     farming = press(ui.cid('111', 'mn', 'farming'))['data']
-    assert farming['embeds'][0]['author']['name'] == '🏠 Menu › ⛏️ Work › 🌾 Farming'
-    assert v2.convert(farming)['components'][0]['components'][0]['content'].startswith('-# 🏠 Menu › ⛏️ Work › 🌾 Farming')
+    assert farming['embeds'][0]['author']['name'] == '🏠 Menu › ⛏️ Work › Farm'
+    assert v2.convert(farming)['components'][0]['components'][0]['content'].startswith('-# 🏠 Menu › ⛏️ Work › Farm')
     for custom_id in (ui.cid('111', 'wc', 'parts', 1, ''), ui.cid('111', 'wh'), ui.cid('111', 'qv'), ui.cid('111', 'st')):
         data = press(custom_id)['data']
         last = [r for r in data['components'] if r.get('components')][-1]['components'][-1]

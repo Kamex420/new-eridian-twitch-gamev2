@@ -511,9 +511,9 @@ def last_row(data):
 def test_discord_keep_screen_select_amounts_custom_remove_and_restock():
     citizen(lumber=10)
     set_keep(LUMBER, 20)
-    bag = press(ui.cid('111', 'mn', 'bag'))['data']
-    assert 'Keep levels' in labels(bag)
-    screen = press(find(bag, 'Keep levels')['custom_id'])['data']
+    more = press(ui.cid('111', 'mn', 'trade', 'more'))['data']                      # Bag & Shop > More > Always keep
+    assert 'Always keep' in labels(more)
+    screen = press(find(more, 'Always keep')['custom_id'])['data']
     body = text_of(screen['embeds'])
     assert 'Keep Levels · 1/25' in body and '⚠️ Lumber — have 10 / keep 20' in body and 'Gather ×10' in body
     select = screen['components'][0]['components'][0]
@@ -541,12 +541,12 @@ def test_discord_keep_screen_select_amounts_custom_remove_and_restock():
     assert 'Keep level removed' in text_of(removed) and kept(LUMBER) == 0
 
 
-def test_discord_sell_all_confirm_mentions_the_keep_level():
+def test_discord_sell_all_mentions_the_keep_level():
     citizen(lumber=10)
     set_keep(LUMBER, 4)
-    confirm = press(ui.cid('111', 'mp', 'sell'), values=[LUMBER])['data']
-    assert 'Your keep level keeps 4; only the rest is sold.' in text_of(confirm)
-    press(find(confirm, 'Confirm')['custom_id'])
+    amounts = press(ui.cid('111', 'mp', 'sell'), values=[LUMBER])['data']
+    assert 'Always keep is 4: Sell all leaves that many' in text_of(amounts)
+    press(find(amounts, 'Sell all 6')['custom_id'])                                    # the whole stack minus the keep level
     assert have(LUMBER) == 4
 
 

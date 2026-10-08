@@ -926,7 +926,7 @@ def save_routine(db, p):
         return f'You already have {MAX_ROUTINES} routines. Delete one first. Nothing saved.'
     name = ' → '.join(step_label(st) for st in steps)[:100]
     db.add(Routine(channel_id=p.channel_id, canonical_uid=p.twitch_uid, name=name, steps=json.dumps(steps), created_at=runtime.now()))
-    return f'💾 Routine saved: {name}. Start it any time from /menu → Work → Queue → Plan & routines.'
+    return f'💾 Routine saved: {name}. Start it any time from /menu → Work → Queue → What runs next.'
 
 
 def delete_routine(db, p, routine_id):
@@ -1043,7 +1043,7 @@ def autosell_text(db, p):
     from .game.players import resource_name
     keys = autosell_list(db, p)
     lines = ['🧹 AUTO-SELL', 'Chosen items are sold to Seed Industries when a queue finishes. Ingredients of favourites and queued recipes '
-             'are always kept, and so is each item\'s keep level (Bag → Keep levels).', '']
+             'are always kept, and so is each item\'s keep level (Bag & Shop → More → Always keep).', '']
     lines += [f'• {resource_name(k)} (you have {material_amount(db, p, k)})' for k in keys] or ['Nothing chosen yet. Pick an item below; Stone Dust is a common choice.']
     return '\n'.join(lines)
 
@@ -1196,7 +1196,7 @@ def goal_ready_check(db, p):
         return False
     found.ready_alerted = 1
     from . import inbox
-    inbox.add(db, p.channel_id, p.twitch_uid, 'goal', f'**Your goal {e.name} is ready to craft.** /menu → Craft → Goal.')
+    inbox.add(db, p.channel_id, p.twitch_uid, 'goal', f'**Your goal {e.name} is ready to craft.** /menu → Craft → My goal.')
     return True
 
 
@@ -1280,7 +1280,7 @@ def find(query, limit=5):
     menu = []
     for key, leaf in menu_module.LEAVES.items():
         text = leaf['label'] + ' ' + leaf.get('hint', '')
-        if q in text.casefold():
+        if q in text.casefold() and key not in menu_module.HIDDEN:
             menu.append(key)
     for key, (_, title, text, _) in menu_module.AREAS.items():
         if key != 'home' and q in (title + ' ' + text).casefold():

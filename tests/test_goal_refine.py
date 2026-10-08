@@ -256,7 +256,7 @@ def test_a_queue_that_gathers_the_last_ingredient_raises_one_private_note():
     advance()
     assert notes('goal') == []                                              # 1 of 2 Lumber: not yet
     advance()
-    ready = '**Your goal Campfire is ready to craft.** /menu → Craft → Goal.'
+    ready = '**Your goal Campfire is ready to craft.** /menu → Craft → My goal.'
     assert notes('goal') == [ready] and progress_row()[2] == 1
     advance(); advance()                                                    # still ready: never again for this goal
     with m.SessionLocal() as db:

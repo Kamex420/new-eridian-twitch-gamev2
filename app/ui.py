@@ -2,7 +2,7 @@
 
 Navigation (menus, pages, Back) is read-only; its state travels in the
 component's custom_id. Every button that spends something (Craft, Start queue,
-Gather, Cancel queue) carries a one-time ticket stored in the database. The
+Gather, Stop queue) carries a one-time ticket stored in the database. The
 first press claims the ticket atomically, so a double click, a Discord retry
 or an old message can never spend twice. Only the citizen who opened a panel
 can use it; anyone else is told to open their own.
@@ -520,16 +520,16 @@ def queue_components(db, p, owner):
     buttons = [button('Refresh', cid(owner, 'qv'), emoji='🔄')]
     if row_ is not None and row_.state in task_queue.ACTIVE | {'error'}:
         ticket = issue(owner, {'do': 'cancel'})
-        buttons.insert(0, button('Cancel queue', cid(owner, 't', ticket), style=4, emoji='⏹️'))
+        buttons.insert(0, button('Stop queue', cid(owner, 't', ticket), style=4, emoji='⏹️'))
     repeat = repeat_button(owner, row_)
     if repeat:
         buttons.insert(0, repeat)
     if p is not None and qol.next_task(db, p.channel_id, p.twitch_uid)[0]:
-        buttons.append(button('Clear next', cid(owner, 'cn'), emoji='⏭️'))
+        buttons.append(button('Clear what runs next', cid(owner, 'cn'), emoji='⏭️'))
     buttons.append(button('Status', cid(owner, 'st'), emoji='📊'))
     rows = [row(*buttons)]
     if row_ is not None:
-        rows.append(row(button('Details & requirements', cid(owner, 'qd'), emoji='📘')))
+        rows.append(row(button('Queue rules', cid(owner, 'qd'), emoji='📘')))
     return rows
 
 
@@ -1238,18 +1238,18 @@ def public_panel():
     from . import menu
     text = ('🌱 NEW ERIDIAN — PLAY WITH BUTTONS\n'
             'Press any button to open your own private menu. Nobody else sees it, and nothing is spent until you press an action.\n\n'
-            '🏠 **Menu** — every part of the game, starting with your next step\n📊 **Status** — needs, queue and what to do next\n'
-            '⛏️ **Work** — gather, mine, train and run queues\n🛠️ **Craft** — your goal walks you through it; every recipe\n'
-            '❤️ **Life** — relax, sleep, eat, recover\n🪙 **Bag & Trade** — what you own, buying and selling\n'
-            '🎪 **Colony** — events, the vote, the season and trophies\n👤 **You** — your citizen, Seedling and settings\n'
-            '🔎 **Find** — search anything\n🔗 **Account** — start or link Twitch\n\n'
+            '🏠 **Menu** — every part of the game, starting with what to do next\n📊 **Status** — needs, queue and what to do next\n'
+            '⛏️ **Work** — gather, mine, farm, train and run queues\n🛠️ **Craft** — your goal walks you through it; every recipe\n'
+            '❤️ **Life** — relax, sleep, eat, recover\n🎒 **Bag & Shop** — what you own, buying and selling\n'
+            '🏘️ **Town** — events, the vote, the season and trophies\n👤 **You** — your citizen, Seedling and looks\n'
+            '🔎 **Ask or search** — find anything, or ask how to do it\n⚙️ **Settings** — alerts, quiet hours and linking Twitch\n\n'
             'ℹ️ A free, unofficial fan project by Kamex. Not affiliated with Klang Games, the makers of SEED.')
     rows = [row(button('Menu', cid(PUBLIC, 'mn', 'home'), style=1, emoji='🏠'), button('Status', cid(PUBLIC, 'st'), style=1, emoji='📊'),
                 button('Work', cid(PUBLIC, 'mn', 'work'), emoji='⛏️'), button('Craft', cid(PUBLIC, 'mn', 'craft'), emoji='🛠️'),
                 button('Life', cid(PUBLIC, 'mn', 'life'), emoji='❤️')),
-            row(button('Bag & Trade', cid(PUBLIC, 'mn', 'trade'), emoji='🪙'), button('Colony', cid(PUBLIC, 'mn', 'community'), emoji='🎪'),
-                button('You', cid(PUBLIC, 'mn', 'me'), emoji='👤'), button('Find', cid(PUBLIC, 'mo', 'find'), emoji='🔎'),
-                button('Account', cid(PUBLIC, 'mn', 'account'), emoji='🔗'))]
+            row(button('Bag & Shop', cid(PUBLIC, 'mn', 'trade'), emoji='🎒'), button('Town', cid(PUBLIC, 'mn', 'community'), emoji='🏘️'),
+                button('You', cid(PUBLIC, 'mn', 'me'), emoji='👤'), button('Ask or search', cid(PUBLIC, 'mo', 'find'), emoji='🔎'),
+                button('Settings', cid(PUBLIC, 'mn', 'settings'), emoji='⚙️'))]
     items = [{'match': f"**{b['label']}**", 'button': {k: v for k, v in b.items() if k != 'emoji'}}
              for r in rows for b in r['components']]
     return message(text, rows, 'menu', items)
@@ -1387,7 +1387,7 @@ def autosell_components(db, p, owner):
         rows.append(select(cid(owner, 'at'), 'Add or remove an item',
                            [option(('✅ ' if k in chosen else '') + resource_name(k), k, 'currently sold automatically' if k in chosen else
                                    f'you have {stock.get(k, 0)} · sells {qol.sell_price(k)} SC each') for k in keys]))
-    rows.append(_menu_row(owner, ('bag', 'Bag')))
+    rows.append(_menu_row(owner, ('trade', 'Bag & Shop')))
     return rows
 
 
@@ -1435,8 +1435,8 @@ def keep_message(db, p, owner, note=''):
             buttons.append(b)
             items.append({'match': f"⚠️ {r['name']} — have", 'button': b})
     rows += [row(*buttons[i:i + 5]) for i in range(0, len(buttons), 5)]
-    rows.append(_menu_row(owner, ('bag', 'Bag')))
-    return with_crumb(message(keep.screen_text(db, p, note), rows, 'inventory', items), crumb('bag', 'Keep levels'))
+    rows.append(_menu_row(owner, ('trade', 'Bag & Shop')))
+    return with_crumb(message(keep.screen_text(db, p, note), rows, 'inventory', items), crumb('trade', 'Always keep'))
 
 
 def keep_item_message(db, p, owner, key, note=''):
@@ -1462,7 +1462,7 @@ def keep_item_message(db, p, owner, key, note=''):
     if short is not None:
         second.append(restock_button(p, owner, short))
     rows = [row(*first), row(*second), row(back_button(owner, 'kv'), button('Menu', cid(owner, 'mn', 'home'), emoji='🏠'))]
-    return with_crumb(message(keep.item_text(db, p, key, note), rows, 'inventory'), crumb('bag', 'Keep levels › ' + resource_name(key)))
+    return with_crumb(message(keep.item_text(db, p, key, note), rows, 'inventory'), crumb('trade', 'Always keep › ' + resource_name(key)))
 
 
 def quiet_form(owner):
@@ -1483,7 +1483,7 @@ def quiet_message(db, p, owner, note=''):
     from . import menu
     head, _, rest = qol.settings_text(db, p, 'discord').partition('\n')
     text = head + ('\n' + note if note else '') + '\n' + rest
-    rows = menu.grid(owner, menu.children_of('settings', menu.context(owner, db, p)), rows=3) + [menu.nav(owner, 'settings', 'settings')]
+    rows = menu.area_rows(owner, 'settings', menu.context(owner, db, p)) + [menu.nav(owner, 'settings', 'settings')]
     return with_crumb(message(text, rows, 'settings'), menu.crumb('settings', '🌙 Quiet hours'))
 
 
@@ -1557,7 +1557,7 @@ def shopping_item_message(db, p, owner, recipe_id, note=''):
 
 def uses_components(owner, rows_):
     buttons = [button(wb.clip(e.name, 80), cid(owner, 'wr', e.id, e.category, 1, ''), emoji='📋') for e in rows_[:5]]
-    return ([row(*buttons)] if buttons else []) + [_menu_row(owner, ('bag', 'Bag'))]
+    return ([row(*buttons)] if buttons else []) + [_menu_row(owner, ('trade', 'Bag & Shop'))]
 
 
 def recent_components(db, p, owner):
@@ -1643,7 +1643,7 @@ def find_components(owner, query, db=None, p=None):
 def seedling_components(db, p, owner):
     from . import autonomy
     found = autonomy.row(db, p.channel_id, p.twitch_uid, create=True)
-    toggle = ({'do': 'cmd', 'leaf': 'sl_off'}, 'Autonomy off', '✋', 4) if found.enabled else ({'do': 'cmd', 'leaf': 'sl_on'}, 'Autonomy on', '🌱', 3)
+    toggle = ({'do': 'cmd', 'leaf': 'sl_off'}, 'Lives on its own: On', '🌱', 2) if found.enabled else ({'do': 'cmd', 'leaf': 'sl_on'}, 'Lives on its own: Off', '🌱', 2)
     return [row(button('Let it decide', cid(owner, 't', issue(owner, {'do': 'cmd', 'leaf': 'sl_decide'})), style=3, emoji='🎲'),
                 button('Diary', cid(owner, 'mv', 'sl_diary'), emoji='📓'), button('Schedule', cid(owner, 'lp'), emoji='🗓️'),
                 button(toggle[1], cid(owner, 't', issue(owner, toggle[0])), style=toggle[3], emoji=toggle[2])),
@@ -1784,7 +1784,7 @@ def extra_ticket(uid, name, action, kind, channel):
         if kind == 'undo':
             text = more.undo_sale(db, p)
             db.commit()
-            return message(text, [_menu_row(uid, ('bag', 'Bag'))], 'sell')
+            return message(text, [_menu_row(uid, ('trade', 'Bag & Shop'))], 'sell')
         if kind == 'buyitem':
             amount = int(action.get('amount') or 1)
             lines = []
@@ -1806,6 +1806,6 @@ def extra_ticket(uid, name, action, kind, channel):
     if kind == 'restock':
         from . import keep_levels as keep
         text = keep.restock(channel, uid, name, 'discord', action['item'])
-        return message(text, [row(button('Keep levels', cid(uid, 'kv'), style=1, emoji='🛡️'), button('Queue status', cid(uid, 'qv'), emoji='📋')),
-                                 _menu_row(uid, ('bag', 'Bag'))], 'queue' if 'TASK QUEUE' in text else 'inventory')
+        return message(text, [row(button('Always keep', cid(uid, 'kv'), style=1, emoji='🛡️'), button('Queue status', cid(uid, 'qv'), emoji='📋')),
+                                 _menu_row(uid, ('trade', 'Bag & Shop'))], 'queue' if 'TASK QUEUE' in text else 'inventory')
     return message('This button is no longer supported. Nothing was spent.', [_menu_row(uid)])

@@ -68,11 +68,10 @@ def test_choice_lists_run_or_confirm():
     result = press(select['custom_id'], values=[s.key('Pumpkin')])['data']
     assert 'Meal' in json.dumps(result, ensure_ascii=False)
     sell = press(ui.cid('111', 'mp', 'sell'), values=[LUMBER])['data']
-    assert 'Nothing happens until you press Confirm' in json.dumps(sell, ensure_ascii=False)
+    assert 'How many?' in json.dumps(sell, ensure_ascii=False)          # Sell is one flow: pick an item, then how many
     with m.SessionLocal() as db:
         assert s.stock(db, m.player(db, W, 'discord', '111', 'Kam')[1]).get(LUMBER) == 10
-    confirm = find(sell, 'Confirm')['custom_id']
-    press(confirm)
+    press(find(sell, 'Sell 10')['custom_id'])
     with m.SessionLocal() as db:
         assert s.stock(db, m.player(db, W, 'discord', '111', 'Kam')[1]).get(LUMBER, 0) == 0
 
@@ -90,22 +89,29 @@ def test_menu_slash_command_and_reply_buttons():
     citizen()
     text = m._discord_call_internal('menu', '111', 'Kam', {}, 'i')
     panel = ui.slash_panel('menu', '111', 'Kam', {}, text)
-    assert {'Life', 'Work', 'Craft', 'Bag & Trade', 'Colony', 'You', 'Help'} <= {c.get('label') for c in controls(panel)}
+    assert {'Life', 'Work', 'Craft', 'Bag & Shop', 'Town', 'You', 'Help'} <= {c.get('label') for c in controls(panel)}
     row = menu.after_command('relax', {}, '111')
     assert [c['label'] for c in row['components']] == ['Again', 'Life', 'Menu']
-    assert [c['label'] for c in menu.after_command('inventory', {}, '111')['components']] == ['Bag', 'Menu']
+    assert [c['label'] for c in menu.after_command('inventory', {}, '111')['components']] == ['Bag & Shop', 'Menu']
 
 
-def test_cast_your_vote_counts_the_option_picked(monkeypatch):
+def test_todays_vote_shows_the_ballot_with_a_vote_button_for_each_option(monkeypatch):
     monkeypatch.setattr(m.community, 'ENABLED', True)
     citizen()
-    pick = press(find(open_area('community'), 'Cast your vote')['custom_id'])['data']
-    select = pick['components'][0]['components'][0]
-    assert [o['value'] for o in select['options']] == ['1', '2', '3']
-    result = json.dumps(press(select['custom_id'], values=['2'])['data'], ensure_ascii=False)
+    ballot = press(find(open_area('community'), "Today's vote")['custom_id'])['data']
+    votes = [c for c in controls(ballot) if c['label'].startswith('Vote ')]
+    assert len(votes) == 3 and all(c['custom_id'].startswith('ne|111|mp|c_vote_pick|=') for c in votes)
+    result = json.dumps(press(find(ballot, 'Vote 2')['custom_id'])['data'], ensure_ascii=False)
     assert 'Vote counted' in result and 'whole number' not in result
     with m.SessionLocal() as db:
         assert db.query(m.votes.Cast).one().choice == 2
+
+
+def test_the_old_cast_your_vote_button_opens_the_ballot(monkeypatch):
+    monkeypatch.setattr(m.community, 'ENABLED', True)
+    citizen()
+    ballot = press(ui.cid('111', 'mk', 'c_vote_pick'))['data']
+    assert len([c for c in controls(ballot) if c['label'].startswith('Vote ')]) == 3
 
 
 def test_every_availability_rule_runs_without_failing(monkeypatch):

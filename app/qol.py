@@ -864,7 +864,7 @@ def status_text(db, p, provider='discord'):
     lines += [f"{'⭐' if e in favs else '✅'} {e.name} ×{ctx.batch_size(e)} — {wb.station_label(e, ctx)}" for e in ready] or ['• Nothing is ready yet.']
     goal = extras.goal_entry(db, p)
     if goal is not None:
-        lines += ['', f'🎯 GOAL — {goal.name}', extras.next_step(db, p, provider)[0] + ' · /menu → Craft → Goal']
+        lines += ['', f'🎯 GOAL — {goal.name}', extras.next_step(db, p, provider)[0] + ' · /menu → Craft → My goal']
     lines += ['', 'NEXT STEP', next_step(db, p, provider, ctx),
               '', 'SETTINGS', f'Alerts: {ALERT_LABELS[mode]}{quiet} · Auto-recover: {"on" if auto else "off"} · Favourites: {len(favs)}/{MAX_FAVORITES} · /settings changes these.']
     return '\n'.join(lines)

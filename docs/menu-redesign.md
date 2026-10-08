@@ -1,6 +1,6 @@
-# Menu redesign (proposal, not built)
+# Menu redesign
 
-Status: **waiting for Kamex's approval.** Nothing in `app/` has changed. Decisions to make are at the end.
+Status: **approved** by Kamex on 2026-10-08. All six decisions are recorded at the end ("Decisions for you").
 
 ## In short
 
@@ -267,13 +267,21 @@ menu in some way.
 
 ## Decisions for you
 
+Answered by Kamex on 2026-10-08.
+
 1. **Names:** Town or keep Colony? Bag & Shop or keep Bag & Trade?
+   → **Town** (replaces Colony) and **Bag & Shop** (replaces Bag & Trade).
 2. **Status off Home** (still in You › More and on the public panel): OK?
+   → **Yes.**
 3. **Do this next:** which of the new checks to add: paused queue, daily contract, repeat last queue (all, some or
    none)?
+   → **All three** (paused queue, daily contract, repeat last queue).
 4. **How to get it** buttons in More, using Find: yes or no?
+   → **Yes.**
 5. **Looks moves up to You**, with hats, badges and titles joining it: OK?
+   → **Yes.**
 6. **Merges:** Sell some + Sell all into one Sell; Colony vote + Cast your vote into Today's vote: OK?
+   → **Yes**, both merges.
 
 ## Building it (after approval)
 

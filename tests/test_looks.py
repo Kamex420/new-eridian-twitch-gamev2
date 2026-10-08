@@ -57,7 +57,7 @@ def test_every_option_is_a_menu_dropdown_and_a_discord_choice():
         schema = next(o for o in m.DISCORD_OPTION_SCHEMA['customize'] if o['name'] == field)
         assert len(schema['choices']) == len(looks.choices(field)) <= 25 and schema['choices'][-1]['value'] == 'random'
         assert all(len(c['name']) <= 100 for c in schema['choices'])
-    assert 'looks' in menu.AREAS['seedling'][3]
+    assert 'looks' in menu.AREAS['me'][3] and 'looks' not in menu.AREAS['seedling'][3]      # Looks moved up to You
 
 
 def test_a_look_can_be_shared_with_the_channel():
