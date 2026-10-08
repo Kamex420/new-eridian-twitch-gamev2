@@ -20,6 +20,12 @@ with create_engine(url.replace('postgresql://', 'postgresql+psycopg://', 1)).beg
     c.execute(text('DROP SCHEMA public CASCADE')); c.execute(text('CREATE SCHEMA public'))
 import app.main as m
 from fastapi.testclient import TestClient
+
+def joined(threads, seconds=120):
+    # A stuck thread fails this check in two minutes instead of hanging the run until CI's 30-minute limit.
+    for t in threads:
+        t.join(timeout=seconds)
+    assert not any(t.is_alive() for t in threads), 'a thread did not finish within %ss' % seconds
 from app import task_queue, maintenance
 from app.discord_execution import CommandReceipt
 client = TestClient(m.app)
@@ -37,8 +43,8 @@ def play(uid):
             r = client.get(path, params=params(uid, **extra))
             if r.status_code != 200 or 'could not be completed' in r.text:
                 errors.append((path, r.status_code, r.text[:120]))
-threads = [threading.Thread(target=play, args=(str(i),)) for i in range(8)]
-[t.start() for t in threads]; [t.join() for t in threads]
+threads = [threading.Thread(target=play, args=(str(i),), daemon=True) for i in range(8)]
+[t.start() for t in threads]; joined(threads)
 assert not errors, errors[:3]
 
 # One lock for the whole game: a transaction naming another channel waits for the main world's.
@@ -46,11 +52,11 @@ held = threading.Event()
 def hold():
     with task_queue.atomic('some-twitch-channel'):
         held.set(); time.sleep(1.0)
-t = threading.Thread(target=hold); t.start(); held.wait()
+t = threading.Thread(target=hold, daemon=True); t.start(); assert held.wait(timeout=60), 'the lock holder never started'
 start = time.monotonic()
 with task_queue.atomic(W):
     waited = time.monotonic() - start
-t.join()
+joined([t])
 assert waited > 0.7, waited
 
 # Channel names longer than the column are refused instead of failing in the database.
@@ -149,8 +155,8 @@ with m.SessionLocal() as db:
     assert db.query(quiet_hours.HeldAlert).count() == 3
     assert '3 held alerts are on their way' in quiet_hours.turn_off(db, m.player(db, W, 'discord', '4242', 'Citizen4242')[1])
     db.commit()
-workers = [threading.Thread(target=lambda: asyncio.run(dqw.deliver(dm_client))) for _ in range(2)]
-[t.start() for t in workers]; [t.join() for t in workers]
+workers = [threading.Thread(target=lambda: asyncio.run(dqw.deliver(dm_client)), daemon=True) for _ in range(2)]
+[t.start() for t in workers]; joined(workers)
 assert len(sent) == 1 and '3 queue alerts waited' in json.dumps(sent[0], ensure_ascii=False), sent
 with m.SessionLocal() as db:
     assert all(r.state == 'sent' and r.attempts == 1 for r in db.query(qn.Notice).filter(qn.Notice.recipient == '4242'))
