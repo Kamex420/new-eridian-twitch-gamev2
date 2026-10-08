@@ -187,7 +187,7 @@ def ducks(channel:str,uid:str,name:str="Citizen",duck:str="",provider:str="twitc
 def gear(channel:str,uid:str,name:str="Citizen",provider:str="twitch"):
     with SessionLocal() as db:
         _,p=player(db,channel,provider,uid,name);rows=db.execute(select(QualityGear).where(QualityGear.channel_id==channel,QualityGear.canonical_uid==p.twitch_uid,QualityGear.qty>0).order_by(QualityGear.item_name)).scalars().all()
-        if not rows:return out("🛠️ No quality gear yet. Use /make to browse and craft equipment.")
+        if not rows:return out("🛠️ No quality gear yet. Craft equipment from All recipes." if provider=="discord" else "🛠️ No quality gear yet. Use /make to browse and craft equipment.")
         def gear_line(x):
             fam=db.execute(select(GearFamiliarity).where(GearFamiliarity.channel_id==channel,GearFamiliarity.canonical_uid==p.twitch_uid,GearFamiliarity.item_key==x.item_key)).scalar_one_or_none();uses=fam.uses if fam else 0;rank,reduction=gear_familiarity_rank(uses)
             return f"{x.quality} {x.item_name} x{x.qty} — {x.condition}% · {rank} familiarity ({uses} uses, -{int(reduction*100)}pp wear)"

@@ -265,14 +265,12 @@ def inventory(channel:str,uid:str,name:str="Citizen",provider:str="twitch",searc
         # One list: Pumpkin, Hematite Ore, Argentite Ore and Iron Nails are ordinary items like any other.
         supplies=sorted(((k,n) for k,n in stock.items() if (k in seed_content.ACTIVE or k=='cargo') and k not in gear_keys),key=lambda row:(-row[1],resource_name(row[0])))
         gear=db.execute(select(QualityGear).where(QualityGear.channel_id==channel,QualityGear.canonical_uid==p.twitch_uid,QualityGear.qty>0)).scalars().all()
-        next_step=workbench.next_step(db,p,provider)
+        # Discord's My bag has Sort & filter and Search bag buttons and Home's Do this next, so its text names no commands to type.
         discord=(f"🎒 {p.display_name} — Inventory\n\n🪙 {p.sc} SC"+
-                 "\n\n🧰 EQUIPMENT\n"+("\n".join("• "+x for x in owned_equipment) if owned_equipment else "• None yet. Equipment appears under /make category:equipment.")+
-                 "\n\n🗃️ ITEMS\n"+("\n".join(f"• {resource_name(k)} ×{n}" for k,n in supplies[:15]) if supplies else "• None yet. /gather collects natural materials.")+
-                 (f"\n{len(supplies)} item types. /inventory search:<name> or /catalog owned:True lists the rest." if len(supplies)>15 else "")+
-                 f"\n\n⚙️ QUALITY GEAR\n• {sum(g.qty for g in gear)} item(s). /inventory section:Quality Gear shows condition."+
-                 "\n\n🔎 /inventory search:<name> sort:value show:ready finds and sorts everything you own."+
-                 f"\n\nSuggested next step: {next_step}")
+                 "\n\n🧰 EQUIPMENT\n"+("\n".join("• "+x for x in owned_equipment) if owned_equipment else "• None yet. Craft tools and equipment under All recipes › Tools & Equipment.")+
+                 "\n\n🗃️ ITEMS\n"+("\n".join(f"• {resource_name(k)} ×{n}" for k,n in supplies[:15]) if supplies else "• None yet. Gather natural materials from the Work menu.")+
+                 (f"\n{len(supplies)} item types. Sort & filter and Search bag list the rest." if len(supplies)>15 else "")+
+                 (f"\n\n⚙️ QUALITY GEAR\n• {sum(g.qty for g in gear)} item(s). Sort & filter › Quality gear shows their condition." if gear else ""))
         twitch=(f"🎒 {p.display_name} | {p.sc} SC | "+(", ".join(f"{resource_name(k)} {n}" for k,n in supplies[:5]) or "No items yet")+
                 (" | Gear: "+", ".join(f"{resource_name(k)} {q}" for k,q in equipment if q) if owned_equipment else "")+
                 f" | {len(supplies)} item types | !inv <search|value|ready> for more")

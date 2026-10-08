@@ -10,6 +10,7 @@ alert mode, auto-recovery and the single follow-up queue slot, so every view
 import difflib
 import json
 import math
+import re
 from contextlib import contextmanager
 from sqlalchemy import Column, String, Integer, Text, select
 from .db import Base
@@ -243,15 +244,22 @@ def eta_text(seconds):
     return needs.duration_text(seconds if seconds < 60 else math.ceil(seconds / 60) * 60)
 
 
-def need_line(db, p, life, field, label, value, minimum, provider='discord'):
+def need_line(db, p, life, field, label, value, minimum, provider='discord', fix=True):
+    """A blocked need and how to fix it; fix=False leaves the how out (a screen with a Recover now button says it itself)."""
     from .game.world import need_fix
-    text = f'{label}: {value}/100; need {minimum}. Use {need_fix(field, provider, db, p)}.'
+    text = f'{label}: {value}/100; need {minimum}.' + (f' Use {need_fix(field, provider, db, p)}.' if fix else '')
     eta = passive_eta(life, value, minimum)
     if eta:
         # A timestamp stays correct wherever this text is shown later (queue status, alerts).
         text += f' Passive recovery reaches {minimum} <t:{int(runtime.now().timestamp() + eta)}:R>.' if provider == 'discord' else \
                 f' Passive recovery reaches {minimum} in about {eta_text(eta)}.'
     return text
+
+
+def without_fix(reason):
+    """A paused queue's reason without need_line's 'Use /relax or /sleep (ready now).' sentences: Discord's queue and
+    status screens have a Recover now button, so they say what is wrong and leave the commands out."""
+    return re.sub(r' Use /[^\n]*?\.(?= Passive recovery|\n|$)', '', str(reason))
 
 
 def resume_eta(life):
@@ -350,25 +358,48 @@ def recover_text(db, p, provider):
 
 # ---------------------------------------------------------------- next step
 
-def next_step(db, p, provider, ctx=None):
-    """One concrete suggestion: a ready favourite first, then the Workbench suggestion."""
+def next_pick(db, p, ctx):
+    """The next-step suggestion as data: (kind, recipe, missing). kind is 'favourite' (a favourite is ready), 'ready'
+    (the Workbench's first ready recipe), 'gather' (a recipe that only lacks the gatherable `missing` text) or 'none'."""
     from .game.players import resource_name
-    ctx = ctx or wb.Context(db, p, provider)
-    prefix = _prefix(provider)
     for e in favorite_entries(db, p):
         if ctx.status(e).code == 'ready':
-            how = f'/make recipe:{e.id}' if provider == 'discord' else f'!make {e.name}'
-            return f'⭐ {e.name} is ready to craft: {how}'
+            return 'favourite', e, ''
     easy = wb.start_here(ctx, 1)
     if easy:
-        e = easy[0]
+        return 'ready', easy[0], ''
+    for e in wb.gather_first(ctx, 1):
+        return 'gather', e, ', '.join(f'{n - ctx.have(k)} {resource_name(k)}' for k, n in e.inputs.items() if ctx.have(k) < n)
+    return 'none', None, ''
+
+
+def next_step(db, p, provider, ctx=None):
+    """One concrete suggestion: a ready favourite first, then the Workbench suggestion."""
+    ctx = ctx or wb.Context(db, p, provider)
+    prefix = _prefix(provider)
+    kind, e, missing = next_pick(db, p, ctx)
+    if kind == 'favourite':
+        how = f'/make recipe:{e.id}' if provider == 'discord' else f'!make {e.name}'
+        return f'⭐ {e.name} is ready to craft: {how}'
+    if kind == 'ready':
         how = f'/make recipe:{e.id}' if provider == 'discord' else f'!make {e.name}'
         return f'✅ {e.name} is ready at {wb.station_label(e, ctx)}: {how}'
-    for e in wb.gather_first(ctx, 1):
-        missing = ', '.join(f'{n - ctx.have(k)} {resource_name(k)}' for k, n in e.inputs.items() if ctx.have(k) < n)
+    if kind == 'gather':
         how = f'/make recipe:{e.id} action:Fetch missing' if provider == 'discord' else f'!fetch {e.name}'
         return f'🧺 Gather {missing} for {e.name}: {how}'
     return f'Gather with {prefix}gather or {prefix}mine, then open {prefix}make.'
+
+
+def next_step_plain(pick, ctx):
+    """next_step in plain words, for a Discord screen that has a button for it (see ui.status_components); `pick` is next_pick's."""
+    kind, e, missing = pick
+    if kind == 'favourite':
+        return f'⭐ {e.name} is ready to craft.'
+    if kind == 'ready':
+        return f'✅ {e.name} is ready at {wb.station_label(e, ctx)}.'
+    if kind == 'gather':
+        return f'🧺 Gather {missing} for {e.name}.'
+    return 'Gather or mine some materials, then craft something from All recipes.'
 
 
 def action_hint(db, p, provider, tier_before=None):
@@ -452,7 +483,8 @@ def fetch_plan(ctx, e, batches=1):
         elif r['kind'] == 'buy':
             line = f"• {r['name']}: need {r['short']} more → buy from Seed Industries"
         else:
-            line = f"• {r['name']}: need {r['short']} more → {material_source(r['key'], ctx.provider)}"
+            how = material_source(r['key'], ctx.provider)
+            line = f"• {r['name']}: need {r['short']} more → {wb.plain_source(how) if discord else how}"
         if r['price']:
             line += f" · or buy for {r['price'] * r['short']} SC"
         lines.append(line)
@@ -685,7 +717,7 @@ def inventory_text(db, p, provider, search='', sort='quantity', show='all', page
         items = ', '.join(f'{resource_name(k)} {n}' for k, n in shown) or 'no matching items'
         more = f' | !inv {search + " " if search else ""}{page + 1} for more' if page < pages else ''
         return f'🎒 {p.display_name} {page}/{pages}' + (f' ({", ".join(filters)})' if filters else '') + f': {items} | worth {worth} SC{more}'
-    lines = [f'🎒 INVENTORY · Page {page}/{pages} · sorted by {sort}' + (' · ' + ' · '.join(filters) if filters else ''),
+    lines = ['🎒 INVENTORY' + (f' · Page {page}/{pages}' if pages > 1 else '') + f' · sorted by {sort}' + (' · ' + ' · '.join(filters) if filters else ''),
              f'{len(ordered)} item types · {sum(n for _, n in ordered)} items · sells for {worth} SC in total · {p.sc} SC on hand', '']
     for k, n in shown:
         price = sell_price(k)
@@ -694,8 +726,7 @@ def inventory_text(db, p, provider, search='', sort='quantity', show='all', page
         lines.append(f'• {resource_name(k)} ×{n} — ' + ' · '.join(parts))
     if not shown:
         lines.append('• No matching items.')
-    lines += ['', 'Search, sort (quantity, name, value, category) and filter with /inventory options. '
-              '/seedindustries action:Sell all sells one item; action:Clear out previews selling surplus materials.']
+    lines += ['', 'Sort & filter and Search bag change this list. Sell sells items to Seed Industries.']
     return '\n'.join(lines)
 
 
@@ -782,7 +813,8 @@ def queue_summary(db, p, provider):
     prefix = _prefix(provider)
     following = next_label(db, p.channel_id, p.twitch_uid)
     if row is None:
-        line = f'No queue yet. {prefix}mine, {prefix}gather or {prefix}make can queue up to 10 attempts.'
+        line = (f'No queue yet. {prefix}mine, {prefix}gather or {prefix}make can queue up to 10 attempts.' if provider != 'discord'
+                else 'No queue yet. Gather, Mine or a recipe can queue up to 10 attempts.')
     else:
         label = tq.choices().get(row.task, row.task)
         done = row.total - row.remaining
@@ -793,7 +825,7 @@ def queue_summary(db, p, provider):
             line = f'▶️ Running: {label} · {done}/{row.total} done · {finish}'
         elif row.state == 'paused':
             reason = row.result.splitlines()[0] if row.result else 'requirements not met'
-            line = f'⏸️ Paused: {label} · {done}/{row.total} done · {reason}'
+            line = f'⏸️ Paused: {label} · {done}/{row.total} done · {without_fix(reason) if provider == "discord" else reason}'
         else:
             state = {'completed': 'Completed', 'cancelled': 'Cancelled', 'error': 'Stopped'}.get(row.state, row.state.title())
             repeat = 'Repeat it with the button below.' if provider == 'discord' else 'Repeat: !queuerepeat'
@@ -827,8 +859,8 @@ def status_text(db, p, provider='discord'):
     row = prefs(db, p.channel_id, p.twitch_uid)
     mode = alert_mode(db, p.channel_id, p.twitch_uid)
     auto = bool(row and row.autorecover)
-    sleep = sleep_status(db, p, provider)
     if provider != 'discord':
+        sleep = sleep_status(db, p, provider)
         needs_part = f'E{life.energy} N{life.nutrition} S{life.social} C{life.comfort}'
         if blocked:
             needs_part += ' ⛔ ' + ', '.join(f'{label} {value}/{minimum}' for _, label, value, minimum in blocked) + ' → !recover'
@@ -849,12 +881,15 @@ def status_text(db, p, provider='discord'):
     quiet = f' · {quiet}' if quiet else ''
     lines = [f'📊 STATUS — {p.display_name}', '', 'NEEDS',
              f'⚡ Energy {life.energy} · 🍲 Nutrition {life.nutrition} · 🤝 Social {life.social} · 🏠 Comfort {life.comfort} · ✨ Morale {life.morale}']
+    # Discord's Full status has buttons for the fixes (Recover now, Sleep), so its lines say what is wrong, not which command to type.
     if blocked:
         lines.append('⛔ Work is blocked:')
-        lines += ['• ' + need_line(db, p, life, *b) for b in blocked]
+        lines += ['• ' + need_line(db, p, life, *b, fix=False) for b in blocked]
+        lines.append('Recover now (below) uses every recovery that is ready.')
     else:
         lines.append('✅ Ready for work.' + (' ' + comfort_status_line(life) if life.comfort < needs.COMFORT_SLOW else ''))
-    lines.append(f'🛏️ Sleep: {sleep}')
+    wait = sleep_wait(db, p)
+    lines.append('🛏️ Sleep: ' + ('ready now' if not wait else f'ready <t:{int(runtime.now().timestamp() + wait)}:R>'))
     lines += ['', 'SEEDLING', autonomy.status_line(db, p)]
     lines += ['', 'QUEUE', queue_line]
     cds = _cooldowns(db, p, provider)
@@ -864,10 +899,16 @@ def status_text(db, p, provider='discord'):
     lines += [f"{'⭐' if e in favs else '✅'} {e.name} ×{ctx.batch_size(e)} — {wb.station_label(e, ctx)}" for e in ready] or ['• Nothing is ready yet.']
     goal = extras.goal_entry(db, p)
     if goal is not None:
-        lines += ['', f'🎯 MY GOAL — {goal.name}', extras.next_step(db, p, provider)[0] + ' · /menu → Craft → My goal']
-    lines += ['', 'NEXT STEP', next_step(db, p, provider, ctx),
-              '', 'SETTINGS', f'Alerts: {ALERT_LABELS[mode]}{quiet} · Auto-recover: {"on" if auto else "off"} · Favourites: {len(favs)}/{MAX_FAVORITES} · /settings changes these.']
+        lines += ['', f'🎯 MY GOAL — {goal.name}', extras.next_step(db, p, provider)[0] + ' · My goal (below) lists every step.']
+    lines += ['', 'NEXT STEP', next_step_plain(next_pick(db, p, ctx), ctx),
+              '', 'SETTINGS', f'Alerts: {ALERT_LABELS[mode]}{quiet} · Auto-recover: {"on" if auto else "off"} · Favourites: {len(favs)}/{MAX_FAVORITES} · Settings (below) changes these.']
     return '\n'.join(lines)
+
+
+def sleep_wait(db, p):
+    """Seconds until Sleep is ready (0: ready now)."""
+    from .game.cooldowns_materials import action_wait
+    return action_wait(db, p, 'sleep') if p is not None else 0
 
 
 # ---------------------------------------------------------------- settings

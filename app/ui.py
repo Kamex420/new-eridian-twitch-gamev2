@@ -404,7 +404,7 @@ def category_components(ctx, owner, category, page, station=''):
     components = []
     shown = rows[start:end]
     if shown:
-        components.append(select(cid(owner, 'sr', category, page, st), f'Choose a recipe to preview (page {page}/{pages})',
+        components.append(select(cid(owner, 'sr', category, page, st), 'Choose a recipe to preview' + (f' (page {page}/{pages})' if pages > 1 else ''),
                                  [option(f'{ctx.star(e)}{e.name} ×{ctx.batch_size(e)}', e.id, wb.option_description(ctx, e), ctx.status(e).emoji)
                                   for e in shown]))
     components.append(category_menu(ctx, owner, category))
@@ -417,11 +417,11 @@ def category_components(ctx, owner, category, page, station=''):
             state = 'ready' if t in ctx.access and info['tier'] <= ctx.tier else ('Tier ' + str(info['tier']) + ' lock' if info['tier'] > ctx.tier else f"unlock {info['cost']} SC")
             options.append(option(info['name'], wb.station_code(t), f"Tier {info['tier']} · {state}", None, t == station))
         components.append(select(cid(owner, 'ss', category), 'Filter by workstation', options))
-    components.append(row(
-        button('Previous', cid(owner, 'wc', category, page - 1, st), disabled=page <= 1, emoji='◀️'),
-        button(f'Page {page}/{pages}', cid(owner, 'wc', category, page, st), disabled=True),
-        button('Next', cid(owner, 'wc', category, page + 1, st), disabled=page >= pages, emoji='▶️'),
-        button('All recipes', cid(owner, 'wh'), emoji='🛠️')))
+    # A list that fits on one page has no Previous / Page / Next, only the way back to All recipes.
+    paging = [button('Previous', cid(owner, 'wc', category, page - 1, st), disabled=page <= 1, emoji='◀️'),
+              button(f'Page {page}/{pages}', cid(owner, 'wc', category, page, st), disabled=True),
+              button('Next', cid(owner, 'wc', category, page + 1, st), disabled=page >= pages, emoji='▶️')] if pages > 1 else []
+    components.append(row(*paging, button('All recipes', cid(owner, 'wh'), emoji='🛠️')))
     return components
 
 
@@ -518,9 +518,18 @@ def queue_components(db, p, owner):
     from . import task_queue
     row_ = db.get(task_queue.TaskQueue, (p.channel_id, p.twitch_uid)) if p is not None else None
     buttons = [button('Refresh', cid(owner, 'qv'), emoji='🔄')]
+    if row_ is None:
+        # Nothing queued: the way to start one is the first thing on the screen (they open the Gather and Mine pickers).
+        buttons = [button('Gather', cid(owner, 'mk', 'gather'), style=3, emoji='🌿'),
+                   button('Mine', cid(owner, 'mk', 'mine'), style=3, emoji='⛏️')] + buttons
     if row_ is not None and row_.state in task_queue.ACTIVE | {'error'}:
         ticket = issue(owner, {'do': 'cancel'})
         buttons.insert(0, button('Stop queue', cid(owner, 't', ticket), style=4, emoji='⏹️'))
+        from .game.life import life_state
+        from .needs import blocked_needs
+        if p is not None and blocked_needs(life_state(db, p)):
+            # A queue held up by a need: the text says what is low (not which command fixes it), this button fixes it.
+            buttons.insert(1, button('Recover now', cid(owner, 't', issue(owner, {'do': 'recover'})), style=3, emoji='🩹'))
     repeat = repeat_button(owner, row_)
     if repeat:
         buttons.insert(0, repeat)
@@ -557,11 +566,36 @@ def status_components(db, p, owner):
              button('Favourites', cid(owner, 'wc', 'favorites', 1, ''), emoji='⭐'),
              button('All recipes', cid(owner, 'wh'), emoji='🛠️'),
              button('Queue', cid(owner, 'qv'), emoji='📋')]
-    second = [repeat_button(owner, queue_row)]
+    # The status text names no commands: each thing it mentions has its button here (fix, next step, Sleep, goal, Settings).
+    second = []
     if p is not None and blocked_needs(life_state(db, p)):
         ticket = issue(owner, {'do': 'recover'})
         second.append(button('Recover now', cid(owner, 't', ticket), style=3, emoji='🩹'))
-    return [row(*first)] + ([row(*second)] if any(second) else [])
+    if p is not None:
+        second.append(next_step_button(db, p, owner))
+        if not qol.sleep_wait(db, p):
+            second.append(button('Sleep', cid(owner, 't', issue(owner, {'do': 'cmd', 'leaf': 'sleep'})), style=3, emoji='🛏️'))
+    second.append(repeat_button(owner, queue_row))
+    if p is not None:
+        from . import extras as more
+        if more.goal_entry(db, p) is not None:
+            second.append(button('My goal', cid(owner, 'gv'), emoji='🎯'))
+    second.append(button('Settings', cid(owner, 'mn', 'settings'), emoji='⚙️'))
+    second = [b for b in second if b]
+    return [row(*first)] + [row(*second[i:i + 5]) for i in range(0, len(second), 5)]
+
+
+def next_step_button(db, p, owner):
+    """The button for Full status's Next step line: Craft the recipe that is ready, or Fetch missing for the one that only needs
+    gathering; None when the line only suggests gathering (Queue status has Gather and Mine)."""
+    ctx = wb.Context(db, p)
+    kind, e, _ = qol.next_pick(db, p, ctx)
+    if kind in {'favourite', 'ready'}:
+        ticket = issue(owner, {'do': 'craft', 'recipe': e.id, 'back': [e.category, 1, '']})
+        return button(f'Craft {e.name}', cid(owner, 't', ticket), style=3, emoji='🛠️')
+    if kind == 'gather':
+        return button('Fetch missing', cid(owner, 'fm', e.id, 1), style=1, emoji='🧺')
+    return None
 
 
 def fetch_components(ctx, owner, e, batches, start):
@@ -1307,8 +1341,9 @@ def goal_message(db, p, owner, note='', plan=None):
     if note:
         head, _, rest = text.partition('\n')
         text = head + '\n' + note + rest
+    from .menu import crumb
     if e is None:
-        return message(text, goal_components(db, p, owner), 'goal')
+        return with_crumb(message(text, goal_components(db, p, owner), 'goal'), crumb('craft', '🎯 My goal'))
     buttons, items, used = [], [], set()
     for i, st in enumerate(steps[:more.STEPS_SHOWN]):
         b = step_button(owner, st, first=i == 0)
@@ -1322,7 +1357,6 @@ def goal_message(db, p, owner, note='', plan=None):
     if not any(st['view'] == recipe for st in steps[:more.STEPS_SHOWN]):
         tools.insert(0, button('Goal recipe', cid(owner, *recipe), emoji='📋'))
     rows = [row(*buttons[i:i + 5]) for i in range(0, min(len(buttons), 10), 5)] + [row(*tools), _menu_row(owner, ('craft', 'Craft'))]
-    from .menu import crumb
     return with_crumb(message(text, rows, 'goal', items), crumb('craft', '🎯 My goal'))
 
 
@@ -1354,7 +1388,15 @@ def goal_components(db, p, owner):
     from . import extras as more
     e = more.goal_entry(db, p)
     if e is None:
-        return [row(button('Ready to craft', cid(owner, 'wc', 'ready', 1, ''), emoji='✅'), button('All recipes', cid(owner, 'wh'), emoji='🛠️')),
+        # No goal: a green Set goal button for each good first goal (what All recipes' Start here lists), then the lists.
+        ctx = wb.Context(db, p)
+        starts, names = [], set()
+        for found in wb.start_here(ctx, 8) or wb.gather_first(ctx, 8):
+            if found.name not in names and len(starts) < 4:
+                names.add(found.name)
+                starts.append(button(f'Set goal: {found.name}', cid(owner, 'gs', found.id), style=3, emoji='🎯'))
+        return [row(*starts),
+                row(button('Ready to craft', cid(owner, 'wc', 'ready', 1, ''), emoji='✅'), button('All recipes', cid(owner, 'wh'), emoji='🛠️')),
                 _menu_row(owner, ('craft', 'Craft'))]
     step, action = more.next_step(db, p)
     buttons = []
