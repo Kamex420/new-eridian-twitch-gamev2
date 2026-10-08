@@ -22,13 +22,13 @@ def submit(custom_id, value, uid='111', flags=64, permissions='0'):
     payload = {'type': 5, 'data': {'custom_id': custom_id, 'components': [{'type': 1, 'components': [
         {'type': 4, 'custom_id': 'value', 'value': value}]}]},
         'member': {'user': {'id': uid, 'username': 'Kam'}, 'permissions': permissions}, 'message': {'flags': flags}}
-    return ui.handle_modal(m, payload)
+    return ui.handle_modal(payload)
 
 
 def moderator_press(custom_id, uid='111', values=None):
     payload = {'type': 3, 'data': {'custom_id': custom_id, 'values': values or []},
                'member': {'user': {'id': uid, 'username': 'Kam'}, 'permissions': str(0x20)}, 'message': {'flags': 64}}
-    return ui.handle_component(m, payload)
+    return ui.handle_component(payload)
 
 
 def test_every_slash_command_option_has_a_button():
@@ -110,16 +110,16 @@ def test_views_behind_dropdowns():
 
 def test_public_panel_opens_each_citizens_own_private_menu():
     citizen('222')
-    panel = ui.public_panel(m)
+    panel = ui.public_panel()
     ids = [c['custom_id'] for c in controls(panel)]
     assert ids and all(i.startswith('ne|*|') for i in ids)
     payload = {'type': 3, 'data': {'custom_id': ui.cid('*', 'mn', 'home')}, 'member': {'user': {'id': '222', 'username': 'Ana'}},
                'message': {'flags': 0}}
-    result = ui.handle_component(m, payload)
+    result = ui.handle_component(payload)
     assert result['type'] == 4 and result['data']['flags'] == 64
     assert all('|222|' in c['custom_id'] for c in controls(result['data']))
     payload['data']['custom_id'] = ui.cid('*', 't', 'abc')
-    assert 'Open your own menu' in text_of(ui.handle_component(m, payload))
+    assert 'Open your own menu' in text_of(ui.handle_component(payload))
 
 
 def test_moderator_tools_are_hidden_and_refused_for_players(monkeypatch):
@@ -145,14 +145,14 @@ def test_server_moderators_and_admins_who_are_not_the_owner_get_no_moderator_too
     payload = {'type': 3, 'data': {'custom_id': ui.cid('222', 'mn', 'home'), 'values': []},
                'member': {'user': {'id': '222', 'username': 'Mod'}, 'permissions': permissions, 'roles': ['999']}, 'message': {'flags': 64}}
     assert not m._discord_is_moderator(payload)
-    assert 'Moderator' not in labels(ui.handle_component(m, payload)['data'])
+    assert 'Moderator' not in labels(ui.handle_component(payload)['data'])
     for leaf in ('m_modlog', 'm_live', 'm_recap'):
         payload['data']['custom_id'] = ui.cid('222', 'mv', leaf)
-        assert 'Only the game owner' in text_of(ui.handle_component(m, payload)['data']), leaf
+        assert 'Only the game owner' in text_of(ui.handle_component(payload)['data']), leaf
     payload['data'] = {'custom_id': ui.cid('222', 'mp', 'm_eventstart'), 'values': ['food']}
-    confirm = ui.handle_component(m, payload)['data']
+    confirm = ui.handle_component(payload)['data']
     payload['data'] = {'custom_id': button(confirm, 'Confirm')['custom_id'], 'values': []}
-    assert 'Only the game owner' in text_of(ui.handle_component(m, payload)['data'])          # pressing Confirm starts nothing
+    assert 'Only the game owner' in text_of(ui.handle_component(payload)['data'])          # pressing Confirm starts nothing
     with m.SessionLocal() as db:
         assert not m.world(db, W).active_event
     owner = dict(payload, member={'user': {'id': '111', 'username': 'Kam'}, 'permissions': '0'})
@@ -161,7 +161,7 @@ def test_server_moderators_and_admins_who_are_not_the_owner_get_no_moderator_too
 
 def test_slash_replies_offer_the_areas_next_buttons():
     citizen()
-    rows = menu.after_rows(m, 'relax', {}, '111')
+    rows = menu.after_rows('relax', {}, '111')
     assert len(rows) == 2 and 'Again' in labels({'components': rows})
     assert 'Relax' not in [c['label'] for c in rows[0]['components']]
 
@@ -169,7 +169,7 @@ def test_slash_replies_offer_the_areas_next_buttons():
 def _deferred_reply(monkeypatch, command, options, sent):
     payload = {'id': f'{command}-{len(sent)}-{sorted(options.items())}', 'application_id': 'a', 'token': 't', 'channel_id': '5',
                'member': {'user': {'id': '111', 'username': 'Kam'}, 'permissions': str(0x20)}}
-    m.discord_deferred.finish(m, payload, command, '111', 'Kam', options)
+    m.discord_deferred.finish(payload, command, '111', 'Kam', options)
     return sent[-1]
 
 

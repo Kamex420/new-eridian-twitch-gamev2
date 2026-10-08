@@ -1,5 +1,9 @@
 # Release notes
 
+## Behind the scenes: explicit dependencies, the last step
+
+- **Systems no longer pass app.main around.** Once every system imported what it needs, the `m` parameter that carried app.main through the code was unused almost everywhere. 547 functions lost it, and every call (about 2,000 of them, in `app/`, `app/game/` and the tests) was updated to match. What still takes `m` is deliberate: the `install(m)` wiring hook each system has, and the few places that set a value on app.main (`item_identity.configure`, and the world merge switch, alias and run steps). Two small functions that used to ask "did I get app.main?" now just do the work (`find_item` takes an explicit `ranked` flag; the Discord queue worker no longer keeps a `self.m`). No gameplay changes.
+
 ## Behind the scenes: explicit dependencies, step seven
 
 - **The /menu button tree now imports exactly what it uses, which finishes all 43 systems.** The record of dependencies on app.main shrank from 180 to 127 names; what is left is the game modules in `app/game/` (they read the few values that change while the game runs through `main`) and the three systems that only set a value on app.main. The test that keeps converted systems clean now also catches reads through an object that holds app.main (`c.m`, `self.m`). A new test runs every menu availability check with failures raised, since a check that fails otherwise just shows its button. No gameplay changes.

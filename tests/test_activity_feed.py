@@ -47,9 +47,9 @@ def test_the_feed_posts_what_players_bring_in_then_extends_the_same_message(disc
     for uid, name in [('a', 'Ann'), ('b', 'Bo')]:
         client.get('/api/v1/start', params={'channel': W, 'uid': uid, 'name': name})
     with m.SessionLocal() as db:
-        af.state(m, db); db.commit()                    # the feed starts from now, not from old history
+        af.state(db); db.commit()                    # the feed starts from now, not from old history
     gather('a', 'Ann', times=3); gather('b', 'Bo', times=2)
-    assert af.tick(m, force=True)
+    assert af.tick(force=True)
     method, path, body = calls[-1]
     assert (method, path) == ('POST', f'/channels/{CHANNEL}/messages')
     text = layout_v2.text_of(body)
@@ -61,14 +61,14 @@ def test_the_feed_posts_what_players_bring_in_then_extends_the_same_message(disc
     gather('a', 'Ann', item='stone')
     with m.SessionLocal() as db:
         so.highlight(db, W, 'trophy', 'Ann earned 💎 Ore Hunter', 'Find every ore', 'Ann', emoji='💎'); db.commit()
-    assert af.tick(m, force=True)
+    assert af.tick(force=True)
     assert [c[0] for c in calls[-2:]] == ['GET', 'PATCH']
     text = layout_v2.text_of(calls[-1][2])
     assert 'Ore Hunter' in text and '**Ann** gathered 3 Lumber' in text and 'Stone' in text
     # Someone posted in between: a new message starts below.
     last['id'] = 'someone-else'
     gather('b', 'Bo')
-    assert af.tick(m, force=True)
+    assert af.tick(force=True)
     assert [c[0] for c in calls[-2:]] == ['GET', 'POST'] and 'Lumber' in layout_v2.text_of(calls[-1][2])
 
 
@@ -77,12 +77,12 @@ def test_a_feed_message_from_before_a_restart_is_not_edited(discord, monkeypatch
     calls, last = discord
     client.get('/api/v1/start', params={'channel': W, 'uid': 'a', 'name': 'Ann'})
     with m.SessionLocal() as db:
-        af.state(m, db); db.commit()
+        af.state(db); db.commit()
     gather('a', 'Ann')
-    assert af.tick(m, force=True) and calls[-1][0] == 'POST'
+    assert af.tick(force=True) and calls[-1][0] == 'POST'
     monkeypatch.setattr(af, 'STARTED', af._now() + timedelta(minutes=1))     # the app restarted after that post
     gather('a', 'Ann', item='stone')
-    assert af.tick(m, force=True)
+    assert af.tick(force=True)
     assert calls[-1][0] == 'POST' and 'PATCH' not in [c[0] for c in calls]
 
 
@@ -90,15 +90,15 @@ def test_updates_wait_their_turn_but_big_moments_go_out_at_once(discord):
     calls, _ = discord
     client.get('/api/v1/start', params={'channel': W, 'uid': 'a', 'name': 'Ann'})
     with m.SessionLocal() as db:
-        af.state(m, db); db.commit()
+        af.state(db); db.commit()
     gather('a', 'Ann')
-    assert af.tick(m, force=True)
+    assert af.tick(force=True)
     sent = len(calls)
     gather('a', 'Ann')
-    assert af.tick(m) is None and len(calls) == sent          # not due yet
+    assert af.tick() is None and len(calls) == sent          # not due yet
     with m.SessionLocal() as db:
         so.highlight(db, W, 'challenge_start', 'Dust Storm! Everyone repair the walls', 'Goal 20 in 8 minutes.', emoji='🌪️'); db.commit()
-    assert af.tick(m)
+    assert af.tick()
     assert 'Dust Storm' in layout_v2.text_of(calls[-1][2])
 
 
@@ -107,7 +107,7 @@ def test_seedlings_are_summed_up_and_hidden_players_stay_out(discord):
     for uid, name in [('a', 'Ann'), ('b', 'Bo')]:
         client.get('/api/v1/start', params={'channel': W, 'uid': uid, 'name': name})
     with m.SessionLocal() as db:
-        af.state(m, db); db.commit()
+        af.state(db); db.commit()
     assert 'hidden from the channel feed' in client.get('/api/v1/settings', params={'channel': W, 'uid': 'b', 'name': 'Bo', 'feed': 'off'}).text
     token = m.autonomy.ACTING.set(True)
     try:
@@ -117,7 +117,7 @@ def test_seedlings_are_summed_up_and_hidden_players_stay_out(discord):
     gather('b', 'Bo', times=2)
     with m.SessionLocal() as db:
         so.highlight(db, W, 'level', 'Bo levelled up', 'Harvesting Lv. 1 → Lv. 2', 'Bo'); db.commit()
-    assert af.tick(m, force=True)
+    assert af.tick(force=True)
     text = layout_v2.text_of(calls[-1][2])
     assert '1 Seedling worked on their own and brought in 2 items (Ann)' in text and 'Bo' not in text
 
@@ -130,7 +130,7 @@ def test_no_channel_means_nothing_is_recorded_or_sent(reset, monkeypatch):
     gather('a', 'Ann')
     with m.SessionLocal() as db:
         assert db.query(af.FeedEvent).count() == 0
-    assert af.tick(m, force=True) is None
+    assert af.tick(force=True) is None
 
 
 def test_moderators_move_the_feed_and_switch_it_off(discord):
@@ -140,23 +140,23 @@ def test_moderators_move_the_feed_and_switch_it_off(discord):
     finally:
         m.task_queue.queue_notifications.origin_channel.reset(token)
     with m.SessionLocal() as db:
-        assert af.channel_of(m, db) == '555555555555555555'
+        assert af.channel_of(db) == '555555555555555555'
     assert 'feed is off' in m._discord_call_internal('mod', '111', 'Mod', {'action': 'feedoff'}, 'i2')
     with m.SessionLocal() as db:
-        assert af.channel_of(m, db) == ''
+        assert af.channel_of(db) == ''
 
 
 def test_share_posts_a_private_card_for_everyone(reset):
     with m.SessionLocal() as db:
         m.player(db, W, 'discord', '111', 'Kamex'); db.commit()
     member = {'member': {'user': {'id': '111', 'username': 'Kamex'}}}
-    card = ui.handle_component(m, {'data': {'custom_id': ui.cid('111', 'mv', 'me_overview')}, **member})
+    card = ui.handle_component({'data': {'custom_id': ui.cid('111', 'mv', 'me_overview')}, **member})
     assert card['data']['flags'] == 64                                      # the card itself is private
     ids = [c['custom_id'] for r in card['data']['components'] for c in r['components']]
     share = next(i for i in ids if '|sh|' in i)
-    shared = ui.handle_component(m, {'data': {'custom_id': share}, **member})
+    shared = ui.handle_component({'data': {'custom_id': share}, **member})
     assert shared['type'] == 4 and 'flags' not in shared['data']           # the shared copy is public
     assert shared['data']['embeds'][0]['author']['name'] == '📣 Kamex shared their profile'
-    other = ui.handle_component(m, {'data': {'custom_id': share}, 'member': {'user': {'id': '222', 'username': 'Bo'}}})
+    other = ui.handle_component({'data': {'custom_id': share}, 'member': {'user': {'id': '222', 'username': 'Bo'}}})
     assert other['data']['flags'] == 64 and 'belongs to another citizen' in other['data']['content']
     assert ui.share_button('111', 'me', {'section': 'life'}) is None       # needs and other private views are not shareable

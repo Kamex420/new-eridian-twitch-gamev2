@@ -24,7 +24,7 @@ def owners(monkeypatch):
 def press(custom_id, uid=OWNER, values=None, permissions=str(0x20), message='M1'):
     payload = {'type': 3, 'data': {'custom_id': custom_id, 'values': values or []},
                'member': {'user': {'id': uid, 'username': 'Kam'}, 'permissions': permissions}, 'message': {'flags': 64, 'id': message}}
-    return ui.handle_component(m, payload)
+    return ui.handle_component(payload)
 
 
 def text_of(answer):
@@ -83,7 +83,7 @@ def snapshot(keep_uid, gone_uid):
     """Everything the merge decides, with names and ids left out so two scenarios can be compared."""
     with m.SessionLocal() as db:
         p = db.query(m.Player).filter_by(channel_id=W, twitch_uid=keep_uid).one()
-        stock = dict(m.item_identity.stock(m, db, p))
+        stock = dict(m.item_identity.stock(db, p))
         life = m.life_state(db, p)
         row = db.get(q.TaskQueue, (W, keep_uid))
         links = db.query(m.AccountLink).filter_by(channel_id=W, twitch_uid=keep_uid).all()
@@ -155,7 +155,7 @@ def test_a_ticket_is_refused_for_someone_else_and_for_an_owner_who_is_no_longer_
     assert 'belongs to another citizen' in text_of(stolen)
     with m.SessionLocal() as db:                                           # a non-owner who somehow holds a ticket of their own
         row = db.query(ui.UiTicket).filter_by(owner=OWNER, used_at=None).first()
-        mine = ui.issue(m, MOD, json.loads(row.action))
+        mine = ui.issue(MOD, json.loads(row.action))
     refused = press(ui.cid(MOD, 't', mine), uid=MOD)
     assert 'Owner access is required for Force merge. Nothing changed.' in text_of(refused)
     monkeypatch.setattr(m, 'DISCORD_OWNER_USER_IDS', set())               # the owner list changed after the preview
@@ -214,7 +214,7 @@ def test_the_same_character_twice_is_refused_and_so_is_a_missing_one():
     # The database cannot hold two rows with one canonical id, so "already the same character" is the same row picked twice, above;
     # the shared core refuses it for the endpoint too.
     with m.SessionLocal() as db, pytest.raises(fm.Refused) as same:
-        fm.load(m, db, W, 'x', 'x')
+        fm.load(db, W, 'x', 'x')
     assert same.value.status == 400 and same.value.error == 'keep and merge are the same character.'
 
 
@@ -358,7 +358,7 @@ def test_a_failure_in_the_middle_of_the_merge_changes_nothing(monkeypatch):
     ticket2 = confirm_of(preview_of(a, b))
     payload = {'application_id': 'app', 'token': 't', 'channel_id': '5', 'member': {'user': {'id': OWNER, 'username': 'Kam'}, 'permissions': str(0x20)}}
     action = json.loads(m.SessionLocal().query(ui.UiTicket).filter_by(id=ticket2.split('|')[-1]).one().action)
-    ui.finish_ticket(m, payload, OWNER, 'Kam', action)
+    ui.finish_ticket(payload, OWNER, 'Kam', action)
     assert 'nothing was spent' in json.dumps(sent[-1]) and database_state() == before
 
 
@@ -441,7 +441,7 @@ def test_a_ticket_with_a_huge_id_refuses_and_changes_nothing():
     for action in ({'keep': int(HUGE), 'merge': b, 'keep_uid': 'tw-555', 'merge_uid': 'discord:9001'},
                    {'keep': a, 'merge': HUGE, 'keep_uid': 'tw-555', 'merge_uid': 'discord:9001'},
                    {'keep': None, 'merge': b}, {}):
-        ticket = ui.issue(m, OWNER, dict(action, do='forcemerge'))
+        ticket = ui.issue(OWNER, dict(action, do='forcemerge'))
         answer = press(ui.cid(OWNER, 't', ticket))
         assert 'One of the two characters no longer exists' in description(answer) and 'Nothing changed.' in description(answer)
         assert [c['label'] for c in answer['data']['components'][-1]['components'][-2:]] == ['Back', 'Menu']

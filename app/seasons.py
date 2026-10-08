@@ -171,7 +171,7 @@ def install(m):
 
 # ---------------------------------------------------------------- the current season
 
-def current(m, db, world=None):
+def current(db, world=None):
     """The running season, closing any that ended (and opening the next)."""
     world = world or runtime.DISCORD_WORLD_ID
     row = db.execute(select(Season).where(Season.world == world).order_by(Season.id.desc())).scalars().first()
@@ -184,7 +184,7 @@ def current(m, db, world=None):
     guard = 0
     while _now() >= _utc(row.ends_at) and guard < 20:
         guard += 1
-        close(m, db, row)
+        close(db, row)
         start = _utc(row.ends_at) if _now() - _utc(row.ends_at) < timedelta(days=SEASON_DAYS) else _now()
         theme = THEMES[row.number % len(THEMES)][0]
         row = Season(world=world, number=row.number + 1, theme=theme, started_at=start, ends_at=start + timedelta(days=SEASON_DAYS), closed=0, milestones=0)
@@ -226,9 +226,9 @@ def _week(db, p, create=True):
     return row
 
 
-def add(m, db, p, points, kind='', contribution=0, xp=0, items=0, actions=0):
+def add(db, p, points, kind='', contribution=0, xp=0, items=0, actions=0):
     """Add season (and weekly) points. Returns a note when a reward tier is reached, else ''."""
-    season = current(m, db)
+    season = current(db)
     row, week = _score(db, season, p), _week(db, p)
     points = max(0, int(points))
     row.points += points
@@ -244,12 +244,12 @@ def add(m, db, p, points, kind='', contribution=0, xp=0, items=0, actions=0):
         setattr(row, kind, getattr(row, kind) + 1)
         if kind in {'events', 'votes'}:
             setattr(week, kind, getattr(week, kind) + 1)
-    notes = [_reward(m, db, p, season, row, i) for i in range(row.tier, len(TIERS)) if row.points >= TIERS[i][3]]
-    _milestones(m, db, season)
+    notes = [_reward(db, p, season, row, i) for i in range(row.tier, len(TIERS)) if row.points >= TIERS[i][3]]
+    _milestones(db, season)
     return ' '.join(n for n in notes if n)
 
 
-def _reward(m, db, p, season, row, index):
+def _reward(db, p, season, row, index):
     from .game.players import unlock_title
     key, emoji, label, need = TIERS[index]
     if row.tier > index:
@@ -272,7 +272,7 @@ def _reward(m, db, p, season, row, index):
     return f'{emoji} Season {label}! You unlocked {got}.'
 
 
-def _milestones(m, db, season):
+def _milestones(db, season):
     total = db.execute(select(func.coalesce(func.sum(SeasonScore.points), 0)).where(SeasonScore.season_id == season.id)).scalar() or 0
     reached = sum(total >= need for need, *_ in MILESTONES)
     if reached <= season.milestones:
@@ -290,7 +290,7 @@ def _milestones(m, db, season):
     season.milestones = reached
 
 
-def from_command(m, db, p, before, after, acting=False):
+def from_command(db, p, before, after, acting=False):
     """Season points from what a command changed."""
     if not before or not after:
         return ''
@@ -303,7 +303,7 @@ def from_command(m, db, p, before, after, acting=False):
         points = int(points * ACTING_SHARE)
     if points <= 0 and items <= 0:
         return ''
-    return add(m, db, p, points, contribution=contribution, xp=xp, items=items, actions=1)
+    return add(db, p, points, contribution=contribution, xp=xp, items=items, actions=1)
 
 
 # ---------------------------------------------------------------- hats
@@ -360,19 +360,19 @@ def worn_hats(db, keys):
 
 # ---------------------------------------------------------------- ending a season
 
-def standings(m, db, season, limit=10):
+def standings(db, season, limit=10):
     rows = db.execute(select(SeasonScore).where(SeasonScore.season_id == season.id, SeasonScore.points > 0)
                       .order_by(SeasonScore.points.desc(), SeasonScore.updated_at).limit(limit)).scalars().all()
-    return [(r, _name(m, db, r.channel_id, r.canonical_uid)) for r in rows]
+    return [(r, _name(db, r.channel_id, r.canonical_uid)) for r in rows]
 
 
-def _name(m, db, channel, uid):
+def _name(db, channel, uid):
     p = db.execute(select(Player).where(Player.channel_id == channel, Player.twitch_uid == uid)).scalar_one_or_none()
     from .autonomy import clean_name
     return clean_name(p.display_name) if p else 'Citizen'
 
 
-def close(m, db, season):
+def close(db, season):
     """Archive results, crown the top three, and leave everything else alone."""
     from .game.players import unlock_title
     from .game.rules import TITLE_DEFS
@@ -423,8 +423,8 @@ def next_reward(row, season):
     return emoji, label, need, what
 
 
-def overview(m, db, p, provider='discord'):
-    season = current(m, db)
+def overview(db, p, provider='discord'):
+    season = current(db)
     s = info(season)
     rank, row = rank_of(db, season, p)
     points = row.points if row else 0
@@ -451,10 +451,10 @@ def overview(m, db, p, provider='discord'):
     return '\n'.join(lines)
 
 
-def top_text(m, db, p=None, provider='discord'):
-    season = current(m, db)
+def top_text(db, p=None, provider='discord'):
+    season = current(db)
     s = info(season)
-    rows = standings(m, db, season, 10)
+    rows = standings(db, season, 10)
     if not rows:
         return f"{s['emoji']} Season {s['number']} leaderboard: nobody has scored yet. Every action counts!"
     medal = lambda i: ['🥇', '🥈', '🥉'][i] if i < 3 else f'{i + 1}.'
@@ -469,8 +469,8 @@ def top_text(m, db, p=None, provider='discord'):
     return '\n'.join(lines)
 
 
-def rewards_text(m, db, p, provider='discord'):
-    season = current(m, db)
+def rewards_text(db, p, provider='discord'):
+    season = current(db)
     t = THEME.get(season.theme, THEMES[0])
     row = _score(db, season, p, create=False)
     tier = row.tier if row else 0
@@ -488,8 +488,8 @@ def rewards_text(m, db, p, provider='discord'):
     return text if provider == 'discord' else text.replace('**', '')
 
 
-def story_text(m, db, provider='discord'):
-    season = current(m, db)
+def story_text(db, provider='discord'):
+    season = current(db)
     s = info(season)
     t = THEME[s['key']]
     lines = [f"{s['emoji']} **{s['name'].upper()}** · the story so far"]
@@ -501,7 +501,7 @@ def story_text(m, db, provider='discord'):
     return text if provider == 'discord' else f"{s['emoji']} Week {s['chapter']}: {s['story']}"
 
 
-def history_text(m, db, p):
+def history_text(db, p):
     rows = db.execute(select(SeasonResult, Season).join(Season, Season.id == SeasonResult.season_id)
                       .where(SeasonResult.channel_id == p.channel_id, SeasonResult.canonical_uid == p.twitch_uid).order_by(Season.number)).all()
     if not rows:
@@ -509,12 +509,12 @@ def history_text(m, db, p):
     return 'Past seasons: ' + ' · '.join(f'S{s.number} #{r.rank} ({r.points:,})' for r, s in rows[-4:])
 
 
-def overlay(m, db):
-    season = current(m, db)
+def overlay(db):
+    season = current(db)
     s = info(season)
     total = db.execute(select(func.coalesce(func.sum(SeasonScore.points), 0)).where(SeasonScore.season_id == season.id)).scalar() or 0
     goal = next((need for need, *_ in MILESTONES if total < need), MILESTONES[-1][0])
     s.update({'total': total, 'goal': goal, 'percent': round(min(100, total / max(1, goal) * 100), 1),
               'decor': [key for need, key, *_ in MILESTONES if total >= need],
-              'top': [{'name': n, 'points': r.points} for r, n in standings(m, db, season, 5)]})
+              'top': [{'name': n, 'points': r.points} for r, n in standings(db, season, 5)]})
     return s

@@ -156,7 +156,7 @@ def material_source(key,provider='discord'):
     if key=='cargo':return ('/cargo' if provider=='discord' else '!cargo')+' — successful Cargo Preparation adds 1 personal Cargo.'
     if key in RECIPES or key in QUALITY_RECIPES:
         cost=RECIPES[key] if key in RECIPES else QUALITY_RECIPES[key]['cost']
-        station=crafting_progression.STATIONS[crafting_progression.legacy_station(main,key)]
+        station=crafting_progression.STATIONS[crafting_progression.legacy_station(key)]
         return (f'/make recipe:{key}' if provider=='discord' else f'!make {key}')+f" — {requirement_text(cost)}; {station['name']} (Tier {station['tier']})."
     for task,cfg in SEED_TASKS.items():
         if key in cfg['output']:

@@ -69,30 +69,30 @@ def split(target):
 def config(action,mode=''):
     return YIELDS.get((action,mode))
 
-def output_text(m,action,mode=''):
+def output_text(action,mode=''):
     from .game.players import resource_name
     cfg=config(action,mode)
     return ', '.join(f'{resource_name(k)} ×{n}' for k,n in cfg[1].items()) if cfg else ''
 
-def requirements(m,action,mode=''):
+def requirements(action,mode=''):
     from .game.life import task_energy
     from .game.players import resource_name
     cfg=config(action,mode)
     if not cfg:return ''
-    text=needs.cost_text(task_energy(action,mode),', ')+' per attempt; success yields '+output_text(m,action,mode)+'.'
+    text=needs.cost_text(task_energy(action,mode),', ')+' per attempt; success yields '+output_text(action,mode)+'.'
     equipment=EQUIPMENT.get((action,mode))
     if equipment:text+=' Requires '+resource_name(equipment)+' (kept).'
     if mode=='expedite':text+=' Consumes 1 Power Cell on success.'
     return text
 
-def alternatives(m,action,mode=''):
+def alternatives(action,mode=''):
     from .game.cooldowns_materials import action_display_name
     group=next((g for g in GROUPS if (action,mode) in g),[])
-    return '\n'.join(action_display_name(a,b)+': '+requirements(m,a,b) for a,b in group)
+    return '\n'.join(action_display_name(a,b)+': '+requirements(a,b) for a,b in group)
 
-def apply(m,db,p,action,mode=''):
+def apply(db,p,action,mode=''):
     from .game.cooldowns_materials import material_change
     cfg=config(action,mode)
     if not cfg:return ''
     for key,qty in cfg[1].items():material_change(db,p,key,qty)
-    return ' Personal materials: '+output_text(m,action,mode)+'.'
+    return ' Personal materials: '+output_text(action,mode)+'.'

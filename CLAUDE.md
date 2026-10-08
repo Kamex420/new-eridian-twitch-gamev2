@@ -34,7 +34,8 @@ Kamex has asked for this to happen without asking each time, as long as the test
 
 - `docs/architecture.md`: what each module holds, and "Dependencies on app.main" (the explicit-imports project:
   `scripts/explicit_imports.py` converts a system, `python -m scripts.main_dependencies --write` updates the record).
-  All 43 systems in `app/` are converted; the record still lists the game modules in `app/game/`, which read
-  runtime-changing values through `main`.
+  All 43 systems in `app/` are converted and their unused `m` parameters are gone (only the `install(m)` hooks and
+  the few functions that set a value on app.main still take `m`); the record still lists the game modules in
+  `app/game/`, which read runtime-changing values through `main`.
 - `docs/persistence.md`: every table. `docs/releases.md`: what changed, newest first.
 - Game rules Kamex decided: no DMs to players asking for event help; Seedlings keep at most 25 Contribution a day.

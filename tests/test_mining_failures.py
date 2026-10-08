@@ -20,7 +20,7 @@ def test_all_mined_resources_fail_to_one_stone_dust(key,monkeypatch):
         assert p.actions==1 and p.successes==0
         assert m.life_state(db,p).energy==100-(3 if key in cp.RARE else 2)
         assert 'Final success chance' in row.result
-        assert 'Stone Dust ×1' in q.status(m,db,p,row)
+        assert 'Stone Dust ×1' in q.status(db,p,row)
         notice=db.query(q.queue_notifications.Notice).one()
         assert 'failed: 1' in notice.content and 'Stone Dust ×1' in notice.content
 
@@ -90,6 +90,6 @@ def test_mining_chance_uses_intrinsic_and_situational_modifiers(monkeypatch):
         monkeypatch.setattr(m,'world_rule_bundle',lambda *args:(None,None,0.02,['World +2%']))
         monkeypatch.setattr(m,'determination_bonus',lambda *args:0.03)
         monkeypatch.setattr(m.random,'random',lambda:0.62)
-        assert cp.mining_roll(m,db,p,'discord')[0]
+        assert cp.mining_roll(db,p,'discord')[0]
         monkeypatch.setattr(m.random,'random',lambda:0.64)
-        assert not cp.mining_roll(m,db,p,'discord')[0]
+        assert not cp.mining_roll(db,p,'discord')[0]

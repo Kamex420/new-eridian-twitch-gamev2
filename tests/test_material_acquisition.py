@@ -62,7 +62,7 @@ def test_each_raw_material_is_gatherable_by_a_new_citizen(key):
     with m.SessionLocal() as db:
         _,p=m.player(db,'test','discord','new','New Citizen')
         before=m.material_amount(db,p,key)
-        result=s.gather(m,db,p,key,'discord')
+        result=s.gather(db,p,key,'discord')
         assert 'GATHERING COMPLETE' in result,result
         assert m.material_amount(db,p,key)==before+s.GATHER[key]['amount']
         assert s.source_hint(key).startswith('/mine ore:' if s.GATHER[key]['branch']=='ore_mining' else '/gather resource:')
@@ -72,7 +72,7 @@ def test_gather_pages_and_search_cover_every_non_ore_resource():
     pages=[s.gather_menu(p) for p in range(1,math.ceil(len(s.GATHER)/8)+1)]
     for key in (k for k in s.GATHER if s.GATHER[k]['branch']!='ore_mining'):
         assert any(s.item_label(key) in page for page in pages)
-        found=m._discord_autocomplete_choices(s.choices(m,None,None,gather_only=True),s.item_label(key))
+        found=m._discord_autocomplete_choices(s.choices(None,None,gather_only=True),s.item_label(key))
         assert key in {r['value'] for r in found['data']['choices']}
     for page in range(1,math.ceil(len(s.GATHER)/3)+1):
         assert len(s.gather_menu(page,'twitch').replace('\n',' | ').encode())<=380
@@ -82,16 +82,16 @@ def test_catalog_and_preview_explain_exact_sources_without_spending():
     with m.SessionLocal() as db:
         _,p=m.player(db,'test','discord','new','Citizen')
         key=s.source_key('GMT_MATERIAL_PROCESSED_WATER')
-        text=s.catalog(m,db,p,key)
+        text=s.catalog(db,p,key)
         assert 'HOW TO OBTAIN' in text and 'ACQUISITION PLAN' in text
         assert 'Murky Water' in text
         rid=s.ACQUISITION[key]
-        preview=s.preview(m,db,p,rid)
+        preview=s.preview(db,p,rid)
         assert 'Get it: /gather resource:' in preview
-        assert s.stock(m,db,p)=={}
+        assert s.stock(db,p)=={}
         p.sc=15
-        cp.workshop(m,db,p,'unlock','TAG_MACH_PROD_WATER_FILTRATION_SMALL')
-        missing=s.craft(m,db,p,rid,'discord')
+        cp.workshop(db,p,'unlock','TAG_MACH_PROD_WATER_FILTRATION_SMALL')
+        missing=s.craft(db,p,rid,'discord')
         assert 'HOW TO GET THEM' in missing and '/gather resource:' in missing
 
 
@@ -104,16 +104,16 @@ def test_gather_then_craft_clean_water_without_admin_grants(monkeypatch):
     with m.SessionLocal() as db:
         _,p=m.player(db,'test','discord','new','Citizen')
         key=s.source_key('GMT_MATERIAL_PROCESSED_WATER')
-        assert 'unlocked' in cp.workshop(m,db,p,'unlock','TAG_MACH_PROD_WATER_FILTRATION_SMALL')
+        assert 'unlocked' in cp.workshop(db,p,'unlock','TAG_MACH_PROD_WATER_FILTRATION_SMALL')
         base,steps=s.acquisition_plan(key)
         for raw,times in base.items():
             for _ in range(times):
                 db.query(m.Cooldown).delete()
-                assert 'GATHERING COMPLETE' in s.gather(m,db,p,raw,'discord')
+                assert 'GATHERING COMPLETE' in s.gather(db,p,raw,'discord')
         for rid,times in steps:
             for _ in range(times):
                 db.query(m.Cooldown).delete()
-                assert 'CRAFTING COMPLETE' in s.craft(m,db,p,rid,'discord')
+                assert 'CRAFTING COMPLETE' in s.craft(db,p,rid,'discord')
         assert m.material_amount(db,p,key)>=1
 
 
@@ -121,11 +121,11 @@ def test_gather_blocked_needs_and_invalid_input_spend_nothing():
     with m.SessionLocal() as db:
         _,p=m.player(db,'test','discord','new','Citizen')
         life=m.life_state(db,p);life.energy=0;db.commit()
-        result=s.gather(m,db,p,next(iter(s.GATHER)),'discord')
+        result=s.gather(db,p,next(iter(s.GATHER)),'discord')
         assert 'GATHERING COMPLETE' not in result
-        assert s.stock(m,db,p)=={}
-        assert 'Choose a natural resource' in s.gather(m,db,p,'invalid','discord')
-        assert s.stock(m,db,p)=={}
+        assert s.stock(db,p)=={}
+        assert 'Choose a natural resource' in s.gather(db,p,'invalid','discord')
+        assert s.stock(db,p)=={}
 
 
 def test_legacy_raw_browser_and_missing_training_sources():

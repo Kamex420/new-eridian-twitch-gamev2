@@ -85,7 +85,7 @@ def popup_mode(db, channel, uid):
     return row.popups if row is not None and row.popups in POPUP_MODES else 'important'
 
 
-def add(m, db, channel, uid, kind, text, important=True, seen=False):
+def add(db, channel, uid, kind, text, important=True, seen=False):
     db.add(InboxItem(channel_id=channel, canonical_uid=uid, kind=kind, important=int(bool(important)),
                      text=text[:1500], created_at=runtime.now(), seen=int(bool(seen))))
     db.flush()
@@ -95,14 +95,14 @@ def add(m, db, channel, uid, kind, text, important=True, seen=False):
         db.execute(delete(InboxItem).where(InboxItem.id.in_(ids)))
 
 
-def tip(m, db, channel, uid, key):
+def tip(db, channel, uid, key):
     """Queue a one-time explanation; returns True the first time only."""
     row = prefs(db, channel, uid, create=True)
     seen = json.loads(row.tips)
     if key in seen or key not in TIPS:
         return False
     row.tips = json.dumps(seen + [key])
-    add(m, db, channel, uid, 'tip', TIPS[key], important=False)
+    add(db, channel, uid, 'tip', TIPS[key], important=False)
     return True
 
 
@@ -138,13 +138,13 @@ def popup_embed(items, more=0):
             'footer': {'text': 'Only you can see this · change what pops up in /settings'}}
 
 
-def _canonical(m, db, discord_uid):
+def _canonical(db, discord_uid):
     ident = db.execute(select(Identity).where(Identity.channel_id == runtime.DISCORD_WORLD_ID, Identity.provider == 'discord',
                                                 Identity.provider_uid == str(discord_uid))).scalar_one_or_none()
     return ident.canonical_uid if ident else 'discord:' + str(discord_uid)
 
 
-def deliver(m, payload, discord_uid):
+def deliver(payload, discord_uid):
     """Send unseen notifications as a private follow-up to this interaction."""
     from . import extras
     from .game.discord_commands import discord_command_copy
@@ -152,10 +152,10 @@ def deliver(m, payload, discord_uid):
     if not app_id or not token or not discord_uid:
         return False
     with SessionLocal() as db:
-        uid = _canonical(m, db, discord_uid)
+        uid = _canonical(db, discord_uid)
         p = db.execute(select(Player).where(Player.channel_id == runtime.DISCORD_WORLD_ID, Player.twitch_uid == uid)).scalar_one_or_none()
         if p is not None:
-            extras.touch(m, db, p)      # welcome-back summary and reminders
+            extras.touch(db, p)      # welcome-back summary and reminders
             db.commit()
         items = pending(db, runtime.DISCORD_WORLD_ID, uid)
         if not items:
@@ -178,7 +178,7 @@ def deliver(m, payload, discord_uid):
         return True
 
 
-def inbox_text(m, db, p):
+def inbox_text(db, p):
     from .game.players import as_utc
     rows = list(db.scalars(select(InboxItem).where(InboxItem.channel_id == p.channel_id, InboxItem.canonical_uid == p.twitch_uid)
                            .order_by(InboxItem.id.desc()).limit(12)))
@@ -195,7 +195,7 @@ def inbox_text(m, db, p):
 
 # ---------------------------------------------------------------- when information is needed
 
-def queue_warnings(m, db, p, task, count):
+def queue_warnings(db, p, task, count):
     """Short warnings for a queue that will not finish as it stands; [] when it will."""
     from . import qol, task_queue
     from .game.cooldowns_materials import material_amount, material_source
@@ -203,9 +203,9 @@ def queue_warnings(m, db, p, task, count):
     from .game.players import resource_name
     from .needs import finish_forecast
     tq = task_queue
-    if task not in tq.choices(m) or count <= 0:
+    if task not in tq.choices() or count <= 0:
         return []
-    costs, energy, _ = tq.specification(m, task)
+    costs, energy, _ = tq.specification(task)
     life = life_state(db, p)
     need = finish_forecast(energy, count)
     short = [f'{k.title()} {getattr(life, k)}/{v}' for k, v in need.items() if getattr(life, k) < v]
@@ -222,13 +222,13 @@ def queue_warnings(m, db, p, task, count):
     return out
 
 
-def after_command(m, discord_uid, name, command, options, result):
+def after_command(discord_uid, name, command, options, result):
     """Raise warnings and one-time tips from what just happened; they pop up privately."""
     from . import extras, task_queue
     from .game.life import life_state
     from .needs import COMFORT_SLOW
     with SessionLocal() as db:
-        uid = _canonical(m, db, discord_uid)
+        uid = _canonical(db, discord_uid)
         channel = runtime.DISCORD_WORLD_ID
         p = db.execute(select(Player).where(Player.channel_id == channel, Player.twitch_uid == uid)).scalar_one_or_none()
         if p is None:
@@ -239,16 +239,16 @@ def after_command(m, discord_uid, name, command, options, result):
             fresh = row is not None and row.state == 'running' and row.total == row.remaining
             if fresh and not list(db.scalars(select(InboxItem.id).where(InboxItem.channel_id == channel, InboxItem.canonical_uid == uid,
                                                                            InboxItem.kind == 'warning', InboxItem.seen == 0))):
-                for warning in queue_warnings(m, db, p, row.task, row.remaining):
-                    add(m, db, channel, uid, 'warning', warning)
-                tip(m, db, channel, uid, 'first_queue')
+                for warning in queue_warnings(db, p, row.task, row.remaining):
+                    add(db, channel, uid, 'warning', warning)
+                tip(db, channel, uid, 'first_queue')
         if 'MINING FAILED' in text or ('Stone Dust' in text and 'FAILED' in text):
-            tip(m, db, channel, uid, 'mining_failed')
+            tip(db, channel, uid, 'mining_failed')
         if 'TASK BLOCKED' in text:
-            tip(m, db, channel, uid, 'blocked')
+            tip(db, channel, uid, 'blocked')
         if 'sleep again in' in text:
-            tip(m, db, channel, uid, 'sleep_wait')
+            tip(db, channel, uid, 'sleep_wait')
         if life_state(db, p).comfort < COMFORT_SLOW:
-            tip(m, db, channel, uid, 'comfort_low')
-        extras.goal_ready_check(m, db, p)       # crafting the goal completes it where the craft happens (extras.goal_crafted)
+            tip(db, channel, uid, 'comfort_low')
+        extras.goal_ready_check(db, p)       # crafting the goal completes it where the craft happens (extras.goal_crafted)
         db.commit()

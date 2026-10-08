@@ -70,11 +70,11 @@ def test_choice_lists_run_or_confirm():
     sell = press(ui.cid('111', 'mp', 'sell'), values=[LUMBER])['data']
     assert 'Nothing happens until you press Confirm' in json.dumps(sell, ensure_ascii=False)
     with m.SessionLocal() as db:
-        assert s.stock(m, db, m.player(db, W, 'discord', '111', 'Kam')[1]).get(LUMBER) == 10
+        assert s.stock(db, m.player(db, W, 'discord', '111', 'Kam')[1]).get(LUMBER) == 10
     confirm = find(sell, 'Confirm')['custom_id']
     press(confirm)
     with m.SessionLocal() as db:
-        assert s.stock(m, db, m.player(db, W, 'discord', '111', 'Kam')[1]).get(LUMBER, 0) == 0
+        assert s.stock(db, m.player(db, W, 'discord', '111', 'Kam')[1]).get(LUMBER, 0) == 0
 
 
 def test_social_pick_offers_activities_with_that_citizen():
@@ -89,11 +89,11 @@ def test_social_pick_offers_activities_with_that_citizen():
 def test_menu_slash_command_and_reply_buttons():
     citizen()
     text = m._discord_call_internal('menu', '111', 'Kam', {}, 'i')
-    panel = ui.slash_panel(m, 'menu', '111', 'Kam', {}, text)
+    panel = ui.slash_panel('menu', '111', 'Kam', {}, text)
     assert {'Life', 'Work', 'Craft', 'Bag & Trade', 'Colony', 'You', 'Help'} <= {c.get('label') for c in controls(panel)}
-    row = menu.after_command(m, 'relax', {}, '111')
+    row = menu.after_command('relax', {}, '111')
     assert [c['label'] for c in row['components']] == ['Again', 'Life', 'Menu']
-    assert [c['label'] for c in menu.after_command(m, 'inventory', {}, '111')['components']] == ['Bag', 'Menu']
+    assert [c['label'] for c in menu.after_command('inventory', {}, '111')['components']] == ['Bag', 'Menu']
 
 
 def test_cast_your_vote_counts_the_option_picked(monkeypatch):
@@ -113,5 +113,5 @@ def test_every_availability_rule_runs_without_failing(monkeypatch):
     nothing and say nothing. Run every rule with failures raised instead."""
     citizen()
     monkeypatch.setattr(menu.Ctx, 'get', lambda self, name, make: self._cache.setdefault(name, make()))
-    answers = menu.with_context(m, '111', lambda c: {key: bool(rule(c)) for key, (rule, _) in menu.WHEN.items()})
+    answers = menu.with_context('111', lambda c: {key: bool(rule(c)) for key, (rule, _) in menu.WHEN.items()})
     assert set(answers) == set(menu.WHEN)

@@ -91,15 +91,15 @@ def from_announcement(db, p, message):
         highlight(db, p.channel_id, 'level', f'{p.display_name} levelled up', body, p.display_name)
 
 
-def queue_finished(m, db, p, queue):
+def queue_finished(db, p, queue):
     from . import task_queue
-    label = task_queue.choices(m).get(queue.task, queue.task.split(':')[-1])
+    label = task_queue.choices().get(queue.task, queue.task.split(':')[-1])
     highlight(db, p.channel_id, 'queue', f'{p.display_name} finished a queue', f'{label} ×{queue.total}', p.display_name)
 
 
 # ---------------------------------------------------------------- society milestones (seen by the overlay)
 
-def watch(m, db, channel, tier, project, story, directive):
+def watch(db, channel, tier, project, story, directive):
     state = db.get(StreamState, channel)
     if state is None:
         db.add(StreamState(channel_id=channel, tier=tier, project=project.get('key', '') if project.get('completed') else '',
@@ -126,7 +126,7 @@ def watch(m, db, channel, tier, project, story, directive):
 
 # ---------------------------------------------------------------- data for /api/v1/overlay
 
-def extra(m, db, source_ids, world):
+def extra(db, source_ids, world):
     from . import task_queue
     from .game.players import as_utc
     since = _now() - timedelta(hours=24)
@@ -154,7 +154,7 @@ def extra(m, db, source_ids, world):
     if queues:
         for p in db.scalars(select(Player).where(Player.channel_id.in_(source_ids), Player.twitch_uid.in_([q.canonical_uid for q in queues]))):
             who.setdefault(p.twitch_uid, p.display_name)
-    choices = tq.choices(m)
+    choices = tq.choices()
     working = [{'name': clean_name(who.get(q.canonical_uid, 'Citizen')), 'task': choices.get(q.task, q.task.split(':')[-1]), 'done': q.total - q.remaining,
                 'total': q.total, 'state': q.state} for q in queues]
 
@@ -181,7 +181,7 @@ def extra(m, db, source_ids, world):
         join['tips'], join['queue'] = twitch_lite.join_tips(), ['/queue', 'on Discord to run up to 10 tasks while you watch']
     from . import autonomy
     return {'highlights': highlights, 'leaders': leaders, 'working': working, 'festival': festival, 'join': join,
-            **autonomy.overlay_data(m, db, source_ids)}
+            **autonomy.overlay_data(db, source_ids)}
 
 
 # ---------------------------------------------------------------- OBS pages

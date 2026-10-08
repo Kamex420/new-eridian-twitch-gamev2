@@ -16,8 +16,8 @@ def player_sc(sc):
 def first(code=None, test=None):
     with m.SessionLocal() as db:
         p = db.query(m.Player).one()
-        ctx = wb.Context(m, db, p)
-        return next(e for e in wb.index(m) if (code is None or ctx.status(e).code == code) and (test is None or test(ctx, e)))
+        ctx = wb.Context(db, p)
+        return next(e for e in wb.index() if (code is None or ctx.status(e).code == code) and (test is None or test(ctx, e)))
 
 
 def beside(data):
@@ -31,8 +31,8 @@ def test_a_goal_that_needs_a_workstation_walks_through_making_its_machine():
     assert assert_valid(v2.convert(view))
     with m.SessionLocal() as db:
         p = db.query(m.Player).one()
-        key, machine = extras._machine(m, wb.Context(m, db, p), e)
-        steps = extras.walkthrough(m, db, p)[1]
+        key, machine = extras._machine(wb.Context(db, p), e)
+        steps = extras.walkthrough(db, p)[1]
     names = [st['name'] for st in steps]
     assert f'Craft {machine.name}' in names and not any(n.startswith('Unlock') for n in names)    # made, not bought
     assert 'the machine for' in steps[names.index(f'Craft {machine.name}')]['detail']
@@ -43,7 +43,7 @@ def test_a_goal_that_needs_a_workstation_walks_through_making_its_machine():
         p = db.query(m.Player).one()
         m.material_change(db, p, key, 1)
         db.commit()
-        names = [st['name'] for st in extras.walkthrough(m, db, p)[1]]
+        names = [st['name'] for st in extras.walkthrough(db, p)[1]]
     assert f'Craft {machine.name}' not in names
 
 
@@ -51,7 +51,7 @@ def test_a_step_done_from_the_goal_comes_back_to_it():
     citizen(lumber=0)
     view = press(ui.cid('111', 'gs', first('station').id))['data']
     gather = next(s['accessory'] for s in sections(v2.convert(view)) if s['accessory']['label'] in {'Gather', 'Mine'})
-    done = ui.run_ticket(m, '111', 'Kam', ui.claim(m, '111', gather['custom_id'].split('|')[3])[0])
+    done = ui.run_ticket('111', 'Kam', ui.claim('111', gather['custom_id'].split('|')[3])[0])
     ids = [c.get('custom_id') for c in v2.controls(done)]
     assert ui.cid('111', 'gv') in ids and ui.cid('111', 'mn', 'home') in ids          # back to the goal, and the menu
 
@@ -60,13 +60,13 @@ def test_no_goal_asks_you_to_unlock_a_workstation():
     citizen(lumber=0)
     with m.SessionLocal() as db:
         p = db.query(m.Player).one()
-        ctx = wb.Context(m, db, p)
-        locked = [e for e in wb.index(m) if ctx.status(e).code == 'station'][:25]
+        ctx = wb.Context(db, p)
+        locked = [e for e in wb.index() if ctx.status(e).code == 'station'][:25]
     for e in locked:
         press(ui.cid('111', 'gs', e.id))
         with m.SessionLocal() as db:
             p = db.query(m.Player).one()
-            assert not [st for st in extras.walkthrough(m, db, p)[1] if st['label'] in {'Unlock', 'Earn SC'}], e.name
+            assert not [st for st in extras.walkthrough(db, p)[1] if st['label'] in {'Unlock', 'Earn SC'}], e.name
 
 
 def test_skill_and_tier_locks_lead_to_training_and_crafting():
@@ -75,7 +75,7 @@ def test_skill_and_tier_locks_lead_to_training_and_crafting():
     press(ui.cid('111', 'gs', e.id))
     with m.SessionLocal() as db:
         p = db.query(m.Player).one()
-        steps = extras.walkthrough(m, db, p)[1]
+        steps = extras.walkthrough(db, p)[1]
     train = next(st for st in steps if st['label'] == 'Train')
     assert train['view'][:2] == ('mp', 'trainskill') and train['name'].startswith('Reach ')
     tasks = press(ui.cid('111', *train['view']))
@@ -86,7 +86,7 @@ def test_skill_and_tier_locks_lead_to_training_and_crafting():
 
 def test_training_hubs_are_real_training_skills():
     with m.SessionLocal() as db:
-        valid = {v for _, v in menu.choices(m, db, None, 'field:training:skill', '1')}
+        valid = {v for _, v in menu.choices(db, None, 'field:training:skill', '1')}
     assert set(extras.TRAINING_HUB.values()) <= valid
 
 
@@ -98,7 +98,7 @@ def test_home_opens_with_one_next_step():
     # With the first steps done and a goal set, the next step is the goal's.
     with m.SessionLocal() as db:
         p = db.query(m.Player).one()
-        m.onboarding.row(m, db, p).finished = True
+        m.onboarding.row(db, p).finished = True
         db.commit()
     press(ui.cid('111', 'gs', first('station').id))
     top = sections(v2.convert(press(ui.cid('111', 'mn', 'home'))['data']))[0]
@@ -125,18 +125,18 @@ def test_the_game_says_it_is_a_free_fan_project_by_kamex():
     assert 'nothing to buy' in text and about['embeds'][0]['footer']['text'] == notice.FOOTER   # every card: "a fan project by Kamex"
     assert 'h_about' in menu.AREAS['help'][3]
     assert 'Kamex' in m.twitch_seed('about').body.decode() and twitch_help.TOPICS['about'] == notice.TWITCH
-    assert 'Kamex' in v2.text_of(ui.public_panel(m))
+    assert 'Kamex' in v2.text_of(ui.public_panel())
 
 
 def test_a_skill_level_is_walked_through_its_training_task_and_what_that_task_needs():
     """Chemistry Lv 2 without a Chemistry Station: Processing Lv 3 first, then a Medical Fabricator,
     then the Chemistry training task (it makes Antiseptics there)."""
     citizen(lumber=0)
-    nitric = next(e for e in wb.index(m) if e.name == 'Nitric Acid')
+    nitric = next(e for e in wb.index() if e.name == 'Nitric Acid')
     press(ui.cid('111', 'gs', nitric.id))
     with m.SessionLocal() as db:
         p = db.query(m.Player).one()
-        names = [st['name'] for st in extras.walkthrough(m, db, p)[1]]
+        names = [st['name'] for st in extras.walkthrough(db, p)[1]]
     chem = next(i for i, n in enumerate(names) if n.startswith('Do Chemistry'))
     processing = next(i for i, n in enumerate(names) if n.startswith('Do ') and i < chem)
     fabricator = names.index('Craft Medical Fabricator')

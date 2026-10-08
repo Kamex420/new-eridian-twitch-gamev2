@@ -24,7 +24,7 @@ def citizen(db):
 
 def gather(db, p, key):
     db.query(m.Cooldown).delete()
-    return s.gather(m, db, p, key, 'twitch')
+    return s.gather(db, p, key, 'twitch')
 
 
 def start(db, key, goal=None):
@@ -79,7 +79,7 @@ def test_a_workbench_craft_adds_development_and_answers_a_breakdown():
         start(db, 'machine', goal=50)
         development, contribution = m.society(db, 'test').development, p.contribution
         db.query(m.Cooldown).delete()
-        result = s.craft(m, db, p, rid, 'discord')
+        result = s.craft(db, p, rid, 'discord')
         assert 'CRAFTING COMPLETE' in result and '+1 Development · +1 Contribution' in result
         assert 'Infrastructure Breakdown: Primary response +1' in result
         assert m.society(db, 'test').development == development + 1 and p.contribution == contribution + 1

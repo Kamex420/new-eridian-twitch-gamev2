@@ -87,7 +87,7 @@ def test_discord_slash_command_menu_button_and_twitch(festival):
     citizen()
     text = m._discord_call_internal('life', '111', 'Kam', {'action': 'trick'}, 'i1')
     assert 'goes door to door' in text and '4 doors left today' in text
-    panel = ui.slash_panel(m, 'trick', '111', 'Kam', {}, text)
+    panel = ui.slash_panel('trick', '111', 'Kam', {}, text)
     assert 'Knock again' in labels(panel) and assert_valid(v2.convert(panel))
     again = press(next(c for c in controls(panel) if c.get('label') == 'Knock again')['custom_id'])
     assert '3 doors left today' in json.dumps(again, ensure_ascii=False)
@@ -108,7 +108,7 @@ def test_the_menu_button_hides_once_the_doors_are_used_up(festival):
 # ---------------------------------------------------------------- holiday hats
 
 def test_every_holiday_feast_trophy_wins_a_hat():
-    trophies._build(m)
+    trophies._build()
     for holiday in seasonal.FESTIVAL_FOODS:
         t = trophies.TROPHIES['feast_' + seasonal._slug(holiday)]
         assert t['hat'] in seasons.HATS and seasons.HATS[t['hat']][1] in t['text'], holiday
@@ -122,7 +122,7 @@ def test_crafting_every_halloween_food_wins_the_witch_hat():
             if holiday == 'Halloween':
                 m.craft_record(db, p, recipe)
         db.commit()
-        notes = trophies.check(m, db, p, force=True)
+        notes = trophies.check(db, p, force=True)
         db.commit()
         assert any('Halloween Feast' in n and 'Witch hat' in n for n in notes)
         assert 'witch' in seasons.hats_of(db, p)[0]
@@ -135,10 +135,10 @@ def test_a_feast_won_before_hats_existed_still_gets_its_hat():
         p = m.player(db, 'test', 'twitch', 'u', 'Kamex')[1]
         db.add(trophies.m_ach()(channel_id='test', canonical_uid='u', code=trophies.PREFIX + 'feast_christmas'))
         db.commit()
-        notes = trophies.check(m, db, p, force=True)
+        notes = trophies.check(db, p, force=True)
         db.commit()
         assert any('Santa hat' in n for n in notes) and 'santa' in seasons.hats_of(db, p)[0]
-        assert not any('Santa hat' in n for n in trophies.check(m, db, p, force=True))     # only once
+        assert not any('Santa hat' in n for n in trophies.check(db, p, force=True))     # only once
 
 
 def test_the_map_draws_every_hat():
@@ -171,7 +171,7 @@ def test_every_holiday_has_keepsakes_made_from_game_materials():
         for key in crafts:
             assert key in s.ITEMS and s.CATEGORY[key] in {'decor', 'clothing'}
             for rid in seasonal.FESTIVAL_CRAFT_ITEMS[key]['recipes']:
-                assert seasonal.FESTIVAL_RECIPES[rid] == holiday and wb.entry(m, rid) is not None
+                assert seasonal.FESTIVAL_RECIPES[rid] == holiday and wb.entry(rid) is not None
 
 
 def test_the_mask_is_made_with_fabric_or_synthetic_fabric():
@@ -187,7 +187,7 @@ def test_crafting_the_mask_turns_the_seedling_into_a_pumpkin_head():
         p = m.player(db, 'test', 'twitch', 'u', 'Kamex')[1]
         m.craft_record(db, p, 'fr_jack_o_lantern_mask_2')          # the Synthetic Fabric recipe counts too
         db.commit()
-        notes = trophies.check(m, db, p, force=True)
+        notes = trophies.check(db, p, force=True)
         db.commit()
         assert any('Pumpkin Head' in n for n in notes) and 'jackmask' in seasons.hats_of(db, p)[0]
 
@@ -200,12 +200,12 @@ def test_the_feast_needs_every_food_and_keepsake():
             if holiday == 'Christmas' and recipe in {v['recipe'] for v in seasonal.FESTIVAL_ITEMS.values()}:
                 m.craft_record(db, p, recipe)                       # the foods alone
         db.commit()
-        assert not any('Christmas Feast' in n for n in trophies.check(m, db, p, force=True))
+        assert not any('Christmas Feast' in n for n in trophies.check(db, p, force=True))
         for key, v in seasonal.FESTIVAL_CRAFT_ITEMS.items():
             if v['holiday'] == 'Christmas':
                 m.craft_record(db, p, v['recipe'])
         db.commit()
-        assert any('Christmas Feast' in n and 'Santa hat' in n for n in trophies.check(m, db, p, force=True))
+        assert any('Christmas Feast' in n and 'Santa hat' in n for n in trophies.check(db, p, force=True))
 
 
 def test_the_holiday_page_lists_keepsakes():

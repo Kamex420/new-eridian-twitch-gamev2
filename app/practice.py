@@ -58,7 +58,7 @@ SKILL = {
 _KEYS = {}
 
 
-def key(m, name):
+def key(name):
     """The bag key for a find's item name."""
     from . import seed_content
     if name == 'Cargo':
@@ -72,7 +72,7 @@ def pool(skill, branch=None):
     return BRANCH.get(branch) or SKILL.get(skill) or ()
 
 
-def find(m, db, p, skill, branch=None):
+def find(db, p, skill, branch=None):
     """After a task succeeds: sometimes add one related item to the bag. Returns the line to show, or ''."""
     from .game.cooldowns_materials import material_change
     from .game.players import resource_name
@@ -83,6 +83,6 @@ def find(m, db, p, skill, branch=None):
     chance = CHANCE + (GREAT_RESULT if getattr(p, '_practice_quality', 1.0) > 1.0 else 0)
     if random.random() >= chance:
         return ''
-    item = key(m, random.choice(items))
+    item = key(random.choice(items))
     material_change(db, p, item, 1)
     return f"🎁 Lucky find ({SKILL_LABELS.get(skill, skill)}): +1 {resource_name(item)}"

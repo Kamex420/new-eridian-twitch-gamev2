@@ -33,7 +33,7 @@ def overlay_state(channel:str):
     if cached and time.monotonic()-cached[0]<main.OVERLAY_CACHE_SECONDS:return cached[1]
     from .. import world_guard
     # A channel with no world shows the main world (and shares its cache entry) instead of a cache slot of its own.
-    if channel!=main.DISCORD_WORLD_ID and not world_guard.known(main,channel):channel=main.DISCORD_WORLD_ID
+    if channel!=main.DISCORD_WORLD_ID and not world_guard.known(channel):channel=main.DISCORD_WORLD_ID
     with _overlay_lock:
         cached=_overlay_cache.get(channel)
         if cached and time.monotonic()-cached[0]<main.OVERLAY_CACHE_SECONDS:return cached[1]
@@ -256,9 +256,9 @@ def overlay_state_fresh(channel:str):
         }
 
         from .. import stream_overlay
-        stream_overlay.watch(main,db,main.DISCORD_WORLD_ID,tier[0],project_data,story_data,directive_data)
-        stream_extra=stream_overlay.extra(main,db,source_ids,main.DISCORD_WORLD_ID)
-        stream_extra.update(main.community.overlay_data(main,db,stream_extra.get("seedlings",[])))
+        stream_overlay.watch(db,main.DISCORD_WORLD_ID,tier[0],project_data,story_data,directive_data)
+        stream_extra=stream_overlay.extra(db,source_ids,main.DISCORD_WORLD_ID)
+        stream_extra.update(main.community.overlay_data(db,stream_extra.get("seedlings",[])))
         db.commit()
         return {
             **stream_extra,

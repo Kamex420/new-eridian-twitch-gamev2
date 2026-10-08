@@ -70,7 +70,7 @@ _INDEX = None
 _BY_ID = None
 
 
-def _legacy_entries(m):
+def _legacy_entries():
     from .game.players import resource_name
     from .game.rules import QUALITY_RECIPES, RECIPES
     rows = []
@@ -79,13 +79,13 @@ def _legacy_entries(m):
     for key, data in QUALITY_RECIPES.items():
         rows.append((key, data['name'], data['cost'], 'food' if key == 'meal_kit' else 'equipment'))
     for key, name, cost, category in rows:
-        tag = cp.legacy_station(m, key)
+        tag = cp.legacy_station(key)
         tier = max([cp.STATIONS[tag]['tier']] + [s.ITEM_TIER.get(k, 1) for k in cost])
         steps = 1 + max([s.ITEM_STEPS.get(k, 0) for k in cost], default=0)
         yield Entry(key, 'legacy', name, key, 1, category, (tag,), tier, steps, 1, 'Crafting', '', dict(cost))
 
 
-def index(m):
+def index():
     """Every recipe once, easiest first within each category."""
     global _INDEX, _BY_ID
     if _INDEX is None:
@@ -97,30 +97,30 @@ def index(m):
             entries.append(Entry(rid, 'seed', s.item_label(output), output, recipe['outputs'][output],
                                  SEED_TO_WORKBENCH[s.recipe_category(rid)], tuple(cp.tags(rid)), tier, steps,
                                  level, s.skill_name(skill_key), skill_key, dict(recipe['inputs'])))
-        entries.extend(_legacy_entries(m))
+        entries.extend(_legacy_entries())
         _INDEX = sorted(entries, key=lambda e: e.sort_key)
         _BY_ID = {e.id: e for e in _INDEX}
     return _INDEX
 
 
-def entry(m, key):
-    index(m)
+def entry(key):
+    index()
     return _BY_ID.get(key)
 
 
-def in_category(m, category, station=''):
-    return [e for e in index(m) if (not category or e.category == category) and (not station or station in e.tags)]
+def in_category(category, station=''):
+    return [e for e in index() if (not category or e.category == category) and (not station or station in e.tags)]
 
 
 def in_view(ctx, category, station=''):
     """Recipes for a category, or for the Ready now / Favourites views."""
     if category == 'ready':
         favorites = set(ctx.favorites)
-        rows = [e for e in index(ctx.m) if (not station or station in e.tags) and ctx.status(e).code == 'ready']
+        rows = [e for e in index() if (not station or station in e.tags) and ctx.status(e).code == 'ready']
         return sorted(rows, key=lambda e: (e.id not in favorites, e.sort_key))
     if category == 'favorites':
-        return [e for e in (entry(ctx.m, i) for i in ctx.favorites) if e is not None and (not station or station in e.tags)]
-    return in_category(ctx.m, category, station)
+        return [e for e in (entry(i) for i in ctx.favorites) if e is not None and (not station or station in e.tags)]
+    return in_category(category, station)
 
 
 def station_code(tag):
@@ -155,12 +155,12 @@ class Status:
 class Context:
     """One player's crafting situation, loaded once per screen."""
 
-    def __init__(self, m, db, p, provider='discord'):
+    def __init__(self, db, p, provider='discord'):
         from .game.players import lvl, skill_xp, society
         from .game.world import society_tier_index
-        self.m, self.db, self.p, self.provider = m, db, p, provider
-        self.stock = s.stock(m, db, p) if p is not None else {}
-        self.batches = cp.manufactured_batches(m, db, p) if p is not None else 0
+        self.db, self.p, self.provider = db, p, provider
+        self.stock = s.stock(db, p) if p is not None else {}
+        self.batches = cp.manufactured_batches(db, p) if p is not None else 0
         self.tier = max(t for t, _, n in cp.TIERS if self.batches >= n)
         owned_machines = [k for k in s.MACHINE_RECIPES if self.stock.get(k, 0) > 0]
         self.access = {tag for tag in cp.STATIONS if tag == cp.SURVIVAL or self.stock.get(cp.permit_key(tag), 0) > 0
@@ -168,7 +168,7 @@ class Context:
         self._levels = {}
         self.society_tier = society_tier_index(society(db, p.channel_id)) if p is not None else 0
         self.harvesting = lvl(skill_xp(p, 'extraction')) if p is not None else 1
-        self.rare_ok = cp.rare_unlocked(m, db, p)            # a Mineral Extractor in the bag
+        self.rare_ok = cp.rare_unlocked(db, p)            # a Mineral Extractor in the bag
         self._statuses = {}
         self._unique = None
         self._favorites = None
@@ -203,7 +203,7 @@ class Context:
     def favorites(self):
         if self._favorites is None:
             from . import qol
-            self._favorites = qol.favorite_ids(self.m, self.db, self.p) if self.p is not None else []
+            self._favorites = qol.favorite_ids(self.db, self.p) if self.p is not None else []
         return self._favorites
 
     def star(self, e):
@@ -360,7 +360,7 @@ def autocomplete_rows(ctx, category='', station='', query=''):
     return [(choice_label(ctx, e), e.id) for e in rows[:25]]
 
 
-def resolve(m, db, p, value, category=''):
+def resolve(db, p, value, category=''):
     """Recipe id, legacy key, retired legacy name or item name -> Entry."""
     from . import item_identity
     value = str(value or '').strip()
@@ -371,27 +371,27 @@ def resolve(m, db, p, value, category=''):
         category = ''   # Ready now / Favourites filter the same recipes
     retired = item_identity.RETIRED_RECIPES.get(key)
     for candidate in (value, key, retired):
-        found = entry(m, candidate) if candidate else None
+        found = entry(candidate) if candidate else None
         if found:
             return found
-    matches = [e for e in index(m) if e.name.casefold() == value.casefold() and (not category or e.category == category)]
+    matches = [e for e in index() if e.name.casefold() == value.casefold() and (not category or e.category == category)]
     if not matches:
         found = s.find_recipe(value)
-        return entry(m, found) if found else None
+        return entry(found) if found else None
     if len(matches) == 1 or p is None:
         return matches[0]
-    ctx = Context(m, db, p)
+    ctx = Context(db, p)
     return min(matches, key=lambda e: (STATUS_ORDER[ctx.status(e).code], e.sort_key))
 
 
 def category_counts(ctx):
     counts = {}
-    for e in index(ctx.m):
+    for e in index():
         total, ready, lowest = counts.get(e.category, (0, 0, 9))
         counts[e.category] = (total + 1, ready + (ctx.status(e).code == 'ready'), min(lowest, e.tier))
     all_ready = sum(ready for _, ready, _ in counts.values())
     counts['ready'] = (all_ready, all_ready, 1)
-    favorites = [entry(ctx.m, i) for i in ctx.favorites]
+    favorites = [entry(i) for i in ctx.favorites]
     counts['favorites'] = (len(favorites), sum(ctx.status(e).code == 'ready' for e in favorites), min((e.tier for e in favorites), default=1))
     return counts
 
@@ -406,13 +406,13 @@ def tier_line(ctx):
 
 def start_here(ctx, limit=3):
     # Stops at the first `limit` ready recipes instead of checking all of them (this runs on every !status).
-    return list(islice((e for e in index(ctx.m) if ctx.status(e).code == 'ready' and e.inputs), limit))
+    return list(islice((e for e in index() if ctx.status(e).code == 'ready' and e.inputs), limit))
 
 
 def gather_first(ctx, limit=3):
     """Recipes at an unlocked workstation that only lack gatherable materials."""
     rows = []
-    for e in index(ctx.m):
+    for e in index():
         if ctx.status(e).code != 'missing':
             continue
         missing = [k for k, n in e.inputs.items() if ctx.have(k) < n]
@@ -466,7 +466,6 @@ def page_bounds(total, page, size=PAGE_SIZE):
 
 
 def category_text(ctx, category, page=1, station=''):
-    m = ctx.m
     emoji, label, description = VIEW_INFO[category]
     rows = in_view(ctx, category, station)
     station_note = f" · {cp.STATIONS[station]['name']} only" if station else ''
@@ -531,8 +530,8 @@ def empty_view_text(category, provider='discord'):
     return 'No recipes match this filter.'
 
 
-def used_for(m, key):
-    users = [e.name for e in index(m) if key in e.inputs]
+def used_for(key):
+    users = [e.name for e in index() if key in e.inputs]
     return users
 
 
@@ -542,7 +541,6 @@ def preview_text(ctx, e, count=1):
     from .game.players import resource_name
     from .game.rules import RECIPE_TIERS, SOCIETY_TIERS
     from .needs import cost_text as need_cost_text
-    m = ctx.m
     st = ctx.status(e)
     outputs = ctx.outputs(e)
     tag = ctx.best_tag(e)
@@ -558,9 +556,9 @@ def preview_text(ctx, e, count=1):
         options = '; '.join(f"{cp.STATIONS[t]['name']} ×{production_balance.outputs_at(s, cp, e.id, t).get(e.output, e.quantity)}" for t in e.tags)
         lines.append(f'• Batch size by workstation: {options}')
         if ctx.p is not None:
-            lines.append('• ' + production_balance.quote(m, ctx.db, ctx.p, e.id))
+            lines.append('• ' + production_balance.quote(ctx.db, ctx.p, e.id))
     else:
-        lines.append('• ' + legacy_effect(m, e.id))
+        lines.append('• ' + legacy_effect(e.id))
     lines += ['', 'REQUIREMENTS']
     base_tier = s.base_tier(e.id) if e.kind == 'seed' else cp.STATIONS[e.tags[0]]['tier']
     tier_ok = ctx.tier >= base_tier
@@ -594,7 +592,7 @@ def preview_text(ctx, e, count=1):
         lines.append(line)
     energy = task_energy('rare' if e.kind == 'seed' and any(k in cp.RARE for k in s.RECIPES[e.id]['outputs']) else 'make')
     lines += ['', 'COST PER BATCH', f"{need_cost_text(energy)} · 5-second workshop cooldown · ingredients are used only on success"]
-    users = used_for(m, e.output)
+    users = used_for(e.output)
     if users:
         lines += ['', f'USED IN {len(users)} RECIPES', ', '.join(users[:8]) + (' …' if len(users) > 8 else '')]
     lines += ['', 'Craft one batch now, or queue up to 10 batches with the buttons below '
@@ -602,7 +600,7 @@ def preview_text(ctx, e, count=1):
     return '\n'.join(line for line in lines if line is not None)
 
 
-def legacy_effect(m, key):
+def legacy_effect(key):
     from .game.rules import ITEM_EFFECTS, QUALITY_RECIPES, SKILL_LABELS
     if key in QUALITY_RECIPES:
         data = QUALITY_RECIPES[key]
@@ -617,7 +615,6 @@ def queue_plan_text(ctx, e, count):
     from .game.life import life_state
     from .game.players import resource_name
     from .needs import cost_text as need_cost_text, finish_forecast
-    m = ctx.m
     lines = [f'⏱️ QUEUE {count} × {e.name.upper()}', f'Output: up to {ctx.batch_size(e) * count} {e.name} ({ctx.batch_size(e)} per successful batch).', '',
              'INGREDIENTS FOR THE WHOLE QUEUE · have / need']
     if not e.inputs:
@@ -627,7 +624,7 @@ def queue_plan_text(ctx, e, count):
         total = n * count
         lines.append(f"{'✅' if have >= total else '⚠️'} {resource_name(k)} {have}/{total}" + ('' if have >= total else f' — enough for {have // n} batch(es); the queue pauses when it runs out'))
     # Same per-attempt cost and pace the queue worker uses (rare outputs are heavier).
-    _, energy, interval = task_queue.specification(m, 'make:' + e.id)
+    _, energy, interval = task_queue.specification('make:' + e.id)
     need = finish_forecast(energy, count)
     life = life_state(ctx.db, ctx.p)
     lines += ['', 'NEEDS · now / needed to finish without recovery',
@@ -637,8 +634,8 @@ def queue_plan_text(ctx, e, count):
     return '\n'.join(lines)
 
 
-def guide_lines(m, db, p, provider):
-    ctx = Context(m, db, p, provider)
+def guide_lines(db, p, provider):
+    ctx = Context(db, p, provider)
     prefix = '/' if provider == 'discord' else '!'
     easy = start_here(ctx, 2)
     lines = [f"🛠️ Workbench: {tier_line(ctx)}."]
@@ -651,8 +648,8 @@ def guide_lines(m, db, p, provider):
     return lines
 
 
-def next_step(m, db, p, provider):
-    ctx = Context(m, db, p, provider)
+def next_step(db, p, provider):
+    ctx = Context(db, p, provider)
     easy = start_here(ctx, 1)
     prefix = '/' if provider == 'discord' else '!'
     if easy:
@@ -663,7 +660,7 @@ def next_step(m, db, p, provider):
 def station_rows(ctx, query=''):
     q = str(query or '').casefold()
     counts = {}
-    for e in index(ctx.m):
+    for e in index():
         for t in e.tags:
             counts[t] = counts.get(t, 0) + 1
     rows = []

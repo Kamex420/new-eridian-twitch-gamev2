@@ -47,7 +47,7 @@ def test_status_shows_needs_queue_ready_recipes_and_next_step():
 
 def test_status_panel_offers_recover_only_when_blocked():
     citizen()
-    panel = ui.slash_panel(m, 'status', '111', 'Kam', {}, '📊 STATUS\nbody')
+    panel = ui.slash_panel('status', '111', 'Kam', {}, '📊 STATUS\nbody')
     assert {'Refresh', 'Ready now', 'Favourites', 'Workbench', 'Queue'} <= set(labels(panel))
     assert 'Recover now' not in labels(panel)
     set_life(energy=5)
@@ -81,26 +81,26 @@ def test_favourite_button_sets_state_idempotently_and_marks_lists():
     assert 'already a favourite' in json.dumps(press(star)['data']['embeds'][0], ensure_ascii=False)
     db, p = player()
     with db:
-        assert qol.favorite_ids(m, db, p) == [CAMPFIRE.id]
-        ctx = wb.Context(m, db, p)
+        assert qol.favorite_ids(db, p) == [CAMPFIRE.id]
+        ctx = wb.Context(db, p)
         assert wb.choice_label(ctx, CAMPFIRE).startswith('✅⭐')
         assert wb.in_view(ctx, 'favorites') == [CAMPFIRE]
         assert wb.in_view(ctx, 'ready')[0] == CAMPFIRE
     press(ui.cid('111', 'fv', CAMPFIRE.id, 0, '', 1, ''))
     db, p = player()
     with db:
-        assert qol.favorite_ids(m, db, p) == []
+        assert qol.favorite_ids(db, p) == []
 
 
 def test_favourites_are_capped():
     citizen()
     db, p = player()
     with db:
-        ids = [e.id for e in wb.index(m)][:qol.MAX_FAVORITES + 1]
+        ids = [e.id for e in wb.index()][:qol.MAX_FAVORITES + 1]
         for rid in ids[:-1]:
-            qol.set_favorite(m, db, p, rid, True)
-        assert 'Remove one' in qol.set_favorite(m, db, p, ids[-1], True)
-        assert len(qol.favorite_ids(m, db, p)) == qol.MAX_FAVORITES
+            qol.set_favorite(db, p, rid, True)
+        assert 'Remove one' in qol.set_favorite(db, p, ids[-1], True)
+        assert len(qol.favorite_ids(db, p)) == qol.MAX_FAVORITES
 
 
 def test_ready_now_view_lists_only_ready_recipes_on_every_platform():
@@ -110,7 +110,7 @@ def test_ready_now_view_lists_only_ready_recipes_on_every_platform():
     assert 'Ready Now' in text and 'Campfire' in text
     db, p = player()
     with db:
-        ctx = wb.Context(m, db, p)
+        ctx = wb.Context(db, p)
         assert all(ctx.status(e).code == 'ready' for e in wb.in_view(ctx, 'ready'))
     assert wb.normalize_category('Ready now') == 'ready' and wb.normalize_category('favs') == 'favorites'
     with m.SessionLocal() as db:
@@ -164,13 +164,13 @@ def test_buy_missing_buys_only_the_shortfall():
     citizen(lumber=0)
     db, p = player()
     with db:
-        ctx = wb.Context(m, db, p)
+        ctx = wb.Context(db, p)
         assert [r['key'] for r in qol.fetch_routes(ctx, CAMPFIRE, 1) if r['price']] == [LUMBER]
         sc = p.sc
-        qol.buy_missing(m, db, p, CAMPFIRE, 1)
+        qol.buy_missing(db, p, CAMPFIRE, 1)
     db, p = player()
     with db:
-        ctx = wb.Context(m, db, p)
+        ctx = wb.Context(db, p)
         assert p.sc < sc
         assert not [r for r in qol.fetch_routes(ctx, CAMPFIRE, 1) if r['price']]
 
@@ -210,10 +210,10 @@ def test_repeat_restarts_the_last_queue_and_is_offered_everywhere():
     advance()
     with m.SessionLocal() as db:
         p = db.query(m.Player).one()
-        buttons = labels({'components': ui.queue_components(m, db, p, '123')})
+        buttons = labels({'components': ui.queue_components(db, p, '123')})
         assert 'Repeat ×1' in buttons
         notice = db.query(n.Notice).one()
-    alert = ui.alert_components(m, SimpleNamespace(id=notice.id, recipient='123', content=notice.content))
+    alert = ui.alert_components(SimpleNamespace(id=notice.id, recipient='123', content=notice.content))
     assert 'Repeat ×1' in labels({'components': alert})
     again = m.queued_tasks('test', 'u', action='repeat', provider='discord').body.decode()
     assert 'RUNNING' in again
@@ -280,11 +280,11 @@ def test_auto_recover_eats_the_cheapest_food_and_notes_failures():
         m.life_state(db, p).nutrition = 5
         db.commit()
         cheapest = min(m.edible_inventory(db, p), key=lambda r: (r['gain'], r['name']))['key']
-        before = s.stock(m, db, p).get(cheapest, 0)
-        notes = qol.recover(m, db, p, 'test', p.twitch_uid)
+        before = s.stock(db, p).get(cheapest, 0)
+        notes = qol.recover(db, p, 'test', p.twitch_uid)
         db.expire_all()
         assert any(x.startswith('Ate ') for x in notes)
-        assert s.stock(m, db, p).get(cheapest, 0) == before - 1
+        assert s.stock(db, p).get(cheapest, 0) == before - 1
 
 
 # ---------------------------------------------------------------- alert preferences
@@ -304,7 +304,7 @@ def test_quiet_and_off_alerts_skip_messages_but_keep_results():
     m.queued_tasks('test', 'u', action='cancel', provider='discord')
     with m.SessionLocal() as db:
         assert db.query(n.Notice).count() == 0
-        assert 'alerts are off' in q.status(m, db, db.query(m.Player).one(), db.query(q.TaskQueue).one())
+        assert 'alerts are off' in q.status(db, db.query(m.Player).one(), db.query(q.TaskQueue).one())
 
 
 def test_dm_alerts_are_marked_and_twitch_cannot_choose_dm():
@@ -332,7 +332,7 @@ def test_dm_delivery_sends_privately_and_closed_dms_stay_out_of_the_channel(monk
     dm.send = AsyncMock(return_value=SimpleNamespace(id=1))
     user = SimpleNamespace(create_dm=AsyncMock(return_value=dm))
     client = SimpleNamespace(get_user=lambda _: user, get_channel=lambda _: None, http=_http())
-    asyncio.run(w.send_notice(m, client, _notice(n.DM_PREFIX + '456')))
+    asyncio.run(w.send_notice(client, _notice(n.DM_PREFIX + '456')))
     route, = client.http.request.call_args.args
     body = client.http.request.call_args.kwargs['json']
     assert route.url.endswith('/channels/789/messages') and not dm.send.await_count
@@ -348,13 +348,13 @@ def test_dm_delivery_sends_privately_and_closed_dms_stay_out_of_the_channel(monk
         assert m.inbox.unread_count(db, notice.channel_id, uid) == 0                 # a DM counts as seen
         row = SimpleNamespace(id=notice.id, recipient='123', message_channel=n.DM_PREFIX + '456',
                               content=notice.content, channel_id=notice.channel_id)
-    monkeypatch.setattr(m.inbox, '_canonical', lambda m_, db_, discord_uid: uid)   # Discord user 123 is that citizen
+    monkeypatch.setattr(m.inbox, '_canonical', lambda db_, discord_uid: uid)   # Discord user 123 is that citizen
     room = MagicMock(spec=discord.TextChannel)
     room.id = 456
     room.send = AsyncMock(return_value=SimpleNamespace(id=2))
     closed = SimpleNamespace(create_dm=AsyncMock(side_effect=discord.Forbidden(SimpleNamespace(status=403, reason='x'), 'closed')))
     client = SimpleNamespace(get_user=lambda _: closed, get_channel=lambda _: room, http=_http())
-    asyncio.run(w.send_notice(m, client, row))
+    asyncio.run(w.send_notice(client, row))
     assert not client.http.request.await_count and not room.send.await_count
     with m.SessionLocal() as db:
         assert m.inbox.unread_count(db, row.channel_id, uid) == 1
@@ -373,7 +373,7 @@ def test_alert_buttons_reach_the_discord_view():
     room.id = 456
     room.send = AsyncMock(return_value=SimpleNamespace(id=1))
     client = SimpleNamespace(get_channel=lambda _: room, http=_http())
-    asyncio.run(w.send_notice(m, client, row))
+    asyncio.run(w.send_notice(client, row))
     body = client.http.request.call_args.kwargs['json']
     assert {'Repeat ×1', 'Status', 'Queue'} <= {c.get('label') for c in layout_v2.controls(body)}
 
@@ -385,16 +385,16 @@ def test_sell_all_and_clearout_protect_favourite_ingredients():
     db, p = player()
     with db:
         m.material_change(db, p, STONE_DUST, 45)
-        qol.set_favorite(m, db, p, CAMPFIRE.id, True)
+        qol.set_favorite(db, p, CAMPFIRE.id, True)
         db.commit()
     preview = m.clearout(W, '111', 'Kam', '', 'discord').body.decode()
     assert 'Stone Dust ×25' in preview and 'Lumber' not in preview.split('WOULD SELL')[1]
-    panel = ui.slash_panel(m, 'seedindustries', '111', 'Kam', {'action': 'clearout'}, preview)
+    panel = ui.slash_panel('seedindustries', '111', 'Kam', {'action': 'clearout'}, preview)
     sell = find(panel, 'Sell for')['custom_id']
     press(sell)
     db, p = player()
     with db:
-        have = s.stock(m, db, p)
+        have = s.stock(db, p)
         assert have.get(STONE_DUST) == qol.CLEAROUT_RESERVE and have.get(LUMBER) == 50
     result = m.sell_all_items(W, '111', 'Kam', 'lumbr', 'discord').body.decode()
     assert 'sold all 50 Lumber' in result and 'favourite Campfire uses Lumber' in result
@@ -450,7 +450,7 @@ def test_tier_up_is_announced(monkeypatch):
     monkeypatch.setattr(wb.Context, '__init__', init)
     db, p = player()
     with db:
-        assert 'Personal Tier 2' in qol.action_hint(m, db, p, 'discord', tier_before=1)
+        assert 'Personal Tier 2' in qol.action_hint(db, p, 'discord', tier_before=1)
 
 
 def test_settings_view_and_twitch_text():
@@ -469,12 +469,12 @@ def test_old_default_alerts_move_to_direct_messages_once():
         qol.prefs(db, W, 'a', create=True).alerts = 'mention'          # the old default
         db.commit()
         assert qol.alert_mode(db, W, 'new') == 'dm'                     # the new default
-    qol.quiet_channel_once(m)
+    qol.quiet_channel_once()
     with m.SessionLocal() as db:
         assert qol.alert_mode(db, W, 'a') == 'dm'
         qol.prefs(db, W, 'a').alerts = 'mention'                        # chosen again afterwards: kept
         db.commit()
-    qol.quiet_channel_once(m)
+    qol.quiet_channel_once()
     with m.SessionLocal() as db:
         assert qol.alert_mode(db, W, 'a') == 'mention'
 

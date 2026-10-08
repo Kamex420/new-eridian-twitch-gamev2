@@ -378,8 +378,8 @@ REPEATABLE = {'eatfull', 'relax', 'sleep', 'games', 'walk', 'meal', 'recover', '
 class Ctx:
     """What one citizen has and can do, read once per screen. Every rule mirrors the check the command itself
     makes, so a hidden button is one the game would refuse, and it reappears as soon as the citizen can use it."""
-    def __init__(self, m, db, p, uid):
-        self.m, self.db, self.p, self.uid, self._cache = m, db, p, uid, {}
+    def __init__(self, db, p, uid):
+        self.db, self.p, self.uid, self._cache = db, p, uid, {}
 
     def get(self, name, make):
         if name not in self._cache:
@@ -396,7 +396,7 @@ class Ctx:
         return self.get('eq:' + str(key), lambda: equipment_count(self.db, self.p, key) > 0)
 
     def has(self, source):
-        return self.get('has:' + source, lambda: bool(choices(self.m, self.db, self.p, source, self.uid)))
+        return self.get('has:' + source, lambda: bool(choices(self.db, self.p, source, self.uid)))
 
     def queue(self):
         from . import task_queue
@@ -438,7 +438,7 @@ class Ctx:
 
     def challenge_active(self):
         from . import live_events
-        return self.get('challenge', lambda: live_events.active(self.m, self.db) is not None)
+        return self.get('challenge', lambda: live_events.active(self.db) is not None)
 
     def event_active(self):
         from .game.players import world
@@ -491,7 +491,7 @@ def _has_power_cell(c):
 
 def _rare_unlocked(c):
     from . import crafting_progression
-    return crafting_progression.rare_unlocked(c.m, c.db, c.p)
+    return crafting_progression.rare_unlocked(c.db, c.p)
 
 
 def _result_style(c):
@@ -559,29 +559,29 @@ def can(ctx, key):
     return ctx.get('can:' + key, lambda: bool(rule[0](ctx)))
 
 
-def context(m, uid, db=None, p=None):
-    return Ctx(m, db, p, uid) if db is not None and p is not None else None
+def context(uid, db=None, p=None):
+    return Ctx(db, p, uid) if db is not None and p is not None else None
 
 
-def with_context(m, uid, fn, name='Citizen'):
+def with_context(uid, fn, name='Citizen'):
     """For callers without a session: open one, read what the citizen can do, and close it."""
     from .game.players import player
     with SessionLocal() as db:
         p = player(db, runtime.DISCORD_WORLD_ID, 'discord', uid, name)[1]
-        result = fn(Ctx(m, db, p, uid))
+        result = fn(Ctx(db, p, uid))
         db.commit()
         return result
 
 
 # ---------------------------------------------------------------- building blocks
 
-def _button(m, owner, key, compact=False):
+def _button(owner, key, compact=False):
     if key in AREAS:
         emoji, title, _, _ = AREAS[key]
         return ui.button(title, ui.cid(owner, 'mn', key), style=1, emoji=emoji)
     item = LEAVES[key]
     if item['kind'] == 'do':
-        ticket = ui.issue(m, owner, {'do': 'cmd', 'leaf': key})
+        ticket = ui.issue(owner, {'do': 'cmd', 'leaf': key})
         return ui.button(item['label'], ui.cid(owner, 't', ticket), style=item.get('style', 3), emoji=item['emoji'])
     if item['kind'] == 'nav':
         return ui.button(item['label'], ui.cid(owner, *item['nav']), emoji=item['emoji'])
@@ -591,9 +591,9 @@ def _button(m, owner, key, compact=False):
     return ui.button(item['label'], ui.cid(owner, verb, key), emoji=item['emoji'])
 
 
-def grid(m, owner, keys, rows=4):
+def grid(owner, keys, rows=4):
     """Buttons five per row, at most `rows` rows."""
-    buttons = [_button(m, owner, key) for key in keys][:rows * 5]
+    buttons = [_button(owner, key) for key in keys][:rows * 5]
     return [ui.row(*buttons[i:i + 5]) for i in range(0, len(buttons), 5)]
 
 
@@ -605,17 +605,17 @@ def nav(owner, area, up=None):
     return ui.row(ui.back_button(owner, 'mn', up or PARENT.get(area, 'home')), ui.button('Menu', ui.cid(owner, 'mn', 'home'), emoji='🏠'))
 
 
-def children_of(m, area, ctx=None):
+def children_of(area, ctx=None):
     """An area's buttons: moderator tools only for the game owner, and (given a citizen) only what they can use now."""
     keys = AREAS[area][3]
-    if area == 'home' and not ui.is_moderator(m):
+    if area == 'home' and not ui.is_moderator():
         keys = [k for k in keys if k not in MOD_AREAS]
-    if not ui.is_owner(m):
+    if not ui.is_owner():
         keys = [k for k in keys if k not in OWNER_ONLY]
     return [k for k in keys if can(ctx, k)]
 
 
-def unavailable(m, area, ctx):
+def unavailable(area, ctx):
     """(label, reason) for this area's buttons hidden right now, so nothing seems to vanish without a reason."""
     if ctx is None:
         return []
@@ -627,19 +627,19 @@ def unavailable(m, area, ctx):
     return out
 
 
-def area_text(m, db, p, area, ctx=None):
+def area_text(db, p, area, ctx=None):
     from . import qol
     from .game.life import life_state
     emoji, title, text, _ = AREAS[area]
-    ctx = ctx or context(m, p.twitch_uid if p is not None else '', db, p)
-    children = children_of(m, area, ctx)
+    ctx = ctx or context(p.twitch_uid if p is not None else '', db, p)
+    children = children_of(area, ctx)
     lines = [f'{emoji} {title.upper()}', text, '']
     if area == 'home' and p is not None:
         life = life_state(db, p)
         lines = [f'{emoji} NEW ERIDIAN — {p.display_name}',
                  f'⚡ {life.energy} · 🍲 {life.nutrition} · 💬 {life.social} · 🛋️ {life.comfort} · 🪙 {p.sc} SC',
-                 qol.queue_summary(m, db, p, 'discord')[0].split('\n')[0], '', text, '']
-        step = (ctx.get('home_next', lambda: home_next(m, db, p)) if ctx is not None else home_next(m, db, p))
+                 qol.queue_summary(db, p, 'discord')[0].split('\n')[0], '', text, '']
+        step = (ctx.get('home_next', lambda: home_next(db, p)) if ctx is not None else home_next(db, p))
         lines.insert(3, step['line'])
     for key in children:
         if key in AREAS:
@@ -649,24 +649,24 @@ def area_text(m, db, p, area, ctx=None):
             item = LEAVES[key]
             if item['hint']:
                 lines.append(f"{item['emoji']} **{item['label']}** — {item['hint']}")
-    locked = unavailable(m, area, ctx)
+    locked = unavailable(area, ctx)
     if locked:
         lines += ['', '🔒 Not available right now: ' + ' · '.join(f'{label} ({why})' for label, why in locked)]
     return '\n'.join(lines).rstrip()
 
 
-def area_components(m, owner, area, ctx=None):
-    rows = grid(m, owner, children_of(m, area, ctx))
+def area_components(owner, area, ctx=None):
+    rows = grid(owner, children_of(area, ctx))
     return rows + [nav(owner, area)]
 
 
-def area_items(m, area, ctx, rows):
+def area_items(area, ctx, rows):
     """Each button of an area beside the line that explains it (see ui.with_items).
 
     The button carries the name (Work, Relax, Status…), so beside it the line keeps only its
     emoji and what it does. Areas are blue, actions green, views grey.
     """
-    keys = children_of(m, area, ctx)
+    keys = children_of(area, ctx)
     buttons = [c for r in rows[:-1] if r for c in r.get('components') or []]
     items = []
     for key, b in zip(keys, buttons):
@@ -695,7 +695,7 @@ def crumb(area, tail=''):
 ONBOARDING_LEAF = {'gather': 'gather', 'eat': 'eat', 'job': 'job', 'queue': 'queue', 'seedling': 'seedling'}
 
 
-def home_next(m, db, p):
+def home_next(db, p):
     """The one thing to do next, for the top of Home: get needs back up, finish the first steps,
     the goal's next step, or choose a goal. A dict with 'line' and what its button does (home_button)."""
     from . import extras, onboarding
@@ -705,34 +705,34 @@ def home_next(m, db, p):
     if blocked_needs(life):
         return {'line': '➡️ **Next step** — recover your needs: work and crafting wait until they are back up', 'do': {'do': 'recover'},
                 'label': 'Recover'}
-    first = onboarding.row(m, db, p) if onboarding.ENABLED else None
+    first = onboarding.row(db, p) if onboarding.ENABLED else None
     if first is not None and not first.finished:
         key = onboarding.next_step(first)
         _, goal, _, _, sc, _ = onboarding.INFO[key]
         line = f'➡️ **Next step** — {goal} · first steps {len(onboarding.done_of(first))}/{len(onboarding.STEPS)}, +{sc} SC'
         if key == 'craft':
             from . import crafting_progression as cp
-            e = next((x for x in wb.index(m) if x.name == 'Campfire' and cp.SURVIVAL in x.tags), None)
+            e = next((x for x in wb.index() if x.name == 'Campfire' and cp.SURVIVAL in x.tags), None)
             if e is not None:
                 return {'line': line, 'view': ('wr', e.id, e.category, 1, ''), 'label': 'Campfire'}
             return {'line': line, 'view': ('wh',), 'label': 'Workbench'}
         leaf_ = ONBOARDING_LEAF[key]
         return {'line': line, 'key': leaf_, 'label': AREAS[leaf_][1] if leaf_ in AREAS else LEAVES[leaf_]['label']}
-    e, steps = extras.walkthrough(m, db, p)
+    e, steps = extras.walkthrough(db, p)
     if steps:
         return {'line': f"➡️ **Next step** — {steps[0]['name']} · for your goal: {e.name}", 'step': steps[0]}
     return {'line': '➡️ **Next step** — choose a goal: open any recipe and press 🎯 Set goal; the goal then walks you through every step',
             'view': ('wc', 'ready', 1, ''), 'label': 'Find a goal'}
 
 
-def home_button(m, owner, step):
+def home_button(owner, step):
     """The button for home_next's step (a one-time ticket when it does something)."""
     if 'step' in step:
-        return ui.step_button(m, owner, step['step'], first=True)
+        return ui.step_button(owner, step['step'], first=True)
     if 'do' in step:
-        return ui.button(step['label'], ui.cid(owner, 't', ui.issue(m, owner, step['do'])), style=3)
+        return ui.button(step['label'], ui.cid(owner, 't', ui.issue(owner, step['do'])), style=3)
     if 'key' in step:
-        b = dict(_button(m, owner, step['key']))
+        b = dict(_button(owner, step['key']))
         b.pop('emoji', None)
         b['label'] = step['label']
         if b.get('style') != 3:
@@ -741,28 +741,28 @@ def home_button(m, owner, step):
     return ui.button(step['label'], ui.cid(owner, *step['view']), style=1)
 
 
-def area_message(m, db, p, owner, area, ctx=None):
+def area_message(db, p, owner, area, ctx=None):
     """An area's card: each button beside the line that explains it (in Discord's newer layout)."""
-    ctx = ctx or context(m, owner, db, p)
-    rows = area_components(m, owner, area, ctx)
-    text = area_text(m, db, p, area, ctx)
-    items = area_items(m, area, ctx, rows)
+    ctx = ctx or context(owner, db, p)
+    rows = area_components(owner, area, ctx)
+    text = area_text(db, p, area, ctx)
+    items = area_items(area, ctx, rows)
     if area == 'home' and p is not None:
-        rows, items = with_next(m, db, p, owner, ctx, rows, items)
-    data = ui.message(m, text, rows, 'menu', items)
+        rows, items = with_next(db, p, owner, ctx, rows, items)
+    data = ui.message(text, rows, 'menu', items)
     return ui.with_crumb(data, crumb(area)) if area != 'home' else dict(data, _home=True)
 
 
-def with_next(m, db, p, owner, ctx, rows, items):
+def with_next(db, p, owner, ctx, rows, items):
     """Home's next-step button: beside its line in the newer layout, the first row in the old one."""
-    step = ctx.get('home_next', lambda: home_next(m, db, p)) if ctx is not None else home_next(m, db, p)
-    b = home_button(m, owner, step)
+    step = ctx.get('home_next', lambda: home_next(db, p)) if ctx is not None else home_next(db, p)
+    b = home_button(owner, step)
     if b is None:
         return rows, items
     return [ui.row(b)] + [r for r in rows if r], [{'match': '**Next step**', 'button': b}] + items
 
 
-def reply(m, text, command, rows):
+def reply(text, command, rows):
     """A result card (with Details pages when long) followed by menu rows; five rows at most."""
     data = runtime._discord_json_message(text, message_type=command)['data']
     own = [r for r in (data.get('components') or []) if r and r.get('components')]
@@ -775,7 +775,7 @@ def reply(m, text, command, rows):
 
 # ---------------------------------------------------------------- choice lists
 
-def choices(m, db, p, source, uid):
+def choices(db, p, source, uid):
     """(label, value) rows for a leaf's dropdown, at most 25."""
     from . import inbox, qol, seasons, seed_content, task_queue, trophies, votes, workbench
     from .game.cooldowns_materials import available_production_orders
@@ -794,21 +794,21 @@ def choices(m, db, p, source, uid):
     if source == 'hobby':
         return [(c['name'], c['value']) for c in DISCORD_OPTION_SCHEMA['hobby'][0]['choices']]
     if source == 'use':
-        rows = seed_content.choices(m, db, p, owned=True, usable=True)
+        rows = seed_content.choices(db, p, owned=True, usable=True)
         owned = owned_life_items(db, p)
         rows += [(QUALITY_RECIPES[k]['name'] + f" ×{sum(r.qty for r in v)}", k) for k, v in owned.items() if v]
         return rows
     if source == 'ore':
         return ore_choice_rows(db, p)
     if source == 'resource':
-        return [row for row in seed_content.choices(m, db, p, gather_only=True) if row[1] not in task_queue.ores()]
+        return [row for row in seed_content.choices(db, p, gather_only=True) if row[1] not in task_queue.ores()]
     if source == 'sell':
-        stock = seed_content.stock(m, db, p)
-        rows = [(k, n, qol.sell_price(m, k)) for k, n in stock.items() if n > 0 and qol.sell_price(m, k)]
+        stock = seed_content.stock(db, p)
+        rows = [(k, n, qol.sell_price(k)) for k, n in stock.items() if n > 0 and qol.sell_price(k)]
         rows.sort(key=lambda r: -r[1] * r[2])
         return [(f'{resource_name(k)} ×{n} — {n * price} SC', k) for k, n, price in rows]
     if source == 'owned':
-        stock = seed_content.stock(m, db, p)
+        stock = seed_content.stock(db, p)
         return [(f'{resource_name(k)} ×{n}', k) for k, n in sorted(stock.items(), key=lambda kv: -kv[1]) if n > 0 and k in seed_content.ACTIVE]
     if source == 'order':
         clock = world_clock(db, p.channel_id)
@@ -828,7 +828,7 @@ def choices(m, db, p, source, uid):
         _, command, field = source.split(':', 2)
         return [(c['name'], c['value']) for f in DISCORD_OPTION_SCHEMA.get(command, []) if f['name'] == field for c in f.get('choices', [])]
     if source == 'buy':
-        stock = seed_content.stock(m, db, p)
+        stock = seed_content.stock(db, p)
         rows = [(k, d) for k, d in SEED_INDUSTRIES.items() if d.get('buy', 0) > 0]
         rows.sort(key=lambda kv: (kv[1].get('category', 'legacy') != 'seed', market_item_label(kv[0])))
         return [(f"{market_item_label(k)} — {d['buy']} SC · you have {stock.get(k, 0)}", k) for k, d in rows]
@@ -836,7 +836,7 @@ def choices(m, db, p, source, uid):
         found = _discord_gear_autocomplete({'member': {'user': {'id': uid}}, 'data': {}}, '')
         return [(c['name'], c['value']) for c in found['data']['choices']]
     if source == 'station':
-        return list(workbench.station_rows(wb.Context(m, db, p), ''))
+        return list(workbench.station_rows(wb.Context(db, p), ''))
     if source == 'player_name':
         found = _discord_player_autocomplete({'member': {'user': {'id': uid}}, 'data': {'name': 'linklookup'}}, '')
         return [(c['name'], c['value']) for c in found['data']['choices']]
@@ -852,7 +852,7 @@ def choices(m, db, p, source, uid):
         return [(f"{k.capitalize()}{' (current)' if k == now else ''} — {d}", k) for k, d in inbox.POPUP_MODES.items()]
     if source == 'ballot':
         import json
-        row = votes.ballot(m, db)
+        row = votes.ballot(db)
         counts = votes.tally(db, row)
         return [(f"{i}. {votes.label(o)[0]} {votes.label(o)[1]} — {c} vote{'s' if c != 1 else ''}", str(i))
                 for i, (o, c) in enumerate(zip(json.loads(row.options), counts), 1)]
@@ -861,7 +861,7 @@ def choices(m, db, p, source, uid):
         return [(f"{seasons.HATS[h][0]} {seasons.HATS[h][1]}{' (wearing)' if h == worn else ''}", h) for h in owned if h in seasons.HATS] + \
             ([('💼 My job hat', 'job')] if owned else [])
     if source == 'badges':
-        trophies._build(m)
+        trophies._build()
         mine = trophies.owned(db, p)
         return [(f"{t['emoji']} {t['name']}", k) for k, t in trophies.TROPHIES.items() if k in mine]
     if source.startswith('choices:'):
@@ -873,9 +873,9 @@ def choices(m, db, p, source, uid):
 PAGE = 23   # dropdown rows per page, leaving room for Previous / Next
 
 
-def pick_view(m, db, p, owner, key, page=1):
+def pick_view(db, p, owner, key, page=1):
     item = LEAVES[key]
-    everything = choices(m, db, p, item['pick'], owner)
+    everything = choices(db, p, item['pick'], owner)
     pages = max(1, -(-len(everything) // PAGE)) if len(everything) > 25 else 1
     page = max(1, min(page, pages))
     rows = everything[:25] if pages == 1 else everything[(page - 1) * PAGE:page * PAGE]
@@ -897,9 +897,9 @@ def pick_view(m, db, p, owner, key, page=1):
     return text, [menu, nav(owner, area, area)]
 
 
-def pick_message(m, db, p, owner, key, page=1):
+def pick_message(db, p, owner, key, page=1):
     """A choice list: in the newer layout each choice gets its own button when the list fits on one card."""
-    text, rows = pick_view(m, db, p, owner, key, page)
+    text, rows = pick_view(db, p, owner, key, page)
     item = LEAVES[key]
     select = next((r['components'][0] for r in rows if r and r.get('components') and r['components'][0].get('type') == 3), None)
     items = []
@@ -913,7 +913,7 @@ def pick_message(m, db, p, owner, key, page=1):
                 break
             head, sep, tail = o['label'].partition(' — ')
             items.append({'line': f'**{head}**' + (f' — {tail}' if sep else ''), 'button': b})
-    data = ui.message(m, text, rows, 'menu', items, [select['custom_id']] if items else ())
+    data = ui.message(text, rows, 'menu', items, [select['custom_id']] if items else ())
     return ui.with_crumb(data, crumb(PARENT.get(key, 'home'), item['label'].rstrip('…')))
 
 
@@ -931,7 +931,7 @@ def options_for(key, value=None):
 MERGED = {'training': ('mk', 'trainskill')}
 
 
-def navigate(m, db, p, owner, verb, args, values, name):
+def navigate(db, p, owner, verb, args, values, name):
     """Handle mn/mv/mk/mp controls. Returns message data, or None when the choice must run as an action."""
     from . import extras, keep_levels
     from .game.players import as_utc
@@ -941,70 +941,70 @@ def navigate(m, db, p, owner, verb, args, values, name):
             actions = extras.recent(db, p.channel_id, p.twitch_uid)
             text = '🔁 RECENT ACTIONS\nTap one to do it again. Each button works once; the result brings fresh buttons.\n\n' + (
                 '\n'.join(f'• {a.label} · <t:{int(as_utc(a.created_at).timestamp())}:R>' for a in actions) or 'Nothing yet. Actions you take appear here.')
-            rows = ui.recent_components(m, db, p, owner)
+            rows = ui.recent_components(db, p, owner)
             buttons = [c for r in rows[:-1] for c in r['components']]
             items = [{'match': f'{a.label} · <t:', 'button': dict(b, label='Again')} for a, b in zip(actions, buttons)]
-            return ui.message(m, text, rows, 'menu', items)
-        return area_message(m, db, p, owner, area)
+            return ui.message(text, rows, 'menu', items)
+        return area_message(db, p, owner, area)
     key = args[0] if args else ''
     if key in MERGED and verb in {'mv', 'mk'}:
         verb, key = MERGED[key]
     if key not in LEAVES:
-        return ui.message(m, 'That button is no longer available. Here is the menu.', area_components(m, owner, 'home', context(m, owner, db, p)), 'menu')
+        return ui.message('That button is no longer available. Here is the menu.', area_components(owner, 'home', context(owner, db, p)), 'menu')
     item = LEAVES[key]
     area = PARENT.get(key, 'home')
     if key in OWNER_ONLY:
-        return ui.extra_view(m, db, p, owner, 'xk', [], [], name)
+        return ui.extra_view(db, p, owner, 'xk', [], [], name)
     if verb == 'mv':
         command, options = options_for(key)
-        return show(m, db, p, owner, command, options, area, name, key)
+        return show(db, p, owner, command, options, area, name, key)
     if verb == 'mk':
-        return pick_message(m, db, p, owner, key)
+        return pick_message(db, p, owner, key)
     if verb == 'mp' and values and str(values[0]).startswith('__page:'):
-        return pick_message(m, db, p, owner, key, int(values[0].split(':', 1)[1] or 1))
+        return pick_message(db, p, owner, key, int(values[0].split(':', 1)[1] or 1))
     if verb == 'ma':
-        return amount_view(m, db, p, owner, key, args[1] if len(args) > 1 else '')
+        return amount_view(db, p, owner, key, args[1] if len(args) > 1 else '')
     if verb == 'mp':
         value = values[0] if values else ''
         then = item.get('then')
         if then == 'amount':
-            return amount_view(m, db, p, owner, key, value)
+            return amount_view(db, p, owner, key, value)
         if then == 'view':
             command, options = options_for(key, value)
             if key == ui.TRAIN_PICK:
                 options.update(ui.training_options(value))      # 'medicine~2': the skill's second page of tasks
-            return show(m, db, p, owner, command, options, area, name, key)
+            return show(db, p, owner, command, options, area, name, key)
         if then == 'leaf' and value in LEAVES and LEAVES[value]['kind'] == 'view':
             command, options = options_for(value)
-            return show(m, db, p, owner, command, options, area, name, value)
+            return show(db, p, owner, command, options, area, name, value)
         if then == 'confirm':
-            ticket = ui.issue(m, owner, {'do': 'cmd', 'leaf': key, 'value': value})
-            label = dict((v, l) for l, v in choices(m, db, p, item['pick'], owner)).get(value, value)
+            ticket = ui.issue(owner, {'do': 'cmd', 'leaf': key, 'value': value})
+            label = dict((v, l) for l, v in choices(db, p, item['pick'], owner)).get(value, value)
             text = f"{item['emoji']} CONFIRM\n{item['label'].rstrip('…')} **{label}**?\nNothing happens until you press Confirm."
             later = None
             if key == 'sell':
-                later = ui.button('Sell it after my queue', ui.cid(owner, 't', ui.issue(m, owner, {'do': 'sellstep', 'item': value})), emoji='🗺️')
-                kept = keep_levels.keep_for(m, db, p, value)
+                later = ui.button('Sell it after my queue', ui.cid(owner, 't', ui.issue(owner, {'do': 'sellstep', 'item': value})), emoji='🗺️')
+                kept = keep_levels.keep_for(db, p, value)
                 if kept:
                     text += f'\n🛡️ Your keep level keeps {kept}; only the rest is sold.'
-            return ui.message(m, text, [ui.row(ui.button('Confirm', ui.cid(owner, 't', ticket), style=3, emoji='✔️'), later,
+            return ui.message(text, [ui.row(ui.button('Confirm', ui.cid(owner, 't', ticket), style=3, emoji='✔️'), later,
                                                ui.back_button(owner, 'mk', key),
                                                ui.button('Menu', ui.cid(owner, 'mn', 'home'), emoji='🏠'))], 'menu')
         if then == 'panel':
             if item['pick'] == 'ore':
                 command, options = 'mine', {'ore': value}
-                return show(m, db, p, owner, command, options, area, name, key)
+                return show(db, p, owner, command, options, area, name, key)
             text = runtime._discord_call_internal('catalog', owner, name, {'item': value}, '')
-            return reply(m, text, 'catalog', ui.work_components(m, owner, 'gather:' + value) + [nav(owner, area, area)])
+            return reply(text, 'catalog', ui.work_components(owner, 'gather:' + value) + [nav(owner, area, area)])
         if then == 'uses':
-            text, rows = extras.uses_text(m, db, p, value)
-            return ui.message(m, text, ui.uses_components(owner, rows), 'catalog')
+            text, rows = extras.uses_text(db, p, value)
+            return ui.message(text, ui.uses_components(owner, rows), 'catalog')
         if then == 'social':
-            label = dict((v, l) for l, v in choices(m, db, p, 'player', owner)).get(value, 'that citizen')
-            buttons = [ui.button(LEAVES['s_' + a]['label'], ui.cid(owner, 't', ui.issue(m, owner, {'do': 'cmd', 'leaf': 's_' + a, 'value': value})),
+            label = dict((v, l) for l, v in choices(db, p, 'player', owner)).get(value, 'that citizen')
+            buttons = [ui.button(LEAVES['s_' + a]['label'], ui.cid(owner, 't', ui.issue(owner, {'do': 'cmd', 'leaf': 's_' + a, 'value': value})),
                                  style=3, emoji=LEAVES['s_' + a]['emoji']) for a, _, _ in SOCIAL]
             text = f'🤝 WITH {label.upper()}\nPick an activity. Each one builds your relationship and restores Social.'
-            return ui.message(m, text, [ui.row(*buttons[:5]), ui.row(*buttons[5:]), nav(owner, 'social', 'social')], 'menu')
+            return ui.message(text, [ui.row(*buttons[:5]), ui.row(*buttons[5:]), nav(owner, 'social', 'social')], 'menu')
         return None   # 'do': run it as an action
     return None
 
@@ -1012,40 +1012,40 @@ def navigate(m, db, p, owner, verb, args, values, name):
 AMOUNTS = (1, 5, 10, 25)
 
 
-def amount_view(m, db, p, owner, key, value):
+def amount_view(db, p, owner, key, value):
     """How many? Buttons for 1, 5, 10, 25, All (when selling) and a custom amount."""
     from .game.cooldowns_materials import material_amount
     from .game.players import resource_name
     item = LEAVES[key]
     command, options = options_for(key, value)
-    label = dict((v, l) for l, v in choices(m, db, p, item['pick'], owner)).get(value) or resource_name(value)
+    label = dict((v, l) for l, v in choices(db, p, item['pick'], owner)).get(value) or resource_name(value)
     selling = options.get('action') == 'sell'
     have = (getattr(p, value, 0) if command == 'market' else material_amount(db, p, value)) if selling else 0
     buttons = []
     for n in AMOUNTS:
         if selling and n > have:
             continue
-        ticket = ui.issue(m, owner, {'do': 'cmd', 'leaf': key, 'value': value, 'amount': n})
+        ticket = ui.issue(owner, {'do': 'cmd', 'leaf': key, 'value': value, 'amount': n})
         buttons.append(ui.button(f'{"Sell" if selling else "Buy"} {n}', ui.cid(owner, 't', ticket), style=3, emoji=item['emoji']))
     if selling and have and have not in AMOUNTS:
-        ticket = ui.issue(m, owner, {'do': 'cmd', 'leaf': key, 'value': value, 'amount': have})
+        ticket = ui.issue(owner, {'do': 'cmd', 'leaf': key, 'value': value, 'amount': have})
         buttons.append(ui.button(f'Sell all {have}', ui.cid(owner, 't', ticket), style=3, emoji=item['emoji']))
     other = ui.button('Other amount…', ui.cid(owner, 'mo', key, value), emoji='✏️')
     text = f"{item['emoji']} {item['label'].rstrip('…').upper()}\n**{label}**\nHow many? Each button works once." + (
         f'\nYou have {have}.' if selling else '')
     if selling and not have:
         text += '\nYou have none of this to sell.'
-    return ui.message(m, text, [ui.row(*buttons[:5]), ui.row(other, ui.back_button(owner, 'mk', key),
+    return ui.message(text, [ui.row(*buttons[:5]), ui.row(other, ui.back_button(owner, 'mk', key),
                                                             ui.button('Menu', ui.cid(owner, 'mn', 'home'), emoji='🏠'))], 'menu')
 
 
-def modal(owner, key, args=(), m=None):
+def modal(owner, key, args=()):
     """The pop-up form for a leaf (response type 9), or None."""
     item = LEAVES.get(key)
     if item is None:
         return None
     if key == 'quiet':
-        return ui.quiet_form(m, owner)
+        return ui.quiet_form(owner)
     if key == 'keep' and args:
         return ui.modal(ui.cid(owner, 'md', key, args[0]), 'Keep how many?', 'Amount to always keep (0 removes it)', 'e.g. 30', 1, 4)
     if key == 'shopping':
@@ -1062,7 +1062,7 @@ def modal(owner, key, args=(), m=None):
     return ui.modal(ui.cid(owner, 'md', key), title, label, placeholder, 1, item.get('max_length', 60))
 
 
-def submit(m, db, p, owner, name, key, args, value, fields=None):
+def submit(db, p, owner, name, key, args, value, fields=None):
     """A submitted form: message data to show, or a {'do': ...} action to run once. `fields`: every text box of the form."""
     from . import ask, keep_levels, shopping_list
     item = LEAVES.get(key)
@@ -1070,50 +1070,50 @@ def submit(m, db, p, owner, name, key, args, value, fields=None):
         return None
     if key == 'keep':
         # A keep level only changes the citizen's own setting, so it needs no one-time ticket.
-        return ui.keep_message(m, db, p, owner, keep_levels.set_level(m, db, p, args[0] if args else '', value))
+        return ui.keep_message(db, p, owner, keep_levels.set_level(db, p, args[0] if args else '', value))
     if key == 'quiet':
         # Quiet hours too: three boxes (time zone, start, end); a refusal changes nothing.
         from . import quiet_hours
         fields = fields or {}
-        note = quiet_hours.set_hours(m, db, p, value, fields.get('start', ''), fields.get('end', ''))
+        note = quiet_hours.set_hours(db, p, value, fields.get('start', ''), fields.get('end', ''))
         db.flush()
-        return ui.quiet_message(m, db, p, owner, note)
+        return ui.quiet_message(db, p, owner, note)
     if key == 'shopping':
         # So does the shopping list: a recipe's amount (Custom…), or a recipe and an amount (Add recipe…).
         shop = shopping_list
-        note = shop.set_entry(m, db, p, args[0], value) if args else shop.add_typed(m, db, p, value, (fields or {}).get('amount', ''))
+        note = shop.set_entry(db, p, args[0], value) if args else shop.add_typed(db, p, value, (fields or {}).get('amount', ''))
         db.flush()
-        return ui.shopping_message(m, db, p, owner, note)
+        return ui.shopping_message(db, p, owner, note)
     if item.get('then') == 'amount':
         if not value.isdigit() or not 1 <= int(value) <= 100:
-            return ui.message(m, '✏️ Enter a whole number from 1 to 100. Nothing was spent.', [nav(owner, PARENT.get(key, 'home'), PARENT.get(key, 'home'))], 'menu')
+            return ui.message('✏️ Enter a whole number from 1 to 100. Nothing was spent.', [nav(owner, PARENT.get(key, 'home'), PARENT.get(key, 'home'))], 'menu')
         return {'do': 'cmd', 'leaf': key, 'value': args[0] if args else '', 'amount': int(value)}
     command, options = options_for(key, value)
     if key == 'find':
         query = value[:ask.MAX_QUERY]
-        return ui.message(m, ask.reply(m, db, p, query), ui.find_components(m, owner, query, db, p), 'find')
+        return ui.message(ask.reply(db, p, query), ui.find_components(owner, query, db, p), 'find')
     if item['kind'] == 'modal' and command in {'inventory'}:
-        return show(m, db, p, owner, command, options, PARENT.get(key, 'home'), name, key)
+        return show(db, p, owner, command, options, PARENT.get(key, 'home'), name, key)
     return {'do': 'cmd', 'leaf': key, 'value': value}
 
 
-def _denied(m, command):
+def _denied(command):
     if command not in MOD_COMMANDS:
         return ''
     if command == 'linklookup':
-        return '' if ui.is_owner(m) else '⛔ Owner access is required for linked-account lookup.'
-    return '' if ui.is_moderator(m) else '⛔ Only the game owner can use this tool.'
+        return '' if ui.is_owner() else '⛔ Owner access is required for linked-account lookup.'
+    return '' if ui.is_moderator() else '⛔ Only the game owner can use this tool.'
 
 
-def show(m, db, p, owner, command, options, area, name, key=''):
+def show(db, p, owner, command, options, area, name, key=''):
     """Run a view command and show it with its own panel (if any) and this area's buttons."""
     from .game.discord_commands import discord_legacy_route
-    denied = _denied(m, discord_legacy_route(command, options)[0])
+    denied = _denied(discord_legacy_route(command, options)[0])
     if denied:
-        return ui.message(m, denied, [nav(owner, area, area)], 'moderator')
+        return ui.message(denied, [nav(owner, area, area)], 'moderator')
     text = runtime._discord_call_internal(command, owner, name, options, '')
     legacy, legacy_options = discord_legacy_route(command, options)
-    panel = ui.slash_panel(m, legacy, owner, name, legacy_options, text)
+    panel = ui.slash_panel(legacy, owner, name, legacy_options, text)
     bottom = nav(owner, area, area)
     shared = ui.share_button(owner, legacy, legacy_options)
     if shared:
@@ -1123,13 +1123,13 @@ def show(m, db, p, owner, command, options, area, name, key=''):
         rows = [r for r in panel.get('components', []) if r.get('components')]
         panel['components'] = rows[:4] + [bottom]
         return ui.with_crumb(panel, where)
-    data = reply(m, text, legacy, grid(m, owner, children_of(m, area, context(m, owner, db, p)), rows=3) + [bottom])
-    return ui.with_crumb(ui.add_list_items(m, data, owner, legacy, legacy_options, name), where)
+    data = reply(text, legacy, grid(owner, children_of(area, context(owner, db, p)), rows=3) + [bottom])
+    return ui.with_crumb(ui.add_list_items(data, owner, legacy, legacy_options, name), where)
 
 
 # ---------------------------------------------------------------- actions (one-time tickets)
 
-def run(m, uid, name, action, token=''):
+def run(uid, name, action, token=''):
     """Run a menu action; returns message data with the result and the area's buttons again."""
     from .game.discord_commands import discord_legacy_route
     if 'raw' in action:
@@ -1144,35 +1144,35 @@ def run(m, uid, name, action, token=''):
         if key.startswith('s_'):
             area = 'social'
     legacy, legacy_options = discord_legacy_route(command, options)
-    denied = _denied(m, legacy)
+    denied = _denied(legacy)
     if denied:
-        return reply(m, denied, 'moderator', [nav(uid, area, area)])
+        return reply(denied, 'moderator', [nav(uid, area, area)])
     text = runtime._discord_call_internal(command, uid, name, options, 'menu-' + (token or secrets.token_hex(8)))
-    panel = ui.slash_panel(m, legacy, uid, name, legacy_options, text)
+    panel = ui.slash_panel(legacy, uid, name, legacy_options, text)
     if panel is not None:
         rows = [r for r in panel.get('components', []) if r.get('components')]
         panel['components'] = rows[:4] + [nav(uid, area, area)]
         return panel
-    visible = with_context(m, uid, lambda c: children_of(m, area, c), name)
-    rows = grid(m, uid, visible, rows=3) + [nav(uid, area, area)]
+    visible = with_context(uid, lambda c: children_of(area, c), name)
+    rows = grid(uid, visible, rows=3) + [nav(uid, area, area)]
     if legacy == 'seedindustries' and legacy_options.get('action') in {'sellall'} and 'sold' in text:
-        rows = [ui.row(ui.button('Undo sale (60s)', ui.cid(uid, 't', ui.issue(m, uid, {'do': 'undo'})), style=4, emoji='↩️'),
+        rows = [ui.row(ui.button('Undo sale (60s)', ui.cid(uid, 't', ui.issue(uid, {'do': 'undo'})), style=4, emoji='↩️'),
                        ui.button('Sell another', ui.cid(uid, 'mk', 'sell'), emoji='🏷️'), ui.button('Auto-sell', ui.cid(uid, 'av'), emoji='🧹'),
                        ui.button('Keep levels', ui.cid(uid, 'kv'), emoji='🛡️')), rows[-1]]
     leaf_ = LEAVES.get(action.get('leaf', ''))
-    return ui.with_crumb(reply(m, text, legacy, rows), crumb(area, leaf_['label'].rstrip('…') if leaf_ else ''))
+    return ui.with_crumb(reply(text, legacy, rows), crumb(area, leaf_['label'].rstrip('…') if leaf_ else ''))
 
 
-def after_command(m, command, options, uid):
+def after_command(command, options, uid):
     """The button row added under every slash command reply: Again, its area, and Menu."""
     from .game.discord_commands import discord_legacy_route
     legacy, legacy_options = discord_legacy_route(command, options)
     buttons = []
     if legacy in REPEATABLE and not (legacy == 'eat' and not legacy_options.get('food')) and not (legacy == 'use' and not legacy_options.get('item')):
-        ticket = ui.issue(m, uid, {'do': 'cmd', 'raw': [command, dict(options or {})]})
+        ticket = ui.issue(uid, {'do': 'cmd', 'raw': [command, dict(options or {})]})
         buttons.append(ui.button('Again', ui.cid(uid, 't', ticket), style=3, emoji='🔁'))
     if legacy == 'seedindustries' and legacy_options.get('action') == 'sellall':
-        buttons.append(ui.button('Undo sale (60s)', ui.cid(uid, 't', ui.issue(m, uid, {'do': 'undo'})), style=4, emoji='↩️'))
+        buttons.append(ui.button('Undo sale (60s)', ui.cid(uid, 't', ui.issue(uid, {'do': 'undo'})), style=4, emoji='↩️'))
     buttons.append(ui.share_button(uid, legacy, legacy_options))
     area = COMMAND_AREA.get(legacy, 'home')
     if area != 'home':
@@ -1186,24 +1186,24 @@ def after_command(m, command, options, uid):
 OWN_ROWS = {'training'}
 
 
-def after_rows(m, command, options, uid, room=2):
+def after_rows(command, options, uid, room=2):
     """Rows under a slash reply: the area's most-used buttons, then Again / area / Menu."""
     from .game.discord_commands import discord_legacy_route
-    last = after_command(m, command, options, uid)
+    last = after_command(command, options, uid)
     legacy = discord_legacy_route(command, options)[0]
     if room < 2 or legacy in OWN_ROWS:
         return [last]
     area = COMMAND_AREA.get(legacy, 'home')
-    visible = with_context(m, uid, lambda c: children_of(m, area, c))
+    visible = with_context(uid, lambda c: children_of(area, c))
     keys = [k for k in visible if k not in MOD_AREAS and not (k in LEAVES and LEAVES[k]['cmd'] == legacy and LEAVES[k]['kind'] != 'pick')]
-    quick = grid(m, uid, keys[:5], rows=1)
+    quick = grid(uid, keys[:5], rows=1)
     return quick + [last]
 
 
-def home_text(m, uid, name):
+def home_text(uid, name):
     from .game.players import player
     with SessionLocal() as db:
         p = player(db, runtime.DISCORD_WORLD_ID, 'discord', uid, name)[1]
-        text = area_text(m, db, p, 'home')
+        text = area_text(db, p, 'home')
         db.commit()
         return text

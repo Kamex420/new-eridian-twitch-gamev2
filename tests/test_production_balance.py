@@ -29,18 +29,18 @@ def test_station_selection_and_actual_inventory_match_preview():
         p=db.query(m.Player).one()
         db.add(m.CraftLedger(channel_id=p.channel_id,canonical_uid=p.twitch_uid,recipe='component',qty=250,best_quality=''))
         m.material_change(db,p,cp.permit_key(tags[0]),1);db.commit()
-        basic=b.current_outputs(m,db,p,basic_rid)
-        assert b.selected_station(m,db,p,rid) is None
+        basic=b.current_outputs(db,p,basic_rid)
+        assert b.selected_station(db,p,rid) is None
         m.material_change(db,p,cp.permit_key(tags[-1]),1);db.commit()
-        advanced=b.current_outputs(m,db,p,rid)
+        advanced=b.current_outputs(db,p,rid)
         assert sum(advanced.values())>sum(basic.values())
-        assert cp.STATIONS[b.selected_station(m,db,p,rid)]['tier']==cp.STATIONS[tags[-1]]['tier']
+        assert cp.STATIONS[b.selected_station(db,p,rid)]['tier']==cp.STATIONS[tags[-1]]['tier']
         # Raise only the recipe skill check; real access, inputs and reward code run.
         for k,n in s.RECIPES[rid]['inputs'].items():m.material_change(db,p,k,n*2)
         db.commit()
         before={k:m.material_amount(db,p,k) for k in set(advanced)|s.RECIPES[rid]['inputs'].keys()}
         from unittest.mock import patch
-        with patch.object(s,'level_for',return_value=100):result=s.craft(m,db,p,rid,'discord')
+        with patch.object(s,'level_for',return_value=100):result=s.craft(db,p,rid,'discord')
         assert 'CRAFTING COMPLETE' in result
         for k in before:
             assert m.material_amount(db,p,k)-before[k]==advanced.get(k,0)-s.RECIPES[rid]['inputs'].get(k,0)

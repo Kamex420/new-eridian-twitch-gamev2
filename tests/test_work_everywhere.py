@@ -39,7 +39,7 @@ def test_workbench_crafting_counts_for_a_make_contract():
         for k, n in s.RECIPES[rid]['inputs'].items():
             m.material_change(db, p, k, n)
         db.query(m.Cooldown).delete()
-        assert 'CRAFTING COMPLETE' in s.craft(m, db, p, rid, 'discord')
+        assert 'CRAFTING COMPLETE' in s.craft(db, p, rid, 'discord')
         assert d.complete
 
 
@@ -124,15 +124,15 @@ def test_a_seedling_keeps_at_most_25_contribution_a_day(monkeypatch):
     with m.SessionLocal() as db:
         p = citizen(db)
         before = p.contribution
-        assert autonomy.keep_contribution(m, db, p, 0) == 0
+        assert autonomy.keep_contribution(db, p, 0) == 0
         p.contribution += 20
-        assert autonomy.keep_contribution(m, db, p, 20) == 0
+        assert autonomy.keep_contribution(db, p, 20) == 0
         p.contribution += 8
-        assert autonomy.keep_contribution(m, db, p, 8) == 3                 # 5 more fit under 25
-        assert p.contribution == before + 25 and autonomy.contribution_room(m, db, p) == 0
+        assert autonomy.keep_contribution(db, p, 8) == 3                 # 5 more fit under 25
+        assert p.contribution == before + 25 and autonomy.contribution_room(db, p) == 0
         tomorrow = m.now() + m.timedelta(days=1)
         monkeypatch.setattr(m, 'now', lambda: tomorrow)
-        assert autonomy.contribution_room(m, db, p) == 25
+        assert autonomy.contribution_room(db, p) == 25
 
 
 def test_a_seedling_step_over_the_cap_earns_no_contribution():
@@ -140,11 +140,11 @@ def test_a_seedling_step_over_the_cap_earns_no_contribution():
     seed()
     with m.SessionLocal() as db:
         p = m.player(db, 'test', 'twitch', 'u', 'Kamex')[1]
-        db.add(autonomy.SeedlingContribution(channel_id='test', canonical_uid=p.twitch_uid, day=autonomy._today(m), amount=25))
+        db.add(autonomy.SeedlingContribution(channel_id='test', canonical_uid=p.twitch_uid, day=autonomy._today(), amount=25))
         db.commit()
         before = p.contribution
     away()
-    autonomy.live_one(m, 'test', 'u', force=True)
+    autonomy.live_one('test', 'u', force=True)
     with m.SessionLocal() as db:
         assert m.player(db, 'test', 'twitch', 'u', 'Kamex')[1].contribution == before
         assert m.society(db, 'test').materials + m.society(db, 'test').food > 0      # the colony still grows
@@ -155,7 +155,7 @@ def test_a_seedling_step_over_the_cap_earns_no_contribution():
 def test_rare_ores_are_locked_without_an_extractor_everywhere():
     with m.SessionLocal() as db:
         p = citizen(db)
-        assert s.gather(m, db, p, RARE, 'twitch') == cp.RARE_LOCK
+        assert s.gather(db, p, RARE, 'twitch') == cp.RARE_LOCK
         assert 'needs a Mineral Extractor' in m.ore_choice_rows(db, p)[-1][0]
     view = m.mining('test', 'u', provider='twitch').body.decode()
     assert 'Rare (needs a Mineral Extractor)' in view
@@ -166,7 +166,7 @@ def test_either_extractor_unlocks_rare_ores_in_mine():
         p = citizen(db)
         m.material_change(db, p, cp.SMALL_EXTRACTOR, 1)
         db.commit()
-        assert cp.extractor(m, db, p) == cp.SMALL_EXTRACTOR
+        assert cp.extractor(db, p) == cp.SMALL_EXTRACTOR
         assert not any('🔒' in label for label, _ in m.ore_choice_rows(db, p))
     text = m.mining('test', 'u', ore=s.ITEMS[RARE]['name'], action='mine', provider='twitch').body.decode()
     assert text.startswith('RUNNING: Mine ' + s.ITEMS[RARE]['name']), text          # the same /mine queue as any ore
@@ -178,7 +178,7 @@ def test_either_extractor_unlocks_rare_ores_in_mine():
         m.material_change(db, p, cp.FRONTIERS_EXTRACTOR, 1)
         db.query(m.Cooldown).delete()
         db.commit()
-        assert cp.extractor(m, db, p) == cp.FRONTIERS_EXTRACTOR
+        assert cp.extractor(db, p) == cp.FRONTIERS_EXTRACTOR
         gather(db, p, RARE)
         assert m.material_amount(db, p, RARE) == 3
 
@@ -237,5 +237,5 @@ def test_a_showpiece_crafts_during_its_festival(monkeypatch):
         for k, n in s.RECIPES[row['recipe']]['inputs'].items():
             m.material_change(db, p, k, n)
         db.query(m.Cooldown).delete()
-        assert 'CRAFTING COMPLETE' in s.craft(m, db, p, row['recipe'], 'discord')
+        assert 'CRAFTING COMPLETE' in s.craft(db, p, row['recipe'], 'discord')
         assert m.material_amount(db, p, key) == 1

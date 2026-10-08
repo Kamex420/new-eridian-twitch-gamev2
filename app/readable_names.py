@@ -71,7 +71,7 @@ def _deep(value, names):
     return value
 
 
-def repair(m=None):
+def repair():
     """Rewrite level-up lines stored before names were used. Safe to run again: fixed lines no longer match."""
     from .models import JournalEntry, SeedlingState
     from .stream_overlay import StreamHighlight
@@ -108,7 +108,7 @@ def repair(m=None):
     return fixed
 
 
-def restore_names(m=None):
+def restore_names():
     """Give citizens stuck with the placeholder name "Citizen" back the last real name their accounts used.
 
     Background work once looked citizens up without a name, and each lookup renamed them "Citizen"; their Seedlings

@@ -40,7 +40,7 @@ def test_signed_workshop_unlock_charges_once(monkeypatch):
         asyncio.run(tasks())
     with m.SessionLocal() as db:
         p=db.query(m.Player).one()
-        assert p.sc==10000-cost and cp.has_access(m,db,p,station)
+        assert p.sc==10000-cost and cp.has_access(db,p,station)
     assert len(delivered)==2
     assert 'unlocked' in json.dumps(delivered[0]).lower()
     # A short confirmation stays small: no footer.
@@ -54,5 +54,5 @@ def test_footer_on_information_queue_and_paginated_messages():
         assert data['embeds'][0]['footer']['text']==m.message_layout.FOOTER
         if data.get('components'):
             custom=data['components'][0]['components'][0]['custom_id']
-            detail=m.message_layout.open_page(m,{'data':{'custom_id':custom}})
+            detail=m.message_layout.open_page({'data':{'custom_id':custom}})
             assert detail['data']['embeds'][0]['footer']['text']==m.message_layout.FOOTER

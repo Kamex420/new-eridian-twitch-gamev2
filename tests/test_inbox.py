@@ -14,7 +14,7 @@ def uid():
 def test_queue_events_go_to_the_inbox_and_private_mode_skips_the_ping():
     enqueue(count=1)
     m.settings('test', 'u', provider='discord', alerts='private')
-    q.control(m, 'test', 'u', 'Kamex', 'discord', 'cancel')
+    q.control('test', 'u', 'Kamex', 'discord', 'cancel')
     with m.SessionLocal() as db:
         items = list(db.query(inbox.InboxItem))
         assert len(items) == 1 and items[0].seen == 0 and 'Queue cancelled' in items[0].text
@@ -34,21 +34,21 @@ def test_popups_respect_the_player_setting(monkeypatch):
     posts = []
     monkeypatch.setattr(inbox.requests, 'post', lambda url, json, timeout: posts.append((url, json)) or SimpleNamespace(status_code=200))
     with m.SessionLocal() as db:
-        inbox.add(m, db, W, uid(), 'warning', 'Something important')
-        inbox.add(m, db, W, uid(), 'tip', 'A tip', important=False)
+        inbox.add(db, W, uid(), 'warning', 'Something important')
+        inbox.add(db, W, uid(), 'tip', 'A tip', important=False)
         db.commit()
     payload = {'application_id': 'a', 'token': 't'}
-    assert inbox.deliver(m, payload, '111')
+    assert inbox.deliver(payload, '111')
     body = posts[-1][1]
     assert body['flags'] & 64 and 'Something important' in layout_v2.text_of(body)   # private
     assert 'A tip' not in layout_v2.text_of(body)                      # 'important' hides tips
-    assert not inbox.deliver(m, payload, '111')                        # already shown
+    assert not inbox.deliver(payload, '111')                        # already shown
     m.settings(W, '111', 'Kam', provider='discord', popups='all')
-    assert inbox.deliver(m, payload, '111') and 'A tip' in layout_v2.text_of(posts[-1][1])
+    assert inbox.deliver(payload, '111') and 'A tip' in layout_v2.text_of(posts[-1][1])
     with m.SessionLocal() as db:
-        inbox.add(m, db, W, uid(), 'warning', 'Later'); db.commit()
+        inbox.add(db, W, uid(), 'warning', 'Later'); db.commit()
     m.settings(W, '111', 'Kam', provider='discord', popups='off')
-    assert not inbox.deliver(m, payload, '111')
+    assert not inbox.deliver(payload, '111')
 
 
 def test_popups_use_the_new_layout_unless_it_is_off(monkeypatch):
@@ -59,8 +59,8 @@ def test_popups_use_the_new_layout_unless_it_is_off(monkeypatch):
     for enabled in (True, False):
         monkeypatch.setattr(layout_v2, 'ENABLED', enabled)
         with m.SessionLocal() as db:
-            inbox.add(m, db, W, uid(), 'warning', f'Notice {enabled}'); db.commit()
-        assert inbox.deliver(m, payload, '111')
+            inbox.add(db, W, uid(), 'warning', f'Notice {enabled}'); db.commit()
+        assert inbox.deliver(payload, '111')
         assert layout_v2.is_v2(posts[-1]) is enabled and ('embeds' in posts[-1]) is (not enabled)
         assert f'Notice {enabled}' in layout_v2.text_of(posts[-1])
 
@@ -70,7 +70,7 @@ def test_starting_a_short_queue_warns_when_it_is_needed():
     with m.SessionLocal() as db:
         life = m.life_state(db, m.player(db, W, 'discord', '111', 'Kam')[1]); life.energy = 25; db.commit()
     m._discord_call_internal('mine', '111', 'Kam', {'ore': q.ores().__iter__().__next__(), 'action': 'mine', 'count': 10}, 'i')
-    inbox.after_command(m, '111', 'Kam', 'queue', {}, '')
+    inbox.after_command('111', 'Kam', 'queue', {}, '')
     with m.SessionLocal() as db:
         texts = [i.text for i in db.query(inbox.InboxItem)]
     assert any("won't last" in t for t in texts) and any('Queues work while you are away' in t for t in texts)
@@ -79,7 +79,7 @@ def test_starting_a_short_queue_warns_when_it_is_needed():
 def test_one_time_tips_only_once():
     citizen()
     with m.SessionLocal() as db:
-        assert inbox.tip(m, db, W, uid(), 'blocked') and not inbox.tip(m, db, W, uid(), 'blocked')
+        assert inbox.tip(db, W, uid(), 'blocked') and not inbox.tip(db, W, uid(), 'blocked')
 
 
 def test_short_queue_status_and_details_button():
@@ -95,7 +95,7 @@ def test_short_queue_status_and_details_button():
 def test_inbox_view_marks_everything_read():
     citizen()
     with m.SessionLocal() as db:
-        inbox.add(m, db, W, uid(), 'warning', 'Read me'); db.commit()
+        inbox.add(db, W, uid(), 'warning', 'Read me'); db.commit()
     text = m._discord_call_internal('inbox', '111', 'Kam', {}, 'i')
     assert 'Read me' in text
     with m.SessionLocal() as db:

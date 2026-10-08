@@ -22,7 +22,7 @@ def due():
         db.commit()
 
 def advance():
-    due();q.tick(m)
+    due();q.tick()
 
 def enqueue(task='mine:'+ORE,count=3):
     seed(provider='discord')
@@ -95,8 +95,8 @@ def test_low_needs_mid_queue_stop_next_attempt():
         assert db.query(m.Player).one().ore==101
 
 def test_legacy_make_task_names_resolve_to_workbench_recipes():
-    assert q.normalize(m,'make:component')=='make:'+m.item_identity.RETIRED_RECIPES['component']
-    assert q.normalize(m,'make:Iron Plate').startswith('make:sr_')
+    assert q.normalize('make:component')=='make:'+m.item_identity.RETIRED_RECIPES['component']
+    assert q.normalize('make:Iron Plate').startswith('make:sr_')
 
 def test_missing_materials_pause_crafting_then_resume_same_account():
     enqueue('make:component',2)
@@ -132,7 +132,7 @@ def test_a_queued_rare_ore_comes_up_on_each_success():
 
 def test_cooldown_and_two_workers_cannot_double_execute():
     enqueue(count=2);due()
-    with ThreadPoolExecutor(2) as pool:list(pool.map(lambda _:q.run_one(m,'test','discord:u'),range(2)))
+    with ThreadPoolExecutor(2) as pool:list(pool.map(lambda _:q.run_one('test','discord:u'),range(2)))
     with m.SessionLocal() as db:
         assert db.query(m.Player).one().ore==101
         assert db.query(q.TaskQueue).one().remaining==1
@@ -142,7 +142,7 @@ def test_gameplay_and_queue_counter_rollback_together(monkeypatch):
     def fail_after_commit(*args):
         original(*args);raise RuntimeError('simulated crash after handler commit')
     monkeypatch.setattr(s,'gather',fail_after_commit)
-    with pytest.raises(RuntimeError):q.run_one(m,'test','discord:u')
+    with pytest.raises(RuntimeError):q.run_one('test','discord:u')
     with m.SessionLocal() as db:
         p=db.query(m.Player).one();assert p.ore==100 and p.actions==0
         assert db.query(q.TaskQueue).one().remaining==2
@@ -195,7 +195,7 @@ def test_worker_starts_and_stops_with_app(monkeypatch):
     import threading
     from fastapi.testclient import TestClient
     enqueue(count=1);due();done=threading.Event();original=q.tick
-    def tick(module):original(module);done.set()
+    def tick():original();done.set()
     monkeypatch.setattr(q,'tick',tick)
     with TestClient(m.app):assert done.wait(5)
     with m.SessionLocal() as db:assert db.query(q.TaskQueue).one().state=='completed'
@@ -206,7 +206,7 @@ def test_twitch_status_retains_needs_forecast_within_limit():
     text=m.queued_tasks('test','u',provider='discord').body.decode()
     assert 'Attempts completed: 0/10' in text and '38 Energy' not in text    # short view
     with m.SessionLocal() as db:
-        p=db.query(m.Player).one();text=q.status(m,db,p,db.query(q.TaskQueue).one(),detail=True)
+        p=db.query(m.Player).one();text=q.status(db,p,db.query(q.TaskQueue).one(),detail=True)
     assert '38 Energy' in text and '29 Nutrition' in text and 'Only one task type' in text
     with m.SessionLocal() as db:
         p=db.query(m.Player).one();db.add(m.Identity(channel_id='test',provider='twitch',provider_uid='linked',canonical_uid=p.twitch_uid));db.commit()
@@ -244,7 +244,7 @@ def test_every_gatherable_has_exact_queue_totals(key):
         assert json.loads(totals.gained)=={key:expected}
         assert totals.failed==0
         assert totals.succeeded==count and totals.progress==0
-        assert f'{s.item_label(key)} ×{expected}' in q.status(m,db,p,row)
+        assert f'{s.item_label(key)} ×{expected}' in q.status(db,p,row)
 
 
 def test_mixed_failures_rewards_and_repeated_view(monkeypatch):
@@ -258,7 +258,7 @@ def test_mixed_failures_rewards_and_repeated_view(monkeypatch):
         assert p.crops==115
         assert json.loads(totals.gained).get(PUMPKIN)==15
         for _ in range(2):
-            text=q.status(m,db,p,row)
+            text=q.status(db,p,row)
             assert 'Succeeded: 5; failed: 5.' in text and 'Pumpkin ×15' in text
         assert p.crops==115
 
@@ -274,8 +274,8 @@ def test_crafting_totals_spending_pause_and_restart():
         assert (totals.succeeded,totals.failed)==(2,0)
         assert json.loads(totals.gained)=={NAILS:30}
         assert json.loads(totals.used)=={INGOT:2}
-    q.control(m,'test','u','Citizen','discord','cancel')
-    q.control(m,'test','u','Citizen','discord','start','mine:'+ORE,1)
+    q.control('test','u','Citizen','discord','cancel')
+    q.control('test','u','Citizen','discord','start','mine:'+ORE,1)
     advance()
     with m.SessionLocal() as db:
         totals=db.query(q.QueueTotals).one()
@@ -289,7 +289,7 @@ def test_old_queue_history_is_not_invented():
     advance()
     with m.SessionLocal() as db:
         p=db.query(m.Player).one();row=db.query(q.TaskQueue).one()
-        text=q.status(m,db,p,row)
+        text=q.status(db,p,row)
         assert 'Earlier attempts without recorded totals: 1' in text
         assert 'Succeeded: 1; failed: 0.' in text
         assert p.ore==102
@@ -303,7 +303,7 @@ def test_crash_rolls_back_summary_too(monkeypatch):
         if len(calls)==2:raise RuntimeError('crash after reward, before commit')
         return original(*args)
     monkeypatch.setattr(q,'need_reason',broken)
-    with pytest.raises(RuntimeError):q.run_one(m,'test','discord:u')
+    with pytest.raises(RuntimeError):q.run_one('test','discord:u')
     with m.SessionLocal() as db:
         p=db.query(m.Player).one();totals=db.query(q.QueueTotals).one()
         assert p.ore==100 and totals.succeeded==0 and totals.gained=='{}'
@@ -328,7 +328,7 @@ def test_multi_output_recipe_queue_uses_actual_batch_yields(rid):
         p=db.query(m.Player).one();row=db.query(q.TaskQueue).one();totals=db.query(q.QueueTotals).one()
         assert row.state=='completed',row.result
         assert totals.succeeded==2
-        for key,n in s.production_balance.current_outputs(m,db,p,rid).items():
+        for key,n in s.production_balance.current_outputs(db,p,rid).items():
             assert m.material_amount(db,p,key)-before[key]==n*2
             assert json.loads(totals.gained)[key]==n*2
 

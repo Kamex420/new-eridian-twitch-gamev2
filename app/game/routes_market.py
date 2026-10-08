@@ -50,7 +50,7 @@ def sell(channel:str,uid:str,name:str="Citizen",resource:str="",amount:int=1,pro
 def workshop(channel:str,uid:str,name:str='Citizen',action:str='view',station:str='',page:int=1,provider:str='twitch'):
     with SessionLocal() as db:
         _,p=player(db,channel,provider,uid,name)
-        result=crafting_progression.workshop(main,db,p,action,station,page,provider)
+        result=crafting_progression.workshop(db,p,action,station,page,provider)
         return platform_response(provider,result,result.replace('\n',' | '))
 
 def market_item_label(key):
@@ -105,7 +105,7 @@ def seed_industries(channel:str,uid:str,name:str="Citizen",action:str="browse",i
             for material,qty in data["cost"].items():material_change(db,p,material,-qty)
             numbers=production_order_numbers(data);p.sc+=numbers["sc"];p.contribution+=numbers["contribution"];p.actions+=1;p.successes+=1
             main.gain_skill(p,"fabrication",2);main.gain_skill(p,"commerce",1);society(db,channel).development+=numbers["development"]
-            found=practice.find(main,db,p,"fabrication")
+            found=practice.find(db,p,"fabrication")
             db.add(ProductionOrderCompletion(channel_id=channel,canonical_uid=p.twitch_uid,avesta_day=clock["day"],order_key=order_key));db.commit()
             journal_add(db,p,f"Completed Seed Industries order: {data['name']}.");milestone=achieve(db,p)
             colony=work_counts(db,p,"commerce",grow=False)
@@ -126,7 +126,7 @@ def seed_industries(channel:str,uid:str,name:str="Citizen",action:str="browse",i
     with SessionLocal() as db:
         _,p=player(db,channel,provider,uid,name)
         if action=="buy":
-            if key in crafting_progression.RARE and not crafting_progression.rare_unlocked(main,db,p):
+            if key in crafting_progression.RARE and not crafting_progression.rare_unlocked(db,p):
                 return out(crafting_progression.RARE_LOCK)
             total=listing["buy"]*amount
             if p.sc<total:return out(f"🏭 {p.display_name} needs {total} SC to buy {amount} {resource_name(key)}. Current balance: {p.sc} SC.")
@@ -212,7 +212,7 @@ def gearrepair(channel:str,uid:str,name:str="Citizen",item:str="",provider:str="
         if p.components<cost:return out(f"🔧 Repair needs {cost} Iron Nails. You have {p.components}. Iron Nails: {material_source('components',provider)} Nothing spent.")
         p.components-=cost;row.condition=100;spend_life_for_action(life,"repair")
         xp=main.gain_skill(p,"infrastructure",1);main.gain_branch(db,p,"maintenance_repair",xp)
-        found=practice.find(main,db,p,"infrastructure","maintenance_repair");db.commit()
+        found=practice.find(db,p,"infrastructure","maintenance_repair");db.commit()
         text=(f"🔧 Repaired {row.quality} {row.item_name} to 100% (-{cost} Iron Nails · {need_cost_text(work_energy('repair'))}). "
               f"+{xp} Engineering and Maintenance & Repair XP."+(f" {found}." if found else "")+task_readiness_warning(life,provider))
         return PlainTextResponse(text) if provider=="discord" else out(text)
@@ -226,7 +226,7 @@ def use_item(channel:str,uid:str,name:str="Citizen",item:str="",provider:str="tw
         import sys
         with SessionLocal() as db:
             _,p=player(db,channel,provider,uid,name)
-            result=seed_content.use(main,db,p,source_item,provider)
+            result=seed_content.use(db,p,source_item,provider)
             return platform_response(provider,result,result.replace('\n',' | '))
     key=(item or "").lower().strip().replace(" ","_")
     key=next((k for k in LIFE_GEAR if key in {k,QUALITY_RECIPES[k]["name"].lower().replace(" ","_")}),key)

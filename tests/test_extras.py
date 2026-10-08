@@ -26,9 +26,9 @@ def text_of(data):
 # ---------------------------------------------------------------- countdowns
 
 def test_discord_shows_live_countdowns_and_twitch_shows_plain_times():
-    assert STAMP.fullmatch(extras.stamp(m, 90))
-    assert extras.when(m, 90, 'twitch').startswith('in ')
-    assert presentation.plain_times(f'Ready {extras.stamp(m, 120)}.') .startswith('Ready in ')
+    assert STAMP.fullmatch(extras.stamp(90))
+    assert extras.when(90, 'twitch').startswith('in ')
+    assert presentation.plain_times(f'Ready {extras.stamp(120)}.') .startswith('Ready in ')
     citizen()
     m.queued_tasks(W, '111', 'Kam', 'start', 'gather:' + LUMBER, '3', 'discord')
     assert STAMP.search(m.status_view(W, '111', 'Kam', 'discord').body.decode())
@@ -44,12 +44,12 @@ def test_queue_max_is_limited_by_ingredients_and_needs():
     for key, n in need.items():
         m.material_change(db, p, key, n * 3)
     db.commit()
-    count, reason = extras.max_attempts(m, db, p, 'make:' + CAMPFIRE.id)
+    count, reason = extras.max_attempts(db, p, 'make:' + CAMPFIRE.id)
     assert count == 3 and reason
     life = m.life_state(db, p)
     life.energy = 21
     db.commit()
-    count, reason = extras.max_attempts(m, db, p, 'gather:' + LUMBER)
+    count, reason = extras.max_attempts(db, p, 'gather:' + LUMBER)
     assert count == 1 and reason == 'Energy'
     db.close()
 
@@ -74,10 +74,10 @@ def test_recipe_panel_offers_queue_max_and_craftmax_queues_it():
 
 def test_recent_actions_are_recorded_and_offered_as_buttons():
     citizen()
-    extras.record_discord(m, '111', 'Kam', 'relax', {})
-    extras.record_discord(m, '111', 'Kam', 'relax', {})
-    extras.record_discord(m, '111', 'Kam', 'gather', {'resource': LUMBER})
-    extras.record_discord(m, '111', 'Kam', 'status', {})
+    extras.record_discord('111', 'Kam', 'relax', {})
+    extras.record_discord('111', 'Kam', 'relax', {})
+    extras.record_discord('111', 'Kam', 'gather', {'resource': LUMBER})
+    extras.record_discord('111', 'Kam', 'status', {})
     db, p = player()
     rows = extras.recent(db, p.channel_id, p.twitch_uid)
     assert [r.command for r in rows] == ['gather', 'relax']
@@ -117,14 +117,14 @@ def test_goal_clears_itself_when_crafted():
     # only for compatibility and does nothing. tests/test_goal_refine.py covers queues, Seedlings and failed attempts.
     citizen()
     db, p = player()
-    extras.set_goal(m, db, p, CAMPFIRE.id)
+    extras.set_goal(db, p, CAMPFIRE.id)
     db.commit()
-    extras.goal_completed(m, db, p, f'CRAFTING COMPLETE — {CAMPFIRE.name}')
-    assert extras.goal_entry(m, db, p) is not None
+    extras.goal_completed(db, p, f'CRAFTING COMPLETE — {CAMPFIRE.name}')
+    assert extras.goal_entry(db, p) is not None
     db.close()
     assert 'CRAFTING COMPLETE' in m.make(W, '111', 'Kam', CAMPFIRE.id, 'discord').body.decode()
     db, p = player()
-    assert extras.goal_entry(m, db, p) is None
+    assert extras.goal_entry(db, p) is None
     assert any('Goal complete' in i.text for i in db.query(inbox.InboxItem))
     db.close()
 
@@ -136,12 +136,12 @@ def test_plan_runs_steps_in_order_with_sell_steps_between():
     m.queued_tasks(W, '111', 'Kam', 'start', 'gather:' + LUMBER, '1', 'discord')
     with m.SessionLocal() as db:
         p = m.player(db, W, 'discord', '111', 'Kam')[1]
-        extras.add_step(m, db, p, {'task': 'gather:' + LUMBER, 'count': 1})   # becomes "next"
-        extras.add_step(m, db, p, {'sell': LUMBER})
-        extras.add_step(m, db, p, {'task': 'gather:' + LUMBER, 'count': 2})
+        extras.add_step(db, p, {'task': 'gather:' + LUMBER, 'count': 1})   # becomes "next"
+        extras.add_step(db, p, {'sell': LUMBER})
+        extras.add_step(db, p, {'task': 'gather:' + LUMBER, 'count': 2})
         db.commit()
-        assert len(extras.current_steps(m, db, p)) == 4
-        task, count, notes = extras.pop_step(m, db, p)
+        assert len(extras.current_steps(db, p)) == 4
+        task, count, notes = extras.pop_step(db, p)
         assert (task, count) == ('gather:' + LUMBER, 2) and notes and 'Lumber' in notes[0]
         assert extras.playlist(db, p.channel_id, p.twitch_uid) == []
 
@@ -151,11 +151,11 @@ def test_routines_save_and_start_again():
     m.queued_tasks(W, '111', 'Kam', 'start', 'gather:' + LUMBER, '2', 'discord')
     with m.SessionLocal() as db:
         p = m.player(db, W, 'discord', '111', 'Kam')[1]
-        assert 'Routine saved' in extras.save_routine(m, db, p)
+        assert 'Routine saved' in extras.save_routine(db, p)
         db.commit()
         rid = extras.routines(db, p)[0].id
         m.queued_tasks(W, '111', 'Kam', 'cancel', '', '1', 'discord')
-    assert 'Routine started' in extras.start_routine(m, W, '111', 'Kam', 'discord', rid)
+    assert 'Routine started' in extras.start_routine(W, '111', 'Kam', 'discord', rid)
     assert 'Lumber' in m.routines_view(W, '111', 'Kam', 'view', 'discord').body.decode()
 
 
@@ -164,9 +164,9 @@ def test_routines_save_and_start_again():
 def test_uses_lists_recipes_ready_first():
     citizen()
     db, p = player()
-    text, rows = extras.uses_text(m, db, p, LUMBER)
+    text, rows = extras.uses_text(db, p, LUMBER)
     assert rows and 'LUMBER' in text.upper()
-    chat, _ = extras.uses_text(m, db, p, LUMBER, 'twitch')
+    chat, _ = extras.uses_text(db, p, LUMBER, 'twitch')
     assert len(chat) < 400
     db.close()
 
@@ -175,12 +175,12 @@ def test_autosell_sells_chosen_items_after_a_queue_but_keeps_protected_ones():
     citizen()
     stone = s.key('Stone Dust')
     db, p = player()
-    assert 'will be sold automatically' in extras.toggle_autosell(m, db, p, stone)
+    assert 'will be sold automatically' in extras.toggle_autosell(db, p, stone)
     m.material_change(db, p, stone, 5)
     db.commit()
-    notes = extras.autosell_after_queue(m, db, p)
+    notes = extras.autosell_after_queue(db, p)
     assert notes and m.material_amount(db, p, stone) == 0
-    assert 'no longer' in extras.toggle_autosell(m, db, p, stone)
+    assert 'no longer' in extras.toggle_autosell(db, p, stone)
     db.close()
 
 
@@ -226,11 +226,11 @@ def test_eat_until_full_uses_cheapest_everyday_food_once():
 def test_welcome_back_summary_after_three_hours_away():
     citizen()
     db, p = player()
-    extras.touch(m, db, p)
+    extras.touch(db, p)
     db.commit()
     assert not [i for i in db.query(inbox.InboxItem) if 'Welcome back' in i.text]
     extras.row(db, p.channel_id, p.twitch_uid).last_seen = m.now() - timedelta(hours=4)
-    extras.touch(m, db, p)
+    extras.touch(db, p)
     db.commit()
     welcome = [i for i in db.query(inbox.InboxItem) if 'Welcome back' in i.text]
     assert welcome and 'Needs now' in welcome[0].text
@@ -242,8 +242,8 @@ def test_sleep_ready_reminder_is_sent_once():
     db, p = player()
     m.life_state(db, p).energy = 25
     db.commit()
-    extras.touch(m, db, p)
-    extras.touch(m, db, p)
+    extras.touch(db, p)
+    extras.touch(db, p)
     db.commit()
     assert len([i for i in db.query(inbox.InboxItem) if 'Sleep is ready' in i.text]) == 1
     db.close()
@@ -252,10 +252,10 @@ def test_sleep_ready_reminder_is_sent_once():
 # ---------------------------------------------------------------- find and remember my place
 
 def test_find_searches_recipes_items_buttons_and_handbook():
-    found = extras.find(m, 'campfire')
+    found = extras.find('campfire')
     assert any(e.name == 'Campfire' for e in found['recipes'])
-    assert 'Lumber' in extras.find_text(m, 'lumber')
-    assert 'nothing found' in extras.find_text(m, 'zzzqqq', 'twitch')
+    assert 'Lumber' in extras.find_text('lumber')
+    assert 'nothing found' in extras.find_text('zzzqqq', 'twitch')
     citizen()
     assert 'Campfire' in m._discord_call_internal('find', '111', 'Kam', {'query': 'campfire'}, 'i1')
     assert 'find' in m.DISCORD_OPTION_SCHEMA
@@ -265,8 +265,8 @@ def test_find_searches_recipes_items_buttons_and_handbook():
 def test_bare_make_reopens_the_last_workbench_category():
     citizen()
     press(ui.cid('111', 'wc', 'ready', 1, ''))
-    assert extras.default_options(m, 'make', {}, '111')['category'] == 'ready'
-    assert extras.default_options(m, 'make', {'recipe': 'x'}, '111') == {'recipe': 'x'}
+    assert extras.default_options('make', {}, '111')['category'] == 'ready'
+    assert extras.default_options('make', {'recipe': 'x'}, '111') == {'recipe': 'x'}
 
 
 def test_menu_leaves_for_new_features_exist():

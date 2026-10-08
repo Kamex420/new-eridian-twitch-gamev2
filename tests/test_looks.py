@@ -63,7 +63,7 @@ def test_every_option_is_a_menu_dropdown_and_a_discord_choice():
 def test_a_look_can_be_shared_with_the_channel():
     customize(attitude='cheerful')
     member = {'member': {'user': {'id': '111', 'username': 'Kamex'}}}
-    shared = ui.handle_component(m, {'data': {'custom_id': ui.cid('111', 'sh', 'customize', '')}, **member})
+    shared = ui.handle_component({'data': {'custom_id': ui.cid('111', 'sh', 'customize', '')}, **member})
     assert shared['type'] == 4 and 'flags' not in shared['data'] and 'shared their Seedling’s look' in shared['data']['embeds'][0]['author']['name']
 
 

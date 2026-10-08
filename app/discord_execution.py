@@ -21,11 +21,11 @@ class CommandReceipt(Base):
     created_at=Column(DateTime(timezone=True),nullable=False)
 
 
-def execute(m,payload,command,uid,name,options):
+def execute(payload,command,uid,name,options):
     from . import task_queue
     interaction_id=str(payload.get('id') or '')
     fingerprint=hashlib.sha256(json.dumps([uid,command,options],sort_keys=True).encode()).hexdigest()
-    with task_queue.atomic(m,runtime.DISCORD_WORLD_ID):
+    with task_queue.atomic(runtime.DISCORD_WORLD_ID):
         with SessionLocal() as db:
             previous=db.get(CommandReceipt,interaction_id) if interaction_id else None
             if previous:
@@ -48,7 +48,7 @@ SHARED_REPLIES={'eventstart','eventstop'}
 PUBLIC_ACTIONS=os.getenv('DISCORD_PUBLIC_ACTIONS','false').strip().lower() in {'1','true','yes','on'}
 
 
-def private_response(m,command,options):
+def private_response(command,options):
     from .game.discord_embeds import DISCORD_PRIVATE_COMMANDS
     if command in SHARED_REPLIES:return False
     if not PUBLIC_ACTIONS:return True

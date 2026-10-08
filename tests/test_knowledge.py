@@ -11,8 +11,8 @@ from app import ask, knowledge, ui, layout_v2 as v2
 
 def answer(query, provider='discord', uid='111', channel=W):
     with m.SessionLocal() as db:
-        p = ask.existing_player(m, db, channel, 'discord' if channel == W else 'twitch', uid) if uid else None
-        result = ask.answer(m, db, p, query, provider)
+        p = ask.existing_player(db, channel, 'discord' if channel == W else 'twitch', uid) if uid else None
+        result = ask.answer(db, p, query, provider)
         db.commit()
         return result
 
@@ -118,7 +118,7 @@ def test_housing_and_the_clinic():
 
 def test_an_item_with_a_topic_word_in_its_name_is_still_the_item():
     citizen()
-    pack = next((e for e in ask.wb.index(m) if e.name == 'Comfort Pack'), None)
+    pack = next((e for e in ask.wb.index() if e.name == 'Comfort Pack'), None)
     if pack is not None:
         assert answer('how do I make a comfort pack').intent == 'make'
 
@@ -162,5 +162,5 @@ def test_nonsense_is_still_unanswered_and_counted():
 
 def test_search_needs_the_question_s_own_words():
     """A passage that only shares a common verb is not an answer."""
-    hits = knowledge.search(m, 'how do I change my job')
+    hits = knowledge.search('how do I change my job')
     assert hits and all('job' in (h.head + h.body).casefold() for _, h in hits)

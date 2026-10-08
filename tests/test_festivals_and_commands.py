@@ -26,7 +26,7 @@ def test_every_festival_food_is_a_real_edible_item():
     assert len(seasonal.FESTIVAL_ITEMS) == 27
     for key, row in seasonal.FESTIVAL_ITEMS.items():
         assert key in s.EDIBLE and key in s.ACTIVE and s.ITEMS[key]['name'] == row['name']
-        e = wb.entry(m, row['recipe'])
+        e = wb.entry(row['recipe'])
         assert e.category == 'food' and e.tags == (seasonal.SURVIVAL_TAG,) and e.tier == 1
         assert m.SEED_INDUSTRIES[key]['sell'] > 0
         assert all(k in s.GATHER for k in e.inputs)
@@ -39,9 +39,9 @@ def test_festival_recipe_is_locked_outside_its_window(monkeypatch):
     assert 'festival recipe' in result and 'Nothing spent' in result
     with m.SessionLocal() as db:
         p = db.query(m.Player).one()
-        ctx = wb.Context(m, db, p)
-        assert ctx.status(wb.entry(m, BITES_RECIPE)).code == 'locked'
-        assert s.stock(m, db, p).get(BITES, 0) == 0
+        ctx = wb.Context(db, p)
+        assert ctx.status(wb.entry(BITES_RECIPE)).code == 'locked'
+        assert s.stock(db, p).get(BITES, 0) == 0
 
 
 def test_festival_food_crafts_in_season_and_eating_adds_comfort(monkeypatch):
@@ -50,7 +50,7 @@ def test_festival_food_crafts_in_season_and_eating_adds_comfort(monkeypatch):
     assert 'CRAFTING COMPLETE' in m.make('test', 'u', 'Kamex', 'Pumpkin Bites', 'discord', action='craft').body.decode()
     with m.SessionLocal() as db:
         p = db.query(m.Player).one()
-        assert s.stock(m, db, p).get(BITES) == 1
+        assert s.stock(db, p).get(BITES) == 1
         life = m.life_state(db, p); life.comfort = 50; life.nutrition = 30; db.commit()
     eaten = m.action('eat', 'test', 'u', msg='food:' + BITES, provider='discord').body.decode()
     assert 'Festival treat' in eaten

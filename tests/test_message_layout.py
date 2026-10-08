@@ -16,7 +16,7 @@ def test_long_response_keeps_every_line_in_details():
     with m.SessionLocal() as db:
         pages = json.loads(db.get(layout.MessagePages, token).pages)
     all_details = '\n'.join(p['description'] for p in pages[1:])
-    assert all_details == presentation.page_text(m, text)
+    assert all_details == presentation.page_text(text)
     assert all(f'Unique resource {i}:** {i+1}' in all_details for i in range(150))
     assert all(len(p['description']) <= 850 for p in pages[1:])
 
@@ -27,16 +27,16 @@ def test_buttons_are_read_only_and_private(monkeypatch):
     def forbidden(*args):
         raise AssertionError('Navigation must never execute game commands')
     monkeypatch.setattr(m, '_discord_call_internal', forbidden)
-    response = layout.open_page(m, {'data': {'custom_id': custom}})
+    response = layout.open_page({'data': {'custom_id': custom}})
     assert response['type'] == 4 and response['data']['flags'] == 64
-    response = layout.open_page(m, {'data': {'custom_id': custom}, 'message': {'flags':64}})
+    response = layout.open_page({'data': {'custom_id': custom}, 'message': {'flags':64}})
     assert response['type'] == 7 and 'flags' not in response['data']
     assert 'Details' in response['data']['embeds'][0]['title']
 
 
 def test_expired_and_invalid_buttons():
     for custom in ['invalid', 'page:'+'a'*32+':99999']:
-        result = layout.open_page(m, {'data': {'custom_id': custom}})
+        result = layout.open_page({'data': {'custom_id': custom}})
         assert result['data']['flags'] == 64 and 'expired' in result['data']['content']
 
 
@@ -78,7 +78,7 @@ def test_expiry_is_checked_even_before_cleanup():
         row = db.get(layout.MessagePages, custom.split(':')[1])
         row.expires_at = m.now() - timedelta(seconds=1)
         db.commit()
-    assert 'expired' in layout.open_page(m, {'data':{'custom_id':custom}})['data']['content']
+    assert 'expired' in layout.open_page({'data':{'custom_id':custom}})['data']['content']
 
 
 def test_signed_button_routes_without_running_gameplay(monkeypatch):

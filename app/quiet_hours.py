@@ -215,14 +215,14 @@ def stamp(at):
 
 # ---------------------------------------------------------------- who an alert is for
 
-def citizen_of(m, db, channel, recipient):
+def citizen_of(db, channel, recipient):
     """The canonical citizen a Discord user id belongs to in this world."""
     ident = db.execute(select(Identity.canonical_uid).where(Identity.channel_id == channel, Identity.provider == 'discord',
                                                               Identity.provider_uid == str(recipient))).scalars().first()
     return ident or 'discord:' + str(recipient)
 
 
-def recipients(m, db, channel, uid):
+def recipients(db, channel, uid):
     """Every Discord user id that is this citizen."""
     found = set(db.scalars(select(Identity.provider_uid).where(Identity.channel_id == channel, Identity.provider == 'discord',
                                                                  Identity.canonical_uid == uid)))
@@ -231,19 +231,19 @@ def recipients(m, db, channel, uid):
     return found
 
 
-def _held_ids(m, db, channel, uid):
+def _held_ids(db, channel, uid):
     """This citizen's held alerts that are still waiting."""
-    who = recipients(m, db, channel, uid)
+    who = recipients(db, channel, uid)
     if not who:
         return []
     return list(db.scalars(select(HeldAlert.notice_id).join(Notice, Notice.id == HeldAlert.notice_id).where(
         HeldAlert.channel_id == channel, HeldAlert.recipient.in_(who), Notice.state == 'pending')))
 
 
-def _reschedule(m, db, channel, uid):
+def _reschedule(db, channel, uid):
     """Held alerts follow the new setting: due at once when the citizen is outside quiet hours (the worker then
     sends them as one message), else at the new window's end. Returns how many go out now."""
-    ids = _held_ids(m, db, channel, uid)
+    ids = _held_ids(db, channel, uid)
     if not ids:
         return 0
     now = runtime.now()
@@ -283,7 +283,7 @@ def _on_the_way(released):
     return ' 1 held alert is on its way now.' if released == 1 else f' {released} held alerts are on their way now, as one message.'
 
 
-def set_hours(m, db, p, tz, start, end):
+def set_hours(db, p, tz, start, end):
     """Set or change quiet hours. Returns the message; a refusal ends 'Nothing changed.' and changes nothing."""
     name, problem = parse_zone(tz)
     if problem:
@@ -311,17 +311,17 @@ def set_hours(m, db, p, tz, start, end):
     text += ' DM alerts in that window wait and arrive as one message when it ends.'
     if inside(current, now):
         text += f' They are on now, until {stamp(window_end(current, now))}.'
-    return text + _on_the_way(_reschedule(m, db, p.channel_id, p.twitch_uid)) + _mode_note(db, p)
+    return text + _on_the_way(_reschedule(db, p.channel_id, p.twitch_uid)) + _mode_note(db, p)
 
 
-def turn_off(m, db, p):
+def turn_off(db, p):
     """Quiet hours off; anything held goes out now, as one message."""
     current = row(db, p.channel_id, p.twitch_uid)
     if current is None:
         return '🌙 Quiet hours are already off. Nothing changed.'
     db.delete(current)
     db.flush()
-    return '🌙 Quiet hours off: DM alerts arrive as they happen again.' + _on_the_way(_reschedule(m, db, p.channel_id, p.twitch_uid))
+    return '🌙 Quiet hours off: DM alerts arrive as they happen again.' + _on_the_way(_reschedule(db, p.channel_id, p.twitch_uid))
 
 
 # ---------------------------------------------------------------- what the citizen sees
@@ -363,7 +363,7 @@ def delivery_line(db, channel, uid, now):
     return f'🌙 Quiet hours {describe(r)}: DM alerts wait and arrive as one message at {at}.'
 
 
-def held_line(m, db, notice):
+def held_line(db, notice):
     """For a waiting alert that is held: when it arrives. '' when it is not held."""
     from .game.players import as_utc
     if db.get(HeldAlert, notice.id) is None:
@@ -374,7 +374,7 @@ def held_line(m, db, notice):
 
 # ---------------------------------------------------------------- the Discord worker
 
-def check(m, notice_id):
+def check(notice_id):
     """What the Discord worker does with one due alert, before any claim:
       'send'                  the usual claim and send (not a DM, or nothing to hold or release)
       None                    nothing now (held until the window ends, or no longer due)
@@ -390,7 +390,7 @@ def check(m, notice_id):
         if notice.state not in ('pending', 'sending') or as_utc(notice.next_at) > now:
             return None
         channel, recipient = notice.channel_id, str(notice.recipient)
-        r = row(db, channel, citizen_of(m, db, channel, recipient))
+        r = row(db, channel, citizen_of(db, channel, recipient))
         if r is not None and inside(r, now):
             held = db.execute(update(Notice).where(Notice.id == notice_id, Notice.provider == 'discord', Notice.state.in_(['pending', 'sending']),
                                                    Notice.next_at <= now).values(state='pending', next_at=window_end(r, now))
@@ -405,7 +405,7 @@ def check(m, notice_id):
         return (channel, recipient) if waiting else 'send'
 
 
-def claim_release(m, channel, recipient):
+def claim_release(channel, recipient):
     """Claim every due DM alert of one recipient together, for one message.
 
     One conditional update per row (state pending/sending and due, as claim() does), in id order so two
@@ -478,7 +478,7 @@ def brief(notice):
     return ' · '.join(parts)
 
 
-def summary(m, batch):
+def summary(batch):
     """(message data, first line) for several held alerts: one card, its lines kept within Discord's limits."""
     from . import ui
     from .notice import FOOTER

@@ -260,7 +260,7 @@ def tutorial_row(db,p):
 
 def tutorial_text(db,p,provider):
     from .. import onboarding
-    steps_text=onboarding.status(main,db,p,provider)
+    steps_text=onboarding.status(db,p,provider)
     if steps_text:return steps_text
     row=tutorial_row(db,p);prefix='/' if provider=='discord' else '!'
     if provider=="discord":
@@ -305,7 +305,7 @@ def player(db,c,provider,uid,name):
         from .. import stream_overlay
         stream_overlay.highlight(db,c,"join",f"{clean(name)} arrived in New Eridian","A new citizen joined. Type !start in chat to join them.",clean(name))
         db.commit();db.refresh(p)
-    item_identity.migrate_player(main,db,p)
+    item_identity.migrate_player(db,p)
     # Background work and a few chat commands call without the viewer's name; they keep the name the citizen already has.
     if clean(name)!=PLACEHOLDER_NAME or not p.display_name:
         record_account_name(db,c,provider,uid,name)

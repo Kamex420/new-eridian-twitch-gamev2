@@ -22,8 +22,8 @@ def test_needs_pause_notifies_once_then_resumes_and_completes(monkeypatch):
         assert db.query(n.NoticeEvent).one().kind=='paused'
         note=db.query(n.Notice).one()
         assert 'Energy: 19/100; need 20' in note.content and '/sleep' in note.content
-    sent=[];monkeypatch.setattr(n,'send',lambda mod,row:sent.append(row.content));n.deliver(m)
-    set_energy(100);advance();advance();n.deliver(m)
+    sent=[];monkeypatch.setattr(n,'send',lambda row:sent.append(row.content));n.deliver()
+    set_energy(100);advance();advance();n.deliver()
     assert len(sent)==2 and 'PAUSED' in sent[0] and 'COMPLETED' in sent[1]
     with m.SessionLocal() as db:
         assert db.query(q.TaskQueue).one().remaining==0
@@ -68,7 +68,7 @@ def test_material_pause_keeps_attempt_and_notifies():
 
 def test_faults_rollback_and_stop_after_three_with_one_alert(monkeypatch):
     enqueue(count=2)
-    def fail(module,db,p,*args):
+    def fail(db,p,*args):
         p.ore+=999;db.commit()
         raise RuntimeError('simulated failure after nested commit')
     monkeypatch.setattr(q.s,'gather',fail)
@@ -89,7 +89,7 @@ def test_error_retry_backoff_does_not_loop_each_tick(monkeypatch):
     enqueue(count=1);due();calls=[]
     def fail(*args):calls.append(1);raise RuntimeError('temporary')
     monkeypatch.setattr(q.s,'gather',fail)
-    q.tick(m);q.tick(m)
+    q.tick();q.tick()
     assert calls==[1]
 
 
@@ -121,7 +121,7 @@ def test_duplicate_discord_interactions_execute_once_even_concurrently(monkeypat
     calls=[]
     def dispatch(*args):calls.append(1);return 'Saved result'
     monkeypatch.setattr(m,'_discord_call_internal',dispatch)
-    def run(_):return execution.execute(m,{'id':'same-interaction'},'farm','u','Player',{})
+    def run(_):return execution.execute({'id':'same-interaction'},'farm','u','Player',{})
     with ThreadPoolExecutor(2) as pool:results=list(pool.map(run,range(2)))
     assert calls==[1] and results==['Saved result','Saved result']
     with m.SessionLocal() as db:assert db.query(execution.CommandReceipt).count()==1
@@ -134,7 +134,7 @@ def test_discord_rollback_does_not_leave_a_receipt_or_partial_rewards(monkeypatc
             p=db.query(m.Player).one();p.sc+=123;db.commit()
         raise RuntimeError('after commit')
     monkeypatch.setattr(m,'_discord_call_internal',fail)
-    with pytest.raises(RuntimeError):execution.execute(m,{'id':'broken'},'farm','u','Player',{})
+    with pytest.raises(RuntimeError):execution.execute({'id':'broken'},'farm','u','Player',{})
     with m.SessionLocal() as db:
         assert db.query(m.Player).one().sc==10000
         assert db.query(execution.CommandReceipt).count()==0
@@ -199,10 +199,10 @@ def test_cooldown_state_does_not_depend_on_english_copy(monkeypatch):
 def test_pause_delivery_retry_never_repeats_attempts(monkeypatch):
     enqueue(count=2);set_energy(19);advance()
     def unavailable(*args):raise n.DeliveryError('temporary')
-    monkeypatch.setattr(n,'send',unavailable);n.deliver(m)
+    monkeypatch.setattr(n,'send',unavailable);n.deliver()
     with m.SessionLocal() as db:
         notice=db.query(n.Notice).one();notice.next_at=m.now()-timedelta(seconds=1);db.commit()
-    sent=[];monkeypatch.setattr(n,'send',lambda mod,row:sent.append(row.id));n.deliver(m);n.deliver(m)
+    sent=[];monkeypatch.setattr(n,'send',lambda row:sent.append(row.id));n.deliver();n.deliver()
     assert len(sent)==1
     with m.SessionLocal() as db:
         assert db.query(m.Player).one().actions==0
@@ -216,7 +216,7 @@ def test_retrying_formatted_response_does_not_repeat_saved_action(monkeypatch):
     def formatting_error(*args,**kwargs):raise RuntimeError('formatting storage is unavailable')
     monkeypatch.setattr(m,'_discord_json_message',formatting_error)
     monkeypatch.setattr(deferred,'edit_original',lambda *args:sent.append(args[2]))
-    for _ in range(2):deferred.finish(m,{'id':'same','application_id':'test','token':'fake'},'farm','u','Player',{})
+    for _ in range(2):deferred.finish({'id':'same','application_id':'test','token':'fake'},'farm','u','Player',{})
     assert calls==[1] and all(row['content']=='Saved reward' for row in sent)
 
 
@@ -237,7 +237,7 @@ def test_stop_alert_falls_back_when_embeds_are_forbidden(monkeypatch):
         if len(calls)==1:raise n.DeliveryError('Notification HTTP 403',permanent=True)
         return {'id':'sent'}
     monkeypatch.setattr(n,'post',post)
-    n.send(m,SimpleNamespace(provider='discord',recipient='123',message_channel='456',id='a'*32,
+    n.send(SimpleNamespace(provider='discord',recipient='123',message_channel='456',id='a'*32,
         content='TASK QUEUE — PAUSED\nMine Coal\nPAUSE REASON\nEnergy: 19/100; need 20. Use /sleep.'))
     assert len(calls)==2 and 'embeds' not in calls[1]
     assert '<@123>' in calls[1]['content'] and 'Use /sleep' in calls[1]['content']

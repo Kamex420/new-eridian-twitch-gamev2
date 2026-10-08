@@ -53,9 +53,9 @@ def test_overlay_reports_working_queues_leaders_and_join_tips():
 
 def test_society_milestones_are_announced_once():
     with m.SessionLocal() as db:
-        so.watch(m, db, W, 'Outpost', {}, {}, {})
-        so.watch(m, db, W, 'Settlement', {'key': 'kitchen', 'name': 'Community Kitchen', 'completed': True, 'goal': 160}, {}, {})
-        so.watch(m, db, W, 'Settlement', {'key': 'kitchen', 'name': 'Community Kitchen', 'completed': True, 'goal': 160}, {}, {})
+        so.watch(db, W, 'Outpost', {}, {}, {})
+        so.watch(db, W, 'Settlement', {'key': 'kitchen', 'name': 'Community Kitchen', 'completed': True, 'goal': 160}, {}, {})
+        so.watch(db, W, 'Settlement', {'key': 'kitchen', 'name': 'Community Kitchen', 'completed': True, 'goal': 160}, {}, {})
         db.commit()
         rows = [r.title for r in db.query(so.StreamHighlight)]
     assert rows.count('New Eridian is now a Settlement!') == 1
@@ -381,10 +381,10 @@ def test_newest_discord_features_are_named_but_never_shown_as_data(monkeypatch):
     seed(uid='u', provider='twitch', name='Kamex')
     with m.SessionLocal() as db:
         p = db.query(m.Player).filter_by(twitch_uid='u').one()
-        assert 'Nothing changed' not in quiet_hours.set_hours(m, db, p, 'Europe/Berlin', '22:00', '07:00')
-        key, problem = keep_levels.find_item(m, 'Iron Nails')
-        assert key and 'Nothing changed' not in keep_levels.set_level(m, db, p, key, 37)
-        assert 'Added to your shopping list' in shopping_list.add_typed(m, db, p, 'campfire', 3)
+        assert 'Nothing changed' not in quiet_hours.set_hours(db, p, 'Europe/Berlin', '22:00', '07:00')
+        key, problem = keep_levels.find_item('Iron Nails')
+        assert key and 'Nothing changed' not in keep_levels.set_level(db, p, key, 37)
+        assert 'Added to your shopping list' in shopping_list.add_typed(db, p, 'campfire', 3)
         db.commit()
         assert keep_levels.levels(db, p.channel_id, p.twitch_uid) and shopping_list.entries(db, p)
     data = overlay()

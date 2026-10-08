@@ -52,7 +52,7 @@ def action(action:str,channel:str,uid:str,name:str="Citizen",msg:str="",provider
             blocked=task_need_gate(db,p,action,provider)
             if blocked:return PlainTextResponse(blocked) if provider=="discord" else out(blocked)
         if action=='rare':
-            result=crafting_progression.rare_gather(main,db,p,rare_ore_to_prospect(db,p),provider)
+            result=crafting_progression.rare_gather(db,p,rare_ore_to_prospect(db,p),provider)
             return platform_response(provider,result,result.replace('\n',' | '))
         if action in SEED_TASKS:
             cfg=SEED_TASKS[action]
@@ -64,16 +64,16 @@ def action(action:str,channel:str,uid:str,name:str="Citizen",msg:str="",provider
         if action in SEED_TASKS:
             rid=main.MERGED_TRAINING.get(action)
             if rid:
-                blocked=crafting_progression.recipe_gate(main,db,p,rid,provider)
+                blocked=crafting_progression.recipe_gate(db,p,rid,provider)
                 if blocked:return out(blocked)
                 r=seed_content.RECIPES[rid];req=r['requirement'].get('Skill','SK_CRAFTING')
-                if seed_content.level_for(main,db,p,req)<seed_content.required_level(r):
+                if seed_content.level_for(db,p,req)<seed_content.required_level(r):
                     return out(f'🔒 {seed_content.skill_name(req)} Lv.{seed_content.required_level(r)} required. Train lower-level recipes. Nothing spent.')
             workshop_tag=None if rid else crafting_progression.TRAINING_STATIONS.get(SEED_TASKS[action]['branch'])
         elif action in {'craft','machine','work','cargo'}:
             workshop_tag=crafting_progression.SURVIVAL
         if workshop_tag:
-            station_block=crafting_progression.station_gate(main,db,p,[workshop_tag],crafting_progression.STATIONS[workshop_tag]['tier'],provider)
+            station_block=crafting_progression.station_gate(db,p,[workshop_tag],crafting_progression.STATIONS[workshop_tag]['tier'],provider)
             if station_block:return out(station_block)
         selected_food=(msg[5:] if action=="eat" and (msg or "").startswith("food:") else "")
         if selected_food not in {"","meal_kit","emergency"}:selected_food=seed_content.find_item(selected_food)
@@ -165,12 +165,12 @@ def action(action:str,channel:str,uid:str,name:str="Citizen",msg:str="",provider
         if action in SEED_TASKS:
             cfg=dict(SEED_TASKS[action])
             if action in main.MERGED_TRAINING:
-                cfg['output']=seed_content.production_balance.current_outputs(main,db,p,main.MERGED_TRAINING[action])
+                cfg['output']=seed_content.production_balance.current_outputs(db,p,main.MERGED_TRAINING[action])
             if not passed(.72):return fail(f"{cfg['label']} did not succeed. All task materials were kept.")
             for key,qty in cfg['cost'].items():material_change(db,p,key,-qty)
             for key,qty in cfg['output'].items():material_change(db,p,key,qty)
             if action in main.MERGED_TRAINING:   # a training task that runs a catalog recipe crafts it (a Seedling's too)
-                craft_record(db,p,main.MERGED_TRAINING[action]);main.extras.goal_crafted(main,db,p,main.MERGED_TRAINING[action])
+                craft_record(db,p,main.MERGED_TRAINING[action]);main.extras.goal_crafted(db,p,main.MERGED_TRAINING[action])
             shared=colony_state(db,channel);old_infrastructure=shared.infrastructure
             for key,qty in cfg['shared'].items():setattr(shared,key,min(100,getattr(shared,key)+qty) if key=='mood' else getattr(shared,key)+qty)
             housing_gain=shared.infrastructure//5-old_infrastructure//5
@@ -306,7 +306,7 @@ def action(action:str,channel:str,uid:str,name:str="Citizen",msg:str="",provider
         else:raise HTTPException(404,"Unknown action")
         if action=="craft":base=base.replace(" completes craft."," completes craft (-1 Hematite Ore).")
         if action=="delivery":base=base.replace(" completes delivery."," completes delivery (-1 Cargo).")
-        base+=task_yields.apply(main,db,p,action,mode)
+        base+=task_yields.apply(db,p,action,mode)
         if crate_bonus:base+=" Trade Crate: +1 SC included."
         settlement_before=society_tier_index(s)
         shared=colony_state(db,channel)
@@ -314,7 +314,7 @@ def action(action:str,channel:str,uid:str,name:str="Citizen",msg:str="",provider
         production=colony_produce(shared,s,production_action,productivity(life,pw.siro_exposure))
         if production:base+=" Settlement production: "+production+"."
         if skill:   # work and training tasks sometimes turn up an item from the same line of work (eat and sleep never do)
-            found=practice.find(main,db,p,skill,SEED_TASKS[action]['branch'] if action in SEED_TASKS else LEGACY_BRANCH.get(action))
+            found=practice.find(db,p,skill,SEED_TASKS[action]['branch'] if action in SEED_TASKS else LEGACY_BRANCH.get(action))
             if found:base+=" | "+found+"."
         if action=="sleep" and "medicines -1" in production:pw.siro_exposure=max(0,pw.siro_exposure-10)
         p.actions+=1;p.successes+=1;db.commit()

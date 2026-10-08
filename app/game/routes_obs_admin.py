@@ -209,14 +209,13 @@ def admin_merge(keep:str,merge:str,channel:str="",key:str="",confirm:int=0):
     Without confirm=1 it only shows what the merged character would look like."""
     if not valid_admin_key(key):return JSONResponse({"ok":False,"error":"Invalid game-admin key."},status_code=403)
     channel=channel or main.DISCORD_WORLD_ID
-    me=main
     with SessionLocal() as db:
-        try:pair=main.force_merge.load(me,db,channel,keep,merge)    # the preview-and-apply core the owner's /menu Force merge button shares
+        try:pair=main.force_merge.load(db,channel,keep,merge)    # the preview-and-apply core the owner's /menu Force merge button shares
         except main.force_merge.Refused as e:return JSONResponse({"ok":False,"error":e.error},status_code=e.status)
         if not confirm:
             return JSONResponse({"ok":True,"preview":True,"keep":pair.before[0],"merge":pair.before[1],"after":{**pair.combined,"uid":keep,"name":pair.keep.display_name},
                                  "apply":"repeat this URL with &confirm=1"})
-        return JSONResponse({"ok":True,"merged":True,**main.force_merge.apply(me,db,channel,pair,"game admin")})
+        return JSONResponse({"ok":True,"merged":True,**main.force_merge.apply(db,channel,pair,"game admin")})
 
 @app.get("/api/v1/admin/event/{event}/{state}")
 @game_transaction

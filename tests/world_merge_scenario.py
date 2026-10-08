@@ -38,14 +38,14 @@ def build(m, client, S, T):
         m.colony_state(db, S).water, m.colony_state(db, T).water = 7, 3
         m.world(db, S)
         m.start_event(db, m.world(db, T), 'siro')     # only the Twitch world has an event running
-        ballot = votes.ballot(m, db)
+        ballot = votes.ballot(db)
         for channel, uid, choice in ((S, 'discord:d1', 1), (T, 't1', 2), (S, 'dup', 1), (T, 'dup', 2)):
             db.add(votes.Cast(world=S, day=ballot.day, channel_id=channel, canonical_uid=uid, choice=choice, created_at=m.now()))
-        season = seasons.current(m, db)
+        season = seasons.current(db)
         for channel, uid, points in ((S, 'discord:d1', 10), (T, 't1', 5), (S, 'dup', 7), (T, 'dup', 4)):
             db.add(seasons.SeasonScore(season_id=season.id, channel_id=channel, canonical_uid=uid, points=points, contribution=0, xp=0,
                                        events=0, votes=0, trophies=0, tier=0, updated_at=m.now()))
-        votes.plan(m, db, S).run, votes.plan(m, db, T).run = 3, 1
+        votes.plan(db, S).run, votes.plan(db, T).run = 3, 1
         db.add(votes.ProjectHelp(world=T, run=1, channel_id=T, canonical_uid='t1', project='x', amount=4, finished=0))
         db.add(votes.ProjectHelp(world=S, run=3, channel_id=S, canonical_uid='discord:d2', project='y', amount=2, finished=0))
         db.add(task_queue.TaskQueue(channel_id=S, canonical_uid='discord:d1', task='gather:' + lumber, total=3, remaining=2,
@@ -82,7 +82,7 @@ def verify(m, client, S, T):
         assert m.world(db, T).active_event is None                       # the main world's state, not the Twitch world's event
         help = {r.canonical_uid: r for r in db.execute(select(votes.ProjectHelp).where(votes.ProjectHelp.world == T)).scalars()}
         assert help['t1'].run == 3 and help['t1'].amount == 4 and help['discord:d2'].run == 3
-        assert votes.plan(m, db, T).run == 3
+        assert votes.plan(db, T).run == 3
         scores = {r.canonical_uid: r.points for r in db.execute(select(seasons.SeasonScore)).scalars()}
         assert scores == {'discord:d1': 10, 't1': 5, 'dup': 11}, scores
         cast = db.execute(select(votes.Cast)).scalars().all()

@@ -58,7 +58,7 @@ def find_recipe(value):
     matches=[k for k,r in RECIPES.items() if value.casefold() in (r['name'].casefold(),r['source'].casefold())]
     return matches[0] if len(matches)==1 else None
 
-def level_for(m,db,p,skill):
+def level_for(db,p,skill):
     from .game.players import lvl, skill_xp
     main,branch=SKILLS.get(skill,('fabrication',None))
     if not branch:return lvl(skill_xp(p,main))
@@ -154,23 +154,23 @@ def gather_menu(page=1,provider='discord'):
               if provider=='discord' else [f'!gather <id> collects; !gatherpage {min(page+1,pages)} next. Costs {need_cost(2,"/","")}.'])
     return '\n'.join(lines)
 
-def preview(m,db,p,key):
+def preview(db,p,key):
     from .game.cooldowns_materials import material_amount
     from .game.players import requirement_text
     from . import crafting_progression as cp
     r=RECIPES[key];req=r['requirement'].get('Skill','SK_CRAFTING')
-    outputs=production_balance.current_outputs(m,db,p,key)
-    chosen=production_balance.selected_station(m,db,p,key)
-    lines=[f"🛠️ {r['name']}", '', 'ONE BATCH',requirement_text(outputs),production_balance.quote(m,db,p,key), '', 'MATERIALS']
+    outputs=production_balance.current_outputs(db,p,key)
+    chosen=production_balance.selected_station(db,p,key)
+    lines=[f"🛠️ {r['name']}", '', 'ONE BATCH',requirement_text(outputs),production_balance.quote(db,p,key), '', 'MATERIALS']
     lines += ['BATCH OPTIONS · '+ '; '.join(cp.STATIONS[tag]['name']+': '+requirement_text(production_balance.outputs_at(sys.modules[__name__],cp,key,tag)) for tag in cp.tags(key))]
     lines += ['Selected station: '+(cp.STATIONS[chosen]['name'] if chosen else 'Locked; output shown is the base batch.')]
     lines += [f"• {item_label(k)}: {material_amount(db,p,k)}/{v}\n  Get it: {source_hint(k)}" for k,v in r['inputs'].items()] or ['• No ingredients; extraction uses your work cooldown.']
-    lines += ['',f"SKILL · {skill_name(req)} Lv.{required_level(r)} · Yours: {level_for(m,db,p,req)}",cp.unlock_text(m,db,p,key), '', 'Use /make and select this recipe to craft one batch.', 'Use /gather for natural materials; /catalog to look up ingredients.']
+    lines += ['',f"SKILL · {skill_name(req)} Lv.{required_level(r)} · Yours: {level_for(db,p,req)}",cp.unlock_text(db,p,key), '', 'Use /make and select this recipe to craft one batch.', 'Use /gather for natural materials; /catalog to look up ingredients.']
     if any(k in GATHER and GATHER[k]['branch']=='ore_mining' for k in r['outputs']):lines+=['MINING · Uses your work success chance. Failure gives 1 Stone Dust instead of ore.']
     if any(k in cp.RARE for k in r['outputs']):lines+=['RARE EXTRACTION · '+cp.rare_hint(next(k for k in r['outputs'] if k in cp.RARE))]
     return '\n'.join(lines)
 
-def craft(m,db,p,key,provider):
+def craft(db,p,key,provider):
     from . import extras
     from .game.colony_events import work_counts
     from .game.cooldowns_materials import check_cooldown, craft_record, determination_clear, material_amount, material_change
@@ -179,16 +179,16 @@ def craft(m,db,p,key,provider):
     from .game.routes_crafting import craft_missing_materials
     from .game.training_and_items import gain_branch
     from . import crafting_progression as cp
-    blocked=cp.recipe_gate(m,db,p,key,provider)
+    blocked=cp.recipe_gate(db,p,key,provider)
     if blocked:return blocked
     r=RECIPES[key];req=r['requirement'].get('Skill','SK_CRAFTING')
-    if level_for(m,db,p,req)<required_level(r):return f"🔒 {r['name']} needs {skill_name(req)} Lv.{required_level(r)}. Train this branch with /training. Nothing spent."
+    if level_for(db,p,req)<required_level(r):return f"🔒 {r['name']} needs {skill_name(req)} Lv.{required_level(r)}. Train this branch with /training. Nothing spent."
     rare_output=next((k for k in r['outputs'] if k in cp.RARE),None)
     if rare_output:
         bonus=int(any(material_amount(db,p,k)>0 and key in recipes for k,recipes in MACHINE_RECIPES.items()))
         before=material_amount(db,p,rare_output)
-        result=cp.rare_gather(m,db,p,rare_output,provider,bonus)
-        if material_amount(db,p,rare_output)>before:extras.goal_crafted(m,db,p,key);db.commit()   # the third step recovers the ore
+        result=cp.rare_gather(db,p,rare_output,provider,bonus)
+        if material_amount(db,p,rare_output)>before:extras.goal_crafted(db,p,key);db.commit()   # the third step recovers the ore
         return result
     missing=craft_missing_materials(db,p,r['inputs'])
     if missing:
@@ -198,14 +198,14 @@ def craft(m,db,p,key,provider):
     if wait:return f'⏳ The workshop will be ready in {wait}s. Nothing spent.'
     mining_detail=''
     if any(k in GATHER and GATHER[k]['branch']=='ore_mining' for k in r['outputs']):
-        success,mining_detail=cp.mining_roll(m,db,p,provider)
-        if not success:return cp.mining_failure(m,db,p,provider,mining_detail)
+        success,mining_detail=cp.mining_roll(db,p,provider)
+        if not success:return cp.mining_failure(db,p,provider,mining_detail)
         determination_clear(db,p,'extraction')
-    owned=stock(m,db,p)
+    owned=stock(db,p)
     workshop_bonus=int(any(owned.get(machine,0)>0 and key in recipes for machine,recipes in MACHINE_RECIPES.items()))
     for k,v in r['inputs'].items():material_change(db,p,k,-v)
-    outputs=production_balance.current_outputs(m,db,p,key)
-    chosen=production_balance.selected_station(m,db,p,key)
+    outputs=production_balance.current_outputs(db,p,key)
+    chosen=production_balance.selected_station(db,p,key)
     for k,v in outputs.items():material_change(db,p,k,v)
     # Keep Pharmacy practice separate from healing practice; a declared minigame rule.
     xp=[];line=None
@@ -217,10 +217,10 @@ def craft(m,db,p,key,provider):
         if branch:gain_branch(db,p,branch,amount)
         xp.append(f'+{amount} {skill_name(sk)} XP')
     from . import practice
-    found=practice.find(m,db,p,*(line or ('fabrication',None)))
+    found=practice.find(db,p,*(line or ('fabrication',None)))
     life=life_state(db,p);spend_life_for_action(life,'make')
     # Every successful catalog craft (button, chat, queue attempt) passes here: crafting the goal completes it.
-    p.actions+=1;p.successes+=1;craft_record(db,p,key);extras.goal_crafted(m,db,p,key);db.commit()
+    p.actions+=1;p.successes+=1;craft_record(db,p,key);extras.goal_crafted(db,p,key);db.commit()
     colony=work_counts(db,p,SKILLS.get(req,('fabrication',None))[0],contract='make',action='make',
                          detail='made '+', '.join(f"{item_label(k)} ×{v}" for k,v in outputs.items()))
     return ('✅ CRAFTING COMPLETE\n\nOUTPUT\n'+ '\n'.join(f"• {item_label(k)} ×{v}" for k,v in outputs.items())+
@@ -230,26 +230,26 @@ def craft(m,db,p,key,provider):
 # The work a gathering trip counts as for New Eridian: wild plants feed the colony, water keeps it running.
 GATHER_SKILL={'botanical_harvesting':'cultivation','water_collection':'environmental'}
 
-def gather(m,db,p,key,provider):
+def gather(db,p,key,provider):
     from .game.colony_events import work_counts
     from .game.cooldowns_materials import check_cooldown, determination_clear, material_change
     from .game.life import life_state, spend_life_for_action, task_need_gate
     from .game.training_and_items import gain_branch
     if key not in GATHER:return '🛑 Choose a natural resource from /gather. Manufactured parts must be crafted.'
     from . import crafting_progression as cp
-    if key in cp.RARE:return cp.rare_gather(m,db,p,key,provider)
+    if key in cp.RARE:return cp.rare_gather(db,p,key,provider)
     life=life_state(db,p);blocked=task_need_gate(db,p,'make',provider,life)
     if blocked:return blocked
     wait=check_cooldown(db,p,'seed_work')
     if wait:return f'⏳ Gathering will be ready in {wait}s. Nothing spent.'
     detail=''
     if GATHER[key]['branch']=='ore_mining':
-        success,detail=cp.mining_roll(m,db,p,provider)
-        if not success:return cp.mining_failure(m,db,p,provider,detail)
+        success,detail=cp.mining_roll(db,p,provider)
+        if not success:return cp.mining_failure(db,p,provider,detail)
         determination_clear(db,p,'extraction')
     cfg=GATHER[key];material_change(db,p,key,cfg['amount']);xp=runtime.gain_skill(p,'extraction',1);gain_branch(db,p,cfg['branch'],xp)
     from . import practice
-    found=practice.find(m,db,p,'extraction',cfg['branch'])
+    found=practice.find(db,p,'extraction',cfg['branch'])
     spend_life_for_action(life,'make');p.actions+=1;p.successes+=1;db.commit()
     mined=cfg['branch']=='ore_mining'
     colony=work_counts(db,p,GATHER_SKILL.get(cfg['branch'],'extraction'),contract='mine' if mined else None,
@@ -392,9 +392,9 @@ PURPOSE={k:purpose(k) for k in ACTIVE}
 for _key,_row in _seasonal.FESTIVAL_ITEMS.items():
     PURPOSE[_key]=dict(PURPOSE[_key],label=f"Festival food: +{nutrition(_key)} Nutrition, +{_row['comfort']} Comfort, +{_row['morale']} Morale; consumes 1. Use /eat.")
 
-def stock(m,db,p):
+def stock(db,p):
     from . import item_identity
-    return item_identity.stock(m,db,p)
+    return item_identity.stock(db,p)
 
 def category_choices():
     return [{'name':f'{emoji} {label} ({sum(v==k for v in DISPLAY_CATEGORY.values())})','value':k} for k,emoji,label,_ in DISPLAY_CATEGORIES]
@@ -407,12 +407,12 @@ def filtered_keys(category='',owned=False,inventory=None,gather_only=False):
 def recipe_category(key):return CATEGORY[next(iter(RECIPES[key]['outputs']))]
 
 # Override the first release's flat browser. Every item stays reachable via pages.
-def catalog(m,db,p,item='',page=1,owned=False,category=''):
+def catalog(db,p,item='',page=1,owned=False,category=''):
     from .game.players import requirement_text
     from . import crafting_progression as cp
     if category and display_category(category) is None:return '🛑 Choose a category from the list. Nothing spent.'
     category=display_category(category) or ''
-    inv=stock(m,db,p)
+    inv=stock(db,p)
     if item:
         if item not in ACTIVE:return '🛑 Choose an obtainable item from the catalog.'
         if category and DISPLAY_CATEGORY[item]!=category:return 'ℹ️ This item is in '+DISPLAY_INFO[DISPLAY_CATEGORY[item]][1]+'. Change Category to inspect it.'
@@ -430,7 +430,7 @@ def catalog(m,db,p,item='',page=1,owned=False,category=''):
         made=[r for r in RECIPES.values() if item in r['outputs']]
         if made:
             lines+=['','MAKE IT']
-            for r in made[:3]:lines += [f"• {r['name']} → {production_balance.current_outputs(m,db,p,next(k for k,v in RECIPES.items() if v is r))[item]} with current access",requirement_text(r['inputs']) or 'Extraction; no ingredients',f"Tier {cp.recipe_tier(next(k for k,v in RECIPES.items() if v is r))} · {skill_name(r['requirement'].get('Skill'))} Lv.{required_level(r)} · {station(r)}"]
+            for r in made[:3]:lines += [f"• {r['name']} → {production_balance.current_outputs(db,p,next(k for k,v in RECIPES.items() if v is r))[item]} with current access",requirement_text(r['inputs']) or 'Extraction; no ingredients',f"Tier {cp.recipe_tier(next(k for k,v in RECIPES.items() if v is r))} · {skill_name(r['requirement'].get('Skill'))} Lv.{required_level(r)} · {station(r)}"]
             if len(made)>3:lines+=['More variants appear in /make Recipe search.']
         if USED_BY[item]:
             users=[RECIPES[r]['name'] for r in USED_BY[item]]
@@ -451,9 +451,9 @@ def catalog(m,db,p,item='',page=1,owned=False,category=''):
     lines+=['',f'Keep Category selected; change Page (1–{pages}) to see all items.','Select Item for its use, costs and crafting ingredients.']
     return '\n'.join(lines)
 
-def choices(m,db,p,query='',gather_only=False,category='',owned=False,usable=False):
+def choices(db,p,query='',gather_only=False,category='',owned=False,usable=False):
     """Item dropdowns: name, owned count, then how to get it or what it does."""
-    inv=stock(m,db,p);keys=filtered_keys(category,owned,inv,gather_only)
+    inv=stock(db,p);keys=filtered_keys(category,owned,inv,gather_only)
     if gather_only:keys=[k for k in keys if GATHER[k]['branch']!='ore_mining']
     if usable:keys=[k for k in keys if PURPOSE[k]['mode'] not in {'ingredient','workshop'}]
     def label(k):
@@ -463,8 +463,8 @@ def choices(m,db,p,query='',gather_only=False,category='',owned=False,usable=Fal
         return f"{item_label(k)} ×{inv.get(k,0)} · {DISPLAY_INFO[DISPLAY_CATEGORY[k]][1]} · {how}"
     return [(label(k),k) for k in keys]
 
-def use_menu(m,db,p,category='',page=1):
-    inv=stock(m,db,p);keys=[k for k in filtered_keys(category,True,inv) if PURPOSE[k]['mode'] not in {'ingredient','workshop'}]
+def use_menu(db,p,category='',page=1):
+    inv=stock(db,p);keys=[k for k in filtered_keys(category,True,inv) if PURPOSE[k]['mode'] not in {'ingredient','workshop'}]
     pages=max(1,math.ceil(len(keys)/6));page=max(1,min(int(page),pages))
     lines=[f'🎒 ITEM MENU — Uses · {page}/{pages}',f'{len(keys)} owned usable item types','']
     for key in keys[(page-1)*6:page*6]:lines += [f"• {ITEMS[key]['name']} ×{inv[key]}",PURPOSE[key]['label']]
@@ -475,7 +475,7 @@ def use_menu(m,db,p,category='',page=1):
 WORK_LINE={'plant':('cultivation','seed_cultivation'),'scan':('research',None),'pack':('logistics',None),
            'vend':('commerce',None),'build':('infrastructure','maintenance_repair'),'research':('research',None)}
 
-def use(m,db,p,key,provider):
+def use(db,p,key,provider):
     from .game.colony_events import work_counts
     from .game.cooldowns_materials import check_cooldown, material_amount, material_change
     from .game.life import life_state, spend_life_for_action, task_need_gate
@@ -525,7 +525,7 @@ def use(m,db,p,key,provider):
     if work:
         from . import practice
         line=WORK_LINE.get(mode)
-        found=practice.find(m,db,p,*line) if line else ''
+        found=practice.find(db,p,*line) if line else ''
         if found:changes.append(found)
         spend_life_for_action(life,'make');changes+=[need_cost(2)]
     p.actions+=1;p.successes+=1;db.commit()

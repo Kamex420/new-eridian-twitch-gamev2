@@ -138,7 +138,7 @@ def describe(found, name='Your Seedling'):
     return [f'{title}: **{value}**' for title, value in parts]
 
 
-def view_text(m, db, p, provider='discord', changed=(), problems=()):
+def view_text(db, p, provider='discord', changed=(), problems=()):
     found = row(db, p)
     lines = []
     if changed:

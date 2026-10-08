@@ -18,7 +18,7 @@ def call(path, **params):
 def state():
     with m.SessionLocal() as db:
         p = db.query(m.Player).filter_by(channel_id=C, twitch_uid=UID).one()
-        found = ob.row(m, db, p)
+        found = ob.row(db, p)
         return p.sc, p.contribution, ob.done_of(found), bool(found.finished), m.material_amount(db, p, s.key('Lumber')), m.material_amount(db, p, s.key('Berries'))
 
 
@@ -68,8 +68,8 @@ def test_players_who_already_play_never_see_the_path():
         p.actions = 200
         db.query(ob.FirstSteps).filter_by(channel_id=C, canonical_uid='vet').delete()
         db.commit()
-        assert ob.row(m, db, p).finished and ob.status(m, db, p) == '' and ob.line(m, db, p) == ''
-        assert ob.complete(m, db, p, ['job']) == ''
+        assert ob.row(db, p).finished and ob.status(db, p) == '' and ob.line(db, p) == ''
+        assert ob.complete(db, p, ['job']) == ''
 
 
 def test_map_welcomes_new_citizens():
@@ -82,9 +82,9 @@ def test_a_step_pays_only_once():
     with m.SessionLocal() as db:
         p = db.query(m.Player).filter_by(channel_id=C, twitch_uid=UID).one()
         sc = p.sc
-        note = ob.complete(m, db, p, ['job', 'job', 'queue', 'queue'])
+        note = ob.complete(db, p, ['job', 'job', 'queue', 'queue'])
         assert note.count('Choose a job') == 1 and p.sc == sc + ob.INFO['job'][4] + ob.INFO['queue'][4]
-        assert ob.complete(m, db, p, ['job']) == '' and len(ob.done_of(ob.row(m, db, p))) == 2
+        assert ob.complete(db, p, ['job']) == '' and len(ob.done_of(ob.row(db, p))) == 2
 
 
 def test_twitch_reply_stays_one_short_line_with_the_step_note():

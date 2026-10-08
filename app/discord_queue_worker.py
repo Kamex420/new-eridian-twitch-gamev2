@@ -23,7 +23,7 @@ from .models import Player
 log=logging.getLogger('uvicorn.error.discord_queue')
 
 
-def claim(m,notice_id):
+def claim(notice_id):
     with SessionLocal() as db:
         result=db.execute(update(n.Notice).where(n.Notice.id==notice_id,n.Notice.provider=='discord',
             n.Notice.state.in_(['pending','sending']),n.Notice.next_at<=runtime.now()).values(
@@ -35,13 +35,13 @@ def claim(m,notice_id):
             ('id','recipient','message_channel','content','attempts','provider','channel_id')})
 
 
-def pending(m):
+def pending():
     with SessionLocal() as db:
         return list(db.scalars(select(n.Notice.id).where(n.Notice.provider=='discord',
             n.Notice.state.in_(['pending','sending']),n.Notice.next_at<=runtime.now()).order_by(n.Notice.next_at).limit(10)))
 
 
-def settle(m,row,notice,error=None):
+def settle(row,notice,error=None):
     """Record one claimed send: sent, or back to pending with backoff (failed after five attempts or a permanent error).
     False when this worker no longer holds the claim."""
     if not row or row.state!='sending' or row.attempts!=notice.attempts:return False
@@ -56,25 +56,25 @@ def settle(m,row,notice,error=None):
     return True
 
 
-def finish(m,notice,error=None):
+def finish(notice,error=None):
     with SessionLocal() as db:
-        settle(m,db.get(n.Notice,notice.id),notice,error)
+        settle(db.get(n.Notice,notice.id),notice,error)
         db.commit()
 
 
-def finish_all(m,batch,error=None):
+def finish_all(batch,error=None):
     """finish() for every alert of one quiet-hours release, in one transaction. Alerts that were sent or failed for
     good are no longer held; ones that will retry stay held, so the retry is again one message."""
     with SessionLocal() as db:
         done=[]
         for notice in batch:
             row=db.get(n.Notice,notice.id)
-            if settle(m,row,notice,error) and row.state in {'sent','failed'}:done.append(row.id)
+            if settle(row,notice,error) and row.state in {'sent','failed'}:done.append(row.id)
         quiet_hours.forget(db,done)
         db.commit()
 
 
-def repair_recent(m):
+def repair_recent():
     """One startup recovery of current stopped runs, not all historical alerts."""
     from .task_queue import TaskQueue,atomic
     with SessionLocal() as db:
@@ -82,7 +82,7 @@ def repair_recent(m):
             TaskQueue.state.in_(['paused','completed','cancelled','error']),
             TaskQueue.next_at>=runtime.now()-timedelta(hours=24))))
     for channel,uid in keys:
-        with atomic(m,channel):
+        with atomic(channel):
             with SessionLocal() as db:
                 queue=db.get(TaskQueue,(channel,uid));dest=db.get(n.Destination,(channel,uid))
                 if not dest or dest.provider!='discord' or queue.state not in {'paused','completed','cancelled','error'}:continue
@@ -98,17 +98,17 @@ def repair_recent(m):
                     if event and event.notice_id==dest.run_id:
                         db.delete(event);db.flush()
                     player=db.execute(select(Player).where(Player.channel_id==channel,Player.twitch_uid==uid)).scalar_one_or_none()
-                    if player:n.stopped(m,db,player,queue,queue.state,queue.result if queue.state!='completed' else '')
+                    if player:n.stopped(db,player,queue,queue.state,queue.result if queue.state!='completed' else '')
                 db.commit()
 
 
-def payload(m,notice):
+def payload(notice):
     # Formatting may read/write snapshot pages, so callers run it off-loop.
     from . import ui
     try:data=runtime._discord_json_message(notice.content,message_type='queue')['data']
     except Exception:data={}
     try:
-        extra=ui.alert_components(m,notice)
+        extra=ui.alert_components(notice)
         if extra and data.get('embeds'):data['components']=list(data.get('components') or [])+extra
         ui.tidy(data)
     except Exception:log.warning('Queue alert buttons unavailable; sending the alert without them')
@@ -126,13 +126,13 @@ async def direct_channel(client,recipient):
     except (discord.Forbidden,discord.NotFound,discord.HTTPException,AttributeError):return None
 
 
-async def send_notice(m,client,notice):
+async def send_notice(client,notice):
     channel_id=notice.message_channel or os.getenv('DISCORD_GAME_CHANNEL_ID','')
     direct=str(channel_id).startswith(n.DM_PREFIX)
     if direct:channel_id=channel_id[len(n.DM_PREFIX):] or os.getenv('DISCORD_GAME_CHANNEL_ID','')
     if not str(notice.recipient).isdigit() or (not str(channel_id).isdigit() and not direct):
         raise n.DeliveryError('A numeric Discord channel and player ID are required',permanent=True)
-    data,mention=await asyncio.to_thread(payload,m,notice)
+    data,mention=await asyncio.to_thread(payload,notice)
     if direct:
         # Direct-message alerts. Closed DMs never fall back to the channel (it would fill it with
         # pings): the alert waits privately in the player's Notifications instead.
@@ -145,7 +145,7 @@ async def send_notice(m,client,notice):
                     await room.send(**message_args(data,line,notice,dm=True))
                 return
             except (discord.Forbidden,discord.HTTPException):pass
-        await asyncio.to_thread(n.dm_closed,m,notice,getattr(notice,'created_at',None))
+        await asyncio.to_thread(n.dm_closed,notice,getattr(notice,'created_at',None))
         return
     channel=client.get_channel(int(channel_id)) or await client.fetch_channel(int(channel_id))
     if not isinstance(channel,(discord.TextChannel,discord.Thread)):
@@ -200,12 +200,12 @@ def message_args(data,mention,notice,dm=False):
     return args
 
 
-async def send_summary(m,client,batch):
+async def send_summary(client,batch):
     """Several alerts held during quiet hours, as one DM card. Closed DMs mark each one unread in Notifications."""
     lead=min(batch,key=lambda x:x.id)
     if not str(lead.recipient).isdigit():
         raise n.DeliveryError('A numeric Discord player ID is required',permanent=True)
-    data,line=await asyncio.to_thread(quiet_hours.summary,m,batch)
+    data,line=await asyncio.to_thread(quiet_hours.summary,batch)
     # Its own stable nonce, from the first alert's id, never equal to that alert's own nonce.
     card=SimpleNamespace(id='q'+lead.id,recipient=lead.recipient,content=line+'\n'+data['embeds'][0]['description'])
     room=await direct_channel(client,lead.recipient)
@@ -216,7 +216,7 @@ async def send_summary(m,client,batch):
             return
         except (discord.Forbidden,discord.HTTPException):pass
     for notice in batch:
-        await asyncio.to_thread(n.dm_closed,m,notice,notice.created_at)
+        await asyncio.to_thread(n.dm_closed,notice,notice.created_at)
 
 
 async def attempt(sending):
@@ -233,39 +233,39 @@ async def attempt(sending):
     return None
 
 
-async def release(m,client,channel,recipient):
+async def release(client,channel,recipient):
     """A recipient's quiet hours are over: every due DM alert of theirs, claimed together, as one message."""
-    batch=await asyncio.to_thread(quiet_hours.claim_release,m,channel,recipient)
+    batch=await asyncio.to_thread(quiet_hours.claim_release,channel,recipient)
     if not batch:return
     if len(batch)==1:
         batch[0].held=True                                   # the normal alert, with a 🌙 line
-        error=await attempt(send_notice(m,client,batch[0]))
+        error=await attempt(send_notice(client,batch[0]))
     else:
-        error=await attempt(send_summary(m,client,batch))
-    await asyncio.to_thread(finish_all,m,batch,error)
+        error=await attempt(send_summary(client,batch))
+    await asyncio.to_thread(finish_all,batch,error)
 
 
-async def deliver(m,client,stop=None):
+async def deliver(client,stop=None):
     released=set()
-    for notice_id in await asyncio.to_thread(pending,m):
+    for notice_id in await asyncio.to_thread(pending):
         if stop is not None and stop.is_set():break
         # Quiet hours act before the claim: holding an alert spends no attempt and no lease.
-        step=await asyncio.to_thread(quiet_hours.check,m,notice_id)
+        step=await asyncio.to_thread(quiet_hours.check,notice_id)
         if step is None:continue
         if step!='send':
             if step not in released:
                 released.add(step)
-                await release(m,client,*step)
+                await release(client,*step)
             continue
-        notice=await asyncio.to_thread(claim,m,notice_id)
+        notice=await asyncio.to_thread(claim,notice_id)
         if notice is None:continue
-        error=await attempt(send_notice(m,client,notice))
-        await asyncio.to_thread(finish,m,notice,error)
+        error=await attempt(send_notice(client,notice))
+        await asyncio.to_thread(finish,notice,error)
 
 
 class Runtime:
-    def __init__(self,m):
-        self.m=m;self.client=None;self.state='starting';self.retry_at=0;self.repaired=False;self.stop=asyncio.Event()
+    def __init__(self):
+        self.client=None;self.state='starting';self.retry_at=0;self.repaired=False;self.stop=asyncio.Event()
 
     async def close_client(self):
         if self.client:
@@ -302,9 +302,9 @@ class Runtime:
             if self.client is None and not await self.login():return
             if not self.repaired:
                 try:
-                    await asyncio.to_thread(repair_recent,self.m);self.repaired=True
+                    await asyncio.to_thread(repair_recent);self.repaired=True
                 except Exception:log.error('Recent alert recovery failed; normal pending delivery will continue')
-            await deliver(self.m,self.client,self.stop)
+            await deliver(self.client,self.stop)
         except Exception:log.error('Discord queue worker error; pending alerts will retry')
 
     async def start(self):
@@ -321,7 +321,7 @@ class Runtime:
 def install(m):
     from .game.base import app
     async def start():
-        runtime=Runtime(m);app.state.discord_queue=runtime
+        runtime=Runtime();app.state.discord_queue=runtime
         app.state.discord_notification_worker=await runtime.start()
     async def stop():
         runtime=getattr(app.state,'discord_queue',None)

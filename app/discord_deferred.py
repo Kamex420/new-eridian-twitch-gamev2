@@ -55,15 +55,15 @@ def edit_original(application_id,token,data):
     return False
 
 
-def finish(m,payload,command,uid,name,options):
+def finish(payload,command,uid,name,options):
     from . import discord_execution, extras, inbox, menu, task_queue, ui
     origin=task_queue.queue_notifications.origin_channel
     token=origin.set(str(payload.get('channel_id') or ''))
     ui.INTERACTION.set(payload)   # lets /menu show moderator tools to the game owner
     try:
-        options=extras.default_options(m,command,options,uid)   # e.g. /make reopens where you left off
-        result=discord_execution.execute(m,payload,command,uid,name,options)
-        try:extras.record_discord(m,uid,name,command,options)
+        options=extras.default_options(command,options,uid)   # e.g. /make reopens where you left off
+        result=discord_execution.execute(payload,command,uid,name,options)
+        try:extras.record_discord(uid,name,command,options)
         except Exception:logging.getLogger(__name__).error('Recent action not recorded: %s',command)
     except Exception:
         logging.getLogger(__name__).error('Deferred Discord command rolled back: %s',command)
@@ -73,17 +73,17 @@ def finish(m,payload,command,uid,name,options):
         # Public receipts omit private modifier calculations. No extra unsolicited
         # follow-up: the action has one response, with only relevant changes.
         # Every ticket the reply's buttons need is saved in one transaction.
-        with ui.ticket_batch(m):
+        with ui.ticket_batch():
             try:
                 # Workbench, mining, gathering and queue replies carry dropdowns and buttons.
-                data=ui.slash_panel(m,command,uid,name,options,result) or runtime._discord_json_message(result,message_type=command)['data']
+                data=ui.slash_panel(command,uid,name,options,result) or runtime._discord_json_message(result,message_type=command)['data']
                 # Lists such as a skill's tasks get a button beside each item in the newer layout.
-                data=ui.add_list_items(m,data,uid,command,options,name)
+                data=ui.add_list_items(data,uid,command,options,name)
                 # Every reply offers the next step as buttons: Again, its menu area, and Menu.
                 if command!='menu':
                     try:
                         rows=[r for r in data.get('components') or [] if r.get('components')]
-                        if len(rows)<5:data['components']=rows+menu.after_rows(m,command,options,uid,5-len(rows))
+                        if len(rows)<5:data['components']=rows+menu.after_rows(command,options,uid,5-len(rows))
                     except Exception:
                         logging.getLogger(__name__).error('Menu buttons could not be added: %s',command)
             except Exception:
@@ -94,8 +94,8 @@ def finish(m,payload,command,uid,name,options):
     # Private notifications: warnings and tips raised by this command, and anything
     # waiting in the player's inbox, shown only to them.
     try:
-        inbox.after_command(m,uid,name,command,options,locals().get('result',''))
-        inbox.deliver(m,payload,uid)
+        inbox.after_command(uid,name,command,options,locals().get('result',''))
+        inbox.deliver(payload,uid)
     except Exception:
         logging.getLogger(__name__).error('Private notifications could not be delivered: %s',command)
 
@@ -120,7 +120,7 @@ def ack(payload):
     return {'type':5,'data':{'flags':64}}
 
 
-def answer_later(m,payload):
+def answer_later(payload):
     """Work out the answer to an acknowledged press or form (see ack) and deliver it.
 
     Work a button schedules (an action, private notifications) runs after the answer,
@@ -136,11 +136,11 @@ def answer_later(m,payload):
         ui.INTERACTION.set(payload)
         try:
             if payload.get('type')==5:
-                answer=ui.handle_modal(m,payload,schedule)
+                answer=ui.handle_modal(payload,schedule)
             elif ui.handles(custom_id):
-                answer=ui.handle_component(m,payload,schedule)
+                answer=ui.handle_component(payload,schedule)
             else:
-                answer=message_layout.open_page(m,payload)
+                answer=message_layout.open_page(payload)
                 if isinstance(answer.get('data'),dict):        # Details pages end with ◀️ Back and 🏠 Menu too
                     if answer.get('type')==7:
                         ui._left_screen(payload,ui._user(payload)[0])   # Back returns to the screen's first page

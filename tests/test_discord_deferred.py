@@ -38,7 +38,7 @@ def test_delivery_retry_does_not_repeat_command(monkeypatch):
     def patch(*args,**kwargs):
         attempts.append(kwargs);return SimpleNamespace(status_code=500 if len(attempts)==1 else 200)
     monkeypatch.setattr(d.requests,'patch',patch);monkeypatch.setattr(d.time,'sleep',lambda _:None)
-    d.finish(m,{'application_id':'app','token':'fake','channel_id':'123'},'queue','456','Player',{})
+    d.finish({'application_id':'app','token':'fake','channel_id':'123'},'queue','456','Player',{})
     assert len(calls)==1 and len(attempts)==2
     assert not attempts[0]['json'].get('flags',0)&64   # an edit never carries the private flag
 
@@ -47,7 +47,7 @@ def test_game_error_gets_an_error_reply(monkeypatch):
     def fail(*args):raise RuntimeError('private database details')
     monkeypatch.setattr(m,'_discord_call_internal',fail)
     delivered=[];monkeypatch.setattr(d,'edit_original',lambda *args:delivered.append(args))
-    d.finish(m,{'application_id':'app','token':'fake'},'mine','456','Player',{})
+    d.finish({'application_id':'app','token':'fake'},'mine','456','Player',{})
     assert len(delivered)==1
     assert 'Check /queue' in delivered[0][2]['content']
     assert 'private database details' not in str(delivered)
@@ -55,5 +55,5 @@ def test_game_error_gets_an_error_reply(monkeypatch):
 
 def test_only_moderator_announcements_are_public_replies():
     from app import discord_execution as x
-    assert not x.private_response(m,'eventstart',{}) and not x.private_response(m,'eventstop',{})
-    assert all(x.private_response(m,c,{}) for c in ('relax','eat','sleep','work','farm','recover','life','society','event','social'))
+    assert not x.private_response('eventstart',{}) and not x.private_response('eventstop',{})
+    assert all(x.private_response(c,{}) for c in ('relax','eat','sleep','work','farm','recover','life','society','event','social'))

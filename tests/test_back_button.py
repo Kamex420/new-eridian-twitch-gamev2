@@ -9,7 +9,7 @@ from app import ui, layout_v2 as v2, workbench as wb
 def press(custom_id, message='M1', uid='111', values=None):
     payload = {'type': 3, 'data': {'custom_id': custom_id, 'values': values or []},
                'member': {'user': {'id': uid, 'username': 'Kam'}}, 'message': {'flags': 64, 'id': message}}
-    return ui.handle_component(m, payload)
+    return ui.handle_component(payload)
 
 
 def where(answer):
@@ -39,7 +39,7 @@ def test_back_returns_to_each_screen_before_in_turn():
 
 def test_every_screen_ends_with_back_then_menu():
     citizen()
-    e = next(x for x in wb.index(m) if x.kind == 'seed')
+    e = next(x for x in wb.index() if x.kind == 'seed')
     for custom_id in (ui.cid('111', 'mn', 'farming'), ui.cid('111', 'mn', 'work'), ui.cid('111', 'wh'), ui.cid('111', 'wc', 'parts', 1, ''),
                       ui.cid('111', 'wr', e.id, e.category, 1, ''), ui.cid('111', 'qv'), ui.cid('111', 'st'),
                       ui.cid('111', 'mk', 'sell'), ui.cid('111', 'gv'), ui.cid('111', 'qp', 'make:' + e.id, 5)):
@@ -52,7 +52,7 @@ def test_every_screen_ends_with_back_then_menu():
 
 def test_after_an_action_back_returns_to_the_screen_it_was_done_from():
     citizen()
-    e = next(x for x in wb.index(m) if x.kind == 'seed' and x.inputs)
+    e = next(x for x in wb.index() if x.kind == 'seed' and x.inputs)
     recipe = press(ui.cid('111', 'wr', e.id, e.category, 1, ''), message='M3')
     craft = next(c for r in recipe['data']['components'] for c in r.get('components', []) if str(c.get('label', '')).startswith('Craft'))
     result = press(craft['custom_id'], message='M3')
@@ -62,7 +62,7 @@ def test_after_an_action_back_returns_to_the_screen_it_was_done_from():
 
 def test_on_a_first_screen_back_goes_one_level_up():
     citizen()
-    e = next(x for x in wb.index(m) if x.kind == 'seed')
+    e = next(x for x in wb.index() if x.kind == 'seed')
     recipe = press(ui.cid('111', 'wr', e.id, e.category, 1, ''), message='fresh')
     assert back(recipe) == ui.cid('111', 'bk', 'wc', e.category, 1, '')
     listing = press(back(recipe), message='fresh')

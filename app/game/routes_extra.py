@@ -19,7 +19,7 @@ def status_view(channel:str,uid:str,name:str='Citizen',provider:str='twitch'):
     """Needs, queue, cooldowns, ready recipes and the next step in one view."""
     with SessionLocal() as db:
         _,p=player(db,channel,provider,uid,name)
-        text=qol.status_text(main,db,p,provider);db.commit()
+        text=qol.status_text(db,p,provider);db.commit()
         return platform_response(provider,text,text)
 
 
@@ -31,7 +31,7 @@ def settings(channel:str,uid:str,name:str='Citizen',alerts:str='',autorecover:st
         note=''
         if str(feed).lower() in {'on','off'}:
             note=activity_feed.set_hidden(db,p,str(feed).lower()=='off')+'\n\n';db.commit()
-        body=qol.settings_text(main,db,p,provider,alerts,autorecover,text,popups)
+        body=qol.settings_text(db,p,provider,alerts,autorecover,text,popups)
         if provider=='discord':body+='\n'+('🙈 Channel feed: your activity is hidden (/settings feed:on shows it).' if activity_feed.hidden(db,p) else '📣 Channel feed: your gathering, crafting, level ups and trophies show in the channel (/settings feed:off hides them).')
         return platform_response(provider,note+body,note.strip() or body)
 
@@ -43,12 +43,12 @@ def favorite(channel:str,uid:str,name:str='Citizen',recipe:str='',provider:str='
     module=main
     with SessionLocal() as db:
         _,p=player(db,channel,provider,uid,name)
-        if not recipe.strip():return platform_response(provider,*(qol.favorites_text(module,db,p,provider),)*2)
-        found=workbench.resolve(module,db,p,recipe);note=''
+        if not recipe.strip():return platform_response(provider,*(qol.favorites_text(db,p,provider),)*2)
+        found=workbench.resolve(db,p,recipe);note=''
         if found is None:
-            found,note,suggestions=qol.fuzzy_recipe(module,db,p,recipe)
+            found,note,suggestions=qol.fuzzy_recipe(db,p,recipe)
             if found is None:return out('⭐ Unknown recipe.'+qol.did_you_mean(suggestions)+' Nothing changed.')
-        text=(note+' ' if note else '')+qol.set_favorite(module,db,p,found.id);db.commit()
+        text=(note+' ' if note else '')+qol.set_favorite(db,p,found.id);db.commit()
         return platform_response(provider,text,text)
 
 
@@ -66,11 +66,11 @@ def fetch_ingredients(channel:str,uid:str,name:str='Citizen',recipe:str='',batch
     module=main;recipe,batches=batches_argument(recipe,batches);batches=max(1,min(10,batches))
     with SessionLocal() as db:
         _,p=player(db,channel,provider,uid,name)
-        found=workbench.resolve(module,db,p,recipe) if recipe else None;note=''
+        found=workbench.resolve(db,p,recipe) if recipe else None;note=''
         if found is None:
-            found,note,suggestions=qol.fuzzy_recipe(module,db,p,recipe) if recipe else (None,'',[])
+            found,note,suggestions=qol.fuzzy_recipe(db,p,recipe) if recipe else (None,'',[])
             if found is None:return out('🧺 Choose a recipe: !fetch <recipe name> [batches].'+qol.did_you_mean(suggestions)+' Nothing spent.')
-        text,start=qol.fetch_plan(workbench.Context(module,db,p,provider),found,batches)
+        text,start=qol.fetch_plan(workbench.Context(db,p,provider),found,batches)
         if note:text=note+' '+text
         if action!='start':return platform_response(provider,text,text)
     if not start:return out(text)
@@ -90,7 +90,7 @@ def sell_all_items(channel:str,uid:str,name:str='Citizen',item:str='',provider:s
         if key is None:return out('🏭 Choose an item Seed Industries buys.'+qol.did_you_mean(suggestions)+' Nothing sold.')
     with SessionLocal() as db:
         _,p=player(db,channel,provider,uid,name)
-        return out(qol.sell_all(main,db,p,key,provider))
+        return out(qol.sell_all(db,p,key,provider))
 
 
 @app.get('/api/v1/clearout')
@@ -99,7 +99,7 @@ def clearout(channel:str,uid:str,name:str='Citizen',confirm:str='',provider:str=
     """Preview selling surplus materials; confirm=confirm sells them."""
     with SessionLocal() as db:
         _,p=player(db,channel,provider,uid,name)
-        text=qol.clearout(main,db,p,provider,str(confirm).strip().casefold() in {'confirm','yes','1','true'})
+        text=qol.clearout(db,p,provider,str(confirm).strip().casefold() in {'confirm','yes','1','true'})
         return platform_response(provider,text,text)
 
 
@@ -109,7 +109,7 @@ def recover_needs(channel:str,uid:str,name:str='Citizen',provider:str='twitch'):
     """One press: relax, games, cheapest food, comfort items or sleep for every blocking need."""
     with SessionLocal() as db:
         _,p=player(db,channel,provider,uid,name)
-        text=qol.recover_text(main,db,p,provider);db.commit()
+        text=qol.recover_text(db,p,provider);db.commit()
         return platform_response(provider,text,text)
 
 
@@ -130,7 +130,7 @@ def eat_full(channel:str,uid:str,name:str='Citizen',provider:str='twitch'):
     """Eat the cheapest everyday food until Nutrition reaches 80 (festival foods and Meal Kits are kept)."""
     with SessionLocal() as db:
         _,p=player(db,channel,provider,uid,name)
-        text=extras.eat_full(main,db,p,provider);db.commit()
+        text=extras.eat_full(db,p,provider);db.commit()
         return platform_response(provider,text,text)
 
 
@@ -140,7 +140,7 @@ def undo_sale(channel:str,uid:str,name:str='Citizen',provider:str='twitch'):
     """Take back your last Seed Industries sale within 60 seconds."""
     with SessionLocal() as db:
         _,p=player(db,channel,provider,uid,name)
-        text=extras.undo_sale(main,db,p);db.commit()
+        text=extras.undo_sale(db,p);db.commit()
         return platform_response(provider,text,text)
 
 
@@ -149,8 +149,8 @@ def find_anything(query:str='',provider:str='twitch',channel:str='',uid:str='',n
     """Search recipes, items, menu buttons and handbook topics, or answer a question (app/ask.py)."""
     if not query.strip():return out('🔎 Search or ask anything: !find <word or question>, e.g. !find campfire or !find how do I make Iron Nails')
     with SessionLocal() as db:
-        p=ask.existing_player(main,db,channel,provider,uid)
-        text=ask.reply(main,db,p,query.strip()[:ask.MAX_QUERY],provider,channel)
+        p=ask.existing_player(db,channel,provider,uid)
+        text=ask.reply(db,p,query.strip()[:ask.MAX_QUERY],provider,channel)
         db.commit()
     return platform_response(provider,text,text)
 
@@ -180,19 +180,19 @@ def craft_max(channel:str,uid:str,name:str='Citizen',recipe:str='',provider:str=
     with SessionLocal() as db:
         _,p=player(db,channel,provider,uid,name)
         note='';key=seed_content.find_item(recipe)
-        found=None if key in seed_content.GATHER else workbench.resolve(module,db,p,recipe)
+        found=None if key in seed_content.GATHER else workbench.resolve(db,p,recipe)
         if key in seed_content.GATHER:task=('mine:' if key in task_queue.ores() else 'gather:')+key
         elif found is not None:task='make:'+found.id
         else:
-            found,note,suggestions=qol.fuzzy_recipe(module,db,p,recipe)
+            found,note,suggestions=qol.fuzzy_recipe(db,p,recipe)
             if found is None:
                 key,_=qol.fuzzy_item(recipe,seed_content.GATHER)
                 if key is None:return out('🔁 No recipe or resource called that.'+qol.did_you_mean(suggestions)+' Nothing spent.')
                 task=('mine:' if key in task_queue.ores() else 'gather:')+key
             else:task='make:'+found.id
-        if task not in task_queue.choices(module):return out('🔁 That cannot be queued. Nothing spent.')
-        count,reason=extras.max_attempts(module,db,p,task);db.commit()
-    label=task_queue.choices(module)[task]
+        if task not in task_queue.choices():return out('🔁 That cannot be queued. Nothing spent.')
+        count,reason=extras.max_attempts(db,p,task);db.commit()
+    label=task_queue.choices()[task]
     if count<=0:return out(f'🔁 You cannot do {label} even once right now: short on {reason}. Nothing spent.')
     result=queued_tasks(channel,uid,name,'start',task,str(count),provider).body.decode()
     prefix=(note+' ' if note else '')+f'🔁 Max ×{count} ({"limited by "+reason if count<10 else "the 10-attempt maximum"}). '
@@ -211,15 +211,15 @@ def target(channel:str,uid:str,name:str='Citizen',recipe:str='',provider:str='tw
             extras.clear_goal(db,p);db.commit()
             return out('🎯 Goal cleared.')
         if wanted:
-            found=workbench.resolve(module,db,p,wanted)
+            found=workbench.resolve(db,p,wanted)
             note=''
             if found is None:
-                found,note,suggestions=qol.fuzzy_recipe(module,db,p,wanted)
+                found,note,suggestions=qol.fuzzy_recipe(db,p,wanted)
                 if found is None:return out('🎯 No recipe called that.'+qol.did_you_mean(suggestions)+' Nothing changed.')
-            text,plan=extras.start_goal(module,db,p,found.id,provider)
-            text=(note+' ' if note else '')+text;goal=extras.goal_text(module,db,p,provider,plan);db.commit()   # planned once
+            text,plan=extras.start_goal(db,p,found.id,provider)
+            text=(note+' ' if note else '')+text;goal=extras.goal_text(db,p,provider,plan);db.commit()   # planned once
             return platform_response(provider,text+'\n\n'+goal,text+' '+goal)
-        text=extras.goal_text(module,db,p,provider);db.commit()
+        text=extras.goal_text(db,p,provider);db.commit()
         return platform_response(provider,text,text)
 
 
@@ -231,14 +231,14 @@ def routines_view(channel:str,uid:str,name:str='Citizen',action:str='view',provi
     with SessionLocal() as db:
         _,p=player(db,channel,provider,uid,name)
         action=str(action or 'view').casefold()
-        if action=='save':text=extras.save_routine(module,db,p)
+        if action=='save':text=extras.save_routine(db,p)
         elif action=='clear':extras.clear_plan(db,p);text='🗺️ Later plan steps cleared. The running queue carries on.'
         elif provider!='discord':
             saved=extras.routines(db,p)
-            steps=extras.current_steps(module,db,p)
-            text=('🗺️ Plan: '+(' → '.join(extras.step_label(module,st) for st in steps) or 'nothing')+' | Routines: '+
+            steps=extras.current_steps(db,p)
+            text=('🗺️ Plan: '+(' → '.join(extras.step_label(st) for st in steps) or 'nothing')+' | Routines: '+
                   (', '.join(f'{i}. {r.name}' for i,r in enumerate(saved,1)) or 'none')+' | !routine <number> starts one; !routines save saves your plan')
-        else:text=extras.plan_text(module,db,p)
+        else:text=extras.plan_text(db,p)
         db.commit()
         return platform_response(provider,text,text)
 
@@ -259,7 +259,7 @@ def routine_start(channel:str,uid:str,name:str='Citizen',n:str='',provider:str='
             extras.delete_routine(db,p,chosen);db.commit()
             return out(f'🗺️ Routine {index+1} deleted.')
         db.commit()
-    text=extras.start_routine(module,channel,uid,name,provider,chosen)
+    text=extras.start_routine(channel,uid,name,provider,chosen)
     return platform_response(provider,text,text)
 
 
@@ -274,7 +274,7 @@ def item_uses(channel:str,uid:str,name:str='Citizen',item:str='',provider:str='t
         if key is None:return out('🔍 Which item? !uses <item name>.'+qol.did_you_mean(suggestions))
     with SessionLocal() as db:
         _,p=player(db,channel,provider,uid,name)
-        text,_=extras.uses_text(module,db,p,key,provider);db.commit()
+        text,_=extras.uses_text(db,p,key,provider);db.commit()
         return platform_response(provider,text,text)
 
 
@@ -286,13 +286,13 @@ def autosell(channel:str,uid:str,name:str='Citizen',item:str='',provider:str='tw
     with SessionLocal() as db:
         _,p=player(db,channel,provider,uid,name)
         if not item.strip():
-            text=extras.autosell_text(module,db,p)
+            text=extras.autosell_text(db,p)
             return platform_response(provider,text,text)
         key=seed_content.find_item(item)
         if key not in SEED_INDUSTRIES:
             key,suggestions=qol.fuzzy_item(item,SEED_INDUSTRIES)
             if key is None:return out('🧹 Choose an item Seed Industries buys.'+qol.did_you_mean(suggestions)+' Nothing changed.')
-        text=extras.toggle_autosell(module,db,p,key);db.commit()
+        text=extras.toggle_autosell(db,p,key);db.commit()
         return platform_response(provider,text,text)
 
 
@@ -300,7 +300,7 @@ def autosell(channel:str,uid:str,name:str='Citizen',item:str='',provider:str='tw
 @game_transaction
 def keep_level(channel:str,uid:str,name:str='Citizen',text:str='',provider:str='twitch'):
     """Keep levels: blank lists them; '<item> <amount>' sets one (0 clears); 'restock' plans the first short item, 'restock go' starts it."""
-    text=keep_levels.command(main,channel,uid,name,provider,text)
+    text=keep_levels.command(channel,uid,name,provider,text)
     return platform_response(provider,text,text)
 
 
@@ -308,7 +308,7 @@ def keep_level(channel:str,uid:str,name:str='Citizen',text:str='',provider:str='
 @game_transaction
 def shopping(channel:str,uid:str,name:str='Citizen',text:str='',provider:str='twitch'):
     """Shopping list: blank sums it up; 'add <recipe> [amount]' (0 removes), 'remove <recipe>', 'clear [done]'; 'buy' shows the cost, 'buy confirm' buys every missing material Seed Industries sells."""
-    text=shopping_list.command(main,channel,uid,name,provider,text)
+    text=shopping_list.command(channel,uid,name,provider,text)
     return platform_response(provider,text,text)
 
 
@@ -319,7 +319,7 @@ def seedling_view(channel:str,uid:str,name:str='Citizen',provider:str='twitch'):
     """Your Seedling: mood, thought, what it is doing where, its schedule and autonomy."""
     with SessionLocal() as db:
         _,p=player(db,channel,provider,uid,name)
-        text=autonomy.view_text(main,db,p,provider);db.commit()
+        text=autonomy.view_text(db,p,provider);db.commit()
     note=first_step_note(channel,uid,name,provider,'seedling')
     if note:text+=('\n\n' if provider=='discord' else ' | ')+note
     return platform_response(provider,text,text)
@@ -331,7 +331,7 @@ def seedling_diary(channel:str,uid:str,name:str='Citizen',provider:str='twitch')
     """What your Seedling has been doing, newest first."""
     with SessionLocal() as db:
         _,p=player(db,channel,provider,uid,name)
-        text=autonomy.diary_text(main,db,p,provider);db.commit()
+        text=autonomy.diary_text(db,p,provider);db.commit()
         return platform_response(provider,text,text)
 
 
@@ -373,7 +373,7 @@ def seedling_looks(channel:str,uid:str,name:str='Citizen',skin:str='',hair:str='
         _,p=player(db,channel,provider,uid,name)
         changed,problems=looks.change(db,p,skin=skin,hair=hair,hair_colour=hair_colour,outfit=outfit,accessory=accessory,
                                      headwear=headwear,attitude=attitude,catchphrase=catchphrase)
-        text=looks.view_text(main,db,p,provider,changed,problems);db.commit()
+        text=looks.view_text(db,p,provider,changed,problems);db.commit()
         return platform_response(provider,text,text.replace('**',''))
 
 # Extension registration happens after core routes and models are available.

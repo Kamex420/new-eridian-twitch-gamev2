@@ -42,7 +42,7 @@ def test_a_task_can_turn_up_an_item_from_its_own_line_of_work(action, finds, mon
 def test_the_find_lands_in_the_bag(finds, monkeypatch):
     monkeypatch.setattr(m.random, 'random', lambda: 0.0)
     ready_for('train_chemistry')
-    key = practice.key(m, 'Salt')
+    key = practice.key('Salt')
     monkeypatch.setattr(m.random, 'choice', lambda items: 'Salt' if 'Salt' in items else items[0])
     with m.SessionLocal() as db:
         before = m.material_amount(db, db.query(m.Player).one(), key)
@@ -73,7 +73,7 @@ def test_gathering_crafting_and_item_work_find_things_too(finds):
     with m.SessionLocal() as db:
         p = db.query(m.Player).one()
         clay = m.seed_content.find_item('Clay')
-        text = m.seed_content.gather(m, db, p, clay, 'discord')
+        text = m.seed_content.gather(db, p, clay, 'discord')
         assert found_in(text) in practice.pool('extraction', 'stone_quarrying'), text
 
 
@@ -93,13 +93,13 @@ def test_gear_repair_and_building_give_engineering_xp(finds):
         build = next(k for k in m.seed_content.ACTIVE if m.seed_content.PURPOSE[k]['mode'] == 'build')
         m.material_change(db, p, build, 1)
         db.commit()
-        result = m.seed_content.use(m, db, p, build, 'discord')
+        result = m.seed_content.use(db, p, build, 'discord')
     assert 'Engineering XP' in result and found_in(result) in practice.pool('infrastructure', 'maintenance_repair')
 
 
 def test_every_find_is_a_real_item_and_every_skill_has_some():
     for name in {n for pools in (practice.BRANCH, practice.SKILL) for items in pools.values() for n in items}:
-        key = practice.key(m, name)
+        key = practice.key(name)
         assert key == 'cargo' or key in m.seed_content.ACTIVE, name
         assert m.resource_name(key) == name
     assert set(practice.SKILL) == set(seed_skills.LABELS)

@@ -68,7 +68,7 @@ def test_someone_elses_panel_gets_a_private_note_below_it(discord):
 
 def test_forms_still_open_at_once(discord):
     form = next(c['custom_id'] for area in menu.AREAS for c in v2.controls(
-        v2.convert(ui.handle_component(m, {'type': 3, 'data': {'custom_id': ui.cid('111', 'mn', area)},
+        v2.convert(ui.handle_component({'type': 3, 'data': {'custom_id': ui.cid('111', 'mn', area)},
                                            'member': {'user': {'id': '111', 'username': 'Kam'}}, 'message': {'flags': 64}})['data']) or {})
         if '|mo|' in str(c.get('custom_id')))
     ack, sent = discord(form)
@@ -78,7 +78,7 @@ def test_forms_still_open_at_once(discord):
 def test_a_failure_is_reported_privately_and_nothing_else_runs(discord, monkeypatch):
     ran = []
 
-    def broken(m, payload, schedule=None):
+    def broken(payload, schedule=None):
         schedule(lambda *a: ran.append(a))
         raise RuntimeError('boom')
     monkeypatch.setattr(ui, 'handle_component', broken)
@@ -88,7 +88,7 @@ def test_a_failure_is_reported_privately_and_nothing_else_runs(discord, monkeypa
 
 
 def test_an_action_button_does_its_work_after_the_acknowledgement(discord):
-    ticket = ui.issue(m, '111', {'do': 'cmd', 'leaf': 'relax'})
+    ticket = ui.issue('111', {'do': 'cmd', 'leaf': 'relax'})
     ack, sent = discord(ui.cid('111', 't', ticket))
     assert ack == {'type': 6}
     assert [k for k, _ in sent][:1] == ['edit'] and '+25 Energy' in v2.text_of(sent[0][1])

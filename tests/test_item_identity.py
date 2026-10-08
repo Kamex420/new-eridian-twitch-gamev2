@@ -20,14 +20,14 @@ def test_conversion_combines_existing_balances_one_for_one_and_repeats_safely(ol
         # Emulate a pre-update save by writing raw rows, bypassing alias APIs.
         db.add(m.ExtraItem(channel_id='test',canonical_uid=p.twitch_uid,item=old,qty=8))
         db.add(m.ExtraItem(channel_id='test',canonical_uid=p.twitch_uid,item=new,qty=3));db.commit()
-        ident.migrate_player(m,db,p);db.commit()
+        ident.migrate_player(db,p);db.commit()
         expected=18 if field else 11
         assert m.material_amount(db,p,new)==expected
         assert m.material_amount(db,p,old)==expected
-        ident.migrate_player(m,db,p);db.commit()
+        ident.migrate_player(db,p);db.commit()
         assert m.material_amount(db,p,new)==expected
-        assert s.stock(m,db,p)[new]==expected
-        assert old not in s.stock(m,db,p)
+        assert s.stock(db,p)[new]==expected
+        assert old not in s.stock(db,p)
         m.material_change(db,p,old,-2);db.commit()
         assert m.material_amount(db,p,new)==expected-2
         m.material_change(db,p,new,4);db.commit()
@@ -63,7 +63,7 @@ def test_legacy_recipes_quality_gear_orders_and_training_use_only_catalog_items(
 def test_player_columns_back_their_catalog_items():
     seed(provider='discord')
     with m.SessionLocal() as db:
-        p=db.query(m.Player).one();stock=s.stock(m,db,p)
+        p=db.query(m.Player).one();stock=s.stock(db,p)
         assert stock[K('Pumpkin')]==p.crops==100
         assert stock[K('Iron Nails')]==p.components==100
         # Harvest yields go to the same Pumpkin stock (no separate "Crop").
@@ -76,9 +76,9 @@ def test_migration_rollback_is_atomic_and_scoped():
         _,p=m.player(db,'test','discord','a','A')
         _,q=m.player(db,'test','discord','b','B')
         for person in (p,q):db.add(m.ExtraItem(channel_id='test',canonical_uid=person.twitch_uid,item='wood',qty=9))
-        db.commit();ident.migrate_player(m,db,p);db.rollback()
+        db.commit();ident.migrate_player(db,p);db.rollback()
         assert db.query(m.ExtraItem).filter_by(canonical_uid=p.twitch_uid,item='wood').one().qty==9
-        ident.migrate_player(m,db,p);db.commit()
+        ident.migrate_player(db,p);db.commit()
         assert db.query(m.ExtraItem).filter_by(canonical_uid=q.twitch_uid,item='wood').one().qty==9
         assert m.material_amount(db,p,'wood')==9
 
@@ -124,7 +124,7 @@ def test_legacy_recipe_aliases_cannot_bypass_tiers():
         response=m.make('test','u',recipe=old,provider='discord').body.decode()
         assert any(word in response.lower() for word in ('required','needs','needed')),response
         assert 'nothing spent' in response.lower()
-        assert m.workbench.entry(m,old) is None
+        assert m.workbench.entry(old) is None
     response=m.make('test','u',recipe='biofiber',provider='discord').body.decode()
     assert 'Flaxa' in response and 'Nothing spent' in response
 
@@ -190,8 +190,8 @@ def test_new_recipe_consumes_converted_legacy_circuit_boards():
         for k,n in r['inputs'].items():
             if k!=circuit:m.material_change(db,p,k,n)
         db.add(m.ExtraItem(channel_id='test',canonical_uid=p.twitch_uid,item='circuit_board',qty=r['inputs'][circuit]+5))
-        db.commit();ident.migrate_player(m,db,p);db.commit()
-        result=s.craft(m,db,p,rid,'discord')
+        db.commit();ident.migrate_player(db,p);db.commit()
+        result=s.craft(db,p,rid,'discord')
         assert 'CRAFTING COMPLETE' in result,result
         assert m.material_amount(db,p,'circuit_board')==5
         for key,n in r['outputs'].items():assert m.material_amount(db,p,key)>=n

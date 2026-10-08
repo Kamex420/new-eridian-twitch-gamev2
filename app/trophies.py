@@ -69,7 +69,7 @@ def trophy(key, emoji, name, text, group, sc, need, have, title='', hat=''):
     TROPHIES[key] = dict(key=key, emoji=emoji, name=name, text=text, group=group, sc=sc, need=need, have=have, title=title, hat=hat)
 
 
-def _build(m):
+def _build():
     from . import seed_content, workbench
     from .game.players import resource_name
     from .game.rules import COLLECTIBLES, COLLECTION_SETS
@@ -94,7 +94,7 @@ def _build(m):
            lambda c: len(c['curios'] & set(COLLECTIBLES)), title='curator')
 
     counts = {}
-    for e in workbench.index(m):
+    for e in workbench.index():
         counts.setdefault(e.category, set()).add(e.id)
     for cat, ids in sorted(counts.items()):
         emoji, label = CATEGORY_LOOK.get(cat, ('🛠️', cat.title()))
@@ -152,7 +152,7 @@ def install(m):
 
 # ---------------------------------------------------------------- what a citizen has
 
-def record(m, db, p, before, after):
+def record(db, p, before, after):
     """Remember newly found items and newly eaten foods. Returns True when something is new."""
     from . import seed_content
     if not before or not after:
@@ -173,12 +173,12 @@ def record(m, db, p, before, after):
     return added
 
 
-def context(m, db, p):
+def context(db, p):
     from . import task_queue
     from . import votes, live_events, seasons, onboarding, autonomy
     from .competencies import FIELDS, level
     rows = db.execute(select(Found.kind, Found.key).where(Found.channel_id == p.channel_id, Found.canonical_uid == p.twitch_uid)).all()
-    held = {k for k, v in task_queue.inventory_snapshot(m, db, p).items() if v > 0 and not str(k).startswith('gear:')}
+    held = {k for k, v in task_queue.inventory_snapshot(db, p).items() if v > 0 and not str(k).startswith('gear:')}
     crafted = {r for r, in db.execute(select(CraftLedger.recipe).where(CraftLedger.channel_id == p.channel_id, CraftLedger.canonical_uid == p.twitch_uid,
                                                                         CraftLedger.qty > 0)).all()}
     curios = {k for k, in db.execute(select(CollectionItem.item_key).where(CollectionItem.channel_id == p.channel_id,
@@ -214,16 +214,16 @@ def m_ach():
 _last = {}
 
 
-def check(m, db, p, force=False):
+def check(db, p, force=False):
     """Unlock every trophy now earned. Returns the notes to show."""
-    _build(m)
+    _build()
     key = (p.channel_id, p.twitch_uid)
     if not force and time.monotonic() - _last.get(key, 0) < CHECK_EVERY:
         return []
     _last[key] = time.monotonic()
     if len(_last) > 5000:
         _last.clear()
-    ctx = context(m, db, p)
+    ctx = context(db, p)
     notes = []
     from . import seasons
     for k in ctx['owned']:              # a trophy earned before it came with a hat (holiday Feasts) still gets it
@@ -235,12 +235,12 @@ def check(m, db, p, force=False):
             if t['key'] in ctx['owned']:
                 continue
             if min(t['have'](ctx), t['need']) >= t['need']:
-                notes.append(unlock(m, db, p, t))
+                notes.append(unlock(db, p, t))
                 ctx['owned'].add(t['key'])
     return notes
 
 
-def unlock(m, db, p, t):
+def unlock(db, p, t):
     from .game.players import unlock_title
     from .game.rules import TITLE_DEFS
     from . import stream_overlay, seasons
@@ -252,7 +252,7 @@ def unlock(m, db, p, t):
         extra.append(f"the {TITLE_DEFS.get(t['title'], t['title'])} title")
     if t['hat'] and seasons.give_hat(db, p, t['hat']):
         extra.append(f"the {seasons.HATS[t['hat']][1]}")
-    seasons.add(m, db, p, TROPHY_POINTS, kind='trophies')
+    seasons.add(db, p, TROPHY_POINTS, kind='trophies')
     show = db.get(Showcase, (p.channel_id, p.twitch_uid))
     if show is None:
         db.add(Showcase(channel_id=p.channel_id, canonical_uid=p.twitch_uid, badge=t['key']))
@@ -262,17 +262,17 @@ def unlock(m, db, p, t):
     return f"🏅 Trophy: {t['emoji']} {t['name']}" + (f' ({got})' if got else '')
 
 
-def from_command(m, db, p, fn_name, before, after):
-    new = record(m, db, p, before, after)
+def from_command(db, p, fn_name, before, after):
+    new = record(db, p, before, after)
     busy = fn_name in {'make', 'craft', 'workshop', 'claim_collection', 'collection', 'vote', 'profile', 'achievements'}
-    return check(m, db, p, force=new or busy)
+    return check(db, p, force=new or busy)
 
 
 # ---------------------------------------------------------------- views
 
-def progress(m, db, p):
-    _build(m)
-    ctx = context(m, db, p)
+def progress(db, p):
+    _build()
+    ctx = context(db, p)
     return ctx, [(t, min(t['have'](ctx), t['need'])) for t in TROPHIES.values()]
 
 
@@ -281,8 +281,8 @@ def badge_of(db, p):
     return TROPHIES.get(show.badge) if show and show.badge else None
 
 
-def pin(m, db, p, choice, provider='twitch'):
-    _build(m)
+def pin(db, p, choice, provider='twitch'):
+    _build()
     mine = owned(db, p)
     text = str(choice or '').strip().casefold()
     cmd = '/trophies badge:' if provider == 'discord' else '!badge '
@@ -309,9 +309,9 @@ def pin(m, db, p, choice, provider='twitch'):
     return f"🏅 Pinned {match['emoji']} {match['name']}. It shows next to your name on the stream map and your profile."
 
 
-def view(m, db, p, provider='discord', group=''):
-    check(m, db, p, force=True)
-    ctx, rows = progress(m, db, p)
+def view(db, p, provider='discord', group=''):
+    check(db, p, force=True)
+    ctx, rows = progress(db, p)
     done = [t for t, n in rows if t['key'] in ctx['owned']]
     pinned = badge_of(db, p)
     if provider != 'discord':
@@ -340,8 +340,8 @@ def view(m, db, p, provider='discord', group=''):
     return '\n'.join(lines)
 
 
-def profile_line(m, db, p):
-    _build(m)
+def profile_line(db, p):
+    _build()
     mine = owned(db, p)
     if not mine:
         return ''
@@ -358,9 +358,9 @@ def badges_for(db, keys):
     return {(r.channel_id, r.canonical_uid): TROPHIES[r.badge]['emoji'] for r in rows if (r.channel_id, r.canonical_uid) in keys and r.badge in TROPHIES}
 
 
-def week_unlocks(m, db, since):
+def week_unlocks(db, since):
     """[(name, emoji, trophy)] unlocked since a time, newest first."""
-    _build(m)
+    _build()
     rows = db.execute(select(Found).where(Found.kind == 'trophy', Found.at >= since).order_by(Found.at.desc())).scalars().all()
     out = []
     for r in rows:

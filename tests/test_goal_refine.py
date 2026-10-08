@@ -9,12 +9,12 @@ from test_layout_v2 import assert_valid
 from app import ui, extras, inbox, workbench as wb, seed_content as s, task_queue as q, shopping_list as shop, queue_notifications as qn
 from app import autonomy as a, layout_v2 as v2
 
-TOILET = next(e for e in wb.index(m) if e.name == 'Crude Wood Toilet')
-PLANKS = wb.entry(m, m.MERGED_TRAINING['train_wood_processing'])          # Wood Planks: the Wood Processing task crafts it
+TOILET = next(e for e in wb.index() if e.name == 'Crude Wood Toilet')
+PLANKS = wb.entry(m.MERGED_TRAINING['train_wood_processing'])          # Wood Planks: the Wood Processing task crafts it
 CARPENTRY = s.key('Carpentry Station')
-MUSHROOM = next(e for e in wb.index(m) if e.name == 'Mushroom')
-SAUTEED = next(e for e in wb.index(m) if e.name == 'Sauteed Mushrooms')   # "Mushroom" is in its name
-ORE_SCANNER = wb.entry(m, 'ore_scanner')
+MUSHROOM = next(e for e in wb.index() if e.name == 'Mushroom')
+SAUTEED = next(e for e in wb.index() if e.name == 'Sauteed Mushrooms')   # "Mushroom" is in its name
+ORE_SCANNER = wb.entry('ore_scanner')
 
 
 def player(uid='111'):
@@ -33,14 +33,14 @@ def stock(items, uid='111', channel=W, provider='discord'):
 
 def set_goal(recipe, uid='111', channel=W, provider='discord'):
     with m.SessionLocal() as db:
-        text = extras.set_goal(m, db, m.player(db, channel, provider, uid, 'Kam')[1], recipe)
+        text = extras.set_goal(db, m.player(db, channel, provider, uid, 'Kam')[1], recipe)
         db.commit()
         return text
 
 
 def goal(uid='111', channel=W, provider='discord'):
     with m.SessionLocal() as db:
-        e = extras.goal_entry(m, db, m.player(db, channel, provider, uid, 'Kam')[1])
+        e = extras.goal_entry(db, m.player(db, channel, provider, uid, 'Kam')[1])
         return e.id if e else None
 
 
@@ -65,7 +65,7 @@ def screen_text(data):
 def chat_line(uid='111'):
     """The Twitch goal line (what !target shows) for a citizen."""
     with m.SessionLocal() as db:
-        text = extras.goal_text(m, db, m.player(db, W, 'discord', uid, 'Kam')[1], 'twitch')
+        text = extras.goal_text(db, m.player(db, W, 'discord', uid, 'Kam')[1], 'twitch')
         db.commit()
         return text
 
@@ -111,7 +111,7 @@ def test_crafting_new_eridian_equipment_that_is_the_goal_completes_it():
     citizen(lumber=0)
     table = next(k for k in s.MACHINE_RECIPES if 'TAG_MACHINE_CRAFTING_TABLE_V1' in s.machine_tags(k))
     for recipe, machine in (('recreation_set', CARPENTRY), ('toolkit', table)):           # quality gear, core equipment
-        e = wb.entry(m, recipe)
+        e = wb.entry(recipe)
         assert e.kind == 'legacy' and (recipe in m.QUALITY_RECIPES) == (recipe == 'recreation_set')
         stock({machine: 1, **e.inputs})
         set_goal(recipe)
@@ -122,7 +122,7 @@ def test_crafting_new_eridian_equipment_that_is_the_goal_completes_it():
 def test_a_rare_ore_recipe_completes_when_its_ore_is_recovered():
     """A recipe with a rare-ore output mines it (one roll, like any ore) and completes the goal when the ore comes up."""
     citizen()
-    argentite = wb.entry(m, 'sr_2069171276')
+    argentite = wb.entry('sr_2069171276')
     with m.SessionLocal() as db:
         p = m.player(db, W, 'discord', '111', 'Kam')[1]
         m.craft_record(db, p, CAMPFIRE.id).qty = 100                         # personal Tier 3
@@ -148,7 +148,7 @@ def test_a_seedling_crafting_its_owners_goal_completes_it(monkeypatch):
         p = db.query(m.Player).one()
         p.last_seen = m.now() - timedelta(minutes=40)                        # away: the Seedling acts
         db.commit()
-    a.live_one(m, 'test', 'u')
+    a.live_one('test', 'u')
     with m.SessionLocal() as db:
         p = db.query(m.Player).one()
         assert m.material_amount(db, p, PLANKS.output) > 0                    # the Seedling's task made it
@@ -164,9 +164,9 @@ def test_a_receipt_naming_the_goal_does_not_complete_it():
     set_goal(MUSHROOM.id)
     receipt = m.make(W, '111', 'Kam', SAUTEED.id, 'discord').body.decode()
     assert 'CRAFTING COMPLETE' in receipt and MUSHROOM.name in receipt
-    inbox.after_command(m, '111', 'Kam', 'make', {'recipe': SAUTEED.id}, receipt)
+    inbox.after_command('111', 'Kam', 'make', {'recipe': SAUTEED.id}, receipt)
     with m.SessionLocal() as db:
-        extras.goal_completed(m, db, m.player(db, W, 'discord', '111', 'Kam')[1], receipt)      # kept, does nothing
+        extras.goal_completed(db, m.player(db, W, 'discord', '111', 'Kam')[1], receipt)      # kept, does nothing
         db.commit()
     assert goal() == MUSHROOM.id and not [t for t in notes() if 'Goal complete' in t]
 
@@ -198,7 +198,7 @@ def test_progress_counts_steps_done_since_the_goal_was_set():
     citizen(lumber=0)
     set_goal(CAMPFIRE.id)
     db, p = player()
-    steps = extras.walkthrough(m, db, p)[1]
+    steps = extras.walkthrough(db, p)[1]
     db.close()
     assert [st['name'] for st in steps] == ['Gather Lumber ×2', 'Craft Campfire'] and progress_row() == (CAMPFIRE.id, 2, 0)
     view = press(ui.cid('111', 'gv'))['data']
@@ -261,14 +261,14 @@ def test_a_queue_that_gathers_the_last_ingredient_raises_one_private_note():
     advance(); advance()                                                    # still ready: never again for this goal
     with m.SessionLocal() as db:
         p = m.player(db, W, 'discord', '111', 'Kam')[1]
-        assert not extras.goal_ready_check(m, db, p)
+        assert not extras.goal_ready_check(db, p)
         assert [i.text for i in inbox.pending(db, p.channel_id, p.twitch_uid) if i.kind == 'goal'] == [ready]   # pops up ('important')
         assert inbox.popup_embed(inbox.pending(db, p.channel_id, p.twitch_uid))['description'].count('🎯 ' + ready) == 1
         inbox.prefs(db, p.channel_id, p.twitch_uid, create=True).popups = 'all'
         assert [i.text for i in inbox.pending(db, p.channel_id, p.twitch_uid) if i.kind == 'goal'] == [ready]
         inbox.prefs(db, p.channel_id, p.twitch_uid).popups = 'off'
         assert inbox.pending(db, p.channel_id, p.twitch_uid) == []            # off: nothing pops up…
-        assert '🎯 **Your goal Campfire is ready to craft.**' in inbox.inbox_text(m, db, p)      # …it waits in Notifications
+        assert '🎯 **Your goal Campfire is ready to craft.**' in inbox.inbox_text(db, p)      # …it waits in Notifications
         assert not [n for n in db.query(qn.Notice) if 'ready to craft' in n.content]             # and no DM
         db.commit()
     assert notes('goal') == [ready]
@@ -278,26 +278,26 @@ def test_the_note_rearms_only_when_the_goal_is_set_again():
     citizen(lumber=0)
     set_goal(CAMPFIRE.id)
     stock({LUMBER: 2})
-    inbox.after_command(m, '111', 'Kam', 'gather', {}, '')                  # after an interactive command
+    inbox.after_command('111', 'Kam', 'gather', {}, '')                  # after an interactive command
     assert len(notes('goal')) == 1
     set_goal(CAMPFIRE.id)                                                   # the same goal again: unchanged
-    inbox.after_command(m, '111', 'Kam', 'gather', {}, '')
+    inbox.after_command('111', 'Kam', 'gather', {}, '')
     assert len(notes('goal')) == 1
     press(ui.cid('111', 'gc'))
     stock({LUMBER: 0})
     press(ui.cid('111', 'gs', CAMPFIRE.id))                                 # cleared and set again: armed
     stock({LUMBER: 2})
     with m.SessionLocal() as db:                                            # the check on each Discord interaction (before popups)
-        extras.touch(m, db, m.player(db, W, 'discord', '111', 'Kam')[1])
+        extras.touch(db, m.player(db, W, 'discord', '111', 'Kam')[1])
         db.commit()
-    inbox.after_command(m, '111', 'Kam', 'gather', {}, '')
+    inbox.after_command('111', 'Kam', 'gather', {}, '')
     assert len(notes('goal')) == 2
 
 
 def test_a_goal_set_while_ready_gets_no_note():
     citizen()
     press(ui.cid('111', 'gs', CAMPFIRE.id))
-    inbox.after_command(m, '111', 'Kam', 'gs', {}, '')
+    inbox.after_command('111', 'Kam', 'gs', {}, '')
     assert notes('goal') == []
 
 
@@ -323,7 +323,7 @@ def test_the_goal_screen_adds_the_goal_to_the_shopping_list():
 def test_a_shopping_list_entry_sets_the_goal():
     citizen(lumber=0)
     with m.SessionLocal() as db:
-        shop.set_entry(m, db, m.player(db, W, 'discord', '111', 'Kam')[1], TOILET.id, 2)
+        shop.set_entry(db, m.player(db, W, 'discord', '111', 'Kam')[1], TOILET.id, 2)
         db.commit()
     entry = press(ui.cid('111', 'li', TOILET.id))['data']
     button = find(entry, 'Set as goal')
@@ -331,7 +331,7 @@ def test_a_shopping_list_entry_sets_the_goal():
     view = press(button['custom_id'])['data']
     assert 'Goal set: Crude Wood Toilet' in screen_text(view) and goal() == TOILET.id
     db, p = player()
-    steps = extras.walkthrough(m, db, p)[1]
+    steps = extras.walkthrough(db, p)[1]
     db.close()
     assert progress_row() == (TOILET.id, len(steps), 0) and f'0 of {len(steps)} steps done' in screen_text(view)
     assert find(view, 'On shopping list')['label'] == 'On shopping list · want 2'
@@ -346,7 +346,7 @@ def test_the_changed_screens_keep_discords_limits():
                press(ui.cid('111', 'li', ORE_SCANNER.id))['data'], press(ui.cid('111', 'li', TOILET.id))['data']]
     for data in screens:
         assert rows_ok(data) and assert_valid(v2.convert(ui.tidy(json.loads(json.dumps(data)))))
-    for e in wb.index(m):                                                    # every recipe fits a 20-digit Discord id
+    for e in wb.index():                                                    # every recipe fits a 20-digit Discord id
         for verb in ('gs', 'la', 'li'):
             ui.cid('9' * 20, verb, e.id)
 
@@ -378,7 +378,7 @@ def test_linking_moves_the_progress_with_the_goal():
     def link(source_uid, target_uid='111'):
         with m.SessionLocal() as db:
             source, target = (m.player(db, W, 'discord', u, 'Kam')[1].twitch_uid for u in (source_uid, target_uid))
-            q.merge_accounts(m, db, W, source, target)
+            q.merge_accounts(db, W, source, target)
             db.commit()
             assert db.get(extras.GoalProgress, (W, source)) is None
             found = db.get(extras.GoalProgress, (W, target))

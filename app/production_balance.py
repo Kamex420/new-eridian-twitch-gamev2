@@ -26,31 +26,31 @@ def outputs_at(s,cp,recipe,tag):
     return {key:min(20,n+bonus) if row['inputs'] and s.BATCH_CATEGORIES[key] in BULK_CATEGORIES else n for key,n in row['outputs'].items()}
 
 
-def selected_station(m,db,p,recipe):
+def selected_station(db,p,recipe):
     from . import crafting_progression, seed_content
     cp=crafting_progression;s=seed_content
-    available=[tag for tag in cp.tags(recipe) if cp.STATIONS[tag]['tier']<=cp.personal_tier(m,db,p) and cp.has_access(m,db,p,tag)]
+    available=[tag for tag in cp.tags(recipe) if cp.STATIONS[tag]['tier']<=cp.personal_tier(db,p) and cp.has_access(db,p,tag)]
     if not available:return None
     return max(available,key=lambda tag:(sum(outputs_at(s,cp,recipe,tag).values()),cp.STATIONS[tag]['tier'],tag))
 
 
-def current_outputs(m,db,p,recipe):
+def current_outputs(db,p,recipe):
     from . import crafting_progression, seed_content
-    tag=selected_station(m,db,p,recipe)
+    tag=selected_station(db,p,recipe)
     return outputs_at(seed_content,crafting_progression,recipe,tag) if tag else dict(seed_content.RECIPES[recipe]['outputs'])
 
 
-def quote(m,db,p,recipe):
+def quote(db,p,recipe):
     from . import seed_content
     from .game.rules import SEED_INDUSTRIES
     row=seed_content.RECIPES[recipe]
-    output=current_outputs(m,db,p,recipe)
+    output=current_outputs(db,p,recipe)
     sale=sum(SEED_INDUSTRIES.get(k,{}).get('sell',0)*n for k,n in output.items())
     inputs=sum(SEED_INDUSTRIES.get(k,{}).get('sell',0)*n for k,n in row['inputs'].items())
     return f'NPC sale: {sale} SC per batch · input resale value: {inputs} SC · added value: {sale-inputs:+} SC.'
 
 
-def configure_market(m):
+def configure_market():
     """Every catalog item has buyback; buy/sell spread prevents instant resale profit."""
     from . import crafting_progression, seed_content
     from .game.rules import SEED_INDUSTRIES

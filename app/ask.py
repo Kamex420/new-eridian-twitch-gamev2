@@ -172,30 +172,31 @@ def _match(text, names, rank=None):
     return None, suggestions[:3]
 
 
-def _recipe_rank(m):
+def _recipe_rank():
     order = {}
-    for i, e in enumerate(wb.index(m)):          # the index lists recipes easiest first
+    for i, e in enumerate(wb.index()):          # the index lists recipes easiest first
         order.setdefault(_norm(e.name), i)
     return lambda name: order.get(name, 10 ** 6)
 
 
-def find_recipe(m, text):
+def find_recipe(text):
     """(easiest recipe entry with that output name, suggestions)."""
     from . import qol
-    names = qol.recipe_names(m)
-    name, near = _match(text, names, _recipe_rank(m))
+    names = qol.recipe_names()
+    name, near = _match(text, names, _recipe_rank())
     if name is None:
-        key, _ = find_item(text, m)
+        key, _ = find_item(text, ranked=True)
         if key is not None:
-            makers = [e for e in wb.index(m) if e.output == key]
+            makers = [e for e in wb.index() if e.output == key]
             if makers:
                 return makers[0], []
         return None, [names.get(x, x) for x in near]
-    return next(e for e in wb.index(m) if e.name == name), []
+    return next(e for e in wb.index() if e.name == name), []
 
 
-def find_item(text, m=None):
-    """(item key, suggestions): names, plurals, partial names and old names (Crops, Components…)."""
+def find_item(text, ranked=False):
+    """(item key, suggestions): names, plurals, partial names and old names (Crops, Components…).
+    `ranked` puts gathered items first, then the easiest to craft, when more than one name fits."""
     from . import qol
     for form in _forms(text):
         key = s.find_item(form)
@@ -205,8 +206,8 @@ def find_item(text, m=None):
         return 'cargo', []
     names = qol.item_names()
     rank = None
-    if m is not None:                            # gathered items first, then the easiest to craft
-        recipes = _recipe_rank(m)
+    if ranked:
+        recipes = _recipe_rank()
         rank = lambda n: (names[n] not in s.GATHER, recipes(n))
     key, near = _match(text, names, rank)
     return (key, []) if key is not None else (None, [s.ITEMS[names[x]]['name'] for x in near if x in names])
@@ -215,7 +216,7 @@ def find_item(text, m=None):
 _SKILLS = None
 
 
-def skills(m):
+def skills():
     """{normalized name: (main, branch or None, label, skill key)} for every skill and branch players can level."""
     from .game.rules import SKILL_LABELS
     from .seed_skills import HUBS as SEED_HUBS, TASKS as SEED_TASKS
@@ -238,11 +239,11 @@ def skills(m):
     return _SKILLS
 
 
-def find_skill(m, text):
-    value, near = _match(text, {k: k for k in skills(m)})
+def find_skill(text):
+    value, near = _match(text, {k: k for k in skills()})
     if value is None:
-        return None, [skills(m)[n][2] for n in near if n in skills(m)]
-    return skills(m)[value], []
+        return None, [skills()[n][2] for n in near if n in skills()]
+    return skills()[value], []
 
 
 # Terms the handbook's Terms page does not define, worded from the rules in the code.
@@ -271,7 +272,7 @@ EXTRA_TERMS = {
 _TERMS = None
 
 
-def terms(m):
+def terms():
     """{normalized term: (title, definition)} from the handbook's Terms page plus EXTRA_TERMS."""
     from .game.handbook import SEED_HELP_TOPICS
     global _TERMS
@@ -291,15 +292,15 @@ def terms(m):
     return _TERMS
 
 
-def find_term(m, text):
-    names = {k: k for k in terms(m)}
+def find_term(text):
+    names = {k: k for k in terms()}
     value, near = _match(text, names)
     if value is None:
-        return None, [terms(m)[n][0] for n in near if n in terms(m)]
-    return terms(m)[value], []
+        return None, [terms()[n][0] for n in near if n in terms()]
+    return terms()[value], []
 
 
-def find_leaf(m, text):
+def find_leaf(text):
     """A menu button or area whose label is the text ('train skills', 'shopping list')."""
     from . import menu
     q = _norm(text)
@@ -314,46 +315,47 @@ def find_leaf(m, text):
 
 # ---------------------------------------------------------------- answers
 
-def _ctx(m, db, p, provider):
-    return wb.Context(m, db, p, provider)
+def _ctx(db, p, provider):
+    return wb.Context(db, p, provider)
 
 
 def _discord(provider):
     return provider == 'discord'
 
 
-def _lite(m):
+def _lite():
     """Twitch is the lite game (app/twitch_lite.py): crafting, goals and the guide are on Discord."""
-    return bool(getattr(getattr(m, 'twitch_lite', None), 'ENABLED', False))
+    from . import twitch_lite
+    return bool(twitch_lite.ENABLED)
 
 
-def _goal_id(m, db, p):
+def _goal_id(db, p):
     if p is None:
         return None
     from . import extras
-    e = extras.goal_entry(m, db, p)
+    e = extras.goal_entry(db, p)
     return e.id if e is not None else None
 
 
-def _plain_inputs(m, e):
+def _plain_inputs(e):
     from .game.players import resource_name
     return ', '.join(f'{resource_name(k)} ×{n}' for k, n in e.inputs.items()) or 'no ingredients'
 
 
-def answer_make(m, db, p, e, provider):
-    ctx = _ctx(m, db, p, provider)
+def answer_make(db, p, e, provider):
+    ctx = _ctx(db, p, provider)
     station = wb.station_label(e, ctx)
-    ways = sum(1 for x in wb.index(m) if x.name == e.name)
+    ways = sum(1 for x in wb.index() if x.name == e.name)
     st = ctx.status(e) if p is not None else None
-    reasons = blockers(m, ctx, e) if st is not None and st.code != 'ready' else []
+    reasons = blockers(ctx, e) if st is not None and st.code != 'ready' else []
     if not _discord(provider):
         you = (' You: ✅ ready.' if st.code == 'ready' else f' You: {reasons[0][1]}') if st is not None and (reasons or st.code == 'ready') else ''
-        how = (' Craft it on Discord with /make, or set it as your goal there for every step.' if _lite(m)
+        how = (' Craft it on Discord with /make, or set it as your goal there for every step.' if _lite()
                else f' !make {e.name} · !target {e.name} walks you through every step.')
-        text = f'🛠️ {e.name}: {_plain_inputs(m, e)} at the {station} ({e.skill} Lv{e.level}).' + you + how
+        text = f'🛠️ {e.name}: {_plain_inputs(e)} at the {station} ({e.skill} Lv{e.level}).' + you + how
         return Answer('make', text)
     lines = [f'🛠️ HOW TO MAKE {e.name.upper()}',
-             f"**Needs:** {wb.inputs_text(ctx, e) if p is not None else _plain_inputs(m, e)}",
+             f"**Needs:** {wb.inputs_text(ctx, e) if p is not None else _plain_inputs(e)}",
              f'**Makes:** {ctx.batch_size(e)} per batch at the {station}',
              f'**Skill:** {e.skill} Lv {e.level}' + (f' (you are Lv {ctx.level(e.skill_key)})' if p is not None and e.kind == 'seed' else '')
              + f' · personal Tier {e.tier}']
@@ -366,47 +368,47 @@ def answer_make(m, db, p, e, provider):
     lines += ['', 'Ready: open the recipe to craft it.' if st is not None and st.code == 'ready'
               else 'Set it as your goal and the walkthrough lists every step, machines and skill levels included.']
     actions = [{'kind': 'recipe', 'entry': e}]
-    if _goal_id(m, db, p) != e.id:
+    if _goal_id(db, p) != e.id:
         actions.append({'kind': 'goal', 'entry': e})
     return Answer('make', '\n'.join(lines), actions)
 
 
-def _find_sources(m, key):
+def _find_sources(key):
     """Lines of work whose lucky finds can turn up this item."""
     from .seed_skills import TASKS as SEED_TASKS
     from . import practice
     labels = {cfg['branch']: cfg['label'] for cfg in SEED_TASKS.values()}
     found = []
     for branch, names in practice.BRANCH.items():
-        if any(practice.key(m, n) == key for n in names):
+        if any(practice.key(n) == key for n in names):
             found.append(labels.get(branch) or branch.replace('_', ' ').title())
     return list(dict.fromkeys(found))
 
 
-def answer_get(m, db, p, key, provider):
+def answer_get(db, p, key, provider):
     from .game.cooldowns_materials import material_amount, material_source
     from .game.players import resource_name
     name = resource_name(key)
     source = material_source(key, provider)
     best = s.ACQUISITION.get(key) if key in s.ACTIVE else None
-    others = [e for e in wb.index(m) if e.output == key and e.id != best][:3]
-    finds = _find_sources(m, key)
+    others = [e for e in wb.index() if e.output == key and e.id != best][:3]
+    finds = _find_sources(key)
     have = material_amount(db, p, key) if p is not None else None
     if not _discord(provider):
         if key in s.GATHER:                        # chat commands take the item's name (!mine: one word only)
             source = source.replace(f'!gather {key}', f'!gather {name}')
             if ' ' not in name:
                 source = source.replace(f'!mine {key} ', f'!mine {name} ')
-        made = wb.entry(m, best) if best and key not in s.GATHER else None
-        if made is not None and _lite(m):          # crafting is on Discord in the lite game
-            source = f'crafted on Discord (/make): {_plain_inputs(m, made)} at the {wb.station_label(made)}.'
+        made = wb.entry(best) if best and key not in s.GATHER else None
+        if made is not None and _lite():          # crafting is on Discord in the lite game
+            source = f'crafted on Discord (/make): {_plain_inputs(made)} at the {wb.station_label(made)}.'
         text = f'📦 {name}: {source}' + (f' Also: {", ".join(e.name + " recipe" for e in others[:2])}.' if others else '')
         text += (f' Lucky finds: {", ".join(finds[:3])}.' if finds else '') + (f' You have {have}.' if have is not None else '')
         return Answer('get', text)
     lines = [f'📦 WHERE TO GET {name.upper()}', f'**Best way:** {source}']
     if others:
-        ctx = _ctx(m, db, p, provider)
-        lines.append('**Also made by:** ' + '; '.join(f'{e.name} recipe ({_plain_inputs(m, e)} · {wb.station_label(e, ctx)})' for e in others))
+        ctx = _ctx(db, p, provider)
+        lines.append('**Also made by:** ' + '; '.join(f'{e.name} recipe ({_plain_inputs(e)} · {wb.station_label(e, ctx)})' for e in others))
     if finds:
         lines.append('**Lucky finds:** sometimes turns up while doing ' + ', '.join(finds[:5]) + '.')
     if have is not None:
@@ -415,24 +417,24 @@ def answer_get(m, db, p, key, provider):
     if key in s.GATHER:
         actions.append({'kind': 'gather', 'item': key})
     elif best:
-        e = wb.entry(m, best)
+        e = wb.entry(best)
         if e is not None:
-            actions += [{'kind': 'recipe', 'entry': e}] + ([{'kind': 'goal', 'entry': e}] if _goal_id(m, db, p) != e.id else [])
+            actions += [{'kind': 'recipe', 'entry': e}] + ([{'kind': 'goal', 'entry': e}] if _goal_id(db, p) != e.id else [])
     if key in s.ACTIVE:
         actions.append({'kind': 'uses', 'item': key})
     return Answer('get', '\n'.join(lines), actions)
 
 
-def answer_uses(m, db, p, key, provider):
+def answer_uses(db, p, key, provider):
     from .game.players import resource_name
     from . import qol
-    ctx = _ctx(m, db, p, provider)
+    ctx = _ctx(db, p, provider)
     name = resource_name(key)
-    rows = [e for e in wb.index(m) if key in e.inputs]
+    rows = [e for e in wb.index() if key in e.inputs]
     if p is not None:
         rows.sort(key=lambda e: (wb.STATUS_ORDER[ctx.status(e).code], e.sort_key))
     purpose = s.PURPOSE.get(key) or {}
-    price = qol.sell_price(m, key)
+    price = qol.sell_price(key)
     use = purpose.get('label') if purpose.get('mode') not in (None, 'ingredient', 'research') else ''
     if not _discord(provider):
         parts = [f'🔍 {name}:']
@@ -465,20 +467,20 @@ def answer_uses(m, db, p, key, provider):
     return Answer('uses', '\n'.join(lines), actions)
 
 
-def _hub(m, main):
+def _hub(main):
     from .seed_skills import HUBS as SEED_HUBS
     return next((h for h, k in SEED_HUBS.items() if k == main), None)
 
 
-def answer_level(m, db, p, skill, provider):
+def answer_level(db, p, skill, provider):
     from .game.players import resource_name
     from .game.rules import SKILL_LABELS
     from .game.training_and_items import training_tasks
     from .seed_skills import TASKS as SEED_TASKS
     main, branch, label, skill_key = skill
-    hub = _hub(m, main)
+    hub = _hub(main)
     main_label = SKILL_LABELS.get(main, main.title())
-    ctx = _ctx(m, db, p, provider)
+    ctx = _ctx(db, p, provider)
     level = ctx.level(skill_key) if p is not None else None
     if hub is None:
         return Answer('level', f'📈 {label} is practised by its work tasks: {"/work" if _discord(provider) else "!work"} lists them.')
@@ -510,7 +512,7 @@ def answer_level(m, db, p, skill, provider):
     return Answer('level', '\n'.join(lines), actions)
 
 
-def blockers(m, ctx, e):
+def blockers(ctx, e):
     """Every reason `e` cannot be crafted right now, not only the first (workbench.Context.status)."""
     from .game.players import resource_name
     from .game.rules import RECIPE_TIERS, SOCIETY_TIERS
@@ -534,7 +536,7 @@ def blockers(m, ctx, e):
         if ctx.owned_unique(e.id):
             found.append(('✅', 'You already own one; bonus equipment is limited to one of each.'))
     if not ctx.usable_tags(e):
-        machine_key, machine = extras._machine(m, ctx, e)
+        machine_key, machine = extras._machine(ctx, e)
         station = cp.STATIONS[e.tags[0]]['name'] if e.tags else 'workstation'
         if machine is not None:
             found.append(('🏭', f'Needs the {station}: craft a {resource_name(machine_key)} to open it for good.'))
@@ -551,26 +553,26 @@ def blockers(m, ctx, e):
     return found
 
 
-def answer_why(m, db, p, e, provider):
+def answer_why(db, p, e, provider):
     if p is None:
         return Answer('why', f'Start playing first ({"/start" if _discord(provider) else "!start"}), then ask again.')
-    ctx = _ctx(m, db, p, provider)
-    reasons = blockers(m, ctx, e)
+    ctx = _ctx(db, p, provider)
+    reasons = blockers(ctx, e)
     if not _discord(provider):
         if not reasons:
-            return Answer('why', f'✅ Nothing is stopping you: {e.name} is ready.' + (' Craft it on Discord with /make.' if _lite(m) else f' !make {e.name}'))
-        plan = ' Set it as your goal on Discord (/make) to plan every step.' if _lite(m) else f' !target {e.name} plans every step.'
+            return Answer('why', f'✅ Nothing is stopping you: {e.name} is ready.' + (' Craft it on Discord with /make.' if _lite() else f' !make {e.name}'))
+        plan = ' Set it as your goal on Discord (/make) to plan every step.' if _lite() else f' !target {e.name} plans every step.'
         return Answer('why', f'🔒 {e.name}: ' + ' '.join(text for _, text in reasons) + plan)
     if not reasons:
         return Answer('why', f'✅ NOTHING IS STOPPING YOU\n{e.name} is ready to craft at the {wb.station_label(e, ctx)}.',
                       [{'kind': 'recipe', 'entry': e}])
     lines = [f"🔒 WHY CAN'T I MAKE {e.name.upper()}?"] + [f'{emoji} {text}' for emoji, text in reasons]
     lines += ['', 'Set it as your goal: the walkthrough turns each of these into steps, each with its own button.']
-    actions = ([{'kind': 'goal', 'entry': e}] if _goal_id(m, db, p) != e.id else [{'kind': 'goalview'}]) + [{'kind': 'recipe', 'entry': e}]
+    actions = ([{'kind': 'goal', 'entry': e}] if _goal_id(db, p) != e.id else [{'kind': 'goalview'}]) + [{'kind': 'recipe', 'entry': e}]
     return Answer('why', '\n'.join(lines), actions)
 
 
-def answer_needs(m, db, p, provider):
+def answer_needs(db, p, provider):
     from .game.life import life_state
     from .game.world import NEED_EMOJI, comfort_status_line, need_fix
     from .needs import blocked_needs
@@ -592,7 +594,7 @@ def answer_needs(m, db, p, provider):
     return Answer('needs', '✅ YOUR NEEDS ARE FINE FOR WORK\n' + rest, [{'kind': 'status'}])
 
 
-def answer_skills(m, db, p, provider):
+def answer_skills(db, p, provider):
     """"How do I level up?": every skill, how many of its tasks are ready, and where to train."""
     from .game.training_and_items import training_skill_line, training_skills
     if not _discord(provider):
@@ -605,16 +607,16 @@ def answer_skills(m, db, p, provider):
     return Answer('level', '\n'.join(lines), [{'kind': 'leaf', 'key': 'trainskill'}])
 
 
-def answer_next(m, db, p, provider):
+def answer_next(db, p, provider):
     from . import qol, extras
     if p is None:
-        guide = '/guide' if _discord(provider) or _lite(m) else '!guide'     # the lite game's reply filter adds 'on Discord'
+        guide = '/guide' if _discord(provider) or _lite() else '!guide'     # the lite game's reply filter adds 'on Discord'
         return Answer('next', f'👋 New here? {"/start" if _discord(provider) else "!start"} creates your citizen, then '
                               f'{guide} shows your best next step.')
-    goal = extras.goal_entry(m, db, p)
-    wording = 'discord' if _discord(provider) or _lite(m) else provider    # lite: crafting is on Discord, so its /commands
-    step = extras.next_step(m, db, p, wording)[0] if goal is not None else ''
-    tip = qol.next_step(m, db, p, wording)
+    goal = extras.goal_entry(db, p)
+    wording = 'discord' if _discord(provider) or _lite() else provider    # lite: crafting is on Discord, so its /commands
+    step = extras.next_step(db, p, wording)[0] if goal is not None else ''
+    tip = qol.next_step(db, p, wording)
     if not _discord(provider):
         return Answer('next', ((f'🎯 Goal {goal.name}: {step} ' if step else '') + f'🧭 {tip}').replace('**', ''))
     lines = ['🧭 WHAT SHOULD I DO NEXT?']
@@ -629,11 +631,11 @@ def answer_next(m, db, p, provider):
 MONEY = {'money', 'sc', 'seed coin', 'seed coins', 'coin', 'coins', 'cash', 'currency', 'gold'}
 
 
-def answer_money(m, provider):
+def answer_money(provider):
     """"How do I make money?": the ways the handbook names, and the guide that picks one for you."""
     if not _discord(provider):
         return Answer('money', '💰 Seed Coin comes from work (+1 SC when it matches your job), the three daily Production Orders, '
-                               'and selling surplus to Seed Industries. ' + ('/guide picks the best way.' if _lite(m)
+                               'and selling surplus to Seed Industries. ' + ('/guide picks the best way.' if _lite()
                                                                             else '!guide shows your best next step.'))
     lines = ['💰 HOW DO I EARN SEED COIN?',
              '• **Work:** tasks pay SC; work that matches your job pays +1 SC more (/job).',
@@ -644,14 +646,14 @@ def answer_money(m, provider):
     return Answer('money', '\n'.join(lines), [{'kind': 'guide', 'goal': 'seed_coin', 'label': 'Earn SC guide'}])
 
 
-def answer_term(m, term, provider):
+def answer_term(term, provider):
     title, text = term
     if not _discord(provider):
         return Answer('define', f'📖 {title}: {text}')
     return Answer('define', f'📖 {title.upper()}\n{text}')
 
 
-def answer_leaf(m, key, provider):
+def answer_leaf(key, provider):
     from . import menu
     menu = menu
     if key in menu.AREAS:
@@ -664,13 +666,13 @@ def answer_leaf(m, key, provider):
     return Answer('define', f'🔘 {title.upper()}\nA button in /menu. {text}', [{'kind': 'leaf', 'key': key}])
 
 
-def answer_item(m, db, p, key, provider):
+def answer_item(db, p, key, provider):
     """What an item is: what it does, how to get it, what it is for."""
     from .game.cooldowns_materials import material_amount, material_source
     from .game.players import resource_name
     name = resource_name(key)
     description = s.ITEMS.get(key, {}).get('description', '') if key in s.ACTIVE else ''
-    used = len([e for e in wb.index(m) if key in e.inputs])
+    used = len([e for e in wb.index() if key in e.inputs])
     purpose = (s.PURPOSE.get(key) or {}).get('label', '')
     if not _discord(provider):
         return Answer('define', f'📦 {name}: ' + (description[:120] + ' ' if description else '') + f'Get it: {material_source(key, provider)}')
@@ -687,74 +689,74 @@ def answer_item(m, db, p, key, provider):
 
 # ---------------------------------------------------------------- putting it together
 
-def _resolve(m, db, p, intent, subject, provider):
+def _resolve(db, p, intent, subject, provider):
     """(Answer or None, suggestions) for one reading of the question."""
     from .game.players import resource_name
     if intent == 'next':
-        return answer_next(m, db, p, provider), []
+        return answer_next(db, p, provider), []
     if intent == 'needs':
-        return answer_needs(m, db, p, provider), []
+        return answer_needs(db, p, provider), []
     if not subject:
         return None, []
     if intent in {'make', 'get'} and _norm(subject) in MONEY:
-        return answer_money(m, provider), []
+        return answer_money(provider), []
     if intent == 'why':
         if _norm(subject) in {'work', 'do tasks', 'do anything', 'gather', 'mine', 'train'}:
-            return answer_needs(m, db, p, provider), []
-        e, near = find_recipe(m, subject)
-        return (answer_why(m, db, p, e, provider), []) if e else (None, near)
+            return answer_needs(db, p, provider), []
+        e, near = find_recipe(subject)
+        return (answer_why(db, p, e, provider), []) if e else (None, near)
     if intent == 'level':
         if _norm(subject) in {'up', 'skill', 'skills', 'my skills', 'faster', 'quickly', 'quick', 'fast'}:
-            return answer_skills(m, db, p, provider), []
-        skill, near = find_skill(m, subject)
-        return (answer_level(m, db, p, skill, provider), []) if skill else (None, near)
+            return answer_skills(db, p, provider), []
+        skill, near = find_skill(subject)
+        return (answer_level(db, p, skill, provider), []) if skill else (None, near)
     if intent == 'make':
-        e, near = find_recipe(m, subject)
+        e, near = find_recipe(subject)
         key = e.output if e is not None else find_item(subject)[0]
         if key in s.GATHER:                        # "how do I make Stone?": it is gathered first, crafted only late
-            return answer_get(m, db, p, key, provider), []
-        return (answer_make(m, db, p, e, provider), []) if e else (None, near)
+            return answer_get(db, p, key, provider), []
+        return (answer_make(db, p, e, provider), []) if e else (None, near)
     if intent in {'uses', 'get'}:
-        key, near = find_item(subject, m)
+        key, near = find_item(subject, ranked=True)
         if key is None:
             return None, near
-        return (answer_uses if intent == 'uses' else answer_get)(m, db, p, key, provider), []
+        return (answer_uses if intent == 'uses' else answer_get)(db, p, key, provider), []
     if intent == 'define':
-        term, near_terms = find_term(m, subject)
+        term, near_terms = find_term(subject)
         if term:
-            return answer_term(m, term, provider), []
-        skill, _ = find_skill(m, subject)
-        if skill and _norm(subject) in skills(m):
-            return answer_level(m, db, p, skill, provider), []
-        key, near_items = find_item(subject, m)
+            return answer_term(term, provider), []
+        skill, _ = find_skill(subject)
+        if skill and _norm(subject) in skills():
+            return answer_level(db, p, skill, provider), []
+        key, near_items = find_item(subject, ranked=True)
         if key is not None and _norm(resource_name(key)) in _forms(subject):
-            return answer_item(m, db, p, key, provider), []                 # the item's own name
+            return answer_item(db, p, key, provider), []                 # the item's own name
         from . import knowledge
-        known = knowledge.search_answer(m, db, p, subject, provider)      # "what is a season?": the handbook's /season
+        known = knowledge.search_answer(db, p, subject, provider)      # "what is a season?": the handbook's /season
         if known is not None:
             return known, []
         if key is not None:                                                # part of an item's name ("ducks")
-            return answer_item(m, db, p, key, provider), []
-        leaf = find_leaf(m, subject)
+            return answer_item(db, p, key, provider), []
+        leaf = find_leaf(subject)
         if leaf:
-            return answer_leaf(m, leaf, provider), []
-        e, near_recipes = find_recipe(m, subject)
+            return answer_leaf(leaf, provider), []
+        e, near_recipes = find_recipe(subject)
         if e is not None:
-            return answer_make(m, db, p, e, provider), []
+            return answer_make(db, p, e, provider), []
         return None, list(dict.fromkeys(near_terms + near_items + near_recipes))[:3]
     return None, []
 
 
-def _suggestions(m, text):
+def _suggestions(text):
     """Names close to a word nothing matched, from every list Find knows."""
     found = []
-    for finder in (lambda t: find_recipe(m, t)[1], lambda t: find_item(t, m)[1], lambda t: find_skill(m, t)[1],
-                   lambda t: find_term(m, t)[1]):
+    for finder in (lambda t: find_recipe(t)[1], lambda t: find_item(t, ranked=True)[1], lambda t: find_skill(t)[1],
+                   lambda t: find_term(t)[1]):
         found += [x for x in finder(text) if x not in found]
     return found[:3]
 
 
-def answer(m, db, p, query, provider='discord'):
+def answer(db, p, query, provider='discord'):
     """The Answer to a question or a search word. intent 'search': a plain word (extras.find); 'handbook': what the
     handbook, commands and menu say (knowledge.search); 'topic': a society stat, Contribution, a need, tiers, housing or
     the clinic; 'unknown': nothing matched."""
@@ -763,13 +765,13 @@ def answer(m, db, p, query, provider='discord'):
     readings = parse(text)
     if not readings or readings[0][0] in {'define', 'level'} or any(knowledge.topic_of_subject(sub) for _, sub in readings if sub):
         # "how do I raise Reputation?", "what is Morale?", "reputation": what raises it, not a word search.
-        topic = knowledge.topic_answer(m, db, p, text, provider)
+        topic = knowledge.topic_answer(db, p, text, provider)
         if topic is not None:
             return topic
     near = []
     which = None
     for intent, subject in readings:
-        result, close = _resolve(m, db, p, intent, subject, provider)
+        result, close = _resolve(db, p, intent, subject, provider)
         if result is not None:
             return result
         if close and which is None:
@@ -778,10 +780,10 @@ def answer(m, db, p, query, provider='discord'):
     if readings:
         # Not an item, recipe or skill: a society stat, Contribution or a need ("how do I build reputation?"),
         # else whatever the handbook, the commands and the menu say about it.
-        topic = knowledge.topic_answer(m, db, p, text, provider)
+        topic = knowledge.topic_answer(db, p, text, provider)
         if topic is not None:
             return topic
-        known = knowledge.search_answer(m, db, p, text, provider)
+        known = knowledge.search_answer(db, p, text, provider)
         if which is not None:
             intent, subject, close = which
             # "where do I get iron": several items hold the word, so ask which; a loose guess gives way to the handbook.
@@ -792,34 +794,34 @@ def answer(m, db, p, query, provider='discord'):
             return known
         # A question whose subject is a button or handbook topic ("how do I use the shopping list"): the plain search.
         for subject in dict.fromkeys(sub for _, sub in readings if sub):
-            found = extras.find(m, subject)
+            found = extras.find(subject)
             if not _discord(provider):
                 found = {k: v for k, v in found.items() if k != 'menu'}       # chat lists no Discord buttons
             if any(found.values()):
-                return Answer('search', extras.find_text(m, subject, provider), [{'kind': 'search', 'query': subject}])
+                return Answer('search', extras.find_text(subject, provider), [{'kind': 'search', 'query': subject}])
         if not near:
-            near = _suggestions(m, readings[0][1]) if readings[0][1] else []
+            near = _suggestions(readings[0][1]) if readings[0][1] else []
     else:
-        term, _ = find_term(m, text)
-        if term and _norm(clean(text)) not in terms(m):
+        term, _ = find_term(text)
+        if term and _norm(clean(text)) not in terms():
             term = None
-        found = extras.find(m, text)
+        found = extras.find(text)
         if not _discord(provider):
             found = {k: v for k, v in found.items() if k != 'menu'}
         if any(found.values()):
-            reply = extras.find_text(m, text, provider)
+            reply = extras.find_text(text, provider)
             if term:                                   # a handbook word: its meaning first, then the search
-                reply = answer_term(m, term, provider).text + ('\n\n' if _discord(provider) else ' | ') + reply
+                reply = answer_term(term, provider).text + ('\n\n' if _discord(provider) else ' | ') + reply
             return Answer('search', reply, [{'kind': 'search', 'query': text}])
-        if term or find_term(m, text)[0]:
-            return answer_term(m, term or find_term(m, text)[0], provider)
-        skill, _ = find_skill(m, text)
+        if term or find_term(text)[0]:
+            return answer_term(term or find_term(text)[0], provider)
+        skill, _ = find_skill(text)
         if skill:
-            return answer_level(m, db, p, skill, provider)
-        known = knowledge.search_answer(m, db, p, text, provider)
+            return answer_level(db, p, skill, provider)
+        known = knowledge.search_answer(db, p, text, provider)
         if known is not None:
             return known
-        near = _suggestions(m, text)
+        near = _suggestions(text)
     intent = readings[0][0] if readings else 'search'
     return Answer('unknown', unknown_text(text, near, provider), [{'kind': 'suggest', 'name': n, 'intent': intent} for n in near], answered=False)
 
@@ -848,17 +850,17 @@ def suggestion_query(intent, name):
             'uses': f'what is {name} used for', 'get': f'where do I get {name}', 'define': f'what is {name}'}.get(intent, name)
 
 
-def reply(m, db, p, query, provider='discord', channel=None):
+def reply(db, p, query, provider='discord', channel=None):
     """The answer's text, after counting it for the owner when Find could not answer it."""
-    result = answer(m, db, p, query, provider)
+    result = answer(db, p, query, provider)
     if not result.answered:
-        log(m, db, (p.channel_id if p is not None else channel), query)
+        log(db, (p.channel_id if p is not None else channel), query)
     return result.text
 
 
 # ---------------------------------------------------------------- what players could not find
 
-def log(m, db, channel, query):
+def log(db, channel, query):
     """Count a question Find could not answer. Written in the caller's session; the caller commits it."""
     question = clean(query)
     if not channel or not question or len(question) < 2:
@@ -882,7 +884,7 @@ def log(m, db, channel, query):
         logging.getLogger(__name__).exception('Find could not count an unanswered question')
 
 
-def log_text(m, db, days=30, limit=25):
+def log_text(db, days=30, limit=25):
     """The owner's view: what Find could not answer lately, most asked first."""
     since = runtime.now() - timedelta(days=days)
     rows = db.execute(select(FindQuestion).where(FindQuestion.last_asked >= since)).scalars().all()
@@ -902,7 +904,7 @@ def log_text(m, db, days=30, limit=25):
     return '\n'.join(lines)
 
 
-def existing_player(m, db, channel, provider, uid):
+def existing_player(db, channel, provider, uid):
     """The asker's citizen when they have one; Find never creates one."""
     from .game.players import resolve
     if not channel or not uid:

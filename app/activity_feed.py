@@ -82,7 +82,7 @@ def _utc(dt):
     return dt if dt is None or dt.tzinfo else dt.replace(tzinfo=timezone.utc)
 
 
-def state(m, db):
+def state(db):
     row = db.get(FeedState, runtime.DISCORD_WORLD_ID)
     if row is None:
         row = FeedState(world=runtime.DISCORD_WORLD_ID, channel='', enabled=1, message_id='', lines='[]', last_highlight=_top_highlight(db))
@@ -97,7 +97,7 @@ def _top_highlight(db):
     return db.execute(select(func.coalesce(func.max(StreamHighlight.id), 0))).scalar() or 0
 
 
-def channel_of(m, db):
+def channel_of(db):
     row = db.get(FeedState, runtime.DISCORD_WORLD_ID)
     if row is not None and not row.enabled:
         return ''
@@ -122,10 +122,10 @@ def set_hidden(db, p, value):
             else '📣 Your activity shows in the channel feed again.')
 
 
-def record(m, db, p, fn_name, params, before, after, acting=False):
+def record(db, p, fn_name, params, before, after, acting=False):
     """Note what a command brought in, for the next feed update."""
     from .game.players import resource_name
-    if not before or not after or not channel_of(m, db) or hidden(db, p):
+    if not before or not after or not channel_of(db) or hidden(db, p):
         return
     b, a = before.get('Resources', {}), after.get('Resources', {})
     gained = {}
@@ -159,7 +159,7 @@ def _highlight_line(h):
     return f'{h.emoji} {head}' + (f' — {detail}' if detail else '')
 
 
-def build(m, db, st):
+def build(db, st):
     """(new lines, urgent?, highest highlight id, event ids) for everything since the last update."""
     from .stream_overlay import StreamHighlight
     hidden_names = {n for n, in db.execute(select(Player.display_name).join(
@@ -202,7 +202,7 @@ def _api(method, path, token, **kw):
     return requests.request(method, 'https://discord.com/api/v10' + path, headers={'Authorization': 'Bot ' + token}, timeout=10, **kw)
 
 
-def payload(m, lines):
+def payload(lines):
     from . import ui
     body = '\n'.join(lines)
     while len(body) > 4000:
@@ -217,15 +217,15 @@ def payload(m, lines):
     return layout_v2.new_message(data)      # Discord's newer layout when it is on
 
 
-def tick(m, force=False):
+def tick(force=False):
     """Post (or extend) the feed when it is due. Safe to call from several workers: one claims each update."""
     token = os.getenv('DISCORD_BOT_TOKEN', '').strip()
     with SessionLocal() as db:
-        target = channel_of(m, db)
+        target = channel_of(db)
         if not token or not target.isdigit():
             return None
-        st = state(m, db)
-        lines, urgent, top, ids = build(m, db, st)
+        st = state(db)
+        lines, urgent, top, ids = build(db, st)
         if not lines:
             if top != st.last_highlight:
                 st.last_highlight = top
@@ -249,9 +249,9 @@ def tick(m, force=False):
         new = [f'{stamp} {line}' for line in lines]
         old = json.loads(st.lines or '[]')
         message_id, message_at, channel = st.message_id, st.message_at, target
-    ok, message_id, all_lines = deliver(m, token, channel, message_id, message_at, old, new)
+    ok, message_id, all_lines = deliver(token, channel, message_id, message_at, old, new)
     with SessionLocal() as db:
-        st = state(m, db)
+        st = state(db)
         if ok:
             if message_id != st.message_id:
                 st.message_at = _now()
@@ -265,7 +265,7 @@ def tick(m, force=False):
 STARTED = datetime.now(timezone.utc)
 
 
-def deliver(m, token, channel, message_id, message_at, old, new):
+def deliver(token, channel, message_id, message_at, old, new):
     """Edit the last feed message while it is still the newest in the channel; otherwise post a new one."""
     try:
         if message_id and message_at and _utc(message_at) >= STARTED and _now() - _utc(message_at) < timedelta(minutes=KEEP_MINUTES) \
@@ -273,10 +273,10 @@ def deliver(m, token, channel, message_id, message_at, old, new):
             info = _api('GET', f'/channels/{channel}', token)
             if info.status_code == 200 and str(info.json().get('last_message_id') or '') == message_id:
                 lines = old + new
-                r = _api('PATCH', f'/channels/{channel}/messages/{message_id}', token, json=payload(m, lines))
+                r = _api('PATCH', f'/channels/{channel}/messages/{message_id}', token, json=payload(lines))
                 if 200 <= r.status_code < 300:
                     return True, message_id, lines
-        r = _api('POST', f'/channels/{channel}/messages', token, json=payload(m, new))
+        r = _api('POST', f'/channels/{channel}/messages', token, json=payload(new))
         if 200 <= r.status_code < 300:
             return True, str(r.json().get('id') or ''), new
         log.warning('Activity feed not accepted by Discord (HTTP %s)', r.status_code)
@@ -287,8 +287,8 @@ def deliver(m, token, channel, message_id, message_at, old, new):
 
 # ---------------------------------------------------------------- moderator controls
 
-def here(m, db, channel):
-    st = state(m, db)
+def here(db, channel):
+    st = state(db)
     if not str(channel or '').isdigit():
         return '⚠️ Run this from the channel the feed should use.'
     st.channel, st.enabled, st.message_id, st.lines = str(channel), 1, '', '[]'
@@ -297,8 +297,8 @@ def here(m, db, channel):
             'Players can hide their own activity with /settings feed:off.')
 
 
-def off(m, db):
-    st = state(m, db)
+def off(db):
+    st = state(db)
     st.enabled = 0
     db.execute(delete(FeedEvent).where(FeedEvent.world == runtime.DISCORD_WORLD_ID))
     return '🔕 The activity feed is off. /mod → Activity feed: post here turns it back on.'

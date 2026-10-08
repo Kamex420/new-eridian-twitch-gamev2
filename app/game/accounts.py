@@ -38,7 +38,7 @@ def merge_accounts(db,channel,source_uid,target_uid):
     target=db.execute(select(Player).where(Player.channel_id==channel,Player.twitch_uid==target_uid)).scalar_one_or_none()
 
     for account in (source,target):
-        if account:item_identity.migrate_player(main,db,account)
+        if account:item_identity.migrate_player(db,account)
     if source and not target:
         source.twitch_uid=target_uid
         target=source
@@ -179,7 +179,7 @@ def merge_accounts(db,channel,source_uid,target_uid):
             db.delete(old_state)
         else:old_state.canonical_uid=target_uid
 
-    if 'task_queue' in vars(main):main.task_queue.merge_accounts(main,db,channel,source_uid,target_uid)
+    if 'task_queue' in vars(main):main.task_queue.merge_accounts(db,channel,source_uid,target_uid)
 
     # Redirect every related identity/history row, then remove obsolete link codes.
     for row in db.execute(select(Identity).where(Identity.channel_id==channel,Identity.canonical_uid==source_uid)).scalars().all():row.canonical_uid=target_uid

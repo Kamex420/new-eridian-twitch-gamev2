@@ -437,9 +437,9 @@ def world_rule_bundle(db,p,s,action,skill,provider="discord"):
     if skill and tbonus.get(skill):
         total+=tbonus[skill];parts.append(f"{next((t for t in traits if True), 'Trait')} +{int(tbonus[skill]*100)}%")
     sb,snotes=status_modifier(db,p);total+=sb;parts.extend(snotes)
-    mb,mnotes=main.autonomy.mood_modifier(main,db,p,clock);total+=mb;parts.extend(mnotes)
+    mb,mnotes=main.autonomy.mood_modifier(db,p,clock);total+=mb;parts.extend(mnotes)
     ab,anotes=aftermath_modifier(db,p.channel_id,skill);total+=ab;parts.extend(anotes)
-    cb,cnotes=main.community.success_modifier(main,db,p,skill);total+=cb;parts.extend(cnotes)
+    cb,cnotes=main.community.success_modifier(db,p,skill);total+=cb;parts.extend(cnotes)
     shared=colony_state(db,p.channel_id);colony_tick(shared,s,main.now())
     pressure=colony_pressures(shared,s,pw.siro_exposure)
     for label,value in pressure.items():

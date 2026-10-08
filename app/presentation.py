@@ -201,7 +201,7 @@ def kind(content):
     return 'info'
 
 
-def notice(m, content, status):
+def notice(content, status):
     parts = []
     for line in (x.strip() for x in lines_of(content)):
         formatted = change_line(line) if line else ''
@@ -229,7 +229,7 @@ ACTION_TITLES = {'eatfull': 'Ate until full', 'eat_full': 'Ate until full', 'rel
 OUTPUT_ITEM = re.compile(r'(?:OUTPUT\s*(?:\|\s*)?•?|Output:)\s*([^×·|\n]+?)\s*×')
 
 
-def _receipt_title(m, content, command, failed):
+def _receipt_title(content, command, failed):
     name = re.search(r' completes ([^.]+)\.', content)
     if name:
         label = name[1]
@@ -250,7 +250,7 @@ def _receipt_title(m, content, command, failed):
     return ('❌ ' + label + ' failed') if failed else ('✅ ' + label)
 
 
-def receipt(m, content, command, status):
+def receipt(content, command, status):
     """A short card for a performed task."""
     from .game.discord_embeds import _discord_split_result
     rows = [x.strip() for x in lines_of(content) if x.strip()]
@@ -275,7 +275,7 @@ def receipt(m, content, command, status):
     # A short, story-like first sentence keeps some flavour (relax, games, eat…).
     body_rows = [x for x in rows if change_line(x) is None and not is_note(x)]
     first = body_rows[0] if body_rows else ''
-    title = _receipt_title(m, content, command, failed)
+    title = _receipt_title(content, command, failed)
     flavour = ''
     if first and not title:
         flavour = first.split(' | ')[0]          # a trade or unlock: its own sentence is the message
@@ -314,7 +314,7 @@ def receipt(m, content, command, status):
     return card
 
 
-def info(m, content, status, command=''):
+def info(content, status, command=''):
     """A full card: title, intro and sections. Returns (embed, overflow pages text)."""
     title, intro, parts = sections(content)
     intro_lines, change_rows = [], []
@@ -385,7 +385,7 @@ def info(m, content, status, command=''):
     return embed, overflow
 
 
-def card(m, content, command=''):
+def card(content, command=''):
     """(embed, shape, overflow) for any reply text."""
     from .game.discord_commands import discord_command_copy
     from .game.discord_embeds import discord_message_status
@@ -393,14 +393,14 @@ def card(m, content, command=''):
     status = discord_message_status(content)
     shape = kind(content)
     if shape == 'receipt':
-        return receipt(m, content, command, status), shape, len(content) > 900
+        return receipt(content, command, status), shape, len(content) > 900
     if shape == 'notice':
-        return notice(m, content, status), shape, False
-    embed, overflow = info(m, content, status, command)
+        return notice(content, status), shape, False
+    embed, overflow = info(content, status, command)
     return embed, shape, overflow
 
 
-def page_text(m, content):
+def page_text(content):
     """Full text for Details pages: bold section titles and tidy change lines."""
     from .game.discord_commands import discord_command_copy
     out = []
@@ -475,15 +475,15 @@ def chat_fold(text):
     return ' | '.join(parts)
 
 
-def chat_receipt(m, text, command=''):
+def chat_receipt(text, command=''):
     from .game.discord_embeds import discord_message_status
-    card = receipt(m, text, command, discord_message_status(text))
+    card = receipt(text, command, discord_message_status(text))
     lines = [card.get('title', '')] + [x for x in card['description'].split('\n') if x.strip() and x != '\u200b']
     lines = [plain(x).strip() for x in lines]
     return ' · '.join(x for x in lines if x)
 
 
-def chat(m, text, command=''):
+def chat(text, command=''):
     text = plain_times(text)
-    line = chat_receipt(m, text, command) if kind(text) == 'receipt' else chat_fold(text)
+    line = chat_receipt(text, command) if kind(text) == 'receipt' else chat_fold(text)
     return fit(line)

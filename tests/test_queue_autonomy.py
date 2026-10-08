@@ -13,7 +13,7 @@ def test_ten_second_schedule_without_messages(monkeypatch):
     enqueue(count=2);start=clock[0]
     for seconds,expected in [(9,0),(10,1),(19,1),(20,2)]:
         clock[0]=start+timedelta(seconds=seconds)
-        q.run_one(m,'test','discord:u')
+        q.run_one('test','discord:u')
         with m.SessionLocal() as db:assert db.query(m.Player).one().actions==expected
 
 
@@ -23,7 +23,7 @@ def test_background_worker_finishes_and_notifies_without_requests(monkeypatch):
     enqueue(count=1);sent=threading.Event();texts=[]
     async def login(runtime):runtime.client=SimpleNamespace(close=_nothing);runtime.state='ready';return True
     async def _nothing():pass
-    async def send(module,client,notice):texts.append(notice.content);sent.set()
+    async def send(client,notice):texts.append(notice.content);sent.set()
     monkeypatch.setattr(dw.Runtime,'login',login);monkeypatch.setattr(dw,'send_notice',send)
     clock[0]+=timedelta(seconds=10)
     with TestClient(m.app):assert sent.wait(8)
@@ -37,17 +37,17 @@ def test_rare_cooldown_wait_does_not_spend_attempt(monkeypatch):
     with m.SessionLocal() as db:
         p=db.query(m.Player).one();m.material_change(db,p,m.crafting_progression.SMALL_EXTRACTOR,1);db.commit()
     for seconds,expected in [(10,1),(10,1),(10,2)]:
-        clock[0]+=timedelta(seconds=seconds);q.run_one(m,'test','discord:u')
+        clock[0]+=timedelta(seconds=seconds);q.run_one('test','discord:u')
         with m.SessionLocal() as db:assert db.query(m.Player).one().actions==expected
 
 
 def test_notifications_retry_without_repeating_rewards(monkeypatch):
     enqueue(count=1);advance();calls=[]
-    def fail(module,notice):calls.append(notice.id);raise n.DeliveryError('temporary')
-    monkeypatch.setattr(n,'send',fail);n.deliver(m)
+    def fail(notice):calls.append(notice.id);raise n.DeliveryError('temporary')
+    monkeypatch.setattr(n,'send',fail);n.deliver()
     with m.SessionLocal() as db:
         row=db.query(n.Notice).one();assert row.state=='pending';row.next_at=m.now()-timedelta(seconds=1);db.commit()
-    monkeypatch.setattr(n,'send',lambda module,notice:calls.append(notice.id));n.deliver(m);n.deliver(m)
+    monkeypatch.setattr(n,'send',lambda notice:calls.append(notice.id));n.deliver();n.deliver()
     with m.SessionLocal() as db:
         assert db.query(n.Notice).one().state=='sent'
         assert db.query(m.Player).one().ore==101
@@ -56,7 +56,7 @@ def test_notifications_retry_without_repeating_rewards(monkeypatch):
 
 def test_new_queue_keeps_previous_notification_snapshot():
     enqueue(count=1);advance()
-    q.control(m,'test','u','Citizen','discord','start','gather:'+y.STONE,2)
+    q.control('test','u','Citizen','discord','start','gather:'+y.STONE,2)
     with m.SessionLocal() as db:
         row=db.query(n.Notice).one()
         assert 'Hematite Ore ×1' in row.content and row.recipient=='u'
@@ -64,7 +64,7 @@ def test_new_queue_keeps_previous_notification_snapshot():
 
 
 def test_cancel_sends_cancellation_not_completion():
-    enqueue(count=2);advance();q.control(m,'test','u','Citizen','discord','cancel')
+    enqueue(count=2);advance();q.control('test','u','Citizen','discord','cancel')
     with m.SessionLocal() as db:
         assert db.query(n.NoticeEvent).one().kind=='cancelled'
         assert 'QUEUE — CANCELLED' in db.query(n.Notice).one().content
@@ -76,7 +76,7 @@ def test_discord_channel_mention_and_nonce(monkeypatch):
     def post(url,headers,payload):
         calls.append((url,payload));return {'id':'123'}
     monkeypatch.setattr(n,'post',post)
-    n.send(m,SimpleNamespace(provider='discord',recipient='456',content='Done',id='a'*32,message_channel='789'))
+    n.send(SimpleNamespace(provider='discord',recipient='456',content='Done',id='a'*32,message_channel='789'))
     assert len(calls)==1 and calls[0][0].endswith('/channels/789/messages')
     assert calls[0][1]['content'].startswith('<@456>')
     assert calls[0][1]['allowed_mentions']=={'parse':[],'users':['456']}
@@ -85,12 +85,12 @@ def test_discord_channel_mention_and_nonce(monkeypatch):
 
 def test_discord_channel_permission_failure_is_reported_without_gameplay_loss(monkeypatch):
     enqueue(count=1);advance()
-    def denied(module,row):raise n.DeliveryError('Notification HTTP 403',permanent=True)
-    monkeypatch.setattr(n,'send',denied);n.deliver(m)
+    def denied(row):raise n.DeliveryError('Notification HTTP 403',permanent=True)
+    monkeypatch.setattr(n,'send',denied);n.deliver()
     with m.SessionLocal() as db:
         assert db.query(n.Notice).one().state=='failed'
         p=db.query(m.Player).one();assert p.ore==101
-        assert 'could not be delivered' in q.status(m,db,p,db.query(q.TaskQueue).one())
+        assert 'could not be delivered' in q.status(db,p,db.query(q.TaskQueue).one())
 
 
 @pytest.mark.parametrize('action,mode',list(y.YIELDS))
@@ -127,7 +127,7 @@ def test_specialist_modes_can_be_queued_and_keep_requirements(monkeypatch):
     with m.SessionLocal() as db:
         p=db.query(m.Player).one();row=db.query(q.TaskQueue).one()
         assert row.state=='completed' and p.crops==108
-        assert 'Pumpkin ×8' in q.status(m,db,p,row)
+        assert 'Pumpkin ×8' in q.status(db,p,row)
 
 
 def test_byproducts_are_real_useful_catalog_materials():
@@ -142,8 +142,8 @@ def test_byproducts_are_real_useful_catalog_materials():
 def test_notification_workers_claim_once(monkeypatch):
     from concurrent.futures import ThreadPoolExecutor
     enqueue(count=1);advance();calls=[]
-    monkeypatch.setattr(n,'send',lambda module,row:calls.append(row.id))
-    with ThreadPoolExecutor(2) as pool:list(pool.map(lambda _:n.deliver(m),range(2)))
+    monkeypatch.setattr(n,'send',lambda row:calls.append(row.id))
+    with ThreadPoolExecutor(2) as pool:list(pool.map(lambda _:n.deliver(),range(2)))
     assert len(calls)==1
 
 
@@ -162,7 +162,7 @@ def test_twitch_completion_uses_configured_channel_and_verified_login(monkeypatc
     calls=[]
     monkeypatch.setattr(n.requests,'get',lambda *a,**k:SimpleNamespace(raise_for_status=lambda:None,json=lambda:{'data':[{'login':'player'}]}))
     monkeypatch.setattr(n,'post',lambda url,headers,payload:calls.append(payload) or {'data':[{'is_sent':True}]})
-    n.send(m,SimpleNamespace(provider='twitch',recipient='789',content='Complete',id='a'*32,channel_id='test'))
+    n.send(SimpleNamespace(provider='twitch',recipient='789',content='Complete',id='a'*32,channel_id='test'))
     assert calls[0]['broadcaster_id']=='123' and calls[0]['message']=='@player Complete'
 
 
@@ -170,7 +170,7 @@ def test_notification_retry_after_worker_restart(monkeypatch):
     enqueue(count=1);advance()
     with m.SessionLocal() as db:
         row=db.query(n.Notice).one();row.state='sending';row.next_at=m.now()-timedelta(seconds=1);db.commit()
-    calls=[];monkeypatch.setattr(n,'send',lambda module,row:calls.append(row.id));n.deliver(m)
+    calls=[];monkeypatch.setattr(n,'send',lambda row:calls.append(row.id));n.deliver()
     assert len(calls)==1
     with m.SessionLocal() as db:assert db.query(n.Notice).one().state=='sent'
 
@@ -207,8 +207,8 @@ def test_signed_discord_command_captures_the_real_channel(monkeypatch):
 
 
 def test_coal_is_mined_with_common_material_rules_and_existing_price():
-    assert y.COAL in q.ores() and 'mine:'+y.COAL in q.choices(m)
-    assert 'gather:'+y.COAL not in q.choices(m)
+    assert y.COAL in q.ores() and 'mine:'+y.COAL in q.choices()
+    assert 'gather:'+y.COAL not in q.choices()
     assert m.seed_content.source_hint(y.COAL).startswith('/mine ore:')
     assert m.crafting_progression.STARTER_MARKET[y.COAL]['buy']==4
     results=m._discord_autocomplete({'data':{'name':'mine','options':[{'name':'ore','focused':True,'value':'Coal'}]},
@@ -218,4 +218,4 @@ def test_coal_is_mined_with_common_material_rules_and_existing_price():
     with m.SessionLocal() as db:
         p=db.query(m.Player).one()
         assert m.material_amount(db,p,y.COAL)==2
-        assert 'Coal ×2' in q.status(m,db,p,db.query(q.TaskQueue).one())
+        assert 'Coal ×2' in q.status(db,p,db.query(q.TaskQueue).one())

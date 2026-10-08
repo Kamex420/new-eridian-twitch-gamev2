@@ -30,7 +30,7 @@ def give(key, amount, uid='111'):
 
 def set_keep(key, amount, uid='111'):
     with m.SessionLocal() as db:
-        text = keep.set_level(m, db, m.player(db, W, 'discord', uid, 'Kam')[1], key, amount)
+        text = keep.set_level(db, m.player(db, W, 'discord', uid, 'Kam')[1], key, amount)
         db.commit()
         return text
 
@@ -42,7 +42,7 @@ def have(key, uid='111'):
 
 def kept(key, uid='111'):
     with m.SessionLocal() as db:
-        return keep.keep_for(m, db, m.player(db, W, 'discord', uid, 'Kam')[1], key)
+        return keep.keep_for(db, m.player(db, W, 'discord', uid, 'Kam')[1], key)
 
 
 def rows_of(uid='111'):
@@ -136,7 +136,7 @@ def test_sell_all_leaves_the_keep_level(level, sold):
     citizen(lumber=50)
     set_keep(LUMBER, level)
     before = sc()
-    price = qol.sell_price(m, LUMBER)
+    price = qol.sell_price(LUMBER)
     receipt = m.sell_all_items(W, '111', 'Kam', 'lumber', 'discord').body.decode()
     assert have(LUMBER) == 50 - sold and sc() == before + sold * price
     if sold:
@@ -166,7 +166,7 @@ def test_clearout_uses_the_keep_level_instead_of_twenty_either_way():
     assert 'Stone ×25' in preview                                   # no keep level: still 20
     db, p = player()
     with db:
-        assert '(or your keep level)' in qol.clearout(m, db, p, 'twitch')      # the Twitch preview says so too
+        assert '(or your keep level)' in qol.clearout(db, p, 'twitch')      # the Twitch preview says so too
     m.clearout(W, '111', 'Kam', 'confirm', 'discord')
     assert (have(STONE_DUST), have(GLASS), have(STONE)) == (5, 30, 20)
 
@@ -176,7 +176,7 @@ def test_clearout_still_protects_favourite_ingredients_below_a_keep_level():
     give(STONE_DUST, 45)
     db, p = player()
     with db:
-        qol.set_favorite(m, db, p, CAMPFIRE.id, True)
+        qol.set_favorite(db, p, CAMPFIRE.id, True)
         db.commit()
     set_keep(LUMBER, 5)
     preview = m.clearout(W, '111', 'Kam', '', 'discord').body.decode()
@@ -189,7 +189,7 @@ def test_autosell_after_a_queue_leaves_the_keep_level():
     citizen(lumber=10)
     db, p = player()
     with db:
-        extras.toggle_autosell(m, db, p, LUMBER)
+        extras.toggle_autosell(db, p, LUMBER)
         db.commit()
     set_keep(LUMBER, 8)
     m.queued_tasks(W, '111', 'Kam', 'start', 'gather:' + LUMBER, '1', 'discord')
@@ -204,12 +204,12 @@ def test_autosell_skips_an_item_at_its_keep_level():
     citizen(lumber=10)
     db, p = player()
     with db:
-        extras.toggle_autosell(m, db, p, LUMBER)
+        extras.toggle_autosell(db, p, LUMBER)
         db.commit()
     set_keep(LUMBER, 50)
     db, p = player()
     with db:
-        assert extras.autosell_after_queue(m, db, p) == [] and m.material_amount(db, p, LUMBER) == 10
+        assert extras.autosell_after_queue(db, p) == [] and m.material_amount(db, p, LUMBER) == 10
 
 
 def test_routine_sell_step_leaves_the_keep_level():
@@ -218,7 +218,7 @@ def test_routine_sell_step_leaves_the_keep_level():
     m.queued_tasks(W, '111', 'Kam', 'start', 'gather:' + LUMBER, '1', 'discord')
     db, p = player()
     with db:
-        extras.add_step(m, db, p, {'sell': LUMBER})
+        extras.add_step(db, p, {'sell': LUMBER})
         db.commit()
     advance()                                                          # completes, then runs the plan's "sell all" step
     assert have(LUMBER) == 4
@@ -238,7 +238,7 @@ def test_selling_a_chosen_amount_is_not_limited():
 def shortfall(key, uid='111'):
     db, p = player(uid)
     with db:
-        return next(r for r in keep.shortfalls(m, db, p) if r['key'] == key)
+        return next(r for r in keep.shortfalls(db, p) if r['key'] == key)
 
 
 def test_restock_a_gathered_item_starts_an_ordinary_queue_once():
@@ -246,11 +246,11 @@ def test_restock_a_gathered_item_starts_an_ordinary_queue_once():
     set_keep(LUMBER, 5)
     r = shortfall(LUMBER)
     assert (r['kind'], r['task'], r['attempts'], r['short']) == ('queue', 'gather:' + LUMBER, 5, 5)
-    text = keep.restock(m, W, '111', 'Kam', 'discord', LUMBER)
+    text = keep.restock(W, '111', 'Kam', 'discord', LUMBER)
     assert text.startswith('🛡️ Restocking Lumber (have 0 / keep 5): ') and 'TASK QUEUE' in text
     row = queue_row()
     assert (row.task, row.total, row.state) == ('gather:' + LUMBER, 5, 'running')
-    busy = keep.restock(m, W, '111', 'Kam', 'discord', LUMBER)
+    busy = keep.restock(W, '111', 'Kam', 'discord', LUMBER)
     assert busy.startswith('⏱️ Your queue is still running (Gather Lumber)') and busy.endswith('Nothing changed.')
     assert queue_row().total == 5 and queue_row().remaining == 5
 
@@ -260,8 +260,8 @@ def test_restock_respects_the_ten_attempt_queue_maximum():
     set_keep(LUMBER, 30)
     r = shortfall(LUMBER)
     assert r['attempts'] == 10 and r['capped']
-    assert '10 is the queue maximum' in keep.route_text(m, r)
-    keep.restock(m, W, '111', 'Kam', 'discord', LUMBER)
+    assert '10 is the queue maximum' in keep.route_text(r)
+    keep.restock(W, '111', 'Kam', 'discord', LUMBER)
     assert queue_row().total == 10
 
 
@@ -270,7 +270,7 @@ def test_restock_a_crafted_item_starts_the_craft_queue():
     set_keep(CAMPFIRE.output, 2)
     r = shortfall(CAMPFIRE.output)
     assert r['kind'] == 'recipe' and r['recipe'] == CAMPFIRE.id and not r['blocked'] and (r['batches'], r['count']) == (2, 2)
-    text = keep.restock(m, W, '111', 'Kam', 'discord', CAMPFIRE.output)
+    text = keep.restock(W, '111', 'Kam', 'discord', CAMPFIRE.output)
     assert 'TASK QUEUE' in text
     row = queue_row()
     assert row.task == 'make:' + CAMPFIRE.id and row.total == 2 and row.state == 'running'
@@ -281,7 +281,7 @@ def test_restock_queues_only_the_batches_the_ingredients_cover():
     set_keep(CAMPFIRE.output, 5)
     r = shortfall(CAMPFIRE.output)
     assert not r['blocked'] and (r['batches'], r['count'], r['more']) == (5, 2, 'Lumber')
-    text = keep.restock(m, W, '111', 'Kam', 'discord', CAMPFIRE.output)
+    text = keep.restock(W, '111', 'Kam', 'discord', CAMPFIRE.output)
     assert 'ingredients cover 2 of 5 batches; the rest needs more Lumber' in text and 'TASK QUEUE' in text
     row = queue_row()
     assert row.task == 'make:' + CAMPFIRE.id and row.total == 2
@@ -296,7 +296,7 @@ def test_restock_never_starts_a_craft_whose_ingredients_are_missing():
     set_keep(CAMPFIRE.output, 2)
     r = shortfall(CAMPFIRE.output)
     assert r['blocked'] == '❌ need 2 Lumber' and r['view'] == ('fm', CAMPFIRE.id, 2)
-    text = keep.restock(m, W, '111', 'Kam', 'discord', CAMPFIRE.output)
+    text = keep.restock(W, '111', 'Kam', 'discord', CAMPFIRE.output)
     assert text.startswith('🛡️ Restock Campfire is blocked: craft Campfire ×2 · ❌ need 2 Lumber — fetch the ingredients first.')
     assert 'FETCH INGREDIENTS' in text and text.endswith('Nothing changed.') and queue_row() is None
     advance()
@@ -313,9 +313,9 @@ def test_restock_never_starts_a_craft_at_a_locked_workstation():
     citizen(lumber=0)
     set_keep(IRON_PLATE, 5)
     r = shortfall(IRON_PLATE)
-    e = wb.entry(m, r['recipe'])
+    e = wb.entry(r['recipe'])
     assert r['blocked'] == '🔑 unlock Metalworking Bench 15 SC' and r['view'] == ('wr', e.id, e.category, 1, '')
-    text = keep.restock(m, W, '111', 'Kam', 'discord', IRON_PLATE)
+    text = keep.restock(W, '111', 'Kam', 'discord', IRON_PLATE)
     assert text.startswith('🛡️ Restock Iron Plate is blocked: craft Iron Plate ×1 · 🔑 unlock Metalworking Bench 15 SC — open the recipe to unlock.')
     assert text.endswith('Nothing changed.') and queue_row() is None
     screen = press(ui.cid('111', 'kv'))['data']
@@ -330,7 +330,7 @@ def test_restock_never_mines_a_rare_ore_without_a_mineral_extractor():
     set_keep(ARGENTITE, 3)
     r = shortfall(ARGENTITE)
     assert r['kind'] == 'queue' and r['blocked'] == '🔒 rare ores need a Mineral Extractor in your bag' and r['view'] is None
-    text = keep.restock(m, W, '111', 'Kam', 'discord', ARGENTITE)
+    text = keep.restock(W, '111', 'Kam', 'discord', ARGENTITE)
     assert text.startswith('🛡️ Restock Argentite Ore is blocked: Mine ×10') and 'Mineral Extractor' in text
     assert text.endswith('Nothing changed.') and queue_row() is None
     screen = press(ui.cid('111', 'kv'))['data']
@@ -341,7 +341,7 @@ def test_a_blocked_restock_leaves_a_running_queue_alone():
     citizen(lumber=0)
     m.queued_tasks(W, '111', 'Kam', 'start', 'gather:' + LUMBER, '3', 'discord')
     set_keep(IRON_PLATE, 5)
-    assert keep.restock(m, W, '111', 'Kam', 'discord', IRON_PLATE).endswith('Nothing changed.')
+    assert keep.restock(W, '111', 'Kam', 'discord', IRON_PLATE).endswith('Nothing changed.')
     row = queue_row()
     assert (row.task, row.total, row.remaining) == ('gather:' + LUMBER, 3, 3)
 
@@ -353,7 +353,7 @@ def test_low_needs_alone_do_not_block_a_restock():
         db.commit()
     set_keep(LUMBER, 5)
     assert shortfall(LUMBER)['blocked'] == ''
-    keep.restock(m, W, '111', 'Kam', 'discord', LUMBER)
+    keep.restock(W, '111', 'Kam', 'discord', LUMBER)
     row = queue_row()
     assert row.task == 'gather:' + LUMBER and row.total == 5           # it waits for Energy, then carries on by itself
 
@@ -363,14 +363,14 @@ def test_restock_without_an_item_skips_blocked_rows():
     set_keep(IRON_PLATE, 5)                                             # blocked, and first by name
     db, p = player()
     with db:
-        assert keep.restock_plan(m, db, p, 'twitch').startswith('🛡️ Restock Iron Plate: have 0 / keep 5, short 5 → craft Iron Plate ×1 · 🔑')
-    assert 'is blocked' in keep.restock(m, W, '111', 'Kam', 'discord') and queue_row() is None   # only blocked rows: it explains
+        assert keep.restock_plan(db, p, 'twitch').startswith('🛡️ Restock Iron Plate: have 0 / keep 5, short 5 → craft Iron Plate ×1 · 🔑')
+    assert 'is blocked' in keep.restock(W, '111', 'Kam', 'discord') and queue_row() is None   # only blocked rows: it explains
     set_keep(LUMBER, 5)
     db, p = player()
     with db:
-        assert keep.restock_plan(m, db, p, 'twitch').startswith('🛡️ Restock Lumber: have 0 / keep 5, short 5 → Gather ×5. !keep restock go')
-        assert keep._pick(keep.shortfalls(m, db, p))['key'] == LUMBER
-    assert keep.restock(m, W, '111', 'Kam', 'discord').startswith('🛡️ Restocking Lumber')
+        assert keep.restock_plan(db, p, 'twitch').startswith('🛡️ Restock Lumber: have 0 / keep 5, short 5 → Gather ×5. !keep restock go')
+        assert keep._pick(keep.shortfalls(db, p))['key'] == LUMBER
+    assert keep.restock(W, '111', 'Kam', 'discord').startswith('🛡️ Restocking Lumber')
     assert queue_row().task == 'gather:' + LUMBER
 
 
@@ -395,13 +395,13 @@ def test_restock_a_bought_item_buys_the_shortfall_only_with_enough_sc():
     with m.SessionLocal() as db:
         m.player(db, W, 'discord', '111', 'Kam')[1].sc = cost - 1
         db.commit()
-    poor = keep.restock(m, W, '111', 'Kam', 'discord', GLASS)
+    poor = keep.restock(W, '111', 'Kam', 'discord', GLASS)
     assert poor == f'🪙 Restocking 8 Glass costs {cost} SC and you have {cost - 1} SC: earn 1 more SC first. Nothing spent.'
     assert have(GLASS) == 2 and sc() == cost - 1
     with m.SessionLocal() as db:
         m.player(db, W, 'discord', '111', 'Kam')[1].sc = 1000
         db.commit()
-    bought = keep.restock(m, W, '111', 'Kam', 'discord', GLASS)
+    bought = keep.restock(W, '111', 'Kam', 'discord', GLASS)
     assert 'bought 8 Glass' in bought and have(GLASS) == 10 and sc() == 1000 - cost
     assert queue_row() is None
 
@@ -409,7 +409,7 @@ def test_restock_a_bought_item_buys_the_shortfall_only_with_enough_sc():
 def none_route_item():
     db, p = player()
     with db:
-        ctx = wb.Context(m, db, p)
+        ctx = wb.Context(db, p)
         return next(k for k in sorted(s.ACTIVE) if not k.startswith('fest_') and k not in s.GATHER
                     and qol.fetch_routes(ctx, SimpleNamespace(inputs={k: 1}), 1)[0]['kind'] == 'none')
 
@@ -418,18 +418,18 @@ def test_restock_explains_where_an_item_comes_from_when_it_cannot_be_started():
     citizen()
     key = none_route_item()
     set_keep(key, 3)
-    text = keep.restock(m, W, '111', 'Kam', 'discord', key)
+    text = keep.restock(W, '111', 'Kam', 'discord', key)
     assert 'cannot be restocked automatically' in text and m.material_source(key, 'discord') in text and text.endswith('Nothing changed.')
     assert have(key) == 0 and queue_row() is None
 
 
 def test_restock_with_nothing_short():
     citizen(lumber=10)
-    assert 'no keep levels yet' in keep.restock(m, W, '111', 'Kam', 'discord')
+    assert 'no keep levels yet' in keep.restock(W, '111', 'Kam', 'discord')
     set_keep(LUMBER, 5)
-    assert 'Everything is at or above its keep level' in keep.restock(m, W, '111', 'Kam', 'discord')
-    assert 'at or above your keep level of 5' in keep.restock(m, W, '111', 'Kam', 'discord', LUMBER)
-    assert 'Glass has no keep level' in keep.restock(m, W, '111', 'Kam', 'discord', GLASS)
+    assert 'Everything is at or above its keep level' in keep.restock(W, '111', 'Kam', 'discord')
+    assert 'at or above your keep level of 5' in keep.restock(W, '111', 'Kam', 'discord', LUMBER)
+    assert 'Glass has no keep level' in keep.restock(W, '111', 'Kam', 'discord', GLASS)
     assert queue_row() is None
 
 
@@ -446,7 +446,7 @@ def test_account_linking_keeps_the_targets_levels_and_moves_the_rest():
     add_levels('dst', {IRON_PLATE: 30, LUMBER: 5})
     add_levels('src', {IRON_PLATE: 99, GLASS: 10})
     with m.SessionLocal() as db:
-        q.merge_accounts(m, db, W, 'src', 'dst')                          # the account-linking hook
+        q.merge_accounts(db, W, 'src', 'dst')                          # the account-linking hook
         db.commit()
     assert raw_rows('dst') == {IRON_PLATE: 30, LUMBER: 5, GLASS: 10} and raw_rows('src') == {}
 

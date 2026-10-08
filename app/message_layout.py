@@ -92,7 +92,7 @@ def queue_card(content):
     return card
 
 
-def action_card(m, embed, content, command):
+def action_card(embed, content, command):
     """Action receipts contain changes and immediate blockers, not handbook text."""
     from .game.discord_embeds import _discord_action_name, _discord_split_result
     if 'MENU' in content.splitlines()[0] or content.startswith('TASK QUEUE'):return None
@@ -140,23 +140,23 @@ def action_card(m, embed, content, command):
     return card,detail
 
 
-def render(m, embed, content, command=""):
+def render(embed, content, command=""):
     """Receipts and notices stay small; information shows in full, then Details pages."""
     from . import presentation
     if content.startswith('TASK QUEUE —'):
-        return _render_queue(m, content)
-    source, shape, overflow = presentation.card(m, content, command)
+        return _render_queue(content)
+    source, shape, overflow = presentation.card(content, command)
     if shape == 'info':
         source['footer'] = {'text': FOOTER}
     if not overflow:
         return {'embeds': [source], 'allowed_mentions': {'parse': []}}
     title = source.get('title') or 'New Eridian'
     pages = [source] + [{'title': title[:230] + ' · Details', 'description': part, 'color': source['color'], 'footer': {'text': FOOTER}}
-                        for part in chunks(presentation.page_text(m, content))]
-    return _store(m, pages)
+                        for part in chunks(presentation.page_text(content))]
+    return _store(pages)
 
 
-def _render_queue(m, content):
+def _render_queue(content):
     source = queue_card(content)
     source['footer'] = {'text': FOOTER}
     if len(content) <= 650 and len(content.splitlines()) <= 12:
@@ -165,10 +165,10 @@ def _render_queue(m, content):
     for part in chunks(content):
         pages.append({'title': source['title'][:230] + ' · Details', 'description': part,
                       'color': source['color'], 'footer': {'text': FOOTER}})
-    return _store(m, pages)
+    return _store(pages)
 
 
-def _store(m, pages):
+def _store(pages):
     token = secrets.token_hex(16)
     with SessionLocal() as db:
         db.execute(delete(MessagePages).where(MessagePages.expires_at < runtime.now()))
@@ -190,7 +190,7 @@ def page_data(token, pages, index):
     return {'embeds': [embed], 'components': [{'type': 1, 'components': buttons}], 'allowed_mentions': {'parse': []}}
 
 
-def open_page(m, payload):
+def open_page(payload):
     from .game.players import as_utc
     match = re.fullmatch(r'page:([a-f0-9]{32}):(\d{1,5})', str((payload.get('data') or {}).get('custom_id', '')))
     if match:

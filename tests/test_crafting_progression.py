@@ -55,24 +55,24 @@ def test_each_station_unlock_charges_once_and_persists(tag):
     with m.SessionLocal() as db:
         p=citizen(db);provision_tier(db,p,4);p.sc=1000;db.commit()
         before=p.sc;fee=cp.STATIONS[tag]['cost']
-        cp.workshop(m,db,p,'unlock',tag)
+        cp.workshop(db,p,'unlock',tag)
         assert p.sc==before-fee
-        assert cp.has_access(m,db,p,tag)
-        cp.workshop(m,db,p,'unlock',tag)
+        assert cp.has_access(db,p,tag)
+        cp.workshop(db,p,'unlock',tag)
         assert p.sc==before-fee
     with m.SessionLocal() as db:
-        p=citizen(db);assert cp.has_access(m,db,p,tag)
+        p=citizen(db);assert cp.has_access(db,p,tag)
 
 
 def test_station_tier_and_money_gates_preserve_balance():
     with m.SessionLocal() as db:
         p=citizen(db);p.sc=1000;db.commit()
         tag='TAG_MACHINE_CRAFTING_TABLE_V3'
-        assert 'Tier 3' in cp.workshop(m,db,p,'unlock',tag)
-        assert p.sc==1000 and not cp.has_access(m,db,p,tag)
+        assert 'Tier 3' in cp.workshop(db,p,'unlock',tag)
+        assert p.sc==1000 and not cp.has_access(db,p,tag)
         p.sc=0
-        assert 'Need 15 SC' in cp.workshop(m,db,p,'unlock','TAG_MACHINE_CRAFTING_TABLE_V1')
-        assert not cp.has_access(m,db,p,'TAG_MACHINE_CRAFTING_TABLE_V1')
+        assert 'Need 15 SC' in cp.workshop(db,p,'unlock','TAG_MACHINE_CRAFTING_TABLE_V1')
+        assert not cp.has_access(db,p,'TAG_MACHINE_CRAFTING_TABLE_V1')
 
 
 def test_owned_correct_machine_grants_access_but_not_tier_bypass():
@@ -81,11 +81,11 @@ def test_owned_correct_machine_grants_access_but_not_tier_bypass():
         tag='TAG_MACHINE_CRAFTING_TABLE_V3'
         machine=next(k for k in s.MACHINE_RECIPES if tag in s.machine_tags(k))
         m.material_change(db,p,machine,1);db.commit()
-        assert cp.has_access(m,db,p,tag)
-        assert 'Tier 3' in cp.station_gate(m,db,p,[tag],3)
+        assert cp.has_access(db,p,tag)
+        assert 'Tier 3' in cp.station_gate(db,p,[tag],3)
         provision_tier(db,p,3)
-        assert not cp.station_gate(m,db,p,[tag],3)
-        assert not cp.has_access(m,db,p,'TAG_MACHINE_PLAXIN_SYNTHESIZER')
+        assert not cp.station_gate(db,p,[tag],3)
+        assert not cp.has_access(db,p,'TAG_MACHINE_PLAXIN_SYNTHESIZER')
         pump=s.source_key('GMT_MACHINE_WATER_PUMP') if 'GMT_MACHINE_WATER_PUMP' in s.SOURCE_KEYS else next(k for k in s.MACHINE_RECIPES if s.ITEMS[k]['name']=='Water Pump')
         assert 'TAG_MACHINE_EXTRACTOR' not in s.machine_tags(pump)
 
@@ -94,11 +94,11 @@ def test_seed_recipe_needs_station_before_consuming_materials():
     with m.SessionLocal() as db:
         p=citizen(db);key=s.source_key('GMT_MATERIAL_PROCESSED_WATER');rid=s.ACQUISITION[key]
         for k,n in s.RECIPES[rid]['inputs'].items():m.material_change(db,p,k,n)
-        db.commit();before=s.stock(m,db,p).copy()
-        assert 'Required workstation' in s.craft(m,db,p,rid,'discord')
-        assert s.stock(m,db,p)==before and db.query(m.Cooldown).count()==0
-        p.sc=15;cp.workshop(m,db,p,'unlock',cp.tags(rid)[0]);db.commit()
-        assert 'CRAFTING COMPLETE' in s.craft(m,db,p,rid,'discord')
+        db.commit();before=s.stock(db,p).copy()
+        assert 'Required workstation' in s.craft(db,p,rid,'discord')
+        assert s.stock(db,p)==before and db.query(m.Cooldown).count()==0
+        p.sc=15;cp.workshop(db,p,'unlock',cp.tags(rid)[0]);db.commit()
+        assert 'CRAFTING COMPLETE' in s.craft(db,p,rid,'discord')
         assert m.material_amount(db,p,key)>0
 
 
@@ -110,35 +110,35 @@ def test_free_survival_bench_bootstraps_without_any_station_purchase():
         assert cp.tags(rid)==[cp.SURVIVAL]
         for k,n in s.RECIPES[rid]['inputs'].items():
             for _ in range(n):
-                db.query(m.Cooldown).delete();s.gather(m,db,p,k,'discord')
+                db.query(m.Cooldown).delete();s.gather(db,p,k,'discord')
         db.query(m.Cooldown).delete()
-        assert 'CRAFTING COMPLETE' in s.craft(m,db,p,rid,'discord')
-        assert cp.has_access(m,db,p,'TAG_MACHINE_CRAFTING_TABLE_V1')
+        assert 'CRAFTING COMPLETE' in s.craft(db,p,rid,'discord')
+        assert cp.has_access(db,p,'TAG_MACHINE_CRAFTING_TABLE_V1')
 
 
 @pytest.mark.parametrize('key',sorted(cp.RARE))
 def test_rare_ores_need_a_mineral_extractor_and_mine_like_any_ore(key):
     with m.SessionLocal() as db:
         p=citizen(db)
-        assert s.gather(m,db,p,key,'discord')==cp.RARE_LOCK
+        assert s.gather(db,p,key,'discord')==cp.RARE_LOCK
         assert db.query(m.Cooldown).count()==0
         m.material_change(db,p,cp.SMALL_EXTRACTOR,1);life=m.life_state(db,p);before=life.energy;db.commit()
-        result=s.gather(m,db,p,key,'discord')
+        result=s.gather(db,p,key,'discord')
         assert 'RARE ORE MINED' in result and m.material_amount(db,p,key)==1          # one try, one ore
-        assert 'ready in' in s.gather(m,db,p,key,'discord')
+        assert 'ready in' in s.gather(db,p,key,'discord')
         assert life.energy==before-3
         m.material_change(db,p,cp.FRONTIERS_EXTRACTOR,1);db.query(m.Cooldown).delete();db.commit()
-        assert '×2' in s.gather(m,db,p,key,'discord') and m.material_amount(db,p,key)==3   # the Frontiers extractor: 2 a success
-        assert cp.manufactured_batches(m,db,p)==0
+        assert '×2' in s.gather(db,p,key,'discord') and m.material_amount(db,p,key)==3   # the Frontiers extractor: 2 a success
+        assert cp.manufactured_batches(db,p)==0
 
 
 def test_rare_cooldown_shared_across_ores_and_extractor_route():
     with m.SessionLocal() as db:
         p=citizen(db);m.material_change(db,p,cp.SMALL_EXTRACTOR,1);p.sc=1000;provision_tier(db,p,4)
         first,second=sorted(cp.RARE)[:2]
-        assert 'RARE ORE MINED' in s.gather(m,db,p,first,'discord')
+        assert 'RARE ORE MINED' in s.gather(db,p,first,'discord')
         rid=next(k for k,r in s.RECIPES.items() if second in r['outputs'])
-        assert 'ready in' in s.craft(m,db,p,rid,'discord')
+        assert 'ready in' in s.craft(db,p,rid,'discord')
         assert m.material_amount(db,p,second)==0
 
 
@@ -170,10 +170,10 @@ def test_tier_boundaries_and_gathering_cannot_count_as_manufacturing():
         p=citizen(db)
         row=m.CraftLedger(channel_id='test',canonical_uid=p.twitch_uid,recipe='component',qty=0,best_quality='');db.add(row)
         for count,tier in [(0,1),(24,1),(25,2),(99,2),(100,3),(249,3),(250,4)]:
-            row.qty=count;db.commit();assert cp.personal_tier(m,db,p)==tier
+            row.qty=count;db.commit();assert cp.personal_tier(db,p)==tier
         extraction=next(k for k,r in s.RECIPES.items() if not r['inputs'])
         db.add(m.CraftLedger(channel_id='test',canonical_uid=p.twitch_uid,recipe=extraction,qty=10000,best_quality=''));row.qty=0;db.commit()
-        assert cp.personal_tier(m,db,p)==1
+        assert cp.personal_tier(db,p)==1
 
 
 def test_starter_routes_show_each_branch_ingredients_and_exact_total():
@@ -215,9 +215,9 @@ def test_new_discord_dispatch_and_market_category_filter():
 
 def test_every_legacy_recipe_has_a_corresponding_station():
     for recipe in set(m.RECIPES)|set(m.QUALITY_RECIPES):
-        assert cp.legacy_station(m,recipe) in cp.STATIONS
-    assert cp.legacy_station(m,'meal_kit')=='TAG_MACHINE_STOVE'
-    assert cp.legacy_station(m,'spaceport_manifest')=='TAG_MACHINE_ELECTRONICS_TABLE'
+        assert cp.legacy_station(recipe) in cp.STATIONS
+    assert cp.legacy_station('meal_kit')=='TAG_MACHINE_STOVE'
+    assert cp.legacy_station('spaceport_manifest')=='TAG_MACHINE_ELECTRONICS_TABLE'
     # Retired legacy parts and tools craft their catalog twin's recipe instead.
     assert set(m.item_identity.RETIRED_RECIPES)|set(m.item_identity.RETIRED_GATHERED)>=set(m.PART_RECIPES)
 

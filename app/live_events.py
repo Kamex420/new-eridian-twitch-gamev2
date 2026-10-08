@@ -153,7 +153,7 @@ def twitch_api_live():
     return _api['live']
 
 
-def state(m, db):
+def state(db):
     world = runtime.DISCORD_WORLD_ID
     row = db.get(LiveState, world)
     if row is None:
@@ -163,8 +163,8 @@ def state(m, db):
     return row
 
 
-def is_live(m, db):
-    row = state(m, db)
+def is_live(db):
+    row = state(db)
     if row.manual == 'off' and row.manual_until and _now() < _utc(row.manual_until):
         return False
     if row.manual == 'on' and row.manual_until and _now() < _utc(row.manual_until):
@@ -175,25 +175,25 @@ def is_live(m, db):
     return chatters() >= AUTO_CHATTERS
 
 
-def set_live(m, db, value, who='moderator'):
-    row = state(m, db)
+def set_live(db, value, who='moderator'):
+    row = state(db)
     value = str(value or '').strip().casefold()
     if value not in {'on', 'off', 'auto'}:
-        return f"📡 Stream mode is {row.manual}{' (live now)' if is_live(m, db) else ''}. Use on, off or auto."
+        return f"📡 Stream mode is {row.manual}{' (live now)' if is_live(db) else ''}. Use on, off or auto."
     row.manual = value
     row.manual_until = _now() + timedelta(hours=MANUAL_HOURS) if value != 'auto' else None
     if value == 'on':
         row.next_at, row.live_since = _now() + timedelta(minutes=FIRST_MINUTES), _now()
         return f'📡 Stream is LIVE. The first stream challenge starts in about {FIRST_MINUTES} minutes (and one every ~{GAP_MINUTES} after). Auto-off in {MANUAL_HOURS}h.'
     if value == 'off':
-        cancel(m, db, who, quiet=True)
+        cancel(db, who, quiet=True)
         return '📡 Stream is offline. No stream challenges until it goes live again.'
     return f'📡 Stream mode is automatic: live when {AUTO_CHATTERS}+ people use Twitch commands within {WINDOW_MINUTES} minutes (or the Twitch API says so).'
 
 
 # ---------------------------------------------------------------- running challenges
 
-def active(m, db):
+def active(db):
     return db.execute(select(Challenge).where(Challenge.world == runtime.DISCORD_WORLD_ID, Challenge.state == 'active').order_by(Challenge.id.desc())).scalars().first()
 
 
@@ -202,11 +202,11 @@ def goal_for(key, people):
     return max(c[6], c[6] + c[5] * max(0, people - 1))
 
 
-def start(m, db, key='', who='auto'):
+def start(db, key='', who='auto'):
     from . import stream_overlay
-    if expire(m, db):
+    if expire(db):
         return None, '⛔ A stream challenge is already running. Stop it first.'
-    st = state(m, db)
+    st = state(db)
     if not key:
         pool = [k for k in CHALLENGES if k != st.last_key]
         key = random.choice(pool)
@@ -224,8 +224,8 @@ def start(m, db, key='', who='auto'):
     return row, f'{c[0]} STREAM CHALLENGE · {c[1]}: {c[2]}! Goal {row.goal} in {c[7]} min. Help: {c[3]}.'
 
 
-def cancel(m, db, who='moderator', quiet=False):
-    row = active(m, db)
+def cancel(db, who='moderator', quiet=False):
+    row = active(db)
     if not row:
         return 'ℹ️ No stream challenge is running.'
     row.state, row.resolved_at = 'cancelled', _now()
@@ -236,22 +236,22 @@ def cancel(m, db, who='moderator', quiet=False):
     return f'🛑 {CHALLENGES[row.key][1]} was stopped. No rewards or penalties.'
 
 
-def expire(m, db):
+def expire(db):
     """Settle a challenge whose time is up. Returns the challenge still running, if any."""
-    row = active(m, db)
+    row = active(db)
     if row and _now() >= _utc(row.ends_at):
-        finish(m, db, row, won=row.progress >= row.goal)
+        finish(db, row, won=row.progress >= row.goal)
         return None
     return row
 
 
-def tick(m, db):
+def tick(db):
     """Resolve an expired challenge and start the next one when the stream is live."""
-    row = expire(m, db)
+    row = expire(db)
     if row or not AUTO_START:
         return
-    st = state(m, db)
-    live = is_live(m, db)
+    st = state(db)
+    live = is_live(db)
     if not live:
         st.live_since = None
         return
@@ -260,21 +260,21 @@ def tick(m, db):
         if not st.next_at or _utc(st.next_at) < _now():
             st.next_at = _now() + timedelta(minutes=FIRST_MINUTES)
     if st.next_at and _now() >= _utc(st.next_at):
-        start(m, db, '', 'auto')
+        start(db, '', 'auto')
 
 
-def amount_for(m, key, before, after):
+def amount_for(key, before, after):
     from .game.players import resource_name
     measure = CHALLENGES[key][4]
     if measure[0] == 'skills':
         b, a = before.get('Competency', {}), after.get('Competency', {})
         return int(any(a.get(k, 0) > b.get(k, 0) for k in measure[1]))
-    wanted = {k for k in (item_key(m, n) for n in measure[1]) if k}
+    wanted = {k for k in (item_key(n) for n in measure[1]) if k}
     b, a = before.get('Resources', {}), after.get('Resources', {})
     return sum(max(0, v - b.get(k, 0)) for k, v in a.items() if k in wanted or resource_name(k) in measure[1])
 
 
-def item_key(m, name):
+def item_key(name):
     from . import seed_content
     try:
         return seed_content.key(name)
@@ -282,15 +282,15 @@ def item_key(m, name):
         return None
 
 
-def from_command(m, db, p, before, after, provider='twitch'):
+def from_command(db, p, before, after, provider='twitch'):
     """Count a player's own command towards the running challenge. Returns (discord note, chat note)."""
-    row = active(m, db)
+    row = active(db)
     if not row or not before or not after:
         return '', ''
     if _now() >= _utc(row.ends_at):
-        tick(m, db)
+        tick(db)
         return '', ''
-    n = amount_for(m, row.key, before, after)
+    n = amount_for(row.key, before, after)
     if n <= 0:
         return '', ''
     n = min(n, max(3, row.goal // 4))            # nobody finishes a shared goal alone in one go
@@ -302,7 +302,7 @@ def from_command(m, db, p, before, after, provider='twitch'):
     row.progress += n
     c = CHALLENGES[row.key]
     if row.progress >= row.goal:
-        paid = finish(m, db, row, won=True)
+        paid = finish(db, row, won=True)
         mine = paid.get((p.channel_id, p.twitch_uid), 0)
         return (f'{c[0]} **{c[1]} complete!** You helped with {entry.amount}. +{mine} SC and rewards for everyone who joined in.',
                 f'{c[0]} {c[1]} WON! +{mine} SC')
@@ -311,7 +311,7 @@ def from_command(m, db, p, before, after, provider='twitch'):
             f'{c[0]} {row.progress}/{row.goal} (+{n})')
 
 
-def finish(m, db, row, won):
+def finish(db, row, won):
     """Pay everyone who took part. Returns {(channel, uid): SC paid}."""
     from .game.cooldowns_materials import material_change
     from .game.players import society
@@ -329,13 +329,13 @@ def finish(m, db, row, won):
             p.sc += sc
             p.contribution += WIN_CONTRIBUTION
             for name, q in c[8].items():
-                if item_key(m, name):
-                    material_change(db, p, item_key(m, name), q)
-            seasons.add(m, db, p, WIN_POINTS + e.amount, kind='events', contribution=WIN_CONTRIBUTION)
+                if item_key(name):
+                    material_change(db, p, item_key(name), q)
+            seasons.add(db, p, WIN_POINTS + e.amount, kind='events', contribution=WIN_CONTRIBUTION)
         else:
             sc = LOSE_SC
             p.sc += sc
-            seasons.add(m, db, p, LOSE_POINTS, kind='events')
+            seasons.add(db, p, LOSE_POINTS, kind='events')
         paid[(e.channel_id, e.canonical_uid)] = sc
     s = society(db, row.world)
     shared = colony_state(db, row.world)
@@ -354,9 +354,9 @@ def finish(m, db, row, won):
     return paid
 
 
-def board_bonus(m, db, skill):
+def board_bonus(db, skill):
     """+5% on the running challenge's aptitudes (skills challenges only)."""
-    row = active(m, db)
+    row = active(db)
     if not row or not skill:
         return 0, []
     measure = CHALLENGES[row.key][4]
@@ -379,12 +379,12 @@ def wins(db, p):
 
 # ---------------------------------------------------------------- views
 
-def view(m, db, p=None, provider='discord'):
-    tick(m, db)
-    row = active(m, db)
-    live = is_live(m, db)
+def view(db, p=None, provider='discord'):
+    tick(db)
+    row = active(db)
+    live = is_live(db)
     if not row:
-        st = state(m, db)
+        st = state(db)
         if live and st.next_at and _utc(st.next_at) > _now():
             wait = int((_utc(st.next_at) - _now()).total_seconds() // 60) + 1
             when = f'The next stream challenge starts in about {wait} min.'
@@ -414,16 +414,16 @@ def view(m, db, p=None, provider='discord'):
     return '\n'.join(lines)
 
 
-def overlay(m, db):
-    tick(m, db)
-    row = active(m, db)
+def overlay(db):
+    tick(db)
+    row = active(db)
     shown = row
     if not shown:
         recent = db.execute(select(Challenge).where(Challenge.world == runtime.DISCORD_WORLD_ID, Challenge.state.in_(('won', 'lost')))
                             .order_by(Challenge.id.desc())).scalars().first()
         if recent and recent.resolved_at and (_now() - _utc(recent.resolved_at)).total_seconds() < RESULT_SECONDS:
             shown = recent
-    live = is_live(m, db)
+    live = is_live(db)
     if not shown:
         return {'live': live, 'challenge': None}
     c = CHALLENGES[shown.key]
@@ -436,7 +436,7 @@ def overlay(m, db):
                                         'top': [{'name': clean_name(e.name), 'amount': e.amount} for e in entries[:3]]}}
 
 
-def week_summary(m, db, since):
+def week_summary(db, since):
     rows = db.execute(select(Challenge).where(Challenge.world == runtime.DISCORD_WORLD_ID, Challenge.started_at >= since,
                                               Challenge.state.in_(('won', 'lost')))).scalars().all()
     if not rows:

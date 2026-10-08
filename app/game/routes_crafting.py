@@ -31,7 +31,7 @@ def normalize_craft_category(value):
 
 def craft_item_name(key):
     if key in QUALITY_RECIPES:return QUALITY_RECIPES[key]["name"]
-    found=workbench.entry(main,key)
+    found=workbench.entry(key)
     return found.name if found else resource_name(craft_output_key(key))
 
 @app.get("/api/v1/recipes")
@@ -41,9 +41,9 @@ def recipes(channel:str="new-eridian",provider:str="twitch",category:str=""):
     key=workbench.normalize_category(category)
     if key is None:return out("⚙️ Unknown Workbench category. Categories: "+", ".join(label for _,_,label,_ in workbench.CATEGORIES)+".")
     with SessionLocal() as db:
-        ctx=workbench.Context(main,db,None,provider)
+        ctx=workbench.Context(db,None,provider)
         if key:
-            rows=workbench.in_category(main,key)
+            rows=workbench.in_category(key)
             emoji,label,description=workbench.CATEGORY_INFO[key]
             if provider!="discord":return out(f"{emoji} {label}: "+" · ".join(f"{e.name} T{e.tier}" for e in rows[:12])+" | !make <recipe> crafts.")
             text=f"{emoji} {label}\n{description}\n{len(rows)} recipes, easiest first\n\n"+"\n".join(f"• {e.name} ×{e.quantity} — T{e.tier} · {workbench.station_label(e)} · {e.skill} Lv{e.level}" for e in rows[:40])
@@ -54,7 +54,7 @@ def recipes(channel:str="new-eridian",provider:str="twitch",category:str=""):
 
 def craft_recipe_key(value):
     """Canonical recipe id for a name, id or retired legacy recipe key."""
-    found=workbench.resolve(main,None,None,value)
+    found=workbench.resolve(None,None,value)
     return found.id if found else (value or "").lower().strip().replace("-","_").replace(" ","_")
 
 def craft_missing_materials(db,p,costs):
@@ -76,7 +76,7 @@ def craft_reward(db,p,s,kind,recipe=""):
         extra_xp=main.gain_skill(p,extra_skill,1)
         main.gain_branch(db,p,branch,extra_xp)
         extra=f" · +{extra_xp} {SKILL_LABELS[extra_skill]} XP ({branch.replace('_',' ').title()})"
-    found=practice.find(main,db,p,"fabrication")
+    found=practice.find(db,p,"fabrication")
     return {"extra":extra,"sc":cfg["sc"]+job_bonus,"xp":xp,"contribution":cfg["contribution"],"development":cfg["development"],"job_bonus":job_bonus,
             "found":f"\n• {found}" if found else ""}
 
@@ -131,15 +131,15 @@ def make(channel:str,uid:str,name:str="Citizen",recipe:str="",provider:str="twit
     if station_tag is None:return out("⚙️ Unknown workstation. Pick one from the Workstation list. Nothing spent.")
     with SessionLocal() as db:
         c,p=player(db,channel,provider,uid,name)
-        ctx=workbench.Context(module,db,p,provider)
+        ctx=workbench.Context(db,p,provider)
         if not recipe:
             text=workbench.category_text(ctx,cat,page,station_tag) if cat else workbench.home_text(ctx)
             return platform_response(provider,text,chat_line(text))
-        found=workbench.resolve(module,db,p,recipe,cat);note="";suggestions=[]
+        found=workbench.resolve(db,p,recipe,cat);note="";suggestions=[]
         if found is None:
             gathered=item_identity.RETIRED_GATHERED.get((recipe or "").strip().lower().replace(" ","_"))
             if gathered:return out(f"🌿 {resource_name(recipe)} is now {resource_name(gathered)}, a natural resource. Collect it with {seed_content.source_hint(gathered,provider)} Nothing spent.")
-            found,note,suggestions=main.qol.fuzzy_recipe(module,db,p,recipe,cat)
+            found,note,suggestions=main.qol.fuzzy_recipe(db,p,recipe,cat)
         if found is None:
             return out(f"⚙️ Unknown recipe.{main.qol.did_you_mean(suggestions)} Open {'/make' if provider=='discord' else '!make'} and choose a category, then a recipe. Nothing spent.")
         def noted(text):
@@ -149,8 +149,8 @@ def make(channel:str,uid:str,name:str="Citizen",recipe:str="",provider:str="twit
             text=noted(workbench.preview_text(ctx,found))
             return platform_response(provider,text,chat_line(text))
         if action=="favorite":
-            text=noted(main.qol.set_favorite(module,db,p,found.id));db.commit()
-            if provider=="discord":text+="\n\n"+workbench.preview_text(workbench.Context(module,db,p,provider),found)
+            text=noted(main.qol.set_favorite(db,p,found.id));db.commit()
+            if provider=="discord":text+="\n\n"+workbench.preview_text(workbench.Context(db,p,provider),found)
             return platform_response(provider,text,chat_line(text))
         if action=="fetch":
             text,_=main.qol.fetch_plan(ctx,found,max(1,min(10,int(count or 1))))
@@ -161,22 +161,22 @@ def make(channel:str,uid:str,name:str="Citizen",recipe:str="",provider:str="twit
         if blocked:return platform_response(provider,blocked,blocked)
         tier_before=ctx.tier
         if found.kind=="seed":
-            result=seed_content.craft(module,db,p,found.id,provider)
+            result=seed_content.craft(db,p,found.id,provider)
             if "CRAFTING COMPLETE" in result:
-                hint=main.qol.action_hint(module,db,p,provider,tier_before)
+                hint=main.qol.action_hint(db,p,provider,tier_before)
                 result=result+hint if provider=="discord" else (hint.strip()+"\n"+result if hint else result)
             result=noted(result)
             return platform_response(provider,result,chat_line(result))
         response=craft_legacy(db,p,channel,found.id,provider,life)
         if provider=="discord":
             body=response.body.decode()
-            if "CRAFTING COMPLETE" in body:body+=main.qol.action_hint(module,db,p,provider,tier_before)
+            if "CRAFTING COMPLETE" in body:body+=main.qol.action_hint(db,p,provider,tier_before)
             return PlainTextResponse(noted(body))
         return response
 
 def craft_legacy(db,p,channel,recipe,provider,life):
     """New Eridian equipment without a catalog twin; ingredients are catalog items."""
-    station_block=crafting_progression.legacy_gate(main,db,p,recipe,provider)
+    station_block=crafting_progression.legacy_gate(db,p,recipe,provider)
     if station_block:return out(station_block)
     if recipe in QUALITY_RECIPES:
         r=QUALITY_RECIPES[recipe];costs=r["cost"]
@@ -189,7 +189,7 @@ def craft_legacy(db,p,channel,recipe,provider,life):
         add_quality_gear(db,p,recipe,quality)
         p._practice_quality={"Standard":1.0,"Fine":1.15,"Excellent":1.3,"Masterwork":1.5}.get(quality,1.1)
         rewards=craft_reward(db,p,society(db,channel),"quality",recipe)
-        craft_record(db,p,recipe,quality);main.extras.goal_crafted(main,db,p,recipe)
+        craft_record(db,p,recipe,quality);main.extras.goal_crafted(db,p,recipe)
         spend_life_for_action(life,"make")
         tier=QUALITY_TIERS[quality]
         effects=[]
@@ -219,7 +219,7 @@ def craft_legacy(db,p,channel,recipe,provider,life):
     if missing:return out("⚙️ Still needed: "+", ".join(missing)+". Nothing spent."+missing_material_sources(db,p,costs,provider))
     for key,amount in costs.items():material_change(db,p,key,-amount)
     material_change(db,p,recipe,1)
-    rewards=craft_reward(db,p,society_state,"core",recipe);craft_record(db,p,recipe);main.extras.goal_crafted(main,db,p,recipe)
+    rewards=craft_reward(db,p,society_state,"core",recipe);craft_record(db,p,recipe);main.extras.goal_crafted(db,p,recipe)
     spend_life_for_action(life,"make");db.commit();system_notes=craft_system_notes(db,p,society_state)
     goal_note=progress_daily(db,p,"make")+goal_progress(db,p,"make","fabrication",crafted=True)+tutorial_advance(db,p,"craft")
     milestone=achieve(db,p);determination_note=determination_clear(db,p,"fabrication")

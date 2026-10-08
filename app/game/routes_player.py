@@ -54,8 +54,8 @@ def start(channel:str,uid:str,name:str="Citizen",provider:str="twitch"):
     from .. import onboarding
     with SessionLocal() as db:
         _,p=player(db,channel,provider,uid,name)
-        if onboarding.welcome(main,db,p):
-            text=onboarding.welcome_text(main,db,p,provider);db.commit()
+        if onboarding.welcome(db,p):
+            text=onboarding.welcome_text(db,p,provider);db.commit()
             return platform_response(provider,text,text)
         discord=f"🌱 {p.display_name} — Citizen Ready\n\n🪙 Starting balance: {p.sc} SC\n💼 Next: choose a job with /job\n🧭 Need direction? Use /guide"
         twitch=f"🌱 {p.display_name} is ready in New Eridian with {p.sc} SC. Next: !job to choose work, then !guide for your best action."
@@ -226,7 +226,7 @@ def guide(channel:str,uid:str,name:str="Citizen",goal:str="auto",provider:str="t
             skill=min(SKILL_LABELS,key=lambda x:skill_xp(p,x));cmd,wait=guide_action(db,p,skill,provider);level=lvl(skill_xp(p,skill))
             lines.extend([f"🧬 Lowest aptitude: {SKILL_LABELS[skill]} Lv. {level} ({skill_xp(p,skill)} XP).",f"Train it with {cmd} "+("now." if not wait else f"in {wait}s.")+(f" At Lv. 10, use {prefix}specialize." if level<10 else f" Use {prefix}specialize if you have not chosen a path.")])
         elif selected=="crafting":
-            lines.extend(workbench.guide_lines(main,db,p,provider))
+            lines.extend(workbench.guide_lines(db,p,provider))
         elif selected=="home":
             h=db.execute(select(Home).where(Home.channel_id==channel,Home.canonical_uid==p.twitch_uid)).scalar_one_or_none();tier=h.tier if h else 1;cost,component_cost=home_upgrade_cost(tier)
             lines.extend(habitat_upgrade_plan(p,tier,provider))
@@ -255,17 +255,17 @@ def inventory(channel:str,uid:str,name:str="Citizen",provider:str="twitch",searc
         c,p=player(db,channel,provider,uid,name)
         if text:search,sort,show,page=main.qol.parse_inventory_text(text)
         if search or sort or show or page>1:
-            result=main.qol.inventory_text(main,db,p,provider,search,sort or "quantity",show or "all",page)
+            result=main.qol.inventory_text(db,p,provider,search,sort or "quantity",show or "all",page)
             return platform_response(provider,result,result)
         equipment=[(key,equipment_count(db,p,key)) for key in ITEM_EFFECTS]
         owned_equipment=[f"{resource_name(key)} ×{qty}: {ITEM_EFFECTS[key]}" for key,qty in equipment if qty]
-        stock=seed_content.stock(main,db,p)
+        stock=seed_content.stock(db,p)
         if p.cargo>0:stock['cargo']=p.cargo
         gear_keys={item_identity.canonical(k) for k,_ in equipment}
         # One list: Pumpkin, Hematite Ore, Argentite Ore and Iron Nails are ordinary items like any other.
         supplies=sorted(((k,n) for k,n in stock.items() if (k in seed_content.ACTIVE or k=='cargo') and k not in gear_keys),key=lambda row:(-row[1],resource_name(row[0])))
         gear=db.execute(select(QualityGear).where(QualityGear.channel_id==channel,QualityGear.canonical_uid==p.twitch_uid,QualityGear.qty>0)).scalars().all()
-        next_step=workbench.next_step(main,db,p,provider)
+        next_step=workbench.next_step(db,p,provider)
         discord=(f"🎒 {p.display_name} — Inventory\n\n🪙 {p.sc} SC"+
                  "\n\n🧰 EQUIPMENT\n"+("\n".join("• "+x for x in owned_equipment) if owned_equipment else "• None yet. Equipment appears under /make category:equipment.")+
                  "\n\n🗃️ ITEMS\n"+("\n".join(f"• {resource_name(k)} ×{n}" for k,n in supplies[:15]) if supplies else "• None yet. /gather collects natural materials.")+

@@ -66,14 +66,14 @@ def routine_step(channel:str,uid:str,name:str="Citizen",provider:str="twitch",ke
 
 # Configure identities after all route/function definitions, before accepting work.
 item_identity.configure(main)
-seed_content.production_balance.configure_market(main)
+seed_content.production_balance.configure_market()
 with SessionLocal() as _identity_db:
     # Only citizens who still hold old item rows (every citizen used to be visited on every start, ~3 queries each).
     _pending=_identity_db.execute(select(ExtraItem.channel_id,ExtraItem.canonical_uid).where(
         ExtraItem.item.in_(item_identity.MIGRATING),ExtraItem.qty!=0).distinct()).all()
     for _channel,_uid in _pending:
         _identity_player=_identity_db.execute(select(Player).where(Player.channel_id==_channel,Player.twitch_uid==_uid)).scalar_one_or_none()
-        if _identity_player is not None:item_identity.migrate_player(main,_identity_db,_identity_player)
+        if _identity_player is not None:item_identity.migrate_player(_identity_db,_identity_player)
     _identity_db.commit()
 
 
@@ -84,8 +84,8 @@ from .. import task_queue, task_yields
 def queued_tasks(channel:str,uid:str,name:str='Citizen',action:str='view',task:str='',count:str='1',provider:str='twitch'):
     try:count=int(str(count).strip() or '1')
     except ValueError:return out('Count must be a whole number from 1 to 10. No queue was changed.')
-    text=task_queue.control(main,channel,uid,name,provider,action,task,count)
-    short=task_queue.short_status(main,channel,uid,name,provider) if provider!='discord' and text.startswith('TASK QUEUE') else text.replace('\n',' | ')
+    text=task_queue.control(channel,uid,name,provider,action,task,count)
+    short=task_queue.short_status(channel,uid,name,provider) if provider!='discord' and text.startswith('TASK QUEUE') else text.replace('\n',' | ')
     note=first_step_note(channel,uid,name,provider,'queue') if action=='start' else ''
     if note:text,short=text+'\n\n'+note,short+' | '+note
     return platform_response(provider,text,short)
@@ -97,7 +97,7 @@ def first_step_note(channel,uid,name,provider,key):
         with SessionLocal() as db:
             _,p=player(db,channel,provider,uid,name)
             if key=='queue' and db.get(task_queue.TaskQueue,(p.channel_id,p.twitch_uid)) is None:return ''
-            note=onboarding.mark(main,db,p,key,provider);db.commit();return note
+            note=onboarding.mark(db,p,key,provider);db.commit();return note
     except Exception:
         return ''
 
@@ -134,7 +134,7 @@ def mining(channel:str,uid:str,name:str='Citizen',ore:str='',action:str='view',c
         with SessionLocal() as db:
             _,p=player(db,channel,provider,uid,name)
             rule='Needs a Mineral Extractor in your bag: a Small Mineral Extractor brings up 1 ore a success, a Frontiers Expedition Mineral Extractor 2. Failures give 1 Stone Dust; shared 20-second cooldown.\n' if key in crafting_progression.RARE else 'No skill unlock, materials or tools required; shared 5-second gathering cooldown.\n'
-            text=seed_content.item_label(key)+' — MINING REQUIREMENTS\n'+rule+task_queue.requirements(module,db,p,'mine:'+key,count)+'\nSelect Mine to start. Use /queue to check progress or cancel.'
+            text=seed_content.item_label(key)+' — MINING REQUIREMENTS\n'+rule+task_queue.requirements(db,p,'mine:'+key,count)+'\nSelect Mine to start. Use /queue to check progress or cancel.'
     return platform_response(provider,text,text.replace('\n',' | '))
 
 task_queue.install(main)
@@ -143,7 +143,7 @@ DISCORD_PRIVATE_COMMANDS.add('queue')
 
 @app.get('/api/v1/queue-tasks')
 def queue_task_menu(query:str='',page:int=1,provider:str='twitch'):
-    entries=sorted(((key,label) for key,label in task_queue.choices(main).items() if query.casefold() in (key+' '+label).casefold()),key=lambda row:row[1])
+    entries=sorted(((key,label) for key,label in task_queue.choices().items() if query.casefold() in (key+' '+label).casefold()),key=lambda row:row[1])
     size=8 if provider=='discord' else 2;pages=max(1,math.ceil(len(entries)/size));page=max(1,min(page,pages))
     lines=[f'QUEUE TASKS · Page {page}/{pages}']+[f'{label}: {key}' for key,label in entries[(page-1)*size:page*size]]
     if not entries:lines.append('No matching tasks. Try a resource, recipe or activity name.')

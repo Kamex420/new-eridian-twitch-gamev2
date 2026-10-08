@@ -35,7 +35,7 @@ class Refused(Exception):
         self.kind, self.error, self.status = kind, error, status
 
 
-def load(m, db, channel, keep, merge):
+def load(db, channel, keep, merge):
     """Both characters (by uid) with their summaries and the combined totals, or Refused. Changes nothing."""
     from .game.routes_obs_admin import _player_summary
     if keep == merge:
@@ -49,7 +49,7 @@ def load(m, db, channel, keep, merge):
     return SimpleNamespace(keep=a, merge=b, before=before, combined=combined)
 
 
-def apply(m, db, channel, pair, actor):
+def apply(db, channel, pair, actor):
     """Merge `pair.merge` into `pair.keep` (what `load` returned), link a Twitch + Discord pair, log it as `actor`.
     The caller holds the game transaction. Returns {'character': the merged summary, 'expected': the combined totals}."""
     from .game.cooldowns_materials import audit_moderator
@@ -71,7 +71,7 @@ def apply(m, db, channel, pair, actor):
 
 # ---------------------------------------------------------------- what the screens say about a character
 
-def _ids(m, db, channel, uid):
+def _ids(db, channel, uid):
     """['Twitch tw-555', 'Discord 9001']: every platform id that points at this character."""
     rows = db.execute(select(Identity).where(Identity.channel_id == channel, Identity.canonical_uid == uid)
                       .order_by(Identity.provider, Identity.provider_uid)).scalars().all()
@@ -79,7 +79,7 @@ def _ids(m, db, channel, uid):
     return found or [f'Discord {uid[8:]}' if uid.startswith('discord:') else f'Twitch {uid}']
 
 
-def _platforms(m, db, channel, uids):
+def _platforms(db, channel, uids):
     """{uid: 'Twitch+Discord'} for a page of characters, from one query."""
     kinds = {}
     for r in db.execute(select(Identity).where(Identity.channel_id == channel, Identity.canonical_uid.in_(uids))).scalars():
@@ -87,20 +87,20 @@ def _platforms(m, db, channel, uids):
     return {u: '+'.join(sorted(kinds.get(u) or {'Discord' if u.startswith('discord:') else 'Twitch'})) for u in uids}
 
 
-def _queue(m, db, channel, uid):
+def _queue(db, channel, uid):
     from . import task_queue
     return db.get(task_queue.TaskQueue, (channel, uid))
 
 
-def _queue_line(m, row):
+def _queue_line(row):
     from . import task_queue
     if row is None:
         return 'none'
-    label = task_queue.choices(m).get(row.task, row.task)
+    label = task_queue.choices().get(row.task, row.task)
     return f'{label} · {row.state} · {row.remaining} of {row.total} attempts left' if row.state in task_queue.ACTIVE else f'{label} · {row.state}'
 
 
-def _queue_after(m, kq, mq, keep_name, merge_name):
+def _queue_after(kq, mq, keep_name, merge_name):
     """What the existing merge does with the two queues (task_queue.merge_accounts), in words."""
     from . import task_queue
     active = task_queue.ACTIVE
@@ -111,15 +111,15 @@ def _queue_after(m, kq, mq, keep_name, merge_name):
     return f"{keep_name}'s queue stays as it is" if kq is not None else 'none'
 
 
-def _stock(m, db, p):
+def _stock(db, p):
     from . import item_identity
-    return item_identity.stock(m, db, p)
+    return item_identity.stock(db, p)
 
 
-def _facts(m, db, channel, p, summary):
-    stock = _stock(m, db, p)
-    return SimpleNamespace(name=p.display_name, uid=p.twitch_uid, ids=_ids(m, db, channel, p.twitch_uid), summary=summary, stock=stock,
-                           queue=_queue(m, db, channel, p.twitch_uid))
+def _facts(db, channel, p, summary):
+    stock = _stock(db, p)
+    return SimpleNamespace(name=p.display_name, uid=p.twitch_uid, ids=_ids(db, channel, p.twitch_uid), summary=summary, stock=stock,
+                           queue=_queue(db, channel, p.twitch_uid))
 
 
 def _kind(n):
@@ -132,17 +132,17 @@ def _line(f, queue):
             f"• {sum(f.stock.values())} items ({_kind(len(f.stock))}) · queue: {queue}"]
 
 
-def preview_text(m, db, channel, pair):
-    k, g = (_facts(m, db, channel, p, s) for p, s in ((pair.keep, pair.before[0]), (pair.merge, pair.before[1])))
+def preview_text(db, channel, pair):
+    k, g = (_facts(db, channel, p, s) for p, s in ((pair.keep, pair.before[0]), (pair.merge, pair.before[1])))
     stock = {key: k.stock.get(key, 0) + g.stock.get(key, 0) for key in k.stock.keys() | g.stock.keys()}
     c, ids = pair.combined, list(dict.fromkeys(k.ids + g.ids))
     link = any(i.startswith('Twitch') for i in ids) and sum(i.startswith('Discord') for i in ids) == 1
     lines = ['🧬 FORCE MERGE — PREVIEW',
              f'⚠️ This cannot be undone. **{g.name}** is deleted and **{k.name}** survives. Nothing changes until you press Confirm merge.', '',
-             f'**KEEP** — {k.name}'] + _line(k, _queue_line(m, k.queue)) + ['', f'**MERGE INTO IT** — {g.name}'] + _line(g, _queue_line(m, g.queue)) + [
+             f'**KEEP** — {k.name}'] + _line(k, _queue_line(k.queue)) + ['', f'**MERGE INTO IT** — {g.name}'] + _line(g, _queue_line(g.queue)) + [
              '', f'**AFTER THE MERGE** — {k.name} survives',
              f"• {c['sc']} SC · {c['xp']} XP · {c['actions']} actions · {c['contribution']} contribution",
-             f'• {sum(stock.values())} items ({_kind(len(stock))}) · queue: {_queue_after(m, k.queue, g.queue, k.name, g.name)}',
+             f'• {sum(stock.values())} items ({_kind(len(stock))}) · queue: {_queue_after(k.queue, g.queue, k.name, g.name)}',
              f"• {' and '.join(ids)} will all point at {k.name}." + (' A Twitch + Discord pair becomes a permanent link.' if link else ''),
              '• Skills, homes, businesses, achievements and Seedling life are combined; the moderator log records who did it.']
     return '\n'.join(lines)
@@ -154,19 +154,19 @@ def _nav(owner, *fallback):
     return ui.row(ui.back_button(owner, *fallback), ui.button('Menu', ui.cid(owner, 'mn', 'home'), emoji='🏠'))
 
 
-def _card(m, owner, text, rows, where='Force merge'):
+def _card(owner, text, rows, where='Force merge'):
     from .menu import crumb
-    return ui.with_crumb(ui.message(m, text, rows, 'moderator'), crumb('mod', where))
+    return ui.with_crumb(ui.message(text, rows, 'moderator'), crumb('mod', where))
 
 
-def _stop(m, owner, text, rows):
+def _stop(owner, text, rows):
     """A refusal card: what is wrong, and that nothing changed."""
-    return _card(m, owner, f'🧬 FORCE MERGE\n{text} Nothing changed.', rows)
+    return _card(owner, f'🧬 FORCE MERGE\n{text} Nothing changed.', rows)
 
 
-def refusal(m, owner, text, *fallback):
+def refusal(owner, text, *fallback):
     """A refusal card: why, that nothing changed, and Back / Menu."""
-    return _stop(m, owner, text, [_nav(owner, *(fallback or ('mn', 'mod')))])
+    return _stop(owner, text, [_nav(owner, *(fallback or ('mn', 'mod')))])
 
 
 def _id(raw):
@@ -176,27 +176,27 @@ def _id(raw):
     return int(raw) if raw.isascii() and raw.isdigit() and len(raw) <= 9 else None
 
 
-def _character(db, m, channel, raw):
+def _character(db, channel, raw):
     """The Player with this row id, or None (not a usable number, or no such character)."""
     pid = _id(raw)
     return None if pid is None else db.execute(select(Player).where(Player.channel_id == channel, Player.id == pid)).scalar_one_or_none()
 
 
-def _listing(m, db, channel, skip=None):
+def _listing(db, channel, skip=None):
     rows = db.execute(select(Player.id, Player.twitch_uid, Player.display_name, Player.sc, Player.actions)
                       .where(Player.channel_id == channel, *([Player.id != skip] if skip else []))
                       .order_by(func.lower(Player.display_name), Player.id)).all()
     return rows
 
 
-def _picker(m, db, owner, channel, verb, args, page, title, lead, skip=None, up=('mn', 'mod')):
-    rows = _listing(m, db, channel, skip)
+def _picker(db, owner, channel, verb, args, page, title, lead, skip=None, up=('mn', 'mod')):
+    rows = _listing(db, channel, skip)
     if not rows:
-        return refusal(m, owner, 'There is no other character to choose.', *up)
+        return refusal(owner, 'There is no other character to choose.', *up)
     pages = max(1, -(-len(rows) // PAGE)) if len(rows) > 25 else 1
     page = max(1, min(page, pages))
     shown = rows if pages == 1 else rows[(page - 1) * PAGE:page * PAGE]
-    kinds = _platforms(m, db, channel, [r.twitch_uid for r in shown])
+    kinds = _platforms(db, channel, [r.twitch_uid for r in shown])
     options = [ui.option(f'{r.display_name} · #{r.id}', r.id, f'{kinds[r.twitch_uid]} · {r.sc} SC · {r.actions} actions') for r in shown]
     if pages > 1:
         lead += f'\nPage {page} of {pages}.'
@@ -205,7 +205,7 @@ def _picker(m, db, owner, channel, verb, args, page, title, lead, skip=None, up=
         if page < pages:
             options.append(ui.option(f'Next page ({page + 1}/{pages}) ▶', f'__page:{page + 1}'))
     menu = ui.select(ui.cid(owner, verb, *args), 'Choose a character…' if pages == 1 else f'Choose a character… (page {page}/{pages})', options)
-    return _card(m, owner, f'🧬 FORCE MERGE — {title}\n{lead}', [menu, _nav(owner, *up)])
+    return _card(owner, f'🧬 FORCE MERGE — {title}\n{lead}', [menu, _nav(owner, *up)])
 
 
 def _page(values):
@@ -213,75 +213,75 @@ def _page(values):
     return (_id(value.split(':', 1)[1]) or 1) if value.startswith('__page:') else 0
 
 
-def view(m, db, p, owner, verb, args, values):
+def view(db, p, owner, verb, args, values):
     """Step 1 (xk): choose the character to keep. Step 2 and the preview (xm|keep[|merge]). Owner only, every time."""
-    if not ui.is_owner(m):
+    if not ui.is_owner():
         from .menu import nav
-        return _stop(m, owner, DENIED, [nav(owner, 'mod', 'mod')])
+        return _stop(owner, DENIED, [nav(owner, 'mod', 'mod')])
     channel = runtime.DISCORD_WORLD_ID
     if verb == 'xk' and not (values and not _page(values)):
-        return _picker(m, db, owner, channel, 'xk', (), max(1, _page(values)), 'step 1 of 3: who survives?',
+        return _picker(db, owner, channel, 'xk', (), max(1, _page(values)), 'step 1 of 3: who survives?',
                        'Choose the character to KEEP. Its name stays and the other character is merged into it.\n'
                        'Owner only. Nothing changes until you press Confirm merge on the preview.')
-    keep = _character(db, m, channel, values[0] if verb == 'xk' else args[0] if args else '')
+    keep = _character(db, channel, values[0] if verb == 'xk' else args[0] if args else '')
     if keep is None:
-        return refusal(m, owner, 'That character no longer exists. Choose again.', 'xk')
+        return refusal(owner, 'That character no longer exists. Choose again.', 'xk')
     if verb == 'xk':
         args, values = [str(keep.id)], []
     page = _page(values)
     if len(args) < 2 and (page or not values):
-        return _picker(m, db, owner, channel, 'xm', (keep.id,), max(1, page), 'step 2 of 3: who is merged in?',
-                       f'Keeping **{keep.display_name}** ({" · ".join(_ids(m, db, channel, keep.twitch_uid))}).\n'
+        return _picker(db, owner, channel, 'xm', (keep.id,), max(1, page), 'step 2 of 3: who is merged in?',
+                       f'Keeping **{keep.display_name}** ({" · ".join(_ids(db, channel, keep.twitch_uid))}).\n'
                        'Choose the character to MERGE INTO it. That character is deleted; everything it has is added to the kept one.',
                        skip=keep.id, up=('xk',))
-    gone = _character(db, m, channel, args[1] if len(args) > 1 else values[0])
+    gone = _character(db, channel, args[1] if len(args) > 1 else values[0])
     if gone is None:
-        return refusal(m, owner, 'That character no longer exists. Choose again.', 'xm', keep.id)
-    return preview(m, db, owner, channel, keep, gone)
+        return refusal(owner, 'That character no longer exists. Choose again.', 'xm', keep.id)
+    return preview(db, owner, channel, keep, gone)
 
 
-def preview(m, db, owner, channel, keep, gone):
+def preview(db, owner, channel, keep, gone):
     if keep.id == gone.id or keep.twitch_uid == gone.twitch_uid:
-        return refusal(m, owner, f'{keep.display_name} and {gone.display_name} are already the same character, so there is nothing to merge.', 'xk')
+        return refusal(owner, f'{keep.display_name} and {gone.display_name} are already the same character, so there is nothing to merge.', 'xk')
     try:
-        pair = load(m, db, channel, keep.twitch_uid, gone.twitch_uid)
+        pair = load(db, channel, keep.twitch_uid, gone.twitch_uid)
     except Refused as e:
-        return refusal(m, owner, 'One of the two characters no longer exists (it may already have been merged).' if e.kind == 'missing' else e.error, 'xk')
-    ticket = ui.issue(m, owner, {'do': 'forcemerge', 'keep': keep.id, 'keep_uid': keep.twitch_uid, 'merge': gone.id, 'merge_uid': gone.twitch_uid})
+        return refusal(owner, 'One of the two characters no longer exists (it may already have been merged).' if e.kind == 'missing' else e.error, 'xk')
+    ticket = ui.issue(owner, {'do': 'forcemerge', 'keep': keep.id, 'keep_uid': keep.twitch_uid, 'merge': gone.id, 'merge_uid': gone.twitch_uid})
     rows = [ui.row(ui.button('Confirm merge', ui.cid(owner, 't', ticket), style=4, emoji='✔️'),
                    ui.button('Swap', ui.cid(owner, 'xm', gone.id, keep.id), emoji='🔁'),
                    ui.back_button(owner, 'xm', keep.id), ui.button('Menu', ui.cid(owner, 'mn', 'home'), emoji='🏠'))]
-    return _card(m, owner, preview_text(m, db, channel, pair), rows)
+    return _card(owner, preview_text(db, channel, pair), rows)
 
 
-def run(m, uid, action):
+def run(uid, action):
     """✔️ Confirm merge, claimed once. Runs inside the game transaction; every check is repeated here."""
     owner = str(uid)
     channel = runtime.DISCORD_WORLD_ID
     done = ui.row(ui.button('Moderator', ui.cid(owner, 'mn', 'mod'), emoji='🛡️'), ui.button('Merge another', ui.cid(owner, 'xk'), emoji='🧬'))
-    if not ui.is_owner(m):
-        return _stop(m, owner, DENIED, [ui.row(ui.button('Moderator', ui.cid(owner, 'mn', 'mod'), emoji='🛡️')), _nav(owner, 'mn', 'mod')])
+    if not ui.is_owner():
+        return _stop(owner, DENIED, [ui.row(ui.button('Moderator', ui.cid(owner, 'mn', 'mod'), emoji='🛡️')), _nav(owner, 'mn', 'mod')])
     with SessionLocal() as db:
-        keep, gone = (_character(db, m, channel, action.get(k)) for k in ('keep', 'merge'))
+        keep, gone = (_character(db, channel, action.get(k)) for k in ('keep', 'merge'))
         if keep is None or gone is None:
-            return _stop(m, owner, 'One of the two characters no longer exists (it may already have been merged).', [done, _nav(owner, 'mn', 'mod')])
+            return _stop(owner, 'One of the two characters no longer exists (it may already have been merged).', [done, _nav(owner, 'mn', 'mod')])
         if (keep.twitch_uid, gone.twitch_uid) != (action.get('keep_uid'), action.get('merge_uid')):
-            return _stop(m, owner, 'One of the two characters changed since the preview (an account was linked or merged). Open Force merge again.',
+            return _stop(owner, 'One of the two characters changed since the preview (an account was linked or merged). Open Force merge again.',
                          [done, _nav(owner, 'mn', 'mod')])
         if keep.twitch_uid == gone.twitch_uid:
-            return _stop(m, owner, 'Those are already the same character.', [done, _nav(owner, 'mn', 'mod')])
-        pair = load(m, db, channel, keep.twitch_uid, gone.twitch_uid)
+            return _stop(owner, 'Those are already the same character.', [done, _nav(owner, 'mn', 'mod')])
+        pair = load(db, channel, keep.twitch_uid, gone.twitch_uid)
         names = (pair.before[1]['name'], pair.before[0]['name'])
-        result = apply(m, db, channel, pair, f'owner {owner} via /menu')
+        result = apply(db, channel, pair, f'owner {owner} via /menu')
         s = result['character']
         p = db.execute(select(Player).where(Player.channel_id == channel, Player.twitch_uid == keep.twitch_uid)).scalar_one()
-        stock = _stock(m, db, p)
+        stock = _stock(db, p)
         linked = db.execute(select(AccountLink).where(AccountLink.channel_id == channel, AccountLink.twitch_uid == p.twitch_uid)).scalar_one_or_none()
         text = '\n'.join([f"🧬 FORCE MERGE — DONE\nMerged **{names[0]}** into **{names[1]}**. {names[0]} is gone; {names[1]} survives.", '',
                           f"**{s['name']}** now has",
                           f"• {s['sc']} SC · {s['xp']} XP · {s['actions']} actions · {s['contribution']} contribution",
-                          f'• {sum(stock.values())} items ({_kind(len(stock))}) · queue: {_queue_line(m, _queue(m, db, channel, p.twitch_uid))}',
-                          f"• {' · '.join(_ids(m, db, channel, p.twitch_uid))} all point at {s['name']}."
+                          f'• {sum(stock.values())} items ({_kind(len(stock))}) · queue: {_queue_line(_queue(db, channel, p.twitch_uid))}',
+                          f"• {' · '.join(_ids(db, channel, p.twitch_uid))} all point at {s['name']}."
                           + (' Twitch and Discord are now permanently linked.' if linked is not None else ''),
                           f'• Logged in the moderator log as owner {owner} via /menu.'])
-    return _card(m, owner, text, [done, _nav(owner, 'mn', 'mod')])
+    return _card(owner, text, [done, _nav(owner, 'mn', 'mod')])

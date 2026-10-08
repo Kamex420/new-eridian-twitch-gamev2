@@ -69,39 +69,39 @@ def dismiss_pause(db, dest):
     quiet_hours.forget_superseded(db,ids)      # a pause held for quiet hours is never sent now
 
 
-def destination(m,db,p):
+def destination(db,p):
     dest=db.get(Destination,(p.channel_id,p.twitch_uid))
     if dest is None:
         identity=db.execute(select(Identity).where(Identity.channel_id==p.channel_id,
             Identity.canonical_uid==p.twitch_uid,Identity.provider=='discord')).scalars().first()
-        if identity:start(m,db,p,'discord',identity.provider_uid)
-        else:start(m,db,p,'twitch',p.twitch_uid)
+        if identity:start(db,p,'discord',identity.provider_uid)
+        else:start(db,p,'twitch',p.twitch_uid)
         db.flush();dest=db.get(Destination,(p.channel_id,p.twitch_uid))
     return dest
 
 
-def stopped(m,db,p,queue,kind,reason='',following=''):
+def stopped(db,p,queue,kind,reason='',following=''):
     from .game.life import life_state
     from .progression import announce
-    dest=destination(m,db,p)
+    dest=destination(db,p)
     dismiss_pause(db,dest)
     from .task_queue import choices, totals_text
     from . import qol
     mode=qol.alert_mode(db,p.channel_id,p.twitch_uid)
     title={'paused':'PAUSED','cancelled':'CANCELLED','error':'STOPPED','completed':'COMPLETED'}[kind]
-    content=(f'TASK QUEUE — {title}\n{choices(m).get(queue.task,queue.task)}\n'
+    content=(f'TASK QUEUE — {title}\n{choices().get(queue.task,queue.task)}\n'
              f'Attempts completed: {queue.total-queue.remaining}/{queue.total}; remaining: {queue.remaining}.\n'
-             +totals_text(m,db,queue))
+             +totals_text(db,queue))
     if reason:content+='\n\nPAUSE REASON\n'+reason
     if kind=='paused':
         content+='\n\nNEXT\nRemaining attempts are saved. The queue resumes automatically when requirements are met.'
-        life=life_state(db,p);eta=qol.resume_eta(m,life)
+        life=life_state(db,p);eta=qol.resume_eta(life)
         if eta and len(qol.needs.blocked_needs(life))>1:content+=f' Passive recovery clears every blocking need in about {qol.eta_text(eta)}.'
     if following:content+='\n\nNEXT\n'+following
     if kind=='error':content+='\n\nNEXT\nAutomatic retries stopped. Check /queue before starting another queue.'
     if kind=='completed' and queue.total>=3:
         from . import stream_overlay
-        stream_overlay.queue_finished(m,db,p,queue)
+        stream_overlay.queue_finished(db,p,queue)
     # Completion retains the historical run ID to deduplicate pre-update rows.
     notice_id=dest.run_id if kind=='completed' else uuid.uuid4().hex
     if db.get(Notice,notice_id) is None:
@@ -109,7 +109,7 @@ def stopped(m,db,p,queue,kind,reason='',following=''):
         # and /queue keep every result either way.
         pinged=mode in {'mention','dm'} or (mode=='quiet' and kind!='paused')
         from . import inbox
-        inbox.add(m,db,p.channel_id,p.twitch_uid,'queue',inbox_text(m,db,queue,kind,reason,following),seen=pinged)
+        inbox.add(db,p.channel_id,p.twitch_uid,'queue',inbox_text(db,queue,kind,reason,following),seen=pinged)
         if pinged:
             target=dest.message_channel
             # Direct messages for every alert except an explicit channel mention, so alerts never fill the channel.
@@ -126,7 +126,7 @@ def stopped(m,db,p,queue,kind,reason='',following=''):
 DM_PREFIX='dm|'
 
 
-def dm_closed(m,notice,at=None):
+def dm_closed(notice,at=None):
     """The player's DMs are closed: keep the alert private instead of posting it in the game channel.
     Its notification (saved when the alert was made) is marked unread, so it pops up privately the
     next time they use a command or button. `at`: when the alert was made (an alert held for quiet
@@ -134,7 +134,7 @@ def dm_closed(m,notice,at=None):
     marked yet, so several held alerts mark one each."""
     from . import inbox
     with SessionLocal() as db:
-        uid=inbox._canonical(m,db,str(notice.recipient))
+        uid=inbox._canonical(db,str(notice.recipient))
         query=select(inbox.InboxItem).where(inbox.InboxItem.channel_id==notice.channel_id,inbox.InboxItem.canonical_uid==uid,
                                             inbox.InboxItem.kind=='queue')
         if at is not None:query=query.where(inbox.InboxItem.created_at<=at,inbox.InboxItem.seen==1)
@@ -143,12 +143,12 @@ def dm_closed(m,notice,at=None):
         db.commit()
 
 
-def inbox_text(m,db,queue,kind,reason='',following=''):
+def inbox_text(db,queue,kind,reason='',following=''):
     """One or two lines for the private inbox and popups."""
     from .game.players import resource_name
     from .task_queue import choices, QueueTotals
     import json as _json
-    name=choices(m).get(queue.task,queue.task)
+    name=choices().get(queue.task,queue.task)
     head={'paused':'⏸️ **Queue paused**','cancelled':'⏹️ **Queue cancelled**','error':'⛔ **Queue stopped**','completed':'✅ **Queue finished**'}[kind]
     text=f'{head}: {name} · {queue.total-queue.remaining}/{queue.total}'
     totals=db.get(QueueTotals,(queue.channel_id,queue.canonical_uid))
@@ -159,13 +159,13 @@ def inbox_text(m,db,queue,kind,reason='',following=''):
     return text
 
 
-def needs_blocked(m,db,p):
+def needs_blocked(db,p):
     from .game.life import life_state
     from .needs import blocked_needs
     return bool(blocked_needs(life_state(db,p)))
 
 
-def start(m,db,p,provider,uid):
+def start(db,p,provider,uid):
     row=db.get(Destination,(p.channel_id,p.twitch_uid))
     if row is not None:dismiss_pause(db,row)
     if row is None:
@@ -174,8 +174,8 @@ def start(m,db,p,provider,uid):
     row.message_channel=origin_channel.get() or os.getenv('DISCORD_GAME_CHANNEL_ID','') if provider=='discord' else ''
 
 
-def complete(m,db,p,queue,summary,following=''):
-    stopped(m,db,p,queue,'completed',following=following)
+def complete(db,p,queue,summary,following=''):
+    stopped(db,p,queue,'completed',following=following)
 
 
 def renew(db,row):
@@ -185,10 +185,9 @@ def renew(db,row):
     row.run_id=uuid.uuid4().hex
 
 
-def delivery_status(db,queue,m=None):
+def delivery_status(db,queue):
     from .game.base import app
     from . import qol, quiet_hours
-    from datetime import datetime, timezone
     mode=qol.alert_mode(db,queue.channel_id,queue.canonical_uid)
     if mode=='off':return 'Queue alerts are off (/settings or !settings alerts dm turns them back on). Your results are saved here.'
     dest=db.get(Destination,(queue.channel_id,queue.canonical_uid))
@@ -201,16 +200,16 @@ def delivery_status(db,queue,m=None):
     if notice and notice.state=='failed':return 'Queue notification could not be delivered. '+notice.error+'. Your results are saved here and in your journal.'
     if dest and dest.provider=='discord' and not os.getenv('DISCORD_BOT_TOKEN','').strip():
         return 'Queue notification could not be delivered: DISCORD_BOT_TOKEN is missing on the server. Your results are saved.'
-    sender=getattr(app.state,'discord_queue',None) if m is not None else None
+    sender=getattr(app.state,'discord_queue',None)
     if dest and dest.provider=='discord' and sender and sender.state in {'invalid_token','wrong_application','connection_error','stopped'}:
         reason={'wrong_application':'the bot token does not match DISCORD_APPLICATION_ID','invalid_token':'the Discord bot token was rejected','connection_error':'Discord authentication is temporarily unavailable','stopped':'the Discord sender is stopped'}[sender.state]
         return 'Queue notification could not be delivered: '+reason+'. Your results are saved.'
     if notice:
-        held=quiet_hours.held_line(m,db,notice) if m is not None else ''
+        held=quiet_hours.held_line(db,notice)
         return held or 'Queue notification is waiting for delivery. Your results are saved.'
     quiet=''
     if mode in {'dm','quiet'} and dest is not None and dest.provider=='discord':
-        quiet=quiet_hours.delivery_line(db,queue.channel_id,queue.canonical_uid,runtime.now() if m is not None else datetime.now(timezone.utc))
+        quiet=quiet_hours.delivery_line(db,queue.channel_id,queue.canonical_uid,runtime.now())
         quiet=' '+quiet if quiet else ''
     if mode=='quiet':return 'Quiet alerts: a direct message when the queue finishes or stops, not when it pauses.'+quiet
     if mode=='private':return 'Private alerts: results appear only to you, the next time you use a command or button.'
@@ -244,7 +243,7 @@ def post(url,headers,payload):
     except ValueError:raise DeliveryError('Invalid notification response') from None
 
 
-def send(m,notice):
+def send(notice):
     """Legacy synchronous transport; the production poller selects Twitch only.
 
     Discord production delivery lives in discord_queue_worker.send_notice.
@@ -294,7 +293,7 @@ def send(m,notice):
         raise DeliveryError('Twitch did not send the notification')
 
 
-def deliver(m,provider=None):
+def deliver(provider=None):
     with SessionLocal() as db:
         query=select(Notice.id).where(Notice.state.in_(['pending','sending']),Notice.next_at<=runtime.now())
         if provider:query=query.where(Notice.provider==provider)
@@ -306,7 +305,7 @@ def deliver(m,provider=None):
             db.commit()
             if claimed.rowcount!=1:continue
             row=db.get(Notice,notice_id)
-            try:send(m,row)
+            try:send(row)
             except DeliveryError as exc:
                 row.state='failed' if exc.permanent or row.attempts>=5 else 'pending'
                 row.error=str(exc);row.next_at=runtime.now()+timedelta(seconds=max(exc.delay,min(600,30*2**(row.attempts-1))))
@@ -324,7 +323,7 @@ def install(m):
     NoticeTask.__table__.create(runtime.engine,checkfirst=True)
     async def loop():
         while not app.state.notification_stop.is_set():
-            try:await asyncio.to_thread(deliver,m,'twitch')
+            try:await asyncio.to_thread(deliver,'twitch')
             except Exception:logging.getLogger(__name__).error('Notification worker will retry')
             try:await asyncio.wait_for(app.state.notification_stop.wait(),timeout=2)
             except asyncio.TimeoutError:pass

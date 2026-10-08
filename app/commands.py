@@ -29,7 +29,7 @@ def transaction(fn):
         bound=sig.bind(*args,**kwargs);bound.apply_defaults()
         queue=getattr(m,'task_queue',None)
         if queue is not None and queue.connection_context.get() is None:
-            with queue.atomic(m,bound.arguments.get('channel')):
+            with queue.atomic(bound.arguments.get('channel')):
                 return fn(*args,**kwargs)
         return fn(*args,**kwargs)
     return wrapped
@@ -51,7 +51,7 @@ def command(fn):
         bound=sig.bind(*args,**kwargs);bound.apply_defaults();params=bound.arguments
         queue=getattr(m,'task_queue',None)
         if queue is not None and queue.connection_context.get() is None:
-            with queue.atomic(m,params.get('channel')):
+            with queue.atomic(params.get('channel')):
                 return wrapped(*args,**kwargs)
         token=context.set({"name":fn.__name__,"params":params,"before":None,"uid":None,"practice":[]})
         nt=notices.set([])
@@ -66,7 +66,7 @@ def command(fn):
                         after=snapshot(db,p);before=ctx["before"]
                         if before:
                             for section in ("Needs","Resources","Competency","Settlement"):
-                                changed=[f"{SKILL_LABELS.get(k,k) if section=='Competency' else (task_queue.total_label(m,k) if k.startswith('gear:') else resource_name(k)) if section=='Resources' else k} {v-before[section].get(k,0):+d}" for k in sorted(after[section].keys()|before[section].keys()) for v in [after[section].get(k,0)] if v!=before[section].get(k,0)]
+                                changed=[f"{SKILL_LABELS.get(k,k) if section=='Competency' else (task_queue.total_label(k) if k.startswith('gear:') else resource_name(k)) if section=='Resources' else k} {v-before[section].get(k,0):+d}" for k in sorted(after[section].keys()|before[section].keys()) for v in [after[section].get(k,0)] if v!=before[section].get(k,0)]
                                 if section=="Competency" and ctx["practice"]:
                                     extra.append("Aptitude practice: "+"; ".join(ctx["practice"]))
                                 elif changed:extra.append(("Aptitudes" if section=="Competency" else section)+": "+", ".join(changed))
@@ -82,19 +82,19 @@ def command(fn):
                                     announce(db,p,notice,runtime.now());prefix.append(notice)
                         try:
                             from . import onboarding
-                            step_note=onboarding.after_command(m,db,p,fn.__name__,params,ctx["before"],after)
+                            step_note=onboarding.after_command(db,p,fn.__name__,params,ctx["before"],after)
                             if step_note and params.get("provider")=="discord":extra.append(step_note)
                             elif fn.__name__=="guide":
-                                path=onboarding.status(m,db,p,params.get("provider") or "twitch")
+                                path=onboarding.status(db,p,params.get("provider") or "twitch")
                                 if path:extra.insert(0,path)
                         except Exception:
                             pass    # the first-steps path never gets in the way of a command
                         try:
                             from . import community
-                            cnote,tnote=community.after_command(m,db,p,fn.__name__,params,ctx["before"],after)
+                            cnote,tnote=community.after_command(db,p,fn.__name__,params,ctx["before"],after)
                             if cnote and params.get("provider")=="discord":extra.append(cnote)
                             if tnote and params.get("provider")!="discord":step_note=" | ".join(x for x in (step_note,tnote) if x)
-                            if fn.__name__=="profile":extra.extend(community.profile_lines(m,db,p))
+                            if fn.__name__=="profile":extra.extend(community.profile_lines(db,p))
                         except Exception:
                             pass    # community features never get in the way of a command
                         st=colony_seedling(db,p)
@@ -124,10 +124,10 @@ def command(fn):
             from . import presentation, extras
             from .autonomy import ACTING
             try:
-                if not ACTING.get():extras.remember_twitch(m,fn.__name__,params,ctx.get("uid"))
+                if not ACTING.get():extras.remember_twitch(fn.__name__,params,ctx.get("uid"))
             except Exception:pass
             name=params.get("action") if fn.__name__=="action" else fn.__name__
-            text=presentation.chat(m,"\n".join(prefix+[text]+extra),name)
+            text=presentation.chat("\n".join(prefix+[text]+extra),name)
             if step_note:
                 # The first-steps note survives the one-line chat receipt; the receipt gives way if the line gets too long.
                 while len(step_note.encode())>120:step_note=step_note[:-2].rstrip()+"…"
@@ -164,7 +164,7 @@ def snapshot(db,p):
         ranks["Relationship "+partner]=sum(rel.familiarity>=n for n in (10,35,90,180,300))+1
     from .readable_names import labels
     return {"Ranks":ranks,"Labels":labels(db,p,ranks),"Needs":{k:getattr(life,k) for k in NEEDS} if life else {},
-            "Resources":task_queue.inventory_snapshot(m,db,p)|{k:getattr(p,k) for k in ("sc","contribution")},
+            "Resources":task_queue.inventory_snapshot(db,p)|{k:getattr(p,k) for k in ("sc","contribution")},
             "Competency":{k:getattr(p,v) for k,v in FIELDS.items()},
             "Settlement":{k:getattr(s,k) for k in CORE}|{k:getattr(shared,k) for k in STOCKS}}
 

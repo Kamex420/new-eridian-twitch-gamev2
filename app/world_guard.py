@@ -18,21 +18,21 @@ NOT_STARTED = '🌱 New Eridian has not started in this channel yet. Type !start
 _known = set()
 
 
-def listed(m):
+def listed():
     extra = {c.strip() for c in os.getenv('GAME_CHANNELS', '').split(',') if c.strip()}
     return {runtime.DISCORD_WORLD_ID} | extra
 
 
-def cached(m, channel):
-    return channel in _known or channel in listed(m)
+def cached(channel):
+    return channel in _known or channel in listed()
 
 
-def known(m, channel):
+def known(channel):
     """True when the world exists already (looked up once, then remembered)."""
     channel = str(channel or '')
     if not channel or len(channel) > MAX_CHANNEL:
         return False
-    if cached(m, channel):
+    if cached(channel):
         return True
     with SessionLocal() as db:
         found = db.execute(select(Society.id).where(Society.channel_id == channel)).first() is not None
@@ -53,10 +53,10 @@ def checked(path):
     return path.startswith('/api/v1/') and not path.startswith(('/api/v1/admin/', '/api/v1/overlay'))
 
 
-def note_split_world(m, channel, params):
+def note_split_world(channel, params):
     """StreamElements commands name the Twitch channel's ID. When that is not DISCORD_WORLD_ID, Twitch and Discord
     are two separate games and !link codes can never be claimed, so /health says how to fix it."""
-    if channel in listed(m) or str(params.get('provider') or 'twitch').lower() == 'discord':
+    if channel in listed() or str(params.get('provider') or 'twitch').lower() == 'discord':
         return
     key = os.getenv('TWITCH_API_KEY', '').strip()
     if key and params.get('uid') and secrets.compare_digest(str(params.get('k') or '').encode(), key.encode()):
@@ -66,19 +66,19 @@ def note_split_world(m, channel, params):
                                '&key=<ADMIN_KEY> to preview, then add &confirm=1.')
 
 
-def quick_problem(m, path, params):
+def quick_problem(path, params):
     """(problem, needs_lookup): a problem found without the database, or whether the channel must be looked up."""
     channel = params.get('channel')
     if channel is None or not checked(path):
         return None, False
     if len(runtime.RUNTIME_WARNINGS) < 20:
-        note_split_world(m, channel, params)
+        note_split_world(channel, params)
     if len(channel) > MAX_CHANNEL:
         return 'That channel name is too long. Nothing changed.', False
-    if trusted(params) or cached(m, channel):
+    if trusted(params) or cached(channel):
         return None, False
     return None, True
 
 
-def lookup_problem(m, params):
-    return None if known(m, params.get('channel')) else NOT_STARTED
+def lookup_problem(params):
+    return None if known(params.get('channel')) else NOT_STARTED

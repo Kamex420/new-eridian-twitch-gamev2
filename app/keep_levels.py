@@ -68,22 +68,22 @@ def merge(db, channel, source, target):
 
 # ---------------------------------------------------------------- the rule every bulk sale follows
 
-def keep_for(m, db, p, key, default=0):
+def keep_for(db, p, key, default=0):
     """How many of `key` bulk and automatic selling leaves: the citizen's keep level, else `default`."""
     from . import item_identity
     row = db.get(KeepLevel, (p.channel_id, p.twitch_uid, item_identity.canonical(key)))
     return row.amount if row is not None else default
 
 
-def sellable(m, db, p, key, default=0):
+def sellable(db, p, key, default=0):
     """How many of `key` Sell all, auto-sell and plan sell steps may sell: everything owned beyond what is kept."""
     from .game.cooldowns_materials import material_amount
-    return max(0, material_amount(db, p, key) - keep_for(m, db, p, key, default))
+    return max(0, material_amount(db, p, key) - keep_for(db, p, key, default))
 
 
 # ---------------------------------------------------------------- setting levels
 
-def _not_catalog(m, key):
+def _not_catalog(key):
     """Why `key` (canonical) cannot have a keep level, or ''."""
     from .game.players import resource_name
     if not key:
@@ -93,14 +93,14 @@ def _not_catalog(m, key):
     return ''
 
 
-def set_level(m, db, p, key, amount):
+def set_level(db, p, key, amount):
     """Set (1–9999), change or clear (0) one keep level. Returns the message; a refusal changes nothing."""
     from . import item_identity
     from .game.cooldowns_materials import material_amount
     from .game.players import resource_name
     key = item_identity.canonical(str(key or '').strip())
     name = resource_name(key)
-    problem = _not_catalog(m, key)
+    problem = _not_catalog(key)
     if problem:
         return problem
     try:
@@ -132,7 +132,7 @@ def set_level(m, db, p, key, amount):
 
 # ---------------------------------------------------------------- restock
 
-def shortfalls(m, db, p, provider='discord'):
+def shortfalls(db, p, provider='discord'):
     """Every item below its keep level with its best route back up (qol.fetch_routes), in name order.
 
     Each row also says whether restocking can start now, using the game's own gates: r['blocked'] is ''
@@ -142,14 +142,14 @@ def shortfalls(m, db, p, provider='discord'):
     want = levels(db, p.channel_id, p.twitch_uid)
     if not want:
         return []
-    ctx = wb.Context(m, db, p, provider)
+    ctx = wb.Context(db, p, provider)
     rows = qol.fetch_routes(ctx, SimpleNamespace(inputs=want), 1)
     for r in rows:
         r.update(have=ctx.have(r['key']), keep=want[r['key']], blocked='', fix='', view=None, more='', count=r.get('attempts', 0))
         if r['kind'] == 'queue' and r['key'] in cp.RARE and not ctx.rare_ok:
             r['blocked'] = f'🔒 rare ores need {cp.RARE_NEED} in your bag'
         elif r['kind'] == 'recipe':
-            e = wb.entry(m, r['recipe'])
+            e = wb.entry(r['recipe'])
             status = ctx.status(e)
             r['count'] = min(10, r['batches'])
             if status.code == 'missing':
@@ -159,7 +159,7 @@ def shortfalls(m, db, p, provider='discord'):
                          view=('wr', e.id, e.category, 1, ''), detail=status.detail)
             else:
                 # Only the batches today's ingredients cover (needs recover while the queue waits).
-                allowed, short_of = extras.max_attempts(m, db, p, 'make:' + e.id, with_needs=False)
+                allowed, short_of = extras.max_attempts(db, p, 'make:' + e.id, with_needs=False)
                 if allowed <= 0:
                     r.update(blocked='🛑 this recipe cannot be queued', fix='recipe', view=('wr', e.id, e.category, 1, ''))
                 elif allowed < r['count']:
@@ -170,7 +170,7 @@ def shortfalls(m, db, p, provider='discord'):
 FIXES = {'fetch': 'fetch the ingredients first', 'unlock': 'open the recipe to unlock', 'recipe': 'open the recipe'}
 
 
-def route_text(m, r, provider='discord'):
+def route_text(r, provider='discord'):
     """What restocking one short item does, and what blocks it."""
     from .game.cooldowns_materials import material_source
     if r['kind'] == 'queue':
@@ -201,7 +201,7 @@ def _pick(rows, key=''):
     return next((r for r in rows if r['kind'] != 'none' and not r['blocked']), rows[0] if rows else None)
 
 
-def _not_short(m, db, p, key):
+def _not_short(db, p, key):
     """Why `key` (or nothing) needs no restock."""
     from .game.cooldowns_materials import material_amount
     from .game.players import resource_name
@@ -210,20 +210,20 @@ def _not_short(m, db, p, key):
             return '🛡️ You have no keep levels yet, so there is nothing to restock.'
         return '✅ Everything is at or above its keep level. Nothing to restock.'
     name = resource_name(key)
-    keep = keep_for(m, db, p, key)
+    keep = keep_for(db, p, key)
     if not keep:
         return f'🛡️ {name} has no keep level. Set one first. Nothing changed.'
     return f'✅ You have {material_amount(db, p, key)} {name}, at or above your keep level of {keep}. Nothing to restock.'
 
 
-def _blocked_reply(m, db, p, r, provider):
+def _blocked_reply(db, p, r, provider):
     """A restock that cannot start now: what blocks it and how to fix it. Nothing is started."""
     from . import presentation, qol
-    head = f"🛡️ Restock {r['name']} is blocked: {route_text(m, r, provider)}."
+    head = f"🛡️ Restock {r['name']} is blocked: {route_text(r, provider)}."
     tail = ' Nothing changed.'
     if r['fix'] == 'fetch':
         # The fetch-ingredients flow's own plan (and its !fetchgo hint on Twitch).
-        plan, _ = qol.fetch_plan(wb.Context(m, db, p, provider), wb.entry(m, r['recipe']), r['count'])
+        plan, _ = qol.fetch_plan(wb.Context(db, p, provider), wb.entry(r['recipe']), r['count'])
         if provider == 'discord':
             return f'{head}\n\n{plan}\n\nNothing changed.'
         room = presentation.CHAT_LIMIT - len((head + ' ' + tail).encode())
@@ -236,15 +236,15 @@ def _blocked_reply(m, db, p, r, provider):
     return head + tail
 
 
-def restock_plan(m, db, p, provider='discord', key=''):
+def restock_plan(db, p, provider='discord', key=''):
     """One line: what restocking the chosen (or first) short item would do."""
     from . import item_identity
     key = item_identity.canonical(key) if key else ''
-    rows = shortfalls(m, db, p, provider)
+    rows = shortfalls(db, p, provider)
     r = _pick(rows, key)
     if r is None:
-        return _not_short(m, db, p, key)
-    text = f"🛡️ Restock {r['name']}: have {r['have']} / keep {r['keep']}, short {r['short']} → {route_text(m, r, provider)}."
+        return _not_short(db, p, key)
+    text = f"🛡️ Restock {r['name']}: have {r['have']} / keep {r['keep']}, short {r['short']} → {route_text(r, provider)}."
     if r['kind'] == 'buy' and p.sc < r['price'] * r['short']:
         text += f" You have {p.sc} SC."
     elif r['kind'] != 'none' and not r['blocked']:
@@ -254,7 +254,7 @@ def restock_plan(m, db, p, provider='discord', key=''):
     return text
 
 
-def restock(m, channel, uid, name, provider='discord', key=''):
+def restock(channel, uid, name, provider='discord', key=''):
     """Start getting one item (the first short one that can start when none is named) back up to its keep level.
 
     Runs the ordinary queue, craft queue or Seed Industries purchase; never anything special, and nothing
@@ -266,17 +266,17 @@ def restock(m, channel, uid, name, provider='discord', key=''):
     key = item_identity.canonical(key) if key else ''
     with SessionLocal() as db:
         p = player(db, channel, provider, uid, name)[1]
-        r = _pick(shortfalls(m, db, p, provider), key)
+        r = _pick(shortfalls(db, p, provider), key)
         if r is None:
-            text = _not_short(m, db, p, key)
+            text = _not_short(db, p, key)
             db.commit()
             return text
         head = f"🛡️ Restocking {r['name']} (have {r['have']} / keep {r['keep']}): "
         if r['kind'] == 'none':
             db.commit()
-            return f"🛡️ {r['name']} {route_text(m, r, provider)}. Nothing changed."
+            return f"🛡️ {r['name']} {route_text(r, provider)}. Nothing changed."
         if r['blocked']:
-            text = _blocked_reply(m, db, p, r, provider)
+            text = _blocked_reply(db, p, r, provider)
             db.commit()
             return text
         if r['kind'] == 'buy':
@@ -284,12 +284,12 @@ def restock(m, channel, uid, name, provider='discord', key=''):
             if p.sc < cost:
                 db.commit()
                 return f"🪙 Restocking {r['short']} {r['name']} costs {cost} SC and you have {p.sc} SC: earn {cost - p.sc} more SC first. Nothing spent."
-            text = qol.buy_missing(m, db, p, SimpleNamespace(inputs={r['key']: r['keep']}), 1, provider)
+            text = qol.buy_missing(db, p, SimpleNamespace(inputs={r['key']: r['keep']}), 1, provider)
             db.commit()
             return head + text
         queue = db.get(tq.TaskQueue, (p.channel_id, p.twitch_uid))
         if queue is not None and queue.state in tq.ACTIVE:
-            label = tq.choices(m).get(queue.task, queue.task)
+            label = tq.choices().get(queue.task, queue.task)
             db.commit()
             return f"⏱️ Your queue is still running ({label}), so no restock was started. Restock {r['name']} when it finishes. Nothing changed."
         task = r['task'] if r['kind'] == 'queue' else 'make:' + r['recipe']
@@ -307,7 +307,7 @@ def mark(have, keep):
     return '✅' if have >= keep else '⚠️'
 
 
-def screen_text(m, db, p, note=''):
+def screen_text(db, p, note=''):
     """The Discord keep-levels screen: every level with what you have, then what is short and how it comes back."""
     from .game.cooldowns_materials import material_amount
     from .game.players import resource_name
@@ -319,32 +319,32 @@ def screen_text(m, db, p, note=''):
     for key in sorted(kept, key=lambda k: resource_name(k).casefold()):
         have = material_amount(db, p, key)
         lines.append(f'{mark(have, kept[key])} {resource_name(key)} — have {have} / keep {kept[key]}')
-    rows = shortfalls(m, db, p)
+    rows = shortfalls(db, p)
     if rows:
-        lines += ['', 'RESTOCK'] + [f"• {r['name']}: short {r['short']} → {route_text(m, r)}" for r in rows]
+        lines += ['', 'RESTOCK'] + [f"• {r['name']}: short {r['short']} → {route_text(r)}" for r in rows]
     lines += ['', 'Choose an item below to add or change its keep level. Restock starts the work to get back up: '
                   'an ordinary queue, a craft queue or a Seed Industries purchase.']
     return '\n'.join(lines)
 
 
-def item_text(m, db, p, key, note=''):
+def item_text(db, p, key, note=''):
     """One item's keep level and how to change it."""
     from .game.cooldowns_materials import material_amount
     from .game.players import resource_name
     name = resource_name(key)
     have = material_amount(db, p, key)
-    keep = keep_for(m, db, p, key)
+    keep = keep_for(db, p, key)
     lines = [f'🛡️ KEEP LEVEL · {name.upper()}'] + ([note.strip()] if note else [])
     lines.append(f'You have {have}. ' + (f'Keep level: {keep} {mark(have, keep)}' + (f' ({keep - have} short)' if have < keep else '')
                                          if keep else 'No keep level yet.'))
     lines += ['Sell all, clear-out, auto-sell and "sell all" plan steps leave at least this many. Choose an amount; Remove clears it.']
-    r = next((r for r in shortfalls(m, db, p) if r['key'] == key), None)
+    r = next((r for r in shortfalls(db, p) if r['key'] == key), None)
     if r is not None:
-        lines += ['', f"Restock: {route_text(m, r)}"]
+        lines += ['', f"Restock: {route_text(r)}"]
     return '\n'.join(lines)
 
 
-def list_text(m, db, p):
+def list_text(db, p):
     """Twitch: every keep level and what is short, on one line."""
     from .game.cooldowns_materials import material_amount
     from .game.players import resource_name
@@ -355,13 +355,13 @@ def list_text(m, db, p):
     for key in sorted(kept, key=lambda k: resource_name(k).casefold()):
         have = material_amount(db, p, key)
         parts.append(f'{resource_name(key)} {have}/{kept[key]}{mark(have, kept[key])}')
-    short = [r['name'] for r in shortfalls(m, db, p, 'twitch')]
+    short = [r['name'] for r in shortfalls(db, p, 'twitch')]
     text = f'🛡️ Keep {len(kept)}/{MAX_LEVELS}: ' + ' · '.join(parts)
     text += f" | Short: {', '.join(short)} → !keep restock" if short else ' | Nothing is short.'
     return text + ' | !keep <item> <amount> · !keep <item> 0 clears'
 
 
-def find_item(m, text):
+def find_item(text):
     """(key, message) for a typed item name: aliases and exact names first, then close spellings."""
     from . import item_identity, qol
     from .game.rules import QUALITY_RECIPES
@@ -377,7 +377,7 @@ def find_item(m, text):
     return None, f'🛡️ No item called "{text[:40]}".' + qol.did_you_mean(suggestions) + ' Nothing changed.'
 
 
-def command(m, channel, uid, name, provider, text=''):
+def command(channel, uid, name, provider, text=''):
     """!keep: blank lists; '<item> <amount>' sets (0 clears); 'restock [item]' plans; 'restock go [item]' starts it."""
     from .game.cooldowns_materials import material_amount
     from .game.players import player, resource_name
@@ -388,14 +388,14 @@ def command(m, channel, uid, name, provider, text=''):
         wanted = ' '.join(rest[1:] if go else rest)
         key = ''
         if wanted:
-            key, problem = find_item(m, wanted)
+            key, problem = find_item(wanted)
             if key is None:
                 return problem
         if go:
-            return restock(m, channel, uid, name, provider, key)
+            return restock(channel, uid, name, provider, key)
         with SessionLocal() as db:
             p = player(db, channel, provider, uid, name)[1]
-            reply = restock_plan(m, db, p, provider, key)
+            reply = restock_plan(db, p, provider, key)
             db.commit()
             return reply
     amount = None
@@ -412,20 +412,20 @@ def command(m, channel, uid, name, provider, text=''):
             if amount is not None:
                 reply = '🛡️ Which item? !keep <item> <amount>, e.g. !keep iron plate 30. Nothing changed.'
             else:
-                reply = list_text(m, db, p) if provider != 'discord' else screen_text(m, db, p)
+                reply = list_text(db, p) if provider != 'discord' else screen_text(db, p)
             db.commit()
             return reply
-        key, problem = find_item(m, wanted)
+        key, problem = find_item(wanted)
         if key is None:
             return problem
-        if amount is None and _not_catalog(m, key):
-            reply = _not_catalog(m, key)
+        if amount is None and _not_catalog(key):
+            reply = _not_catalog(key)
         elif amount is None:
-            keep, have = keep_for(m, db, p, key), material_amount(db, p, key)
+            keep, have = keep_for(db, p, key), material_amount(db, p, key)
             item = resource_name(key)
             reply = (f'🛡️ {item}: have {have} / keep {keep} {mark(have, keep)} | !keep {item} 0 removes it.' if keep else
                      f'🛡️ {item}: you have {have}, no keep level. !keep {item} <amount> sets one.')
         else:
-            reply = set_level(m, db, p, key, amount)
+            reply = set_level(db, p, key, amount)
         db.commit()
         return reply

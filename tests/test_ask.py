@@ -24,8 +24,8 @@ def text_of(data):
 
 def answer(query, uid='111', provider='discord'):
     with m.SessionLocal() as db:
-        p = ask.existing_player(m, db, W, 'discord', uid) if uid else None
-        result = ask.answer(m, db, p, query, provider)
+        p = ask.existing_player(db, W, 'discord', uid) if uid else None
+        result = ask.answer(db, p, query, provider)
         db.commit()
         return result
 
@@ -66,10 +66,10 @@ def test_subjects_survive_typos_plurals_and_old_names():
     nails = s.key('Iron Nails')
     assert ask.find_item('nail')[0] == nails
     assert ask.find_item('components')[0] == nails              # an old New Eridian name
-    assert ask.find_recipe(m, 'campfir')[0].name == 'Campfire'
-    assert ask.find_skill(m, 'chemestry')[0][2] == 'Chemistry'
-    assert ask.find_skill(m, 'processing')[0][1] is None         # a main skill, not a specialty
-    assert 'Seed Coin' in ask.find_term(m, 'sc')[0][0]
+    assert ask.find_recipe('campfir')[0].name == 'Campfire'
+    assert ask.find_skill('chemestry')[0][2] == 'Chemistry'
+    assert ask.find_skill('processing')[0][1] is None         # a main skill, not a specialty
+    assert 'Seed Coin' in ask.find_term('sc')[0][0]
 
 
 # ---------------------------------------------------------------- answers, with the player's own bag and levels
@@ -84,7 +84,7 @@ def test_how_do_i_make_shows_the_recipe_what_is_missing_and_a_goal_button():
     assert 'campfire' in text_of(goal)
     with m.SessionLocal() as db:
         p = m.player(db, W, 'discord', '111', 'Kam')[1]
-        assert extras.goal_entry(m, db, p).name == 'Campfire'
+        assert extras.goal_entry(db, p).name == 'Campfire'
     assert 'Set as goal' not in labels(asked('how do I make a campfire'))    # already the goal
 
 
@@ -181,7 +181,7 @@ def test_what_should_i_do_next_follows_the_goal_first():
     assert 'Right now' in answer('what should I do next').text
     with m.SessionLocal() as db:
         p = m.player(db, W, 'discord', '111', 'Kam')[1]
-        extras.start_goal(m, db, p, CAMPFIRE.id)
+        extras.start_goal(db, p, CAMPFIRE.id)
         db.commit()
     result = answer('what now')
     assert 'Your goal, Campfire' in result.text and any(a['kind'] == 'goalview' for a in result.actions)
@@ -224,7 +224,7 @@ def test_the_log_keeps_the_newest_questions_only(monkeypatch):
     monkeypatch.setattr(ask, 'LOG_KEEP', 3)
     with m.SessionLocal() as db:
         for i in range(5):
-            ask.log(m, db, W, f'mystery question {i}')
+            ask.log(db, W, f'mystery question {i}')
             db.commit()
         assert sorted(r.question for r in db.query(ask.FindQuestion).all()) == ['mystery question 2', 'mystery question 3',
                                                                                  'mystery question 4']
@@ -243,10 +243,10 @@ def test_discord_slash_command_and_twitch_chat_answer_questions():
     assert '!find' in m.find_anything('', 'twitch').body.decode()
     assert 'Morale' in m.find_anything('what does morale mean', 'twitch').body.decode()
     with m.SessionLocal() as db:                                                          # asking never creates a citizen
-        assert ask.existing_player(m, db, 'test', 'twitch', 'nobody') is None
+        assert ask.existing_player(db, 'test', 'twitch', 'nobody') is None
     m.find_anything('where do i get coal', 'twitch', 'test', 'nobody', 'Nobody')
     with m.SessionLocal() as db:
-        assert ask.existing_player(m, db, 'test', 'twitch', 'nobody') is None
+        assert ask.existing_player(db, 'test', 'twitch', 'nobody') is None
 
 
 def test_every_answer_fits_discord_buttons_and_chat():

@@ -70,11 +70,11 @@ def test_mood_changes_success_chance():
     seed()
     with m.SessionLocal() as db:
         p = db.query(m.Player).one()
-        bonus, notes = a.mood_modifier(m, db, p)
+        bonus, notes = a.mood_modifier(db, p)
         assert bonus == .03 and 'Inspired' in notes[0]
         m.life_state(db, p).energy = 5
         db.commit()
-        assert a.mood_modifier(m, db, p)[0] == -.04
+        assert a.mood_modifier(db, p)[0] == -.04
         s = m.society(db, p.channel_id)
         *_, parts = m.world_rule_bundle(db, p, s, 'farm', 'cultivation')
         assert any('Miserable mood' in x for x in parts)
@@ -84,7 +84,7 @@ def test_mood_changes_success_chance():
 
 def test_seedling_steps_aside_while_the_player_is_active():
     seed()
-    assert a.live_one(m, 'test', UID) == ''
+    assert a.live_one('test', UID) == ''
     assert diary() == []
 
 
@@ -94,14 +94,14 @@ def test_seedling_works_its_job_when_away_and_keeps_last_seen():
     away()
     with m.SessionLocal() as db:
         before = db.query(m.Player).one().last_seen
-    text = a.live_one(m, 'test', UID)
+    text = a.live_one('test', UID)
     assert text and 'Kamex' in text
     found = life_row()
     assert found.place == 'agricultural_district' and found.activity.startswith(('Gathering', 'Working'))
     with m.SessionLocal() as db:
         p = db.query(m.Player).one()
         assert m.as_utc(p.last_seen) == m.as_utc(before)     # autonomy is not the player being active
-        assert sum(m.task_queue.inventory_snapshot(m, db, p).values()) > 0 or p.crops > 0   # real materials were gathered
+        assert sum(m.task_queue.inventory_snapshot(db, p).values()) > 0 or p.crops > 0   # real materials were gathered
     assert len(diary()) == 1 and ('brings in' in text or 'gathered' in text or 'tended' in text)
 
 
@@ -109,11 +109,11 @@ def test_needs_come_first():
     seed()
     away()
     set_life(nutrition=20)
-    a.live_one(m, 'test', UID)
+    a.live_one('test', UID)
     assert life_row().activity == 'Eating'
     away()
     set_life(nutrition=90, energy=10)
-    a.live_one(m, 'test', UID)
+    a.live_one('test', UID)
     assert life_row().activity == 'Sleeping'
 
 
@@ -126,19 +126,19 @@ def test_free_time_social_and_sleep_blocks(monkeypatch):
         clock = {'phase': 'Evening', 'condition_key': ''}
         life = m.life_state(db, p)
         found.schedule = json.dumps({'Morning': 'sleep', 'Day': 'free', 'Evening': 'social', 'Night': 'sleep'})
-        assert a.plan(m, db, p, found, life, clock)['kind'] in {'hi', 'hangout'}
+        assert a.plan(db, p, found, life, clock)['kind'] in {'hi', 'hangout'}
         clock['phase'] = 'Day'
         monkeypatch.setattr(a.random, 'random', lambda: .1)
-        assert a.plan(m, db, p, found, life, clock)['kind'] == 'hobby'
+        assert a.plan(db, p, found, life, clock)['kind'] == 'hobby'
         clock['phase'] = 'Night'
         life.energy = life.comfort = 100
-        assert a.plan(m, db, p, found, life, clock)['kind'] == 'rest'
+        assert a.plan(db, p, found, life, clock)['kind'] == 'rest'
 
 
 def test_a_running_queue_is_the_seedlings_work():
     enqueue(count=3)                            # a Discord citizen: discord:u
     away('discord:u')
-    assert a.live_one(m, 'test', 'discord:u') == ''
+    assert a.live_one('test', 'discord:u') == ''
     found = life_row('discord:u')
     assert found.activity.startswith('Queue:') and found.emoji == '⏱️'
     assert any('queue' in t for t in diary('discord:u'))
@@ -147,18 +147,18 @@ def test_a_running_queue_is_the_seedlings_work():
 def test_autonomy_off_and_the_worker_pass():
     seed()
     away()
-    a.tick(m)                                  # first pass creates the row with a staggered start
+    a.tick()                                  # first pass creates the row with a staggered start
     found = life_row()
     assert found is not None and found.enabled
     with m.SessionLocal() as db:
         a.set_enabled(db, db.query(m.Player).one(), False)
         db.commit()
-    assert a.live_one(m, 'test', UID) == ''
+    assert a.live_one('test', UID) == ''
     with m.SessionLocal() as db:
         a.set_enabled(db, db.query(m.Player).one(), True)
         db.get(a.SeedlingLife, ('test', UID)).next_at = m.now() - timedelta(minutes=1)
         db.commit()
-    a.tick(m)
+    a.tick()
     assert len(diary()) == 1
 
 
@@ -166,7 +166,7 @@ def test_autonomous_actions_are_not_the_players_again_action():
     seed()
     client.get('/api/v1/relax', params={'channel': 'test', 'uid': UID, 'name': 'Kamex'})
     away()
-    a.live_one(m, 'test', UID)
+    a.live_one('test', UID)
     from app import extras
     with m.SessionLocal() as db:
         assert [r.command for r in extras.recent(db, 'test', UID, 'twitch')] == ['relax']
@@ -178,10 +178,10 @@ def test_diary_is_capped_and_welcome_back_uses_it():
     with m.SessionLocal() as db:
         p = db.query(m.Player).one()
         for i in range(a.DIARY_KEEP + 5):
-            a.diary(m, db, p, 'commons', '🎲', f'entry {i}')
+            a.diary(db, p, 'commons', '🎲', f'entry {i}')
         db.commit()
         assert db.query(a.SeedlingDiary).count() == a.DIARY_KEEP
-        lines = a.away_lines(m, db, p, since)
+        lines = a.away_lines(db, p, since)
     assert lines[0].startswith('📓') and 'more in your diary' in lines[-1]
 
 
@@ -223,7 +223,7 @@ def test_discord_seedling_screens():
 def test_overlay_map_and_narrator():
     seed()
     away()
-    a.live_one(m, 'test', UID)
+    a.live_one('test', UID)
     data = client.get('/api/v1/overlay', params={'channel': 'test'}).json()
     me = next(s for s in data['seedlings'] if s['name'] == 'Kamex')
     assert me['place'] in a.PLACES and me['mood'] and me['activity']
@@ -262,7 +262,7 @@ def test_merge_moves_the_seedling_and_diary():
     with m.SessionLocal() as db:
         p = db.query(m.Player).one()
         a.row(db, 'test', UID, create=True).schedule = 'workaholic'
-        a.diary(m, db, p, 'commons', '🎲', 'hello')
+        a.diary(db, p, 'commons', '🎲', 'hello')
         a.merge(db, 'test', UID, 'w')
         db.commit()
         assert db.get(a.SeedlingLife, ('test', 'w')).schedule == 'workaholic'
@@ -275,7 +275,7 @@ def test_work_gathers_real_materials_and_reports_them_as_news():
     seed()
     client.get('/api/v1/job', params={'channel': 'test', 'uid': UID, 'name': 'Kamex', 'job': 'miner'})
     away()
-    story = a.live_one(m, 'test', UID)
+    story = a.live_one('test', UID)
     assert story.startswith('FRONTIER EDGE, Day ') and 'Kamex' in story
     with m.SessionLocal() as db:
         entry = db.query(a.SeedlingDiary).one()
@@ -286,12 +286,12 @@ def test_work_gathers_real_materials_and_reports_them_as_news():
 def test_goal_materials_come_first():
     seed()
     from app import workbench as wb, extras
-    campfire = next(e for e in wb.index(m) if e.name == 'Campfire')
+    campfire = next(e for e in wb.index() if e.name == 'Campfire')
     with m.SessionLocal() as db:
         p = db.query(m.Player).one()
-        extras.set_goal(m, db, p, campfire.id)
+        extras.set_goal(db, p, campfire.id)
         db.commit()
-        step = a.work_plan(m, db, p, a.row(db, 'test', UID, create=True))
+        step = a.work_plan(db, p, a.row(db, 'test', UID, create=True))
         assert step['kind'] == 'gather' and step.get('goal') and m.resource_name(step['item']) == 'Lumber'
 
 
@@ -301,13 +301,13 @@ def test_needs_are_tended_before_they_stop_work():
         p = db.query(m.Player).one()
         life = m.life_state(db, p)
         life.energy = 30                     # above the work limit of 20, but low
-        assert a.needs_plan(m, db, p, life, 'work')['kind'] in {'sleep', 'relax'}
+        assert a.needs_plan(db, p, life, 'work')['kind'] in {'sleep', 'relax'}
         life.energy, life.nutrition = 90, 40
-        assert a.needs_plan(m, db, p, life, 'work')['kind'] == 'eat'
+        assert a.needs_plan(db, p, life, 'work')['kind'] == 'eat'
         life.nutrition, life.social = 90, 20
-        assert a.needs_plan(m, db, p, life, 'work')['kind'] in {'games', 'hi', 'hangout'}
+        assert a.needs_plan(db, p, life, 'work')['kind'] in {'games', 'hi', 'hangout'}
         life.social = 90
-        assert a.needs_plan(m, db, p, life, 'work') is None
+        assert a.needs_plan(db, p, life, 'work') is None
 
 
 def test_a_paused_queue_gets_its_needs_recovered():
@@ -318,7 +318,7 @@ def test_a_paused_queue_gets_its_needs_recovered():
         db.commit()
     away('discord:u')
     set_life('discord:u', energy=5)
-    story = a.live_one(m, 'test', 'discord:u')
+    story = a.live_one('test', 'discord:u')
     assert 'paused queue can carry on' in story
 
 
@@ -332,13 +332,13 @@ def test_names_and_reasons_are_cleaned_for_the_news():
 def test_the_map_grows_with_the_society():
     seed()
     with m.SessionLocal() as db:
-        early = a.districts(m, db, ['test', W])
+        early = a.districts(db, ['test', W])
         assert early['tier_index'] == 0 and not early['districts']['spaceport_quarter']['unlocked']
         assert early['districts']['agricultural_district']['unlocked']
         s = m.society(db, W)
         s.food = s.materials = s.development = s.knowledge = s.treasury = s.reputation = 2500
         db.commit()
-        grown = a.districts(m, db, ['test', W])
+        grown = a.districts(db, ['test', W])
     assert grown['tier_index'] == 3 and grown['districts']['spaceport_quarter']['unlocked']
     assert grown['districts']['agricultural_district']['level'] > early['districts']['agricultural_district']['level']
 
@@ -349,19 +349,19 @@ def test_welcome_back_adds_up_exactly_what_the_seedling_collected():
     since = m.now() - timedelta(minutes=1)
     with m.SessionLocal() as db:
         p = db.query(m.Player).one()
-        start = dict(m.seed_content.stock(m, db, p)); start_sc = p.sc
+        start = dict(m.seed_content.stock(db, p)); start_sc = p.sc
     for _ in range(6):
         away()
         with m.SessionLocal() as db:                  # keep needs up so every step is a work step
             p = db.query(m.Player).one(); life = m.life_state(db, p)
             life.energy = life.nutrition = life.comfort = life.social = 95; db.commit()
-        a.live_one(m, 'test', UID, force=True)
+        a.live_one('test', UID, force=True)
     with m.SessionLocal() as db:
         p = db.query(m.Player).one()
-        end = m.seed_content.stock(m, db, p)
+        end = m.seed_content.stock(db, p)
         real = {k: n - start.get(k, 0) for k, n in end.items() if n > start.get(k, 0)}
         gained, used, sc, steps = a.haul_since(db, p, since)
-        lines = a.away_lines(m, db, p, since)
+        lines = a.away_lines(db, p, since)
     assert gained and {k: gained[k] for k in real} == real            # the totals match what landed in the bag
     text = '\n'.join(lines)
     assert f'Collected {sum(gained.values())} items' in text
@@ -384,18 +384,18 @@ def test_a_seedling_takes_turns_collecting_and_training_and_says_why():
     seed()
     client.get('/api/v1/job', params={'channel': 'test', 'uid': UID, 'name': 'Kamex', 'job': 'miner'})
     away()
-    first = a.live_one(m, 'test', UID, force=True)
+    first = a.live_one('test', UID, force=True)
     assert life_row().activity.startswith('Gathering') and '“As a Miner, I bring in' in first      # the material it has least of
     away()
-    second = a.live_one(m, 'test', UID, force=True)
+    second = a.live_one('test', UID, force=True)
     found = life_row()
     assert found.activity.startswith('Training: ') and found.place == 'frontier_edge'               # Harvesting practice
     assert found.plan.startswith('Practising ') and f'“{found.plan}”' in second
     with m.SessionLocal() as db:
         assert db.query(a.SeedlingDiary).order_by(a.SeedlingDiary.id.desc()).first().desk == 'TRAINING'
-        assert '🧠 Thinking: Practising' in a.view_text(m, db, db.query(m.Player).one())
+        assert '🧠 Thinking: Practising' in a.view_text(db, db.query(m.Player).one())
     away()
-    assert life_row().activity.startswith('Training') and a.live_one(m, 'test', UID, force=True)
+    assert life_row().activity.startswith('Training') and a.live_one('test', UID, force=True)
     assert life_row().activity.startswith('Gathering')                                             # and back to collecting
 
 
@@ -406,15 +406,15 @@ def test_practice_uses_plenty_of_its_own_materials_and_never_what_the_goal_is_sa
     with m.SessionLocal() as db:
         p = db.query(m.Player).one()
         found = a.row(db, 'test', UID)
-        step = a.work_plan(m, db, p, found)          # no water: fetch it for Water Treatment
+        step = a.work_plan(db, p, found)          # no water: fetch it for Water Treatment
         assert step['kind'] == 'gather' and step['item'] == water
         assert step['why'].startswith('Water Treatment needs Murky Water (1000ml) and I have 0 of 2.')
         m.material_change(db, p, water, 5)
-        step = a.work_plan(m, db, p, found)
+        step = a.work_plan(db, p, found)
         assert step['task'] == 'train_water_treatment' and step['why'].startswith('Practising Water Treatment')
-        mind = a.Mind(m, db, p)
+        mind = a.Mind(db, p)
         mind.saving = {'Murky Water (1000ml)'}
-        assert a.practice_plan(m, db, p, mind, trade_only=True) is None
+        assert a.practice_plan(db, p, mind, trade_only=True) is None
 
 
 def test_a_missing_material_is_made_with_another_training_task_or_gathered_for_it():
@@ -423,27 +423,27 @@ def test_a_missing_material_is_made_with_another_training_task_or_gathered_for_i
     with m.SessionLocal() as db:
         p = db.query(m.Player).one()
         p.job = 'artisan'
-        mind = a.Mind(m, db, p)
-        step = a.supply_plan(m, db, p, mind)        # Masonry needs Stone Blocks; Stone Processing needs 2 Stone first
+        mind = a.Mind(db, p)
+        step = a.supply_plan(db, p, mind)        # Masonry needs Stone Blocks; Stone Processing needs 2 Stone first
         assert step['kind'] == 'gather' and m.resource_name(step['item']) == 'Stone'
         assert step['why'] == ('Masonry needs Stone Block and I have 0 of 4. Stone Processing makes it, but needs Stone. '
                                'Collecting Stone first.')
         m.material_change(db, p, step['item'], 3)
-        step = a.supply_plan(m, db, p, a.Mind(m, db, p))
+        step = a.supply_plan(db, p, a.Mind(db, p))
         assert step['task'] == 'train_stone_processing' and step['why'].endswith('Making it with Stone Processing first.')
 
 
 def test_with_a_goal_it_collects_and_trains_for_it_in_turn():
     seed()
     from app import workbench as wb, extras
-    nitric = next(e for e in wb.index(m) if e.name == 'Nitric Acid')
+    nitric = next(e for e in wb.index() if e.name == 'Nitric Acid')
     with m.SessionLocal() as db:
         p = db.query(m.Player).one()
-        extras.set_goal(m, db, p, nitric.id)
+        extras.set_goal(db, p, nitric.id)
         db.commit()
         found = a.row(db, 'test', UID, create=True)
-        collect = a.work_plan(m, db, p, found)
+        collect = a.work_plan(db, p, found)
         assert collect['kind'] == 'gather' and collect['goal'] and collect['why'].startswith('My goal is Nitric Acid, and it still needs ')
         found.activity = 'Gathering Lumber'
-        train = a.work_plan(m, db, p, found)                  # a practice turn: the goal's own training
+        train = a.work_plan(db, p, found)                  # a practice turn: the goal's own training
         assert train['kind'] == 'train' and train['goal'] and 'the way there includes' in train['why']

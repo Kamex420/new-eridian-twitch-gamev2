@@ -44,7 +44,7 @@ def player(uid='111'):
 def set_quiet(tz='UTC', start='23:00', end='08:00', uid='111'):
     db, p = player(uid)
     with db:
-        text = qh.set_hours(m, db, p, tz, start, end)
+        text = qh.set_hours(db, p, tz, start, end)
         db.commit()
         return text
 
@@ -59,7 +59,7 @@ def finish_queue(count=1, uid='111'):
     assert 'TASK QUEUE' in m.queued_tasks(W, uid, 'Kam', 'start', GATHER, count, 'discord').body.decode()
     for _ in range(count):
         due()
-        q.tick(m)
+        q.tick()
 
 
 def notices():
@@ -84,7 +84,7 @@ def dm_client(closed=False, fail=None):
 
 
 def deliver(client):
-    asyncio.run(w.deliver(m, client))
+    asyncio.run(w.deliver(client))
 
 
 def held_three(clock, step=1):
@@ -265,7 +265,7 @@ def test_three_held_alerts_arrive_as_one_dm(clock):
 def test_a_long_summary_points_to_notifications():
     batch = [SimpleNamespace(id=f'{i:032d}', recipient='111', content='TASK QUEUE — COMPLETED\nGather Lumber\nAttempts completed: 1/1; remaining: 0.',
                              kind='completed', created_at=at(23)) for i in range(qh.SHOWN + 4)]
-    data, first = qh.summary(m, batch)
+    data, first = qh.summary(batch)
     text = data['embeds'][0]['description']
     assert first.startswith(f'{qh.SHOWN + 4} queue alerts') and text.endswith('…and 4 more in /menu → Notifications.')
     assert len(text) <= 4000 and layout_v2.convert(data) is not None
@@ -338,7 +338,7 @@ def test_two_workers_cannot_both_send_the_summary(clock):
     client = dm_client()
 
     async def both():
-        await asyncio.gather(w.deliver(m, client), w.deliver(m, client))
+        await asyncio.gather(w.deliver(client), w.deliver(client))
     asyncio.run(both())
     assert client.http.request.await_count == 1 and all(x.state == 'sent' for x in notices())
 
@@ -346,9 +346,9 @@ def test_two_workers_cannot_both_send_the_summary(clock):
 def test_a_second_release_claim_gets_nothing(clock):
     ids = held_three(clock)
     clock.go(at(8, day=16))
-    first = qh.claim_release(m, W, '111')
-    assert sorted(x.id for x in first) == ids and qh.claim_release(m, W, '111') == []
-    assert w.claim(m, ids[0]) is None                                # nor can the ordinary claim take one
+    first = qh.claim_release(W, '111')
+    assert sorted(x.id for x in first) == ids and qh.claim_release(W, '111') == []
+    assert w.claim(ids[0]) is None                                # nor can the ordinary claim take one
 
 
 # ---------------------------------------------------------------- changing the setting
@@ -398,7 +398,7 @@ def test_a_superseded_pause_alert_is_not_in_the_summary(clock):
         db.commit()
     m.queued_tasks(W, '111', 'Kam', 'start', GATHER, 1, 'discord')
     due()
-    q.tick(m)
+    q.tick()
     deliver(dm_client())
     pause, = notices()
     assert 'PAUSED' in pause.content and held() == [pause.id]
@@ -406,7 +406,7 @@ def test_a_superseded_pause_alert_is_not_in_the_summary(clock):
         m.life_state(db, m.player(db, W, 'discord', '111', 'Kam')[1]).energy = 100
         db.commit()
     due()
-    q.tick(m)                                                         # resumes and finishes: the pause alert is superseded
+    q.tick()                                                         # resumes and finishes: the pause alert is superseded
     with m.SessionLocal() as db:
         assert db.get(n.Notice, pause.id).state == 'superseded'
     assert held() == []                                               # its held row is gone with it
@@ -423,7 +423,7 @@ def test_a_superseded_pause_alert_is_not_in_the_summary(clock):
 def test_repair_leaves_held_alerts_alone(clock):
     ids = held_three(clock)
     before = [(x.id, x.state, x.attempts, x.next_at) for x in notices()]
-    w.repair_recent(m)
+    w.repair_recent()
     assert [(x.id, x.state, x.attempts, x.next_at) for x in notices()] == before and held() == ids
 
 
@@ -454,11 +454,11 @@ def test_twitch_alerts_are_not_held(clock, monkeypatch):
         db.commit()
     m.queued_tasks(W, 'tw', 'Tw', 'start', GATHER, 1, 'twitch')
     due()
-    q.tick(m)
+    q.tick()
     sent = []
-    monkeypatch.setattr(n, 'send', lambda mod, row: sent.append(row.id))
+    monkeypatch.setattr(n, 'send', lambda row: sent.append(row.id))
     deliver(dm_client())                                              # the Discord worker never touches it
-    n.deliver(m, 'twitch')
+    n.deliver('twitch')
     note, = notices()
     assert note.provider == 'twitch' and sent == [note.id] and note.state == 'sent' and held() == []
 
@@ -480,8 +480,8 @@ def test_account_linking_keeps_the_targets_quiet_hours():
                     qh.QuietHours(channel_id=W, canonical_uid='dst', tz='UTC+2', start_min=3, end_min=4),
                     qh.QuietHours(channel_id=W, canonical_uid='lone', tz='UTC-5', start_min=5, end_min=6)])
         db.commit()
-        q.merge_accounts(m, db, W, 'src', 'dst')
-        q.merge_accounts(m, db, W, 'lone', 'new')
+        q.merge_accounts(db, W, 'src', 'dst')
+        q.merge_accounts(db, W, 'lone', 'new')
         db.commit()
     with m.SessionLocal() as db:
         assert qh.row(db, W, 'src') is None and qh.row(db, W, 'dst').tz == 'UTC+2'
@@ -495,7 +495,7 @@ def form(tz, start, end, uid='111'):
     payload = {'type': 5, 'data': {'custom_id': ui.cid(uid, 'md', 'quiet'), 'components': [
         {'type': 1, 'components': [{'type': 4, 'custom_id': k, 'value': v}]} for k, v in boxes]},
         'member': {'user': {'id': uid, 'username': 'Kam'}}, 'message': {'flags': 64}}
-    return ui.handle_modal(m, payload)
+    return ui.handle_modal(payload)
 
 
 def labels(data):
@@ -554,22 +554,22 @@ def test_settings_status_and_delivery_texts(clock, monkeypatch):
     m.queued_tasks(W, '111', 'Kam', 'start', GATHER, 2, 'discord')
     db, p = player()
     with db:
-        status = q.status(m, db, p, db.get(q.TaskQueue, (W, p.twitch_uid)))
+        status = q.status(db, p, db.get(q.TaskQueue, (W, p.twitch_uid)))
         assert f'🌙 Quiet hours are on now, 23:00–08:00 (UTC): DM alerts wait and arrive as one message at <t:{end}:t>.' in status
     clock.go(at(12, day=16))
     db, p = player()
     with db:
-        line = n.delivery_status(db, db.get(q.TaskQueue, (W, p.twitch_uid)), m)
+        line = n.delivery_status(db, db.get(q.TaskQueue, (W, p.twitch_uid)))
         assert line.endswith(f'🌙 Quiet hours 23:00–08:00 (UTC): DM alerts wait and arrive as one message at <t:{int(at(8, day=17).timestamp())}:t>.')
     clock.go(at(23, 30, day=16))
     for _ in range(2):
         due()
-        q.tick(m)
+        q.tick()
     deliver(dm_client())
     db, p = player()
     with db:
         assert f'🌙 Held for your quiet hours: this alert arrives at <t:{int(at(8, day=17).timestamp())}:t>' in \
-            q.status(m, db, p, db.get(q.TaskQueue, (W, p.twitch_uid)))
+            q.status(db, p, db.get(q.TaskQueue, (W, p.twitch_uid)))
     m.settings(W, '111', 'Kam', provider='discord', alerts='mention')
     assert 'They only affect direct-message alerts' in m.settings(W, '111', 'Kam', provider='discord').body.decode()
 

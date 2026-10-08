@@ -123,18 +123,18 @@ def merge(db, channel, source, target):
 
 # ---------------------------------------------------------------- live countdowns
 
-def stamp(m, seconds, style='R'):
+def stamp(seconds, style='R'):
     """A Discord timestamp that counts down by itself (e.g. 'in 4 minutes')."""
     return f'<t:{int(runtime.now().timestamp() + max(0, seconds))}:{style}>'
 
 
-def when(m, seconds, provider='discord'):
-    return stamp(m, seconds) if provider == 'discord' else 'in ' + needs.duration_text(seconds)
+def when(seconds, provider='discord'):
+    return stamp(seconds) if provider == 'discord' else 'in ' + needs.duration_text(seconds)
 
 
 # ---------------------------------------------------------------- queue max
 
-def max_attempts(m, db, p, task, with_needs=True):
+def max_attempts(db, p, task, with_needs=True):
     """(attempts, what limits it): the most of `task` your items and needs allow, up to 10.
     with_needs=False counts items only (needs recover by themselves while a queue waits)."""
     from . import qol, task_queue
@@ -142,9 +142,9 @@ def max_attempts(m, db, p, task, with_needs=True):
     from .game.life import life_state
     from .game.players import resource_name
     tq = task_queue
-    if task not in tq.choices(m):
+    if task not in tq.choices():
         return 0, 'unknown task'
-    costs, energy, _ = tq.specification(m, task)
+    costs, energy, _ = tq.specification(task)
     limit, reason = 10, 'the 10-attempt maximum'
     for key, n in costs.items():
         enough = material_amount(db, p, key) // max(1, n)
@@ -163,12 +163,12 @@ def max_attempts(m, db, p, task, with_needs=True):
     return max(0, int(limit)), reason
 
 
-def max_for_owner(m, owner, task):
+def max_for_owner(owner, task):
     """Queue max for a Discord user id, opening its own session (for panels)."""
     from .game.players import player
     with SessionLocal() as db:
         p = player(db, runtime.DISCORD_WORLD_ID, 'discord', owner, '')[1]
-        count, _ = max_attempts(m, db, p, task)
+        count, _ = max_attempts(db, p, task)
         db.commit()
         return count
 
@@ -191,7 +191,7 @@ def recordable(command, options):
             or (command == 'business' and options.get('action') in {'work', 'contract'}))
 
 
-def label_for(m, command, options):
+def label_for(command, options):
     from . import menu, task_queue
     from .game.discord_commands import discord_legacy_route
     from .game.players import resource_name
@@ -200,7 +200,7 @@ def label_for(m, command, options):
         if leaf['kind'] in {'do', 'view'} and discord_legacy_route(leaf['cmd'], leaf['opts']) == (command, options):
             return leaf['label']
     if command == 'make':
-        e = wb.resolve(m, None, None, options.get('recipe', ''))
+        e = wb.resolve(None, None, options.get('recipe', ''))
         return 'Craft ' + (e.name if e else options.get('recipe', ''))
     if command == 'gather':
         return 'Gather ' + resource_name(options.get('resource', ''))
@@ -211,13 +211,13 @@ def label_for(m, command, options):
     if command == 'use':
         return 'Use ' + resource_name(options.get('item', ''))
     if command == 'queue':
-        return f"Queue {task_queue.choices(m).get(options.get('task', ''), options.get('task', ''))} ×{options.get('count', 1)}"
+        return f"Queue {task_queue.choices().get(options.get('task', ''), options.get('task', ''))} ×{options.get('count', 1)}"
     if command == 'farm':
         return {'tend': 'Tend fields', 'harvest': 'Harvest', 'irrigate': 'Irrigate', 'hydroponics': 'Hydroponics'}.get(options.get('action'), 'Farming')
     return command.replace('_', ' ').title()
 
 
-def record(m, db, channel, uid, platform, command, options, label):
+def record(db, channel, uid, platform, command, options, label):
     options = {k: v for k, v in (options or {}).items() if v not in (None, '')}
     encoded = json.dumps(options, sort_keys=True)
     latest = db.scalars(select(RecentAction).where(RecentAction.channel_id == channel, RecentAction.canonical_uid == uid,
@@ -234,14 +234,14 @@ def record(m, db, channel, uid, platform, command, options, label):
         db.execute(delete(RecentAction).where(RecentAction.id.in_(old)))
 
 
-def record_discord(m, discord_uid, name, command, options):
+def record_discord(discord_uid, name, command, options):
     """Called after a Discord command or menu action ran."""
     from .game.players import player
     if not recordable(command, options):
         return
     with SessionLocal() as db:
         p = player(db, runtime.DISCORD_WORLD_ID, 'discord', discord_uid, name)[1]
-        record(m, db, p.channel_id, p.twitch_uid, 'discord', command, options, label_for(m, command, options))
+        record(db, p.channel_id, p.twitch_uid, 'discord', command, options, label_for(command, options))
         db.commit()
 
 
@@ -255,7 +255,7 @@ TWITCH_AGAIN = {'action', 'make', 'seed_supplies', 'relax', 'walk', 'games', 'ho
 TWITCH_SKIP = {'channel', 'uid', 'name', 'provider', 'msg'}
 
 
-def remember_twitch(m, fn_name, params, canonical):
+def remember_twitch(fn_name, params, canonical):
     if fn_name not in TWITCH_AGAIN or not canonical:
         return
     if fn_name == 'make' and (not params.get('recipe') or params.get('action', 'craft') != 'craft'):
@@ -269,7 +269,7 @@ def remember_twitch(m, fn_name, params, canonical):
         options['msg'] = params['msg']
     label = options.get('action') or options.get('recipe') or options.get('item') or fn_name
     with SessionLocal() as db:
-        record(m, db, params.get('channel'), canonical, 'twitch', fn_name, options, str(label))
+        record(db, params.get('channel'), canonical, 'twitch', fn_name, options, str(label))
         db.commit()
 
 
@@ -281,7 +281,6 @@ def plan(ctx, e, batches=1):
     Returns (crafts in dependency order as (entry, batches), raw shortfalls {key: qty}).
     Uses the acquisition routes the catalog already ranks, so it cannot loop.
     """
-    m = ctx.m
     avail = {}
     crafts, raw = [], defaultdict(int)
 
@@ -295,7 +294,7 @@ def plan(ctx, e, batches=1):
         if short <= 0:
             return
         route = s.ACQUISITION.get(key)
-        sub = wb.entry(m, route) if route else None
+        sub = wb.entry(route) if route else None
         if sub is not None and sub.inputs and key not in s.GATHER and depth < 8:
             per = max(1, ctx.batch_size(sub))
             count = math.ceil(short / per)
@@ -314,30 +313,30 @@ def plan(ctx, e, batches=1):
     return list(merged.values()), dict(raw)
 
 
-def goal_entry(m, db, p):
+def goal_entry(db, p):
     found = row(db, p.channel_id, p.twitch_uid)
-    return wb.entry(m, found.goal) if found is not None and found.goal else None
+    return wb.entry(found.goal) if found is not None and found.goal else None
 
 
-def set_goal(m, db, p, recipe):
-    return start_goal(m, db, p, recipe)[0]
+def set_goal(db, p, recipe):
+    return start_goal(db, p, recipe)[0]
 
 
-def start_goal(m, db, p, recipe, provider='discord'):
+def start_goal(db, p, recipe, provider='discord'):
     """Pin `recipe` as the goal and count its progress from its walkthrough now. Returns (message, walkthrough's
     (goal, steps)) so the screen that follows needs no second plan; (refusal, None) for an unknown recipe. Setting
     the goal it already is keeps its progress and ready note."""
-    e = wb.entry(m, recipe) if recipe else None
+    e = wb.entry(recipe) if recipe else None
     if e is None:
         return 'That recipe is not available. Nothing changed.', None
     found = row(db, p.channel_id, p.twitch_uid, create=True)
     kept = found.goal == e.id and _progress(db, p, e) is not None
     found.goal = e.id
     db.flush()
-    plan = walkthrough(m, db, p, provider)
+    plan = walkthrough(db, p, provider)
     if not kept:
         # Already craftable when set: the screen says so, so no ready note follows.
-        _new_progress(m, db, p, e, len(plan[1]), wb.Context(m, db, p, provider).status(e).code == 'ready')
+        _new_progress(db, p, e, len(plan[1]), wb.Context(db, p, provider).status(e).code == 'ready')
     return f'🎯 Goal set: **{e.name}**. /status and the Goal view track everything still needed.', plan
 
 
@@ -357,7 +356,7 @@ def _progress(db, p, e):
     return found if found is not None and found.recipe_id == e.id else None
 
 
-def _new_progress(m, db, p, e, start=0, alerted=None):
+def _new_progress(db, p, e, start=0, alerted=None):
     """Start counting `e`'s progress from `start` steps. alerted=None: a goal set before progress was kept, whose ready
     note the old reminder may already have sent."""
     if alerted is None:
@@ -372,10 +371,10 @@ def _new_progress(m, db, p, e, start=0, alerted=None):
     return counted
 
 
-def progress(m, db, p, e, remaining):
+def progress(db, p, e, remaining):
     """(steps done, steps in all) since the goal was set: done = start − remaining. When more steps remain than at the
     start (materials were spent), the start rises to match, so done never goes below 0."""
-    found = _progress(db, p, e) or _new_progress(m, db, p, e)
+    found = _progress(db, p, e) or _new_progress(db, p, e)
     if remaining > found.start_steps:
         found.start_steps = remaining
     return max(0, found.start_steps - remaining), found.start_steps
@@ -406,7 +405,7 @@ def _train(skill_label, level, current, hub):
                  view=('mp', 'trainskill', '=' + hub) if hub else ('mk', 'trainskill'), label='Train')
 
 
-def _machine(m, ctx, e):
+def _machine(ctx, e):
     """(machine item, its recipe) to craft so `e` can be made: owning the machine opens its workstation.
 
     Among the machines for the stations `e` can use, prefer one you can craft now, then the lowest
@@ -419,7 +418,7 @@ def _machine(m, ctx, e):
             if tag not in s.machine_tags(key):
                 continue
             route = s.ACQUISITION.get(key)
-            recipe = wb.entry(m, route) if route else None
+            recipe = wb.entry(route) if route else None
             if recipe is None or recipe.id == e.id:
                 continue
             score = (ctx.status(recipe).code == 'locked', cp.STATIONS[tag]['tier'], sum(recipe.inputs.values()), recipe.name)
@@ -433,7 +432,7 @@ class _Planner:
     plan has used, plus what its crafts leave over), the crafts in dependency order and the raw shortfalls."""
 
     def __init__(self, ctx):
-        self.ctx, self.m = ctx, ctx.m
+        self.ctx = ctx
         self.avail, self.raw, self.crafts = {}, defaultdict(int), []
         self.opened = set(ctx.access)
         self.used = defaultdict(int)          # raw materials the plan takes from what you own
@@ -450,13 +449,13 @@ class _Planner:
     def source(self, key, depth):
         """The recipe that makes `key` here (the catalog's ranked route), or None when it is collected."""
         route = s.ACQUISITION.get(key)
-        sub = wb.entry(self.m, route) if route else None
+        sub = wb.entry(route) if route else None
         return sub if sub is not None and sub.inputs and key not in s.GATHER and depth < DEPTH else None
 
     def make(self, entry, batches, depth, purpose=None):
         """`batches` of `entry` after its ingredients, and first the machine its workstation needs."""
         if depth < DEPTH and not any(t in self.opened for t in entry.tags):
-            key, machine = _machine(self.m, self.ctx, entry)
+            key, machine = _machine(self.ctx, entry)
             if machine is not None:
                 self.opened.update(s.machine_tags(key))
                 self.make(machine, 1, depth + 1, entry)
@@ -527,7 +526,7 @@ def list_plan(ctx, wanted):
     return crafts, raw, opened, rows, {k: n for k, n in planner.used.items() if n or k in raw}
 
 
-def _locks(m, ctx, e, opened=None, ores=(), depth=0):
+def _locks(ctx, e, opened=None, ores=(), depth=0):
     """Steps that open a locked recipe: a festival, a personal tier, a skill level or the colony's tier.
     A skill level is reached with the training task that practises it (_practice). A workstation is
     opened by crafting its machine (full_plan); only when no machine can be crafted does this offer to
@@ -548,9 +547,9 @@ def _locks(m, ctx, e, opened=None, ores=(), depth=0):
                            f'{ctx.batches}/{need}', view=('wc', 'ready', 1, ''), label='Craft'))
     if e.kind == 'seed' and ctx.level(e.skill_key) < e.level:
         main, branch = s.SKILLS.get(e.skill_key, ('fabrication', None))
-        steps += _practice(m, ctx, main, branch, e.level, e.skill, opened, ores, depth)
+        steps += _practice(ctx, main, branch, e.level, e.skill, opened, ores, depth)
     if e.kind == 'seed' and any(k in cp.RARE for k in s.RECIPES[e.id]['outputs']) and not ctx.rare_ok:
-        steps.append(_extractor_step(m))
+        steps.append(_extractor_step())
     if e.kind == 'legacy':
         need = RECIPE_TIERS.get(e.id)
         if need and ctx.society_tier < need:
@@ -566,7 +565,7 @@ def _locks(m, ctx, e, opened=None, ores=(), depth=0):
     return steps
 
 
-def _xp_for(m, level):
+def _xp_for(level):
     """The practice a level needs (skill levels share one curve)."""
     from .game.players import lvl
     xp = 0
@@ -575,7 +574,7 @@ def _xp_for(m, level):
     return xp
 
 
-def _xp_now(m, ctx, main, branch):
+def _xp_now(ctx, main, branch):
     from .game.players import skill_xp
     if branch:
         return ctx.db.execute(select(SkillBranch.xp).where(SkillBranch.channel_id == ctx.p.channel_id,
@@ -584,17 +583,17 @@ def _xp_now(m, ctx, main, branch):
     return skill_xp(ctx.p, main)
 
 
-def _task_station(m, key, cfg):
+def _task_station(key, cfg):
     """(the recipe a training task runs or None, the workstation tags it needs)."""
     from . import crafting_progression as cp
-    recipe = wb.entry(m, runtime.MERGED_TRAINING[key]) if key in runtime.MERGED_TRAINING else None
+    recipe = wb.entry(runtime.MERGED_TRAINING[key]) if key in runtime.MERGED_TRAINING else None
     if recipe is not None:
         return recipe, list(recipe.tags)
     tag = cp.TRAINING_STATIONS.get(cfg.get('branch'))
     return None, [tag] if tag else []
 
 
-def _practice(m, ctx, main, branch, level, label, opened, ores, depth=0):
+def _practice(ctx, main, branch, level, label, opened, ores, depth=0):
     """Steps to reach `level` in a skill (`main`, or its `branch`): the easiest training task that practises
     it, after whatever that task needs first: its own skill level (the same way, one level down), the
     machine for its workstation (with everything the machine needs), and its ingredients."""
@@ -604,8 +603,8 @@ def _practice(m, ctx, main, branch, level, label, opened, ores, depth=0):
     from .seed_skills import TASKS as SEED_TASKS
     from types import SimpleNamespace
     from . import crafting_progression as cp
-    have = _xp_now(m, ctx, main, branch)
-    need = _xp_for(m, level) - have
+    have = _xp_now(ctx, main, branch)
+    need = _xp_for(level) - have
     if need <= 0:
         return []
     tasks = [(k, c) for k, c in SEED_TASKS.items() if (c.get('branch') == branch if branch else c['skill'] == main)]
@@ -616,7 +615,7 @@ def _practice(m, ctx, main, branch, level, label, opened, ores, depth=0):
         # Unlocked now, then the lowest level, then no workstation (or one already open, the lowest tier),
         # then ingredients that are simply gathered, then the fewest of them.
         k, c = item
-        _, tags = _task_station(m, k, c)
+        _, tags = _task_station(k, c)
         return (lvl(skill_xp(ctx.p, c['skill'])) < c['unlock'], c['unlock'], bool(tags) and not any(t in opened for t in tags),
                 bool(tags), min((cp.STATIONS[t]['tier'] for t in tags), default=0), any(x not in s.GATHER for x in c['cost']),
                 sum(c['cost'].values()), c['label'])
@@ -624,26 +623,26 @@ def _practice(m, ctx, main, branch, level, label, opened, ores, depth=0):
     steps = []
     skill_level = lvl(skill_xp(ctx.p, cfg['skill']))
     if skill_level < cfg['unlock']:
-        steps += _practice(m, ctx, cfg['skill'], None, cfg['unlock'], SKILL_LABELS.get(cfg['skill'], cfg['skill']), opened, ores, depth + 1)
-    recipe, tags = _task_station(m, key, cfg)
+        steps += _practice(ctx, cfg['skill'], None, cfg['unlock'], SKILL_LABELS.get(cfg['skill'], cfg['skill']), opened, ores, depth + 1)
+    recipe, tags = _task_station(key, cfg)
     where = ''
     if tags:
         where = f" at the {cp.STATIONS[tags[0]]['name']}"
         if not any(t in opened for t in tags):
-            machine_key, machine = _machine(m, ctx, recipe or SimpleNamespace(tags=tags, id=''))
+            machine_key, machine = _machine(ctx, recipe or SimpleNamespace(tags=tags, id=''))
             if machine is not None:
                 crafts, raw, more = full_plan(ctx, machine)
                 opened |= more | set(s.machine_tags(machine_key))
                 purpose = SimpleNamespace(name=f'the {cfg["label"]} task')
                 crafts = [(c, n, purpose if c.id == machine.id else why) for c, n, why in crafts]
-                steps += _craft_steps(m, ctx, crafts, raw, opened, ores, depth + 1)
+                steps += _craft_steps(ctx, crafts, raw, opened, ores, depth + 1)
     attempts = min(10, math.ceil(need / qol.MINING_SUCCESS_GUESS))
     # The task's ingredients for those attempts, made like everything else (gathered, or crafted with
     # whatever their recipes need), never bought.
     wanted = SimpleNamespace(id='', name=cfg['label'], tags=[cp.SURVIVAL], inputs={k: n * attempts for k, n in cfg['cost'].items()})
     crafts, raw, more = full_plan(ctx, wanted)
     opened |= more
-    steps += _craft_steps(m, ctx, [c for c in crafts if c[0] is not wanted], raw, opened, ores, depth + 1)
+    steps += _craft_steps(ctx, [c for c in crafts if c[0] is not wanted], raw, opened, ores, depth + 1)
     made = recipe.name if recipe is not None else ', '.join(resource_name(k) for k in cfg['output'])
     detail = f'practises {label} to Lv {level} ({need} more practice)' + (f' · makes {made}{where}' if made else where.replace(' at the', ' · at the'))
     ready = (skill_level >= cfg['unlock'] and (not tags or any(t in ctx.access for t in tags))
@@ -657,14 +656,14 @@ def _practice(m, ctx, main, branch, level, label, opened, ores, depth=0):
     return steps
 
 
-def _craft_steps(m, ctx, crafts, raw, opened, ores, depth=0, part='a part for your goal', listed=()):
+def _craft_steps(ctx, crafts, raw, opened, ores, depth=0, part='a part for your goal', listed=()):
     """A plan (see full_plan) as steps: collect the raw materials, then each machine and part after
     whatever unlocks it. `part` says what a part is for; recipes in `listed` are on the shopping list."""
     steps = []
     for key, qty in raw.items():
-        steps += _collect(m, ctx, key, qty, ores)
+        steps += _collect(ctx, key, qty, ores)
     for sub, count, machine_for in crafts:
-        steps += _locks(m, ctx, sub, opened, ores, depth)
+        steps += _locks(ctx, sub, opened, ores, depth)
         times = f' ×{count}' if count > 1 or machine_for is None else ''
         why = (f'the machine for {machine_for.name}: owning it opens its workstation' if machine_for is not None
                else 'on your shopping list' if sub.id in listed else part)
@@ -678,15 +677,15 @@ def _craft_steps(m, ctx, crafts, raw, opened, ores, depth=0, part='a part for yo
     return steps
 
 
-def _extractor_step(m):
+def _extractor_step():
     """Rare ores need a Mineral Extractor in the bag; the Small one needs no rare ores to build."""
     from . import crafting_progression as cp, workbench as wb
-    e = wb.entry(m, s.ACQUISITION[cp.SMALL_EXTRACTOR])
+    e = wb.entry(s.ACQUISITION[cp.SMALL_EXTRACTOR])
     return _step('❌', 'Build a Small Mineral Extractor', 'rare ores need a Mineral Extractor in your bag',
                  view=('wr', e.id, e.category, 1, ''), label='Recipe')
 
 
-def _collect(m, ctx, key, qty, ores):
+def _collect(ctx, key, qty, ores):
     """Steps that bring in a raw material the goal still needs."""
     from . import item_identity, qol
     from .game.cooldowns_materials import material_source
@@ -697,7 +696,7 @@ def _collect(m, ctx, key, qty, ores):
     name = resource_name(key)
     if key in s.GATHER:
         if key in cp.RARE and not ctx.rare_ok:
-            return [_extractor_step(m),
+            return [_extractor_step(),
                     _step('❌', f'Mine {name}', f'need {qty} · after you have a Mineral Extractor', view=('mp', 'mine', '=' + key), label='Mine')]
         attempts = min(10, qol._gather_attempts(key, qty))
         verb = 'Mine' if key in ores else 'Gather'
@@ -719,13 +718,13 @@ def _collect(m, ctx, key, qty, ores):
         return [_step('✅', f'Buy {name} ×{qty}', f'{price * qty} SC from Seed Industries',
                       action={'do': 'buyitem', 'item': key, 'amount': qty}, label='Buy', cost=price * qty)]
     route = s.ACQUISITION.get(key)
-    found = wb.entry(m, route) if route else wb.entry(m, key)
+    found = wb.entry(route) if route else wb.entry(key)
     if found is not None:
         return [_step('❌', f'Craft {name} ×{qty}', 'see its recipe', view=('wr', found.id, found.category, 1, ''), label='Recipe')]
     return [_step('❌', f'Get {name} ×{qty}', material_source(key).split(';')[0])]
 
 
-def walkthrough(m, db, p, provider='discord'):
+def walkthrough(db, p, provider='discord'):
     """(goal recipe, every step still needed to make it, in order). Each step has a button: do it, or go where it is done.
 
     Everything is made, not bought: materials to collect first, then every part and every machine
@@ -734,18 +733,18 @@ def walkthrough(m, db, p, provider='discord'):
     than you will have shows how to earn it.
     """
     from . import task_queue
-    e = goal_entry(m, db, p)
+    e = goal_entry(db, p)
     if e is None:
         return None, []
-    ctx = wb.Context(m, db, p, provider)
+    ctx = wb.Context(db, p, provider)
     if ctx.status(e).code == 'owned':
         return e, [_step('✅', f'You already own {e.name}', 'bonus equipment is limited to one of each · clear the goal and pick another',
                          view=('gc',), label='Clear')]
     crafts, raw, opened = full_plan(ctx, e)
     crafts = [c for c in crafts if c[0].id != e.id]           # the goal comes last, below
     ores = task_queue.ores()
-    steps = _craft_steps(m, ctx, crafts, raw, opened, ores)
-    steps += _locks(m, ctx, e, opened, ores)
+    steps = _craft_steps(ctx, crafts, raw, opened, ores)
+    steps += _locks(ctx, e, opened, ores)
     if ctx.status(e).code == 'ready':
         steps.append(_step('✅', f'Craft {e.name}', 'the goal · everything is ready',
                            action={'do': 'craft', 'recipe': e.id, 'back': [e.category, 1, '']}, label='Craft'))
@@ -754,14 +753,14 @@ def walkthrough(m, db, p, provider='discord'):
     return e, _tidy(steps, p.sc)
 
 
-def list_walkthrough(m, ctx, wanted):
+def list_walkthrough(ctx, wanted):
     """The goal's walkthrough for the shopping list: every step still needed for all of `wanted`
     ([(recipe, amount of its output)], see list_plan), in order, each with its button. Returns
     (steps, list_plan's result)."""
     from . import task_queue
     plan = list_plan(ctx, wanted)
     crafts, raw, opened, _, _ = plan
-    steps = _craft_steps(m, ctx, crafts, raw, opened, task_queue.ores(), part='a part for your shopping list',
+    steps = _craft_steps(ctx, crafts, raw, opened, task_queue.ores(), part='a part for your shopping list',
                          listed={e.id for e, _ in wanted})
     return _tidy(steps, ctx.p.sc), plan
 
@@ -803,35 +802,35 @@ def step_line(st):
     return st['name'] + (f" ({st['detail'].split(' · ')[0]})" if st['detail'] else '')
 
 
-def next_step(m, db, p, provider='discord', steps=None):
+def next_step(db, p, provider='discord', steps=None):
     """(description, action) for the goal's next step; action is a ticket action dict, or None when the
     step is done somewhere else (training, the colony, earning SC: see walkthrough). `steps`: the walkthrough's,
     when the caller has them."""
     if steps is None:
-        _, steps = walkthrough(m, db, p, provider)
+        _, steps = walkthrough(db, p, provider)
     if not steps:
         return '', None
     return step_line(steps[0]), steps[0]['action']
 
 
-def goal_text(m, db, p, provider='discord', plan=None):
+def goal_text(db, p, provider='discord', plan=None):
     """The goal screen (or the chat line): steps done since it was set, then every step. `plan`: walkthrough's
     (goal, steps) when the caller already has them, so the goal is planned once per screen."""
-    e, steps = plan if plan is not None else walkthrough(m, db, p, provider)
+    e, steps = plan if plan is not None else walkthrough(db, p, provider)
     if e is None:
         how = 'Open a recipe and press 🎯 Set goal.' if provider == 'discord' else '!target <recipe name> sets one.'
         return f'🎯 No goal yet. {how} The goal then walks you through every step, with a button for each.'
-    done, total = progress(m, db, p, e, len(steps))
+    done, total = progress(db, p, e, len(steps))
     unit = 'step' if total == 1 else 'steps'
     if provider != 'discord':
         later = ' → '.join(st['name'] for st in steps[1:4])
-        return (f'🎯 Goal {e.name} {done}/{total} {unit} | Next: {next_step(m, db, p, provider, steps)[0]}'
+        return (f'🎯 Goal {e.name} {done}/{total} {unit} | Next: {next_step(db, p, provider, steps)[0]}'
                 + (f' | Then: {later}' if later else '') + ' | !target clear')
-    ctx = wb.Context(m, db, p, provider)
+    ctx = wb.Context(db, p, provider)
     status = ctx.status(e)
     state = f'{status.emoji} {status.short}'
     if status.code == 'station':
-        _, machine = _machine(m, ctx, e)
+        _, machine = _machine(ctx, e)
         if machine is not None:
             state = f'🔑 needs a {machine.name}: made in the steps below'
     lines = [f'🎯 GOAL — {e.name.upper()}', f'{progress_bar(done, total)} {done} of {total} {unit} done · {state}',
@@ -851,12 +850,12 @@ def playlist(db, channel, uid):
     return json.loads(found.playlist) if found is not None else []
 
 
-def add_step(m, db, p, step):
+def add_step(db, p, step):
     """Add a queue or sell step after everything already planned."""
     from . import qol as qol_module
     qol = qol_module
     if 'task' in step and not qol.next_task(db, p.channel_id, p.twitch_uid)[0] and not playlist(db, p.channel_id, p.twitch_uid):
-        ok, text = qol.set_next(m, db, p, step['task'], step['count'])
+        ok, text = qol.set_next(db, p, step['task'], step['count'])
         return text
     found = row(db, p.channel_id, p.twitch_uid, create=True)
     steps = json.loads(found.playlist)
@@ -865,7 +864,7 @@ def add_step(m, db, p, step):
     steps.append(step)
     found.playlist = json.dumps(steps)
     db.flush()
-    return f'➕ Added to your plan: {step_label(m, step)} (step {len(current_steps(m, db, p))} of your plan).'
+    return f'➕ Added to your plan: {step_label(step)} (step {len(current_steps(db, p))} of your plan).'
 
 
 def clear_plan(db, p):
@@ -874,15 +873,15 @@ def clear_plan(db, p):
         found.playlist = '[]'
 
 
-def step_label(m, step):
+def step_label(step):
     from . import task_queue
     from .game.players import resource_name
     if 'sell' in step:
         return 'Sell all ' + resource_name(step['sell'])
-    return f"{task_queue.choices(m).get(step['task'], step['task'])} ×{step['count']}"
+    return f"{task_queue.choices().get(step['task'], step['task'])} ×{step['count']}"
 
 
-def pop_step(m, db, p):
+def pop_step(db, p):
     """The next queue step of the plan, running any 'sell all' steps on the way. Returns (task, count, notes)."""
     from . import qol
     found = row(db, p.channel_id, p.twitch_uid)
@@ -893,7 +892,7 @@ def pop_step(m, db, p):
     while steps:
         step = steps.pop(0)
         if 'sell' in step:
-            notes.append(qol.sell_all(m, db, p, step['sell'], 'discord').split('. Balance')[0])
+            notes.append(qol.sell_all(db, p, step['sell'], 'discord').split('. Balance')[0])
             continue
         found.playlist = json.dumps(steps)
         return step['task'], step['count'], notes
@@ -901,7 +900,7 @@ def pop_step(m, db, p):
     return '', 0, notes
 
 
-def current_steps(m, db, p):
+def current_steps(db, p):
     from . import qol, task_queue
     tq = task_queue
     queue = db.get(tq.TaskQueue, (p.channel_id, p.twitch_uid))
@@ -918,14 +917,14 @@ def routines(db, p):
     return list(db.scalars(select(Routine).where(Routine.channel_id == p.channel_id, Routine.canonical_uid == p.twitch_uid).order_by(Routine.id)))
 
 
-def save_routine(m, db, p):
-    steps = current_steps(m, db, p)
+def save_routine(db, p):
+    steps = current_steps(db, p)
     if not steps:
         return 'Nothing to save: start a queue and add steps to your plan first.'
     saved = routines(db, p)
     if len(saved) >= MAX_ROUTINES:
         return f'You already have {MAX_ROUTINES} routines. Delete one first. Nothing saved.'
-    name = ' → '.join(step_label(m, st) for st in steps)[:100]
+    name = ' → '.join(step_label(st) for st in steps)[:100]
     db.add(Routine(channel_id=p.channel_id, canonical_uid=p.twitch_uid, name=name, steps=json.dumps(steps), created_at=runtime.now()))
     return f'💾 Routine saved: {name}. Start it any time from /menu → Work → Queue → Plan & routines.'
 
@@ -938,7 +937,7 @@ def delete_routine(db, p, routine_id):
     return False
 
 
-def start_routine(m, channel, uid, name, provider, routine_id):
+def start_routine(channel, uid, name, provider, routine_id):
     """Start a saved routine: its first queue step now (or after the current queue), the rest planned."""
     from . import task_queue
     from .game.players import player
@@ -955,7 +954,7 @@ def start_routine(m, channel, uid, name, provider, routine_id):
     if busy:
         with SessionLocal() as db:
             p = player(db, channel, provider, uid, name)[1]
-            notes = [add_step(m, db, p, st) for st in steps]
+            notes = [add_step(db, p, st) for st in steps]
             db.commit()
         return '▶️ Your queue is busy, so the routine was added to your plan.\n' + '\n'.join(notes)
     first = next((i for i, st in enumerate(steps) if 'task' in st), None)
@@ -965,15 +964,15 @@ def start_routine(m, channel, uid, name, provider, routine_id):
     with SessionLocal() as db:
         p = player(db, channel, provider, uid, name)[1]
         for st in steps[first + 1:]:
-            add_step(m, db, p, st)
+            add_step(db, p, st)
         db.commit()
     return f'▶️ Routine started: {found.name}\n\n' + result
 
 
-def plan_text(m, db, p):
-    steps = current_steps(m, db, p)
+def plan_text(db, p):
+    steps = current_steps(db, p)
     lines = ['🗺️ PLAN & ROUTINES', 'Queue several steps; each starts when the one before it finishes. "Sell all" steps run in between.', '', 'YOUR PLAN']
-    lines += [f'{i}. {step_label(m, st)}' for i, st in enumerate(steps, 1)] or ['Nothing planned. Start a queue, then press ➕ Add to plan on another.']
+    lines += [f'{i}. {step_label(st)}' for i, st in enumerate(steps, 1)] or ['Nothing planned. Start a queue, then press ➕ Add to plan on another.']
     saved = routines(db, p)
     lines += ['', f'SAVED ROUTINES · {len(saved)}/{MAX_ROUTINES}'] + ([f'{i}. {r.name}' for i, r in enumerate(saved, 1)] or ['None yet. Save your current plan below.'])
     return '\n'.join(lines)
@@ -981,10 +980,10 @@ def plan_text(m, db, p):
 
 # ---------------------------------------------------------------- what can I make with this?
 
-def uses_text(m, db, p, key, provider='discord'):
+def uses_text(db, p, key, provider='discord'):
     from .game.players import resource_name
-    ctx = wb.Context(m, db, p, provider)
-    rows = [e for e in wb.index(m) if key in e.inputs]
+    ctx = wb.Context(db, p, provider)
+    rows = [e for e in wb.index() if key in e.inputs]
     rows.sort(key=lambda e: (wb.STATUS_ORDER[ctx.status(e).code], e.sort_key))
     name = resource_name(key)
     if provider != 'discord':
@@ -1006,11 +1005,11 @@ def autosell_list(db, p):
     return json.loads(found.autosell) if found is not None else []
 
 
-def toggle_autosell(m, db, p, key):
+def toggle_autosell(db, p, key):
     from . import item_identity, qol
     from .game.players import resource_name
     key = item_identity.canonical(key)
-    if not qol.sell_price(m, key):
+    if not qol.sell_price(key):
         return f'Seed Industries does not buy {resource_name(key)}. Nothing changed.'
     found = row(db, p.channel_id, p.twitch_uid, create=True)
     keys = json.loads(found.autosell)
@@ -1024,22 +1023,22 @@ def toggle_autosell(m, db, p, key):
     return text
 
 
-def autosell_after_queue(m, db, p):
+def autosell_after_queue(db, p):
     from . import qol
     keys = autosell_list(db, p)
     if not keys:
         return []
     from . import keep_levels
-    keep = qol.protected_items(m, db, p)
+    keep = qol.protected_items(db, p)
     notes = []
     for key in keys:
-        if key in keep or keep_levels.sellable(m, db, p, key) <= 0:      # sell_all itself leaves the keep level
+        if key in keep or keep_levels.sellable(db, p, key) <= 0:      # sell_all itself leaves the keep level
             continue
-        notes.append(qol.sell_all(m, db, p, key, 'discord').split('. Balance')[0].replace('🏭 ', '🧹 Auto-'))
+        notes.append(qol.sell_all(db, p, key, 'discord').split('. Balance')[0].replace('🏭 ', '🧹 Auto-'))
     return notes
 
 
-def autosell_text(m, db, p):
+def autosell_text(db, p):
     from .game.cooldowns_materials import material_amount
     from .game.players import resource_name
     keys = autosell_list(db, p)
@@ -1049,12 +1048,12 @@ def autosell_text(m, db, p):
     return '\n'.join(lines)
 
 
-def remember_sale(m, db, p, items, sc, xp):
+def remember_sale(db, p, items, sc, xp):
     row(db, p.channel_id, p.twitch_uid, create=True).last_sale = json.dumps(
         {'items': items, 'sc': sc, 'xp': xp, 'at': runtime.now().isoformat()})
 
 
-def undo_sale(m, db, p):
+def undo_sale(db, p):
     from .game.cooldowns_materials import material_change
     from .game.players import as_utc, resource_name
     found = row(db, p.channel_id, p.twitch_uid)
@@ -1081,7 +1080,7 @@ def undo_sale(m, db, p):
 
 # ---------------------------------------------------------------- eat until full
 
-def eat_full(m, db, p, provider='discord'):
+def eat_full(db, p, provider='discord'):
     from .game.action import action
     from .game.cooldowns_materials import check_cooldown, material_change
     from .game.life import life_state
@@ -1116,7 +1115,7 @@ def eat_full(m, db, p, provider='discord'):
 
 # ---------------------------------------------------------------- welcome back and reminders
 
-def touch(m, db, p):
+def touch(db, p):
     """On each Discord interaction: welcome-back summary and one-off reminders go to the inbox."""
     from . import autonomy
     from .game.cooldowns_materials import action_wait, daily, guide_command
@@ -1147,11 +1146,11 @@ def touch(m, db, p):
         festivals = seasonal.holidays_active_for(now.date())
         if festivals:
             lines.append(f"🎉 {festivals[0]['name']} festival is on: festival foods can be crafted now.")
-        step, _ = next_step(m, db, p)
+        step, _ = next_step(db, p)
         if step:
             lines.append('🎯 Goal next step: ' + step)
-        lines += autonomy.away_lines(m, db, p, last)
-        inbox.add(m, db, p.channel_id, p.twitch_uid, 'info', '\n'.join(lines))
+        lines += autonomy.away_lines(db, p, last)
+        inbox.add(db, p.channel_id, p.twitch_uid, 'info', '\n'.join(lines))
     # Sleep is ready again while Energy or Comfort is low.
     life = life_state(db, p)
     if not action_wait(db, p, 'sleep') and min(life.energy, life.comfort) < 40:
@@ -1159,7 +1158,7 @@ def touch(m, db, p):
                                                                   Cooldown.action == 'sleep')).scalar_one_or_none(), 'ready_at', 'never'))
         if reminded.get('sleep') != marker:
             reminded['sleep'] = marker
-            inbox.add(m, db, p.channel_id, p.twitch_uid, 'info', '🛏️ **Sleep is ready.** It refills Energy and Comfort to 100: /life → Sleep.',
+            inbox.add(db, p.channel_id, p.twitch_uid, 'info', '🛏️ **Sleep is ready.** It refills Energy and Comfort to 100: /life → Sleep.',
                       important=min(life.energy, life.comfort) < 20)
     for festival in seasonal.holidays_active_for(now.date()):
         key = f"{festival['name']}:{festival['holiday_date'].year}"
@@ -1167,7 +1166,7 @@ def touch(m, db, p):
             reminded['festival'] = key
             foods = ', '.join(food[0] for food in seasonal.FESTIVAL_FOODS[festival['name']])
             keepsakes = ', '.join(c[0] for c in seasonal.FESTIVAL_CRAFTS.get(festival['name'], []))
-            inbox.add(m, db, p.channel_id, p.twitch_uid, 'info', f"{festival['emoji']} **{festival['name']} festival is open!** Festival foods: {foods}. "
+            inbox.add(db, p.channel_id, p.twitch_uid, 'info', f"{festival['emoji']} **{festival['name']} festival is open!** Festival foods: {foods}. "
                       f'Keepsakes: {keepsakes}. Craft them all for the holiday hat. /world → Holidays shows ingredients.', important=False)
         break
     try:
@@ -1175,47 +1174,47 @@ def touch(m, db, p):
         day_key = f'{d.action}:{getattr(d, "avesta_day", "")}:{d.target}'
         if reminded.get('daily') != day_key:
             if 'daily' in reminded:
-                inbox.add(m, db, p.channel_id, p.twitch_uid, 'info', f"📋 **New daily contract:** {guide_command(d.action, 'discord')} ×{d.target} "
+                inbox.add(db, p.channel_id, p.twitch_uid, 'info', f"📋 **New daily contract:** {guide_command(d.action, 'discord')} ×{d.target} "
                           f'for {d.reward_sc} SC.', important=False)
             reminded['daily'] = day_key
     except Exception:
         pass
-    goal_ready_check(m, db, p)
+    goal_ready_check(db, p)
     found.reminded = json.dumps(reminded)
     found.last_seen = now
 
 
-def goal_ready_check(m, db, p):
+def goal_ready_check(db, p):
     """Once per goal setting, a private 🎯 note when the goal can be crafted (ingredients, workstation, tier and skill
     all met). Reads the goal's status only, never its walkthrough: it runs after interactive commands, on each Discord
     interaction and after each queue attempt. Returns True when the note was added."""
-    e = goal_entry(m, db, p)
+    e = goal_entry(db, p)
     if e is None:
         return False
-    found = _progress(db, p, e) or _new_progress(m, db, p, e)
-    if found.ready_alerted or wb.Context(m, db, p).status(e).code != 'ready':
+    found = _progress(db, p, e) or _new_progress(db, p, e)
+    if found.ready_alerted or wb.Context(db, p).status(e).code != 'ready':
         return False
     found.ready_alerted = 1
     from . import inbox
-    inbox.add(m, db, p.channel_id, p.twitch_uid, 'goal', f'**Your goal {e.name} is ready to craft.** /menu → Craft → Goal.')
+    inbox.add(db, p.channel_id, p.twitch_uid, 'goal', f'**Your goal {e.name} is ready to craft.** /menu → Craft → Goal.')
     return True
 
 
-def goal_crafted(m, db, p, recipe_id):
+def goal_crafted(db, p, recipe_id):
     """A craft of `recipe_id` just succeeded: a button, a queue attempt, chat or a Seedling's training task. When it is
     the goal, the goal is complete: it is cleared with its progress, and one 🎯 milestone goes to the inbox. Called
     where the craft is recorded, so a failed or refused attempt never completes a goal. Returns True then."""
     found = row(db, p.channel_id, p.twitch_uid)
     if found is None or not found.goal or found.goal != recipe_id:
         return False
-    e = wb.entry(m, recipe_id)
+    e = wb.entry(recipe_id)
     clear_goal(db, p)
     from . import inbox
-    inbox.add(m, db, p.channel_id, p.twitch_uid, 'milestone', f'🎯 **Goal complete: {e.name if e else recipe_id}!** Pick a new one from any recipe.')
+    inbox.add(db, p.channel_id, p.twitch_uid, 'milestone', f'🎯 **Goal complete: {e.name if e else recipe_id}!** Pick a new one from any recipe.')
     return True
 
 
-def goal_completed(m, db, p, text):
+def goal_completed(db, p, text):
     """Kept for compatibility; does nothing. The goal completes where the craft happens (goal_crafted), never because a
     receipt mentions its name."""
     return None
@@ -1236,7 +1235,7 @@ def last_place(db, p):
     return category, int(page or 1), station
 
 
-def default_options(m, command, options, discord_uid):
+def default_options(command, options, discord_uid):
     """A bare /make reopens the Workbench where you left it."""
     from .game.players import player
     if command != 'make' or options:
@@ -1257,7 +1256,7 @@ def default_options(m, command, options, discord_uid):
 
 # ---------------------------------------------------------------- find anything
 
-def find(m, query, limit=5):
+def find(query, limit=5):
     """Search recipes, items, menu buttons and handbook topics."""
     from . import menu as menu_module, qol
     from .game.handbook import discord_seed_help
@@ -1268,7 +1267,7 @@ def find(m, query, limit=5):
         text = text.casefold()
         return 0 if text == q else 1 if text.startswith(q) else 2 if q in text else None
     recipes, seen = [], set()
-    for e in wb.index(m):
+    for e in wb.index():
         sc = score(e.name)
         if sc is not None and e.name not in seen:
             seen.add(e.name)
@@ -1292,10 +1291,10 @@ def find(m, query, limit=5):
             'items': [k for _, _, k in sorted(items)[:limit]], 'menu': list(dict.fromkeys(menu))[:limit], 'topics': topics[:3]}
 
 
-def find_text(m, query, provider='discord'):
+def find_text(query, provider='discord'):
     from . import menu
     from .game.cooldowns_materials import material_source
-    found = find(m, query)
+    found = find(query)
     if provider != 'discord':
         parts = []
         if found['recipes']:

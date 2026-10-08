@@ -56,7 +56,7 @@ def week_start(when=None):
     return (when - timedelta(days=when.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
 
 
-def _names(m, db, pairs):
+def _names(db, pairs):
     out = {}
     from .autonomy import clean_name
     for channel, uid in pairs:
@@ -65,13 +65,13 @@ def _names(m, db, pairs):
     return out
 
 
-def _stats(m, db):
+def _stats(db):
     from .game.players import society
     s = society(db, runtime.DISCORD_WORLD_ID)
     return {k: getattr(s, k) for k in ('food', 'materials', 'development', 'knowledge', 'treasury', 'reputation', 'population')}
 
 
-def build(m, db, when=None):
+def build(db, when=None):
     """The recap as (title, [(section heading, text)], plain text)."""
     from .game.players import resource_name
     from .game.rules import SOCIETY_TIERS
@@ -84,7 +84,7 @@ def build(m, db, when=None):
 
     top = db.execute(select(seasons.WeekScore).where(seasons.WeekScore.week == week, seasons.WeekScore.points > 0)
                      .order_by(seasons.WeekScore.points.desc()).limit(5)).scalars().all()
-    names = _names(m, db, [(r.channel_id, r.canonical_uid) for r in top])
+    names = _names(db, [(r.channel_id, r.canonical_uid) for r in top])
     medal = ['🥇', '🥈', '🥉', '4.', '5.']
     if top:
         sections.append(('🏆 Top contributors', '\n'.join(
@@ -95,7 +95,7 @@ def build(m, db, when=None):
 
     hauls = db.execute(select(seasons.WeekScore).where(seasons.WeekScore.week == week, seasons.WeekScore.items > 0)
                        .order_by(seasons.WeekScore.items.desc()).limit(3)).scalars().all()
-    names.update(_names(m, db, [(r.channel_id, r.canonical_uid) for r in hauls if (r.channel_id, r.canonical_uid) not in names]))
+    names.update(_names(db, [(r.channel_id, r.canonical_uid) for r in hauls if (r.channel_id, r.canonical_uid) not in names]))
     lines = [f'{["🥇", "🥈", "🥉"][i]} **{names[(r.channel_id, r.canonical_uid)]}** brought in {r.items:,} items' for i, r in enumerate(hauls)]
     best, best_n = None, 0
     for h in db.execute(select(autonomy.SeedlingHaul).where(autonomy.SeedlingHaul.created_at >= since)).scalars():
@@ -104,12 +104,12 @@ def build(m, db, when=None):
         if n > best_n:
             best, best_n = (h, gained), n
     if best:
-        who = _names(m, db, [(best[0].channel_id, best[0].canonical_uid)])[(best[0].channel_id, best[0].canonical_uid)]
+        who = _names(db, [(best[0].channel_id, best[0].canonical_uid)])[(best[0].channel_id, best[0].canonical_uid)]
         items = ', '.join(f'{v} {resource_name(k)}' for k, v in sorted(best[1].items(), key=lambda x: -x[1])[:3] if v > 0)
         lines.append(f"🌱 Biggest Seedling haul: **{who}'s** Seedling came home with {items}.")
     sections.append(('🎒 Biggest hauls', '\n'.join(lines) or 'No hauls recorded this week.'))
 
-    stats = _stats(m, db)
+    stats = _stats(db)
     total = Society(**stats)
     tier = society_tier(total)
     core = {k: stats[k] for k in ('food', 'materials', 'development', 'knowledge', 'treasury', 'reputation')}
@@ -128,12 +128,12 @@ def build(m, db, when=None):
         society = f'**{tier[0]}**, the top tier!\n{moved}'
     sections.append(('🏛️ Society', society))
 
-    lines = [f'Day {d}: {e} **{n}** ({v} vote{"s" if v != 1 else ""})' for d, (e, n, _), v in votes.week_winners(m, db, since)[-5:]]
-    lines += [f'{e} Finished **{n}** with {h} helper{"s" if h != 1 else ""}' for n, e, h in votes.built_since(m, db, since)]
+    lines = [f'Day {d}: {e} **{n}** ({v} vote{"s" if v != 1 else ""})' for d, (e, n, _), v in votes.week_winners(db, since)[-5:]]
+    lines += [f'{e} Finished **{n}** with {h} helper{"s" if h != 1 else ""}' for n, e, h in votes.built_since(db, since)]
     if lines:
         sections.append(('🗳️ Votes and projects', '\n'.join(lines)))
 
-    live = live_events.week_summary(m, db, since)
+    live = live_events.week_summary(db, since)
     if live:
         text = f"{live['won']} of {live['count']} challenges won by {live['people']} people."
         if live['best']:
@@ -142,20 +142,20 @@ def build(m, db, when=None):
             text += '\nMost helpful: ' + ' · '.join(f'{medal[i]} {n} ({a})' for i, (n, a) in enumerate(live['top']))
         sections.append(('⚡ Stream challenges', text))
 
-    got = trophies.week_unlocks(m, db, since)
+    got = trophies.week_unlocks(db, since)
     if got:
         text = '\n'.join(f'{e} **{n}** earned {t}' for n, e, t in got[:6]) + (f'\n…and {len(got) - 6} more' if len(got) > 6 else '')
         sections.append((f'🏅 Trophies ({len(got)})', text))
 
-    season = seasons.current(m, db)
+    season = seasons.current(db)
     s = seasons.info(season)
-    podium = seasons.standings(m, db, season, 3)
+    podium = seasons.standings(db, season, 3)
     text = f"{s['emoji']} **{s['name']}** · chapter {s['chapter']}/{s['chapters']} · {s['days_left']} days left\n📖 {s['story']}"
     if podium:
         text += '\n' + ' · '.join(f'{medal[i]} {n} {r.points:,}' for i, (r, n) in enumerate(podium))
     sections.append(('🏁 Season', text))
 
-    moments = funny(m, db, since, week)
+    moments = funny(db, since, week)
     if moments:
         sections.append(('🌱 Seedling moments', '\n'.join(f'{e} *{t}*' for e, t in moments)))
 
@@ -170,7 +170,7 @@ def build(m, db, when=None):
     return title, sections, plain
 
 
-def funny(m, db, since, week, n=3):
+def funny(db, since, week, n=3):
     from .autonomy import SeedlingDiary
     rows = db.execute(select(SeedlingDiary).where(SeedlingDiary.created_at >= since, SeedlingDiary.autonomous == 1)
                       .order_by(SeedlingDiary.id.desc()).limit(400)).scalars().all()
@@ -200,7 +200,7 @@ def embed(title, sections):
             'footer': {'text': 'Posted every Sunday · /season · /trophies · /vote'}, 'timestamp': _now().isoformat()}
 
 
-def post(m, db, force=False, when=None):
+def post(db, force=False, when=None):
     """Post this week's recap (once a week unless forced). Returns (ok, message)."""
     from . import seasons
     import requests
@@ -209,7 +209,7 @@ def post(m, db, force=False, when=None):
     row = db.get(RecapPost, (runtime.DISCORD_WORLD_ID, week))
     if row and row.sent and not force:
         return False, f'The recap for {week} was already posted.'
-    title, sections, plain = build(m, db, when)
+    title, sections, plain = build(db, when)
     token, target = os.getenv('DISCORD_BOT_TOKEN', '').strip(), channel_id()
     ok = False
     if token and target.isdigit():
@@ -226,7 +226,7 @@ def post(m, db, force=False, when=None):
     if row is None:
         row = RecapPost(world=runtime.DISCORD_WORLD_ID, week=week, posted_at=_now(), stats='{}', sent=0)
         db.add(row)
-    row.posted_at, row.stats, row.sent = _now(), json.dumps(_stats(m, db)), int(ok or row.sent)
+    row.posted_at, row.stats, row.sent = _now(), json.dumps(_stats(db)), int(ok or row.sent)
     if ok:
         return True, f'📰 Posted the weekly recap for {week}.'
     return False, '⚠️ The recap could not be posted. Set RECAP_CHANNEL_ID (or DISCORD_GAME_CHANNEL_ID) and DISCORD_BOT_TOKEN, and check the bot can post there.'
@@ -237,7 +237,7 @@ def due(when=None):
     return when.weekday() == 6 and when.hour >= RECAP_HOUR
 
 
-def tick(m, db):
+def tick(db):
     """Called by the community worker: post on Sunday once, when a channel is set."""
     from . import seasons
     if not due() or not channel_id() or not os.getenv('DISCORD_BOT_TOKEN', '').strip():
@@ -245,15 +245,15 @@ def tick(m, db):
     row = db.get(RecapPost, (runtime.DISCORD_WORLD_ID, seasons.week_key()))
     if row and row.sent:
         return None
-    return post(m, db)
+    return post(db)
 
 
-def chat_line(m, db):
+def chat_line(db):
     from . import seasons
     week = seasons.week_key()
     top = db.execute(select(seasons.WeekScore).where(seasons.WeekScore.week == week, seasons.WeekScore.points > 0)
                      .order_by(seasons.WeekScore.points.desc()).limit(3)).scalars().all()
-    names = _names(m, db, [(r.channel_id, r.canonical_uid) for r in top])
+    names = _names(db, [(r.channel_id, r.canonical_uid) for r in top])
     if not top:
         return '📰 This week so far: nobody on the board yet. The recap posts to Discord on Sunday.'
     return '📰 This week so far: ' + ' | '.join(f"{['🥇', '🥈', '🥉'][i]} {names[(r.channel_id, r.canonical_uid)]} {r.points:,}" for i, r in enumerate(top)) + ' · full recap on Discord Sunday'

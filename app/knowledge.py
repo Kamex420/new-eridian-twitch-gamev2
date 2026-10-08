@@ -103,23 +103,23 @@ def topic_of_subject(subject):
     return None
 
 
-def _cmd(m, provider, discord, twitch):
+def _cmd(provider, discord, twitch):
     """The command for a way to raise a stat: Discord's, or a chat !command, or 'on Discord' when chat cannot do it."""
     from . import twitch_lite
     from .game.cooldowns_materials import guide_command
     if ask._discord(provider):
         return discord
-    if not twitch or ask._lite(m) and twitch.split('_')[0] not in twitch_lite.TWITCH_COMMANDS:
+    if not twitch or ask._lite() and twitch.split('_')[0] not in twitch_lite.TWITCH_COMMANDS:
         return 'on Discord'
     return guide_command(twitch, 'twitch')
 
 
-def _society(m, db, p):
+def _society(db, p):
     from .game.players import society
     return society(db, p.channel_id) if p is not None else None
 
 
-def _tier_line(m, s, stat=None):
+def _tier_line(s, stat=None):
     from .game.rules import SOCIETY_TIERS
     from .game.world import society_tier
     stats = {k: getattr(s, k) for k in SOCIETY}
@@ -134,13 +134,13 @@ def _tier_line(m, s, stat=None):
     return text + '.'
 
 
-def answer_society(m, db, p, stat, provider):
+def answer_society(db, p, stat, provider):
     from .game.cooldowns_materials import guide_command
     from .game.rules import DIRECTIVES, EVENTS
     from .seed_skills import TASKS as SEED_TASKS
     emoji, label = SOCIETY[stat]
-    s = _society(m, db, p)
-    work = [(what, much, _cmd(m, provider, discord, twitch)) for what, much, discord, twitch in WORK[stat]]
+    s = _society(db, p)
+    work = [(what, much, _cmd(provider, discord, twitch)) for what, much, discord, twitch in WORK[stat]]
     training = [(c['label'], f"+{c['society'][stat]}", guide_command(k, provider)) for k, c in SEED_TASKS.items() if c['society'].get(stat)]
     directives = [d[1] for d in DIRECTIVES if d[3] == stat]
     amount = max([d[4] for d in DIRECTIVES if d[3] == stat], default=8)
@@ -158,7 +158,7 @@ def answer_society(m, db, p, stat, provider):
     lines = [f'{emoji} HOW TO RAISE {label.upper()}',
              f'{label} is one of New Eridian\'s six society stats. The society tier is set by the lowest of the six.']
     if s is not None:
-        lines.append(f'**Now:** {getattr(s, stat)} {label}. ' + _tier_line(m, s, stat))
+        lines.append(f'**Now:** {getattr(s, stat)} {label}. ' + _tier_line(s, stat))
     lines.append('**Work that adds it** (every success):')
     lines += [f'• **{what}** {much} · {c}' for what, much, c in work]
     if training:
@@ -171,7 +171,7 @@ def answer_society(m, db, p, stat, provider):
     return ask.Answer('topic', '\n'.join(lines), actions)
 
 
-def answer_contribution(m, db, p, provider):
+def answer_contribution(db, p, provider):
     have = f' You have {p.contribution}.' if p is not None else ''
     if not ask._discord(provider):
         return ask.Answer('topic', _fit(f'🏅 Contribution is your service score for the leaderboard.{have} Earn it: every successful task +1, '
@@ -183,7 +183,7 @@ def answer_contribution(m, db, p, provider):
     return ask.Answer('topic', '\n'.join(lines), [{'kind': 'leaf', 'key': 'h_society'}, {'kind': 'guide', 'goal': 'society', 'label': 'Society guide'}])
 
 
-def answer_need(m, db, p, need, provider):
+def answer_need(db, p, need, provider):
     from .game.life import life_state
     from .game.world import need_fix
     emoji, label = NEEDS[need]
@@ -198,31 +198,31 @@ def answer_need(m, db, p, need, provider):
     return ask.Answer('topic', '\n'.join(lines), [{'kind': 'area', 'key': 'life'}, {'kind': 'status'}])
 
 
-def answer_tier(m, db, p, provider):
-    s = _society(m, db, p)
+def answer_tier(db, p, provider):
+    s = _society(db, p)
     low_stat = min(SOCIETY, key=lambda k: getattr(s, k)) if s is not None else None
     if not ask._discord(provider):
         text = '🏙️ The society tier rises when all six stats (Food, Materials, Development, Knowledge, Treasury, Reputation) reach the next level.'
         if s is not None:
-            text += ' ' + _tier_line(m, s) + f' Lowest: {SOCIETY[low_stat][1]} {getattr(s, low_stat)}.'
+            text += ' ' + _tier_line(s) + f' Lowest: {SOCIETY[low_stat][1]} {getattr(s, low_stat)}.'
         return ask.Answer('topic', _fit(text + ' Your own crafting tier rises with crafted batches.'))
     lines = ['🏙️ HOW DO SOCIETY TIERS WORK?',
              'The colony\'s tier is set by the **lowest** of its six stats: Food, Materials, Development, Knowledge, Treasury '
              'and Reputation. Higher tiers add SC pay and unlock recipes.']
     actions = [{'kind': 'guide', 'goal': 'society', 'label': 'Society guide'}]
     if s is not None:
-        lines.append('**Now:** ' + _tier_line(m, s) + f' Lowest: **{SOCIETY[low_stat][1]} {getattr(s, low_stat)}**.')
+        lines.append('**Now:** ' + _tier_line(s) + f' Lowest: **{SOCIETY[low_stat][1]} {getattr(s, low_stat)}**.')
         lines.append(f'Raise {SOCIETY[low_stat][1]} first: ask Find “how do I raise {SOCIETY[low_stat][1]}?”.')
         actions.insert(0, {'kind': 'suggest', 'name': SOCIETY[low_stat][1], 'intent': 'raise'})
     lines.append('Your **personal tier** is different: it rises with the batches you craft and opens harder recipes.')
     return ask.Answer('topic', '\n'.join(lines), actions)
 
 
-def answer_housing(m, db, p, provider):
+def answer_housing(db, p, provider):
     from .game.cooldowns_materials import guide_command
     from .seed_skills import TASKS as SEED_TASKS
     tasks = [(c['label'], guide_command(k, provider)) for k, c in SEED_TASKS.items() if c['shared'].get('infrastructure')]
-    repair = _cmd(m, provider, '/repair target:Society Infrastructure', 'repair')
+    repair = _cmd(provider, '/repair target:Society Infrastructure', 'repair')
     if not ask._discord(provider):
         return ask.Answer('topic', _fit('🏘️ Shared housing: every 5 shared Infrastructure adds 1 space; fewer spaces than citizens gives −3% success. '
                                         'Add Infrastructure with ' + ', '.join(c for _, c in tasks) + f', or {repair} while the colony has Components.'))
@@ -233,7 +233,7 @@ def answer_housing(m, db, p, provider):
     return ask.Answer('topic', '\n'.join(lines), [{'kind': 'leaf', 'key': 'h_society'}])
 
 
-def answer_medicines(m, db, p, provider):
+def answer_medicines(db, p, provider):
     from .seed_skills import TASKS as SEED_TASKS
     tasks = [(c['label'], c['shared']['medicines']) for k, c in SEED_TASKS.items() if c['shared'].get('medicines')]
     text = ('Shared Medicines stock the colony clinic. Supply it by using a medicine from your bag (/use), +1 Contribution each, '
@@ -243,16 +243,16 @@ def answer_medicines(m, db, p, provider):
     return ask.Answer('topic', '🩺 HOW TO STOCK THE CLINIC\n' + text, [{'kind': 'train', 'hub': 'medicine', 'label': 'Medicine'}])
 
 
-def topic_answer(m, db, p, text, provider):
+def topic_answer(db, p, text, provider):
     topic = topic_of(ask.clean(text))
     if topic is None:
         return None
     if topic in SOCIETY:
-        return answer_society(m, db, p, topic, provider)
+        return answer_society(db, p, topic, provider)
     if topic in NEEDS:
-        return answer_need(m, db, p, topic, provider)
+        return answer_need(db, p, topic, provider)
     return {'contribution': answer_contribution, 'tier': answer_tier, 'housing': answer_housing,
-            'medicines': answer_medicines}[topic](m, db, p, provider)
+            'medicines': answer_medicines}[topic](db, p, provider)
 
 
 def _fit(text, limit=380):
@@ -316,7 +316,7 @@ TOPIC_NAMES = {'start': 'Start here', 'character': 'Character', 'property': 'Hom
                'operations': 'Logistics', 'society': 'Society', 'other': 'Other', 'terms': 'Terms', 'about': 'About'}
 
 
-def _handbook(m):
+def _handbook():
     from .game.handbook import SEED_HELP_TOPICS
     found = []
     for topic, text in SEED_HELP_TOPICS.items():
@@ -373,7 +373,7 @@ def _commands():
     return found
 
 
-def _menu(m):
+def _menu():
     from . import menu
     found = []
     menu = menu
@@ -400,12 +400,12 @@ def _panels():
     return found
 
 
-def index(m, provider):
+def index(provider):
     key = 'twitch' if not ask._discord(provider) else 'discord'
     if key not in _INDEX:
         passages = []
-        for build in ((_twitch_handbook,) if key == 'twitch' else ()) + ((lambda: _handbook(m)),) + \
-                     ((_commands, (lambda: _menu(m)), _panels) if key == 'discord' else ()):
+        for build in ((_twitch_handbook,) if key == 'twitch' else ()) + ((lambda: _handbook()),) + \
+                     ((_commands, (lambda: _menu()), _panels) if key == 'discord' else ()):
             try:
                 passages += build()
             except Exception:                  # one source failing never breaks Find
@@ -448,9 +448,9 @@ def query_terms(text):
 WEIGHT = {'Handbook': 1.25, 'Guide': 0.85, 'Command': 0.7, 'Menu': 0.5}
 
 
-def search(m, text, provider='discord', limit=3):
+def search(text, provider='discord', limit=3):
     """[(score, passage)] best first: passages that hold most of the question's meaningful words (or their synonyms)."""
-    passages, idf = index(m, provider)
+    passages, idf = index(provider)
     words = tokens(ask.clean(text))
     if not words:
         return []
@@ -495,8 +495,8 @@ def search(m, text, provider='discord', limit=3):
     return best
 
 
-def search_answer(m, db, p, text, provider):
-    found = search(m, text, provider, limit=6)
+def search_answer(db, p, text, provider):
+    found = search(text, provider, limit=6)
     if not found:
         return None
     hits = [h for h in found if h[1].source != 'Menu'][:3] or found[:3]

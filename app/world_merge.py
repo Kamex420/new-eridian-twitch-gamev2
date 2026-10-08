@@ -112,7 +112,7 @@ def _absorb(db, table, winner, loser, note):
     note[table.name] = note.get(table.name, 0) + 1
 
 
-def blockers(m, db, source, target):
+def blockers(db, source, target):
     found = []
     if not source or not target or source == target:
         found.append('Choose two different worlds: source (the old Discord world) and target (the Twitch channel ID).')
@@ -135,7 +135,7 @@ def blockers(m, db, source, target):
     return found
 
 
-def citizen_pairs(m, db, source, target):
+def citizen_pairs(db, source, target):
     """(source uid, target uid) for every person with a character in both worlds."""
     pairs = {}
     here = set(db.execute(select(Player.twitch_uid).where(Player.channel_id == source)).scalars())
@@ -156,7 +156,7 @@ def citizen_pairs(m, db, source, target):
     return pairs, problems
 
 
-def names(m, db, channel, uids):
+def names(db, channel, uids):
     rows = db.execute(select(Player.twitch_uid, Player.display_name).where(Player.channel_id == channel,
                                                                                Player.twitch_uid.in_(list(uids) or ['']))).all()
     return {u: n for u, n in rows}
@@ -171,7 +171,7 @@ def rename_citizen(db, source, old, new):
                 db.execute(table.update().where(and_(table.c[owner] == source, table.c[col] == old)).values(**{col: new}))
 
 
-def carry_project_help(m, db, source, target):
+def carry_project_help(db, source, target):
     """Unpaid help on the target world's own project (which is replaced by the main project) moves to the main project's run."""
     from .votes import ColonyPlan, ProjectHelp
     main = db.get(ColonyPlan, source)
@@ -252,7 +252,7 @@ def adopt_leftovers(db, target, old, new, note):
                     db.execute(table.update().where(_where(table, _pk(table, row))).values(**{col: new}))
 
 
-def counts(m, db, channel):
+def counts(db, channel):
     return {'citizens': db.execute(select(func.count()).select_from(Player).where(Player.channel_id == channel)).scalar()}
 
 
@@ -262,19 +262,19 @@ def run(m, source, target, apply=False):
     source, target = str(source or '').strip(), str(target or '').strip()
     previous = runtime.DISCORD_WORLD_ID
     try:
-        with task_queue.atomic(m, target) as conn:
+        with task_queue.atomic(target) as conn:
             if conn.dialect.name == 'postgresql':
                 conn.execute(text('SET LOCAL statement_timeout = 0'))      # large worlds: relabelling the action log
             with SessionLocal() as db:
-                problems = blockers(m, db, source, target)
-                pairs, pair_problems = citizen_pairs(m, db, source, target) if not problems else ({}, [])
+                problems = blockers(db, source, target)
+                pairs, pair_problems = citizen_pairs(db, source, target) if not problems else ({}, [])
                 problems += [f'Citizens: {p}. This needs a manual look.' for p in pair_problems]
                 report = {'source': source, 'target': target, 'blocked': problems}
                 if problems:
                     raise _Preview(report)
-                before = {'source': counts(m, db, source), 'target': counts(m, db, target)}
-                both = [{'source_uid': s, 'target_uid': t, 'source_name': names(m, db, source, [s]).get(s),
-                         'target_name': names(m, db, target, [t]).get(t)} for s, t in sorted(pairs.items())]
+                before = {'source': counts(db, source), 'target': counts(db, target)}
+                both = [{'source_uid': s, 'target_uid': t, 'source_name': names(db, source, [s]).get(s),
+                         'target_name': names(db, target, [t]).get(t)} for s, t in sorted(pairs.items())]
                 w_source = db.execute(select(World).where(World.channel_id == source)).scalar_one_or_none()
                 w_target = db.execute(select(World).where(World.channel_id == target)).scalar_one_or_none()
                 ended = w_target.active_event if w_target is not None and w_target.active_event else ''
@@ -284,7 +284,7 @@ def run(m, source, target, apply=False):
                     if s == t:
                         temporary[s] = ('merged:' + s)[:96]
                         rename_citizen(db, source, s, temporary[s])
-                help_moved = carry_project_help(m, db, source, target)
+                help_moved = carry_project_help(db, source, target)
                 kept_main, kept_target = {}, {}
                 resolve_collisions(db, source, target, kept_main, kept_target)
                 moved = relabel(db, source, target)
@@ -296,7 +296,7 @@ def run(m, source, target, apply=False):
                     db.flush()
                     db.expire_all()
                     adopt_leftovers(db, target, old, t, leftovers)
-                after = counts(m, db, target)
+                after = counts(db, target)
                 report.update({
                     'before': before,
                     'after': {'citizens': after['citizens'], 'main_world': target},
@@ -323,7 +323,7 @@ def run(m, source, target, apply=False):
                 if previous == source:
                     switch(m, target)
                 db.commit()
-        settle(m, source, target)
+        settle(source, target)
         report['merged'] = True
         return report
     except _Preview as preview:
@@ -343,7 +343,7 @@ def switch(m, world):
     os.environ['DISCORD_WORLD_ID'] = world
 
 
-def settle(m, source, target):
+def settle(source, target):
     """Forget what this process cached about the merged-away world."""
     from .game.overlay_state import _overlay_cache
     from .game.players import _demand_day

@@ -177,14 +177,14 @@ def test_every_seedling_gets_a_turn_when_there_are_more_than_one_batch_can_serve
         db.commit()
     served = set()
 
-    def step(m_, channel, uid, force=False):
+    def step(channel, uid, force=False):
         served.add(uid)
         with m.SessionLocal() as db:
             a.row(db, channel, uid, create=True).next_at = m.now() + timedelta(minutes=a.AUTONOMY_MINUTES)
             db.commit()
     monkeypatch.setattr(a, 'live_one', step)
     for _ in range(a.AUTONOMY_MINUTES * 4 + 2):
-        a.tick(m)
+        a.tick()
         clock[0] += timedelta(minutes=1)
         with m.SessionLocal() as db:
             db.query(m.Player).update({m.Player.last_seen: clock[0]}); db.commit()
@@ -218,7 +218,7 @@ def test_cleanup_removes_old_rows_and_keeps_recent_ones(monkeypatch):
             db.add(m.JournalEntry(channel_id=W, canonical_uid='u', entry=f'old {i}', created_at=now - timedelta(days=200, minutes=30 - i)))
         db.add(m.JournalEntry(channel_id=W, canonical_uid='quiet', entry='only entry', created_at=now - timedelta(days=400)))
         db.commit()
-    done = maintenance.prune(m)
+    done = maintenance.prune()
     assert done == {'action_logs': 30, 'command_receipts': 1, 'link_codes': 1, 'journal': 10}
     with m.SessionLocal() as db:
         assert [r.response for r in db.query(m.ActionLog)] == ['today']

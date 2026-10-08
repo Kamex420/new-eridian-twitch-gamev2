@@ -92,7 +92,7 @@ def test_a_target_with_its_own_season_needs_a_manual_look():
     S = m.DISCORD_WORLD_ID
     build(m, client, S, T)
     with m.SessionLocal() as db:
-        seasons.current(m, db, world=T); db.commit()
+        seasons.current(db, world=T); db.commit()
     before = snapshot(m, S, T)
     response = merge(source=S, target=T, confirm=1)
     assert response.status_code == 409 and any('manual look' in b for b in response.json()['blocked'])

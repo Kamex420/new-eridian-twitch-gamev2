@@ -10,12 +10,12 @@ from test_layout_v2 import assert_valid, sections
 from app import ui, menu, extras, shopping_list as shop, seed_content as s, task_queue as q, workbench as wb
 from app import layout_v2 as v2, twitch_lite as lite
 
-TOILET = next(e for e in wb.index(m) if e.name == 'Crude Wood Toilet')
-STOOL = next(e for e in wb.index(m) if e.name == 'Crude Wood Stool')
-PLATE = wb.entry(m, 'sr_1018791011')               # Iron Plate at the Metalworking Bench: the catalog's route to Iron Plate
-ANVIL_PLATE = wb.entry(m, 'sr_153129547')          # Iron Plate at the Basic Anvil: another recipe for the same item
-SAW = next(e for e in wb.index(m) if e.name == 'Circular Saw Blade')       # 5 Iron Plate a batch
-STEEL_FRAME = next(e for e in wb.index(m) if e.name == 'Steel Frame')
+TOILET = next(e for e in wb.index() if e.name == 'Crude Wood Toilet')
+STOOL = next(e for e in wb.index() if e.name == 'Crude Wood Stool')
+PLATE = wb.entry('sr_1018791011')               # Iron Plate at the Metalworking Bench: the catalog's route to Iron Plate
+ANVIL_PLATE = wb.entry('sr_153129547')          # Iron Plate at the Basic Anvil: another recipe for the same item
+SAW = next(e for e in wb.index() if e.name == 'Circular Saw Blade')       # 5 Iron Plate a batch
+STEEL_FRAME = next(e for e in wb.index() if e.name == 'Steel Frame')
 IRON_INGOT = s.key('Iron Ingot')
 ARGENTITE = s.key('Argentite Ore')
 MACHINES = {s.key('Metalworking Bench'): 1, s.key('Basic Anvil'): 1}
@@ -47,7 +47,7 @@ def have(key, uid='111'):
 
 def add(recipe, amount=None, uid='111'):
     with m.SessionLocal() as db:
-        text = shop.set_entry(m, db, m.player(db, W, 'discord', uid, 'Kam')[1], recipe, amount)
+        text = shop.set_entry(db, m.player(db, W, 'discord', uid, 'Kam')[1], recipe, amount)
         db.commit()
         return text
 
@@ -60,12 +60,12 @@ def listed(uid='111'):
 
 def info(uid='111'):
     with m.SessionLocal() as db:
-        return shop.overview(m, db, m.player(db, W, 'discord', uid, 'Kam')[1])
+        return shop.overview(db, m.player(db, W, 'discord', uid, 'Kam')[1])
 
 
 def plan(wanted, uid='111'):
     with m.SessionLocal() as db:
-        ctx = wb.Context(m, db, m.player(db, W, 'discord', uid, 'Kam')[1])
+        ctx = wb.Context(db, m.player(db, W, 'discord', uid, 'Kam')[1])
         return extras.list_plan(ctx, wanted), ctx.batch_size
 
 
@@ -111,7 +111,7 @@ def test_add_update_remove_and_clear():
         add(CAMPFIRE.id, 1)
     assert add(STOOL.id, 0) == '🛒 Crude Wood Stool is not on your shopping list. Nothing changed.'
     with m.SessionLocal() as db:
-        assert shop.clear(m, db, m.player(db, W, 'discord', '111', 'Kam')[1]) == '✖️ Shopping list cleared.'
+        assert shop.clear(db, m.player(db, W, 'discord', '111', 'Kam')[1]) == '✖️ Shopping list cleared.'
         db.commit()
     assert listed() == []
 
@@ -120,7 +120,7 @@ def test_the_default_amount_is_one_batch_and_adding_again_without_one_changes_no
     citizen(lumber=0)
     give(MACHINES)
     with m.SessionLocal() as db:
-        per = wb.Context(m, db, m.player(db, W, 'discord', '111', 'Kam')[1]).batch_size(PLATE)
+        per = wb.Context(db, m.player(db, W, 'discord', '111', 'Kam')[1]).batch_size(PLATE)
     assert per > 1
     assert add(PLATE.id) == f'🛒 Added to your shopping list: {per} Iron Plate (you have 0; 1 batch of {per}).'
     assert listed() == [(PLATE.id, per)]
@@ -142,10 +142,10 @@ def test_unknown_recipes_the_cap_and_bonus_equipment_change_nothing():
     assert add('sr_nonsense', 3) == '🛒 That recipe is not available. Nothing changed.'
     with m.SessionLocal() as db:
         p = m.player(db, W, 'discord', '111', 'Kam')[1]
-        assert shop.add_typed(m, db, p, 'zzqqxx', 3) == '🛒 No recipe called "zzqqxx". Nothing changed.'
-        assert 'Did you mean' in shop.add_typed(m, db, p, 'iron', 3)
+        assert shop.add_typed(db, p, 'zzqqxx', 3) == '🛒 No recipe called "zzqqxx". Nothing changed.'
+        assert 'Did you mean' in shop.add_typed(db, p, 'iron', 3)
         assert shop.entries(db, p) == []
-    recipes = [e for e in wb.index(m) if e.kind == 'seed'][:shop.MAX_ENTRIES + 1]
+    recipes = [e for e in wb.index() if e.kind == 'seed'][:shop.MAX_ENTRIES + 1]
     for e in recipes[:-1]:
         assert add(e.id, 2).startswith('🛒 Added'), e.name
     assert add(recipes[-1].id, 2) == (f'🛒 Your shopping list already has 10 recipes. Remove one before adding {recipes[-1].name}. '
@@ -153,7 +153,7 @@ def test_unknown_recipes_the_cap_and_bonus_equipment_change_nothing():
     assert len(listed()) == shop.MAX_ENTRIES and recipes[-1].id not in dict(listed())
     assert 'changed' in add(recipes[0].id, 3)                         # changing one at the cap still works
     add(recipes[0].id, 0)
-    toolkit = wb.entry(m, 'toolkit')
+    toolkit = wb.entry('toolkit')
     assert add('toolkit', 2) == '🛒 Toolkit is bonus equipment, limited to one of each, so the amount must be 1. Nothing changed.'
     assert add('toolkit', 1).startswith('🛒 Added') and dict(listed())[toolkit.id] == 1
 
@@ -174,15 +174,15 @@ def test_an_entry_is_done_once_you_have_enough_however_they_arrived_and_clear_do
     give({CAMPFIRE.output: 1})
     with m.SessionLocal() as db:
         p = m.player(db, W, 'discord', '111', 'Kam')[1]
-        assert shop.clear(m, db, p, done_only=True) == '🧹 Cleared 1 done entry from your shopping list.'
+        assert shop.clear(db, p, done_only=True) == '🧹 Cleared 1 done entry from your shopping list.'
         db.commit()
-        assert shop.clear(m, db, p, done_only=True) == '🧹 Nothing on your shopping list is done yet. Nothing changed.'
+        assert shop.clear(db, p, done_only=True) == '🧹 Nothing on your shopping list is done yet. Nothing changed.'
     assert listed() == [(TOILET.id, 1)]
 
 
 def screen_text(uid='111'):
     with m.SessionLocal() as db:
-        return shop.screen_text(m, db, m.player(db, W, 'discord', uid, 'Kam')[1])
+        return shop.screen_text(db, m.player(db, W, 'discord', uid, 'Kam')[1])
 
 
 # ---------------------------------------------------------------- one plan, one pool
@@ -235,7 +235,7 @@ def test_combined_materials_say_need_have_missing_route_and_price():
     give({s.key('Stone'): 4})
     add(CAMPFIRE.id, 2)                                               # 4 Lumber
     add(TOILET.id, 1)                                                 # 2 Lumber
-    add(next(e for e in wb.index(m) if e.name == 'Tent').id, 2)       # 2 Lumber, 2 Stone
+    add(next(e for e in wb.index() if e.name == 'Tent').id, 2)       # 2 Lumber, 2 Stone
     lumber, stone = material(LUMBER), material(s.key('Stone'))
     price = m.SEED_INDUSTRIES[LUMBER]['buy']
     assert (lumber.need, lumber.have, lumber.missing, lumber.price, lumber.cost, lumber.buyable) == (8, 3, 5, price, 5 * price, True)
@@ -305,7 +305,7 @@ def test_buy_all_missing_is_greyed_out_with_its_price_when_you_cannot_afford_it(
     assert buy['label'] == f'Buy all missing · {cost} SC' and buy.get('disabled') and '|t|' not in buy['custom_id']
     with m.SessionLocal() as db:
         p = m.player(db, W, 'discord', '111', 'Kam')[1]
-        assert shop.buy_all(m, db, p) == (f'🪙 Buying everything missing (5 Lumber) costs {cost} SC and you have {cost - 1} SC: '
+        assert shop.buy_all(db, p) == (f'🪙 Buying everything missing (5 Lumber) costs {cost} SC and you have {cost - 1} SC: '
                                           'earn 1 more SC first. Nothing spent.')
     assert have(LUMBER) == 5 and sc() == cost - 1
 
@@ -323,7 +323,7 @@ def test_what_cannot_be_bought_is_listed_with_where_it_comes_from(monkeypatch):
     assert 'Not for sale: Lumber (' in text_of(screen) and '❌ Lumber — need 2 / have 0 / missing 2 → gather ×2' in text_of(screen)
     with m.SessionLocal() as db:
         p = m.player(db, W, 'discord', '111', 'Kam')[1]
-        assert shop.buy_all(m, db, p) == '🛒 Nothing missing on your list can be bought from Seed Industries. Nothing spent.'
+        assert shop.buy_all(db, p) == '🛒 Nothing missing on your list can be bought from Seed Industries. Nothing spent.'
     assert have(LUMBER) == 0 and sc() == 1000
 
 
@@ -333,7 +333,7 @@ def test_a_rare_ore_is_not_bought_without_a_mineral_extractor():
     add('ore_scanner', 1)                                             # needs an Argentite Ore
     ore = material(ARGENTITE)
     assert ore.missing == 1 and ore.price and ore.locked and not ore.buyable
-    assert 'needs a Mineral Extractor' in shop.route_text(m, ore)
+    assert 'needs a Mineral Extractor' in shop.route_text(ore)
     whole = info()
     assert ARGENTITE not in [x.key for x in whole.buy] and ARGENTITE in [x.key for x in whole.unsold]
     assert whole.cost == sum(x.cost for x in whole.buy) > 0
@@ -360,7 +360,7 @@ def test_a_recipe_no_longer_in_the_catalog_is_shown_and_skipped():
     out = v2.convert(ui.tidy(dict(screen)))
     assert assert_valid(out) and [x['accessory']['label'] for x in sections(out)] == ['Change', 'Remove']
     with m.SessionLocal() as db:
-        assert shop.clear(m, db, m.player(db, W, 'discord', '111', 'Kam')[1], done_only=True).endswith('Nothing changed.')
+        assert shop.clear(db, m.player(db, W, 'discord', '111', 'Kam')[1], done_only=True).endswith('Nothing changed.')
     assert 'Removed sr_gone' in text_of(press(remove['custom_id'])['data']) and listed() == [(CAMPFIRE.id, 1)]
 
 
@@ -383,13 +383,13 @@ def test_account_linking_keeps_the_targets_entries_and_moves_the_rest_after_them
     add_rows('src', [(TOILET.id, 9), (CAMPFIRE.id, 7), (STOOL.id, 4)])
     add_rows('dst', [(CAMPFIRE.id, 1), (PLATE.id, 30)])
     with m.SessionLocal() as db:
-        q.merge_accounts(m, db, W, 'src', 'dst')                      # the account-linking hook
+        q.merge_accounts(db, W, 'src', 'dst')                      # the account-linking hook
         db.commit()
     assert raw_rows('dst') == [(CAMPFIRE.id, 1), (PLATE.id, 30), (TOILET.id, 9), (STOOL.id, 4)] and raw_rows('src') == []
 
 
 def test_account_linking_stays_within_the_cap():
-    recipes = [e.id for e in wb.index(m) if e.kind == 'seed'][:shop.MAX_ENTRIES + 3]
+    recipes = [e.id for e in wb.index() if e.kind == 'seed'][:shop.MAX_ENTRIES + 3]
     add_rows('dst', [(r, 1) for r in recipes[:shop.MAX_ENTRIES - 1]])
     add_rows('src', [(r, 2) for r in recipes[shop.MAX_ENTRIES - 2:]])
     with m.SessionLocal() as db:
@@ -491,7 +491,7 @@ def test_the_discord_screen_has_a_button_by_each_entry_controls_back_and_menu():
 
 def test_ten_long_entries_still_fit_one_discord_card():
     citizen(lumber=3)
-    heavy = sorted([e for e in wb.index(m) if e.kind == 'seed' and len(e.inputs) >= 3], key=lambda e: -len(e.name))[:shop.MAX_ENTRIES]
+    heavy = sorted([e for e in wb.index() if e.kind == 'seed' and len(e.inputs) >= 3], key=lambda e: -len(e.name))[:shop.MAX_ENTRIES]
     for e in heavy:
         add(e.id, 998)
     screen = press(ui.cid('111', 'ls', heavy[0].id, 999))['data']             # with a note above the list
@@ -502,7 +502,7 @@ def test_ten_long_entries_still_fit_one_discord_card():
     out = v2.convert(ui.tidy(dict(screen)))
     assert assert_valid(out) and len(sections(out)) >= 5                     # as many entry buttons beside their lines as fit
     with m.SessionLocal() as db:
-        line = shop.chat_text(m, db, m.player(db, W, 'discord', '111', 'Kam')[1])
+        line = shop.chat_text(db, m.player(db, W, 'discord', '111', 'Kam')[1])
     assert len(line.encode()) <= 380 and ' more | Missing: ' in line and '| Next: ' in line      # Twitch: fewer names, same line
 
 
@@ -526,7 +526,7 @@ def submit(custom_id, value, amount=None, uid='111'):
         boxes.append({'type': 1, 'components': [{'type': 4, 'custom_id': 'amount', 'value': amount}]})
     payload = {'type': 5, 'data': {'custom_id': custom_id, 'components': boxes},
                'member': {'user': {'id': uid, 'username': 'Kam'}, 'permissions': '0'}, 'message': {'flags': 64}}
-    return ui.handle_modal(m, payload)
+    return ui.handle_modal(payload)
 
 
 def test_the_add_recipe_form_takes_a_name_and_an_amount():
@@ -606,17 +606,17 @@ def test_the_goal_walkthrough_is_the_same_as_before_the_planner_was_shared():
     give(MACHINES)
     with m.SessionLocal() as db:
         p = m.player(db, W, 'discord', '111', 'Kam')[1]
-        extras.set_goal(m, db, p, 'ore_scanner')
+        extras.set_goal(db, p, 'ore_scanner')
         db.commit()
-        e, steps = extras.walkthrough(m, db, p)
+        e, steps = extras.walkthrough(db, p)
         assert e.id == 'ore_scanner'
         assert [(st['mark'], st['name'], st['detail'], st['label'], st['action'], st['view']) for st in steps] == ORE_SCANNER_STEPS
         assert all(st['cost'] == 0 for st in steps) and [(st['name'], st['size']) for st in steps if st['size']] == [('Do Water Treatment ×8', 8)]
         # Only the progress part changed since e1b2583: steps done since the goal was set (0 of these 19), not direct ingredients.
-        assert extras.goal_text(m, db, p, 'twitch') == ('🎯 Goal Ore Scanner 0/19 steps | Next: Mine Hematite Ore ×3 (need 2) | '
+        assert extras.goal_text(db, p, 'twitch') == ('🎯 Goal Ore Scanner 0/19 steps | Next: Mine Hematite Ore ×3 (need 2) | '
                                                        'Then: Gather Lumber ×3 → Gather Stone ×4 → Gather Clay ×1 | !target clear')
         # The goal and a one-entry shopping list share the planner: the same crafts and raw materials.
-        ctx = wb.Context(m, db, p)
+        ctx = wb.Context(db, p)
         crafts, raw, opened = extras.full_plan(ctx, e)
         listed_crafts, listed_raw, listed_opened, _, _ = extras.list_plan(ctx, [(e, 1)])
         assert [(c.id, n) for c, n, _ in crafts] == [(c.id, n) for c, n, _ in listed_crafts] and raw == listed_raw and opened == listed_opened

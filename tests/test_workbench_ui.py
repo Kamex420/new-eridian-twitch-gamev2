@@ -6,7 +6,7 @@ from app import ui, workbench as wb, seed_content as s, crafting_progression as 
 
 W = m.DISCORD_WORLD_ID
 LUMBER = s.key('Lumber')
-CAMPFIRE = next(e for e in wb.index(m) if e.name == 'Campfire' and cp.SURVIVAL in e.tags)
+CAMPFIRE = next(e for e in wb.index() if e.name == 'Campfire' and cp.SURVIVAL in e.tags)
 
 
 def citizen(uid='111', lumber=10):
@@ -24,14 +24,14 @@ def citizen(uid='111', lumber=10):
 def stock(uid='111'):
     with m.SessionLocal() as db:
         _, p = m.player(db, W, 'discord', uid, 'Kam')
-        have = s.stock(m, db, p)
+        have = s.stock(db, p)
         return have.get(LUMBER, 0), have.get(CAMPFIRE.output, 0), p.actions
 
 
 def press(custom_id, uid='111', values=None):
     payload = {'type': 3, 'data': {'custom_id': custom_id, 'values': values or []},
                'member': {'user': {'id': uid, 'username': 'Kam'}}, 'message': {'flags': 64}}
-    return ui.handle_component(m, payload)
+    return ui.handle_component(payload)
 
 
 def controls(data):
@@ -45,10 +45,10 @@ def find(data, prefix):
 
 
 def test_every_category_lists_recipes_easiest_first():
-    entries = wb.index(m)
+    entries = wb.index()
     assert len({e.id for e in entries}) == len(entries)
     for key, *_ in wb.CATEGORIES:
-        rows = wb.in_category(m, key)
+        rows = wb.in_category(key)
         assert rows, key
         assert [e.sort_key for e in rows] == sorted(e.sort_key for e in rows)
         assert [e.tier for e in rows] == sorted(e.tier for e in rows)
@@ -62,14 +62,14 @@ def test_dropdown_labels_fit_discord_limits():
     citizen()
     with m.SessionLocal() as db:
         _, p = m.player(db, W, 'discord', '111', 'Kam')
-        ctx = wb.Context(m, db, p)
+        ctx = wb.Context(db, p)
         rows = []
         for key, *_ in [('',)] + list(wb.CATEGORIES):
             rows += wb.autocomplete_rows(ctx, key)
         rows += m.queue_choice_rows(db, p, '') + m.ore_choice_rows(db, p)
         assert all(len(label) <= 100 and len(str(value)) <= 100 for label, value in rows)
         for key, *_ in wb.CATEGORIES:
-            for component in controls({'components': ui.category_components(m, ctx, '111', key, 1)}):
+            for component in controls({'components': ui.category_components(ctx, '111', key, 1)}):
                 assert len(component['custom_id']) <= 100
                 for option in component.get('options', []):
                     assert len(option['label']) <= 100 and len(option.get('description', '')) <= 100
@@ -104,7 +104,7 @@ def test_panel_rejects_other_citizens_and_expired_buttons():
     citizen('111'); citizen('222')
     with m.SessionLocal() as db:
         _, p = m.player(db, W, 'discord', '111', 'Kam')
-        buttons = {'components': ui.recipe_components(m, wb.Context(m, db, p), '111', CAMPFIRE)}
+        buttons = {'components': ui.recipe_components(wb.Context(db, p), '111', CAMPFIRE)}
     craft = find(buttons, 'Craft 1 batch')['custom_id']
     before = stock('111')
     other = press(craft, uid='222')
@@ -135,10 +135,10 @@ def test_queue_plan_shows_totals_before_one_start():
 
 def test_make_slash_panel_offers_categories_and_recipe_buttons():
     citizen()
-    home = ui.slash_panel(m, 'make', '111', 'Kam', {}, '🛠️ WORKBENCH\nChoose a category.')
+    home = ui.slash_panel('make', '111', 'Kam', {}, '🛠️ WORKBENCH\nChoose a category.')
     menu = next(controls(home))
     assert [o['value'] for o in menu['options']] == ['ready', 'favorites'] + [key for key, *_ in wb.CATEGORIES]
-    recipe = ui.slash_panel(m, 'make', '111', 'Kam', {'recipe': CAMPFIRE.id}, 'CAMPFIRE\npreview')
+    recipe = ui.slash_panel('make', '111', 'Kam', {'recipe': CAMPFIRE.id}, 'CAMPFIRE\npreview')
     labels = [c.get('label', '') for c in controls(recipe)]
     assert any(label.startswith('Craft 1 batch') for label in labels) and 'Queue 5' in labels
     ids = [c['custom_id'] for c in controls(recipe)]
@@ -147,7 +147,7 @@ def test_make_slash_panel_offers_categories_and_recipe_buttons():
 
 def test_message_never_repeats_a_custom_id():
     same = ui.cid('111', 'wh')
-    data = ui.message(m, 'TITLE\nbody', [ui.row(ui.button('A', same), ui.button('B', same))])
+    data = ui.message('TITLE\nbody', [ui.row(ui.button('A', same), ui.button('B', same))])
     ids = [c['custom_id'] for c in controls(data)]
     assert len(ids) == len(set(ids))
 
@@ -155,7 +155,7 @@ def test_message_never_repeats_a_custom_id():
 def test_twitch_workbench_pages_fit_one_chat_message():
     with m.SessionLocal() as db:
         _, p = m.player(db, 'chan', 'twitch', 't1', 'Kam')
-        ctx = wb.Context(m, db, p, 'twitch')
+        ctx = wb.Context(db, p, 'twitch')
         home = wb.home_text(ctx)
         assert len(home.encode()) <= 380 and all(key in home for key, *_ in wb.CATEGORIES)
         for key, *_ in wb.CATEGORIES:
@@ -185,13 +185,13 @@ def test_retired_recipes_keep_history_and_queues():
                 m.craft_record(db, p, old)
         db.commit()
         # Batches made with retired legacy recipes still count toward personal tiers.
-        assert cp.manufactured_batches(m, db, p) == 25
+        assert cp.manufactured_batches(db, p) == 25
         # An alternate Iron Nails recipe completes the Component catalog entry.
-        alternate = next(e.id for e in wb.index(m) if e.name == 'Iron Nails' and e.id != m.item_identity.RETIRED_RECIPES['component'])
+        alternate = next(e.id for e in wb.index() if e.name == 'Iron Nails' and e.id != m.item_identity.RETIRED_RECIPES['component'])
         assert m.parts_crafted({alternate}) == m.parts_crafted(set()) + 1
     q = m.task_queue
     flaxa = m.item_identity.RETIRED_GATHERED['biofiber']
-    assert 'make:biofiber' not in q.choices(m) and q.normalize(m, 'make:biofiber') == 'gather:' + flaxa
+    assert 'make:biofiber' not in q.choices() and q.normalize('make:biofiber') == 'gather:' + flaxa
     # A queue saved with a retired recipe continues with its catalog recipe.
     with m.SessionLocal() as db:
         _, p = m.player(db, W, 'discord', '111', 'Kam')
@@ -199,7 +199,7 @@ def test_retired_recipes_keep_history_and_queues():
                            state='running', next_at=m.now() - timedelta(seconds=1)))
         db.commit()
         canonical = p.twitch_uid
-    q.run_one(m, W, canonical)
+    q.run_one(W, canonical)
     with m.SessionLocal() as db:
         row = db.query(q.TaskQueue).one()
         assert row.task == 'make:' + m.item_identity.RETIRED_RECIPES['component'] and row.state != 'cancelled'

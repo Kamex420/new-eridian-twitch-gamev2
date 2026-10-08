@@ -84,7 +84,7 @@ def recipe_display_labels():
     """Recipe ids (and retired legacy keys) shown as their item names in Discord copy."""
     global _RECIPE_LABELS
     if _RECIPE_LABELS is None:
-        labels={e.id:e.name for e in workbench.index(main)}
+        labels={e.id:e.name for e in workbench.index()}
         labels.update({old:labels[rid] for old,rid in item_identity.RETIRED_RECIPES.items() if rid in labels})
         labels.update({name:name for name in set(labels.values())})
         _RECIPE_LABELS=labels
@@ -219,7 +219,7 @@ def _discord_json_message(content: str, ephemeral: bool = False, message_type: s
     if omitted:
         kept.append({"name":"More detail", "value":"This view is long. Choose a specific section, crafting category, or handbook topic to see its full details.", "inline":False})
     embed["fields"]=kept
-    data=message_layout.render(main,embed,content,command)
+    data=message_layout.render(embed,content,command)
     if ephemeral:
         data["flags"]=64
     return {"type":4,"data":data}
@@ -371,7 +371,7 @@ def _discord_make_autocomplete(payload:dict):
     category=workbench.normalize_category(values.get("category")) or ""
     _,_,current_player=_discord_existing_player(payload)
     with SessionLocal() as db:
-        ctx=workbench.Context(main,db,current_player,"discord")
+        ctx=workbench.Context(db,current_player,"discord")
         if focused.get("name")=="station":
             return _discord_autocomplete_choices(workbench.station_rows(ctx,query))
         if focused.get("name")!="recipe":return {"type":8,"data":{"choices":[]}}
@@ -380,7 +380,7 @@ def _discord_make_autocomplete(payload:dict):
 
 def ore_choice_rows(db,p):
     """Mining dropdown: status, owned, needs per attempt, cooldown and locks."""
-    rare_ok=crafting_progression.rare_unlocked(main,db,p)
+    rare_ok=crafting_progression.rare_unlocked(db,p)
     rows=[]
     for key in sorted(main.task_queue.ores(),key=lambda k:(k in crafting_progression.RARE,seed_content.item_label(k))):
         owned=material_amount(db,p,key) if p else 0
@@ -395,14 +395,14 @@ def ore_choice_rows(db,p):
 def queue_choice_rows(db,p,query=""):
     """Queue dropdown: every task with its icon, cost and (for recipes) status."""
     module=main;q=str(query or "").casefold().strip()
-    ctx=workbench.Context(module,db,p)
+    ctx=workbench.Context(db,p)
     rare_ok=ctx.rare_ok
     rows=[]
-    for key,label in main.task_queue.choices(module).items():
+    for key,label in main.task_queue.choices().items():
         if q and q not in (label+" "+key).casefold():continue
         kind,target=key.split(":",1)
         if kind=="make":
-            e=workbench.entry(module,target)
+            e=workbench.entry(target)
             if e is None:continue
             st=ctx.status(e)
             text=f"{st.emoji} Make {e.name} ×{ctx.batch_size(e)} · T{e.tier} {workbench.station_label(e,ctx)}"+("" if st.code=="ready" else f" · {st.short}")
@@ -457,12 +457,12 @@ def _discord_autocomplete(payload:dict):
     if command=='workshop' and option=='station':
         _,_,p=_discord_existing_player(payload)
         with SessionLocal() as db:
-            return _discord_autocomplete_choices(workbench.station_rows(workbench.Context(main,db,p),query))
+            return _discord_autocomplete_choices(workbench.station_rows(workbench.Context(db,p),query))
     if command in {'catalog','gather'} and option in {'item','resource'}:
         import sys
         _,_,p=_discord_existing_player(payload)
         with SessionLocal() as db:
-            return _discord_autocomplete_choices(seed_content.choices(main,db,p,gather_only=command=='gather',category=selected.get('category',''),owned=bool(selected.get('owned',False))),query)
+            return _discord_autocomplete_choices(seed_content.choices(db,p,gather_only=command=='gather',category=selected.get('category',''),owned=bool(selected.get('owned',False))),query)
     if command=='training' and option=='task':
         hub=selected.get('skill')
         _,_,p=_discord_existing_player(payload)
@@ -489,7 +489,7 @@ def _discord_autocomplete(payload:dict):
                 rows=[(data["name"],key) for key,data in available_production_orders(main.DISCORD_WORLD_ID,clock["day"],society_tier_index(state))]
             elif mode in {"buy","sell"}:
                 _,_,p=_discord_existing_player(payload)
-                stock=seed_content.stock(main,db,p)
+                stock=seed_content.stock(db,p)
                 def owned(key):return (p.cargo if p else 0) if key=="cargo" else stock.get(key,0)
                 rows=[(f"{market_item_label(key)} — {data[mode]} SC each · you have {owned(key)}",key) for key,data in sorted(SEED_INDUSTRIES.items(),key=lambda kv:(-owned(kv[0]) if mode=="sell" else 0,market_item_label(kv[0]))) if data.get(mode,0)>0 and (values.get("category","all")=="all" or data.get("category","legacy")==values["category"]) and (mode=="buy" or owned(key)>0)]
             else:rows=[]
@@ -501,7 +501,7 @@ def _discord_autocomplete(payload:dict):
         with SessionLocal() as db:
             owned=main.owned_life_items(db,p)
             import sys
-            source=seed_content.choices(main,db,p,category=selected.get('category',''),owned=True,usable=True)
+            source=seed_content.choices(db,p,category=selected.get('category',''),owned=True,usable=True)
             effects={"meal_kit":"+75 Nutrition, +5 Morale","recreation_set":"+28 Social, +12 Morale","comfort_pack":"+40 Comfort, +8 Energy"}
             legacy=[] if selected.get('category') else [(f"{QUALITY_RECIPES[key]['name']} ×{sum(row.qty for row in rows)} — consumes 1: {effects[key]} (best quality first)",key) for key,rows in owned.items() if rows]
             return _discord_autocomplete_choices(source+legacy,query)

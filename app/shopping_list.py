@@ -82,7 +82,7 @@ def merge(db, channel, source, target):
 
 # ---------------------------------------------------------------- changing the list
 
-def _unique(m, e):
+def _unique(e):
     """Bonus equipment is limited to one of each."""
     from .game.rules import UNIQUE_CORE_ITEMS, UNIQUE_QUALITY_ITEMS
     return e.kind == 'legacy' and (e.output in UNIQUE_CORE_ITEMS or e.output in UNIQUE_QUALITY_ITEMS)
@@ -105,11 +105,11 @@ def _batches(n):
     return f'{n} batch' + ('es' if n != 1 else '')
 
 
-def set_entry(m, db, p, recipe_id, amount=None):
+def set_entry(db, p, recipe_id, amount=None):
     """Add (no amount: one batch's output), change or remove (0) one recipe. Returns the message; a refusal changes nothing."""
     rows = entries(db, p)
     row = next((r for r in rows if r.recipe_id == recipe_id), None)
-    e = wb.entry(m, recipe_id) if recipe_id else None
+    e = wb.entry(recipe_id) if recipe_id else None
     try:
         want = _amount(amount)
     except ValueError:
@@ -123,13 +123,13 @@ def set_entry(m, db, p, recipe_id, amount=None):
         return f'🛒 Removed {name} from your shopping list.'
     if e is None:
         return '🛒 That recipe is not available. Nothing changed.'
-    ctx = wb.Context(m, db, p)
+    ctx = wb.Context(db, p)
     per = max(1, ctx.batch_size(e))
     if want is None:
         if row is not None:
             return f'🛒 {e.name} is already on your shopping list: you want {row.want}. Give an amount to change it. Nothing changed.'
         want = min(MAX_WANT, per)
-    if want > 1 and _unique(m, e):
+    if want > 1 and _unique(e):
         return f'🛒 {e.name} is bonus equipment, limited to one of each, so the amount must be 1. Nothing changed.'
     have = ctx.have(e.output)
     state = f'you have {have}' + (', done ✅' if have >= want else f'; {_batches(math.ceil((want - have) / per))} of {per}')
@@ -150,12 +150,12 @@ def set_entry(m, db, p, recipe_id, amount=None):
     return f'🛒 Shopping list changed: want {want} {e.name} (was {old}; {state}).'
 
 
-def clear(m, db, p, done_only=False):
+def clear(db, p, done_only=False):
     """Remove every entry, or only the done ones (unavailable recipes are never done)."""
-    ctx = wb.Context(m, db, p)
+    ctx = wb.Context(db, p)
     gone = 0
     for row in entries(db, p):
-        e = wb.entry(m, row.recipe_id)
+        e = wb.entry(row.recipe_id)
         if done_only and (e is None or ctx.have(e.output) < row.want):
             continue
         db.delete(row)
@@ -167,77 +167,77 @@ def clear(m, db, p, done_only=False):
     return '✖️ Shopping list cleared.' if gone else '🛒 Your shopping list is already empty. Nothing changed.'
 
 
-def find_recipe(m, db, p, text):
+def find_recipe(db, p, text):
     """(recipe, note) for a typed name: exact names and ids first, then close spellings; (None, why) when none."""
     from . import qol
     text = str(text or '').strip()
     if not text:
         return None, '🛒 Which recipe? Type its name, e.g. Iron Plate. Nothing changed.'
-    found = wb.resolve(m, db, p, text)
+    found = wb.resolve(db, p, text)
     if found is not None:
         return found, ''
-    found, note, suggestions = qol.fuzzy_recipe(m, db, p, text)
+    found, note, suggestions = qol.fuzzy_recipe(db, p, text)
     if found is not None:
         return found, note
     return None, f'🛒 No recipe called "{text[:40]}".' + qol.did_you_mean(suggestions) + ' Nothing changed.'
 
 
-def listed_recipe(m, db, p, text):
+def listed_recipe(db, p, text):
     """The listed recipe a typed name means (its id or name; also one no longer in the catalog), else find_recipe's answer."""
     text = str(text or '').strip()
     rows = entries(db, p)
     for row in rows:
-        e = wb.entry(m, row.recipe_id)
+        e = wb.entry(row.recipe_id)
         if text.casefold() in {row.recipe_id.casefold()} | ({e.name.casefold()} if e else set()):
             return row.recipe_id, ''
-    found, note = find_recipe(m, db, p, text)
+    found, note = find_recipe(db, p, text)
     if found is None:
         return None, note
-    twin = next((r.recipe_id for r in rows if (wb.entry(m, r.recipe_id) or SimpleNamespace(name='')).name == found.name), found.id)
+    twin = next((r.recipe_id for r in rows if (wb.entry(r.recipe_id) or SimpleNamespace(name='')).name == found.name), found.id)
     return twin, note
 
 
-def add_typed(m, db, p, text, amount=None):
+def add_typed(db, p, text, amount=None):
     """Add or change a recipe named in a form or chat; the note says what a close spelling matched."""
-    found, note = find_recipe(m, db, p, text)
+    found, note = find_recipe(db, p, text)
     if found is None:
         return note
-    return (note + ' ' if note else '') + set_entry(m, db, p, found.id, amount)
+    return (note + ' ' if note else '') + set_entry(db, p, found.id, amount)
 
 
-def _split(m, db, p, words):
+def _split(db, p, words):
     """(recipe name, amount or None): a trailing number or 'off'/'remove' is the amount, unless the whole text names a
     recipe ("Table Lamp 2")."""
     text = ' '.join(words)
-    if len(words) > 1 and (words[-1].casefold() in REMOVE or NUMBER.fullmatch(words[-1])) and wb.resolve(m, db, p, text) is None:
+    if len(words) > 1 and (words[-1].casefold() in REMOVE or NUMBER.fullmatch(words[-1])) and wb.resolve(db, p, text) is None:
         return ' '.join(words[:-1]), words[-1]
     return text, None
 
 
 # ---------------------------------------------------------------- the combined plan
 
-def _state(m, ctx, item):
+def _state(ctx, item):
     """(mark, words) for an entry that is not done yet."""
     status = item.status
     if status.code == 'ready':
         return '🛠️', 'ready to craft'
     if status.code == 'station':
-        _, machine = extras._machine(m, ctx, item.entry)
+        _, machine = extras._machine(ctx, item.entry)
         if machine is not None:
             return '🔑', f'needs a {machine.name}: made in the steps'
     return status.emoji, status.short
 
 
-def overview(m, db, p, provider='discord'):
+def overview(db, p, provider='discord'):
     """Everything the list screens show: entries with progress, the raw materials across the list, the steps,
     and what buying the missing materials costs."""
     from . import qol
     from .game.players import resource_name
-    ctx = wb.Context(m, db, p, provider)
-    rows = [(r, wb.entry(m, r.recipe_id)) for r in entries(db, p)]
+    ctx = wb.Context(db, p, provider)
+    rows = [(r, wb.entry(r.recipe_id)) for r in entries(db, p)]
     wanted = [(e, r.want) for r, e in rows if e is not None]
     if wanted:
-        steps, (_, raw, _, made, used) = extras.list_walkthrough(m, ctx, wanted)
+        steps, (_, raw, _, made, used) = extras.list_walkthrough(ctx, wanted)
     else:
         steps, raw, made, used = [], {}, [], {}
     batches = {e.id: n for e, _, n in made}
@@ -251,7 +251,7 @@ def overview(m, db, p, provider='discord'):
         item = SimpleNamespace(recipe_id=r.recipe_id, entry=e, name=e.name, want=r.want, have=have, done=have >= r.want,
                                batches=batches.get(e.id, 0), status=ctx.status(e), mark='✅', state='done')
         if not item.done:
-            item.mark, item.state = _state(m, ctx, item)
+            item.mark, item.state = _state(ctx, item)
         items.append(item)
     routes = {r['key']: r for r in qol.fetch_routes(ctx, SimpleNamespace(inputs={k: ctx.have(k) + n for k, n in raw.items()}), 1)}
     materials = []
@@ -269,7 +269,7 @@ def overview(m, db, p, provider='discord'):
                            unsold=[x for x in materials if x.missing and not x.buyable], sc=p.sc)
 
 
-def route_text(m, x, provider='discord'):
+def route_text(x, provider='discord'):
     """How a missing material comes in, and what buying it costs."""
     from .game.cooldowns_materials import material_source
     r = x.route or {'kind': 'none'}
@@ -288,7 +288,7 @@ def route_text(m, x, provider='discord'):
     return text
 
 
-def source(m, x, provider='discord'):
+def source(x, provider='discord'):
     """Where a material Seed Industries will not sell you comes from (material_source, first part)."""
     from .game.cooldowns_materials import material_source
     return material_source(x.key, provider).split(';')[0].rstrip('.')
@@ -313,29 +313,29 @@ def entry_match(x):
     return f'{x.recipe_id} — no longer' if x.entry is None else f'— have {x.have} / want {x.want}'
 
 
-def _materials(m, info, shown):
+def _materials(info, shown):
     """The MATERIALS section with its first `shown` materials (the missing ones first)."""
     if not info.materials:
         return []
     lines = ['', 'MATERIALS · need / have / missing']
     for x in info.materials[:shown]:
-        lines.append(f'❌ {x.name} — need {x.need} / have {x.have} / missing {x.missing} → {route_text(m, x)}' if x.missing
+        lines.append(f'❌ {x.name} — need {x.need} / have {x.have} / missing {x.missing} → {route_text(x)}' if x.missing
                      else f'✅ {x.name} — need {x.need} / have {x.have}')
     if len(info.materials) > shown:
         lines.append(f'…and {len(info.materials) - shown} more.')
     if info.cost:
         lines.append(f'Buy all missing: {info.cost} SC for everything Seed Industries sells (you have {info.sc} SC).')
     if info.unsold:
-        lines.append('Not for sale: ' + ' · '.join(f'{x.name} ({source(m, x)})' for x in info.unsold[:2]) +
+        lines.append('Not for sale: ' + ' · '.join(f'{x.name} ({source(x)})' for x in info.unsold[:2]) +
                      (f' +{len(info.unsold) - 2} more' if len(info.unsold) > 2 else '') + '.')
     return lines
 
 
-def screen_text(m, db, p, note='', info=None):
+def screen_text(db, p, note='', info=None):
     """The Discord shopping list: entries, the combined materials, what buying costs and the first steps. It is one card:
     when everything does not fit (presentation's overview limits), fewer materials are listed."""
     from . import presentation
-    info = info or overview(m, db, p)
+    info = info or overview(db, p)
     done = sum(x.done for x in info.items)
     head = [f'🛒 SHOPPING LIST · {len(info.items)}/{MAX_ENTRIES}'] + ([note.strip()] if note.strip() else [])
     if not info.items:
@@ -356,18 +356,18 @@ def screen_text(m, db, p, note='', info=None):
     tail += ['', 'The button by each entry changes or removes it. ▶️ Fetch next does the first step once.']
     chars, lines = presentation.OVERVIEW_CHARS - CARD_MARGIN, presentation.OVERVIEW_LINES - 6     # three sections
     for shown in range(min(MATERIALS_SHOWN, len(info.materials)), -1, -1):
-        text = '\n'.join(head + _materials(m, info, shown) + tail)
+        text = '\n'.join(head + _materials(info, shown) + tail)
         if len(text) <= chars and len([x for x in text.split('\n') if x.strip()]) <= lines:
             break
     return text
 
 
-def item_text(m, db, p, recipe_id, note=''):
+def item_text(db, p, recipe_id, note=''):
     """One entry: what you have and want, and how to change it."""
-    e = wb.entry(m, recipe_id)
+    e = wb.entry(recipe_id)
     row = next((r for r in entries(db, p) if r.recipe_id == recipe_id), None)
     lines = [f'🛒 SHOPPING LIST · {e.name.upper()}'] + ([note.strip()] if note.strip() else [])
-    ctx = wb.Context(m, db, p)
+    ctx = wb.Context(db, p)
     have, per = ctx.have(e.output), max(1, ctx.batch_size(e))
     if row is None:
         lines.append(f'You have {have}. Not on your shopping list: choose how many you want to have.')
@@ -386,10 +386,10 @@ def _chat_entry(x):
     return f'{x.name} {x.have}/{x.want}' + ('✅' if x.done else '')
 
 
-def chat_text(m, db, p):
+def chat_text(db, p):
     """Twitch: the whole list on one line: entries have/want, missing materials and the next step."""
     from . import presentation
-    info = overview(m, db, p, 'twitch')
+    info = overview(db, p, 'twitch')
     if not info.items:
         return ('🛒 Your shopping list is empty. !shopping add <recipe> [amount] adds one, e.g. !shopping add iron plate 30; '
                 'one plan then covers them all.')
@@ -419,12 +419,12 @@ def _bought(info):
     return ', '.join(f'{x.missing} {x.name}' for x in info.buy)
 
 
-def buy_preview(m, db, p, provider='twitch'):
+def buy_preview(db, p, provider='twitch'):
     """What Buy all missing would buy and cost; nothing is bought."""
-    info = overview(m, db, p, provider)
+    info = overview(db, p, provider)
     if not info.items:
         return '🛒 Your shopping list is empty, so there is nothing to buy.'
-    unsold = ' · '.join(f'{x.name} ({source(m, x, provider)})' for x in info.unsold[:3])
+    unsold = ' · '.join(f'{x.name} ({source(x, provider)})' for x in info.unsold[:3])
     tail = f' | Not for sale: {unsold}' if unsold else ''
     if not info.buy:
         return '🛒 Nothing missing on your list can be bought from Seed Industries.' + tail
@@ -434,10 +434,10 @@ def buy_preview(m, db, p, provider='twitch'):
     return f'🛒 Buy all missing: {_bought(info)} for {info.cost} SC from Seed Industries. {how}' + tail
 
 
-def buy_all(m, db, p, provider='discord'):
+def buy_all(db, p, provider='discord'):
     """Buy every missing material Seed Industries sells (the ordinary purchase), only when you can afford all of it."""
     from . import qol
-    info = overview(m, db, p, provider)
+    info = overview(db, p, provider)
     if not info.buy:
         return '🛒 Nothing missing on your list can be bought from Seed Industries. Nothing spent.'
     if p.sc < info.cost:
@@ -445,7 +445,7 @@ def buy_all(m, db, p, provider='discord'):
                 f'earn {info.cost - p.sc} more SC first. Nothing spent.')
     before = p.sc
     shim = SimpleNamespace(inputs={x.key: x.have + x.missing for x in info.buy})
-    receipts = qol.buy_missing(m, db, p, shim, 1, provider).split('\n')
+    receipts = qol.buy_missing(db, p, shim, 1, provider).split('\n')
     refused = [r for r in receipts if r and 'bought' not in r]
     text = f'🛒 Bought for your shopping list: {_bought(info)} for {before - p.sc} SC. Balance: {p.sc} SC.'
     return text + (' ' + refused[0] if refused else '')
@@ -453,7 +453,7 @@ def buy_all(m, db, p, provider='discord'):
 
 # ---------------------------------------------------------------- Twitch and the route
 
-def command(m, channel, uid, name, provider, text=''):
+def command(channel, uid, name, provider, text=''):
     """!shopping: blank sums the list up; 'add <recipe> [amount]' (0 removes), 'remove <recipe>', 'clear [done]',
     'buy' shows the cost and 'buy confirm' buys every missing material Seed Industries sells."""
     from .game.players import player
@@ -463,25 +463,25 @@ def command(m, channel, uid, name, provider, text=''):
     with SessionLocal() as db:
         p = player(db, channel, provider, uid, name)[1]
         if not words:
-            reply = chat_text(m, db, p) if provider != 'discord' else screen_text(m, db, p)
+            reply = chat_text(db, p) if provider != 'discord' else screen_text(db, p)
         elif verb == 'buy':
             confirm = bool(rest) and rest[0].casefold() in {'confirm', 'yes', 'go'}
-            reply = buy_all(m, db, p, provider) if confirm else buy_preview(m, db, p, provider)
+            reply = buy_all(db, p, provider) if confirm else buy_preview(db, p, provider)
         elif verb == 'clear':
-            reply = clear(m, db, p, done_only=bool(rest) and rest[0].casefold() == 'done')
+            reply = clear(db, p, done_only=bool(rest) and rest[0].casefold() == 'done')
         elif verb in {'remove', 'delete', 'rm', 'del'}:
-            found, reply = listed_recipe(m, db, p, ' '.join(rest)) if rest else (None, '🛒 Which recipe? !shopping remove <recipe>. Nothing changed.')
+            found, reply = listed_recipe(db, p, ' '.join(rest)) if rest else (None, '🛒 Which recipe? !shopping remove <recipe>. Nothing changed.')
             if found is not None:
-                reply = (reply + ' ' if reply else '') + set_entry(m, db, p, found, 0)
+                reply = (reply + ' ' if reply else '') + set_entry(db, p, found, 0)
         else:
-            wanted, amount = _split(m, db, p, rest if verb == 'add' else words)
+            wanted, amount = _split(db, p, rest if verb == 'add' else words)
             if not wanted:
                 reply = '🛒 Which recipe? !shopping add <recipe> [amount], e.g. !shopping add iron plate 30. Nothing changed.'
             elif amount is not None and str(amount).casefold() in REMOVE:
-                found, reply = listed_recipe(m, db, p, wanted)
+                found, reply = listed_recipe(db, p, wanted)
                 if found is not None:
-                    reply = (reply + ' ' if reply else '') + set_entry(m, db, p, found, 0)
+                    reply = (reply + ' ' if reply else '') + set_entry(db, p, found, 0)
             else:
-                reply = add_typed(m, db, p, wanted, amount)
+                reply = add_typed(db, p, wanted, amount)
         db.commit()
         return reply

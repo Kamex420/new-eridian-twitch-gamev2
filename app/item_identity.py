@@ -59,7 +59,7 @@ def canonical_costs(costs):
 # Item rows that still need converting: an old key, or a catalog item stored in a player column.
 MIGRATING=frozenset(ALIASES)|frozenset(FIELD_ITEMS)
 
-def migrate_player(m,db,p):
+def migrate_player(db,p):
     """Caller owns commit. Lock account before merging; zero source atomically.
 
     Re-running, restarting, or linking a migrated account cannot award twice.
@@ -91,7 +91,7 @@ def migrate_player(m,db,p):
             setattr(p,field,getattr(p,field)+row.qty);row.qty=0
     db.flush()
 
-def stock(m,db,p):
+def stock(db,p):
     if p is None:return {}
     result={}
     for row in db.execute(select(ExtraItem).where(ExtraItem.channel_id==p.channel_id,ExtraItem.canonical_uid==p.twitch_uid,ExtraItem.qty>0)).scalars():
