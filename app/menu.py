@@ -1293,7 +1293,7 @@ def amount_view(db, p, owner, key, value):
     if selling and not have:
         text += '\nYou have none of this to sell.'
     if kept:
-        text += f'\n🛡️ Always keep is {kept}: Sell all leaves that many; the other buttons sell exactly what you choose.'
+        text += f'\n🛡️ Always keep is {kept}, so Sell all leaves that many; the other buttons sell exactly what you choose.'
     return ui.message(text, [ui.row(*buttons[:5]), ui.row(other, later, ui.back_button(owner, 'mk', key),
                                                             ui.button('Menu', ui.cid(owner, 'mn', 'home'), emoji='🏠'))], 'menu')
 

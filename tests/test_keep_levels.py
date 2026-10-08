@@ -545,7 +545,7 @@ def test_discord_sell_all_mentions_the_keep_level():
     citizen(lumber=10)
     set_keep(LUMBER, 4)
     amounts = press(ui.cid('111', 'mp', 'sell'), values=[LUMBER])['data']
-    assert 'Always keep is 4: Sell all leaves that many' in text_of(amounts)
+    assert 'Always keep is 4, so Sell all leaves that many' in text_of(amounts)
     press(find(amounts, 'Sell all 6')['custom_id'])                                    # the whole stack minus the keep level
     assert have(LUMBER) == 4
 
