@@ -228,15 +228,15 @@ def test_refresh_reads_the_application_emoji_with_the_bot_token(monkeypatch):
 def test_a_failed_refresh_keeps_the_old_list_and_warns_once(monkeypatch, caplog, reply):
     ce.set_table({'duck': '555'})
     configure(monkeypatch, reply)
-    with caplog.at_level(logging.WARNING, logger=ce.__name__):
+    with caplog.at_level(logging.WARNING, logger=ce.log.name):
         assert ce.refresh() is False
     assert len([r for r in caplog.records if r.levelno == logging.WARNING]) == 1
     assert 'secret' not in caplog.text
     assert texts(ce.apply(card('🦆'))) == [DUCK]
 
 
-@pytest.mark.parametrize('env', [{}, {'DISCORD_BOT_TOKEN': 't'}, {'DISCORD_APPLICATION_ID': '42'}])
-def test_without_a_token_or_application_id_nothing_starts(monkeypatch, env):
+@pytest.mark.parametrize('env', [{}, {'DISCORD_APPLICATION_ID': '42'}])
+def test_without_a_bot_token_nothing_starts(monkeypatch, env):
     def no_thread(*a, **k):
         pytest.fail('thread started')
     monkeypatch.setattr(ce, 'threading', SimpleNamespace(Thread=no_thread))
@@ -339,3 +339,62 @@ def test_guide_panels_get_it(monkeypatch):
     ce.set_table(ALL)
     monkeypatch.setattr(guide_panels, 'card', lambda panel: card('Panel 🦆'))
     assert v2.text_of(guide_panels.bodies()[0]) == f'Panel {DUCK}'
+
+
+# ---------------------------------------------------------------- no DISCORD_APPLICATION_ID on the game service
+
+def answers(monkeypatch, replies):
+    """Only the bot token is set; each GET gets the reply for its URL (and is recorded)."""
+    monkeypatch.setenv('DISCORD_BOT_TOKEN', 'secret')
+    monkeypatch.delenv('DISCORD_APPLICATION_ID', raising=False)
+    calls = []
+
+    def get(url, headers=None, timeout=None):
+        calls.append(url)
+        return replies[url]
+    monkeypatch.setattr(ce.requests, 'get', get)
+    return calls
+
+
+def test_without_an_application_id_the_bot_asks_discord_for_it_once(monkeypatch):
+    calls = answers(monkeypatch, {ce.ME: Reply(200, {'id': '42', 'name': 'New Eridian V2'}),
+                                  ce.URL.format(app='42'): Reply(200, ITEMS)})
+    assert ce.refresh() is True and ce.refresh() is True
+    assert calls == [ce.ME, ce.URL.format(app='42'), ce.URL.format(app='42')]
+    assert texts(ce.apply(card('🦆'))) == [DUCK]
+
+
+@pytest.mark.parametrize('me', [Reply(401, {}), Reply(200, {'id': 'nope'}), Reply(200, {})])
+def test_when_the_application_id_cannot_be_learned_the_refresh_fails_and_warns(monkeypatch, caplog, me):
+    calls = answers(monkeypatch, {ce.ME: me})
+    with caplog.at_level(logging.WARNING, logger=ce.log.name):
+        assert ce.refresh() is False
+    assert calls == [ce.ME] and 'secret' not in caplog.text
+    assert len([r for r in caplog.records if r.levelno == logging.WARNING]) == 1
+
+
+def test_a_missing_bot_token_is_warned_about_once(monkeypatch, caplog):
+    with caplog.at_level(logging.WARNING, logger=ce.log.name):
+        for _ in range(3):
+            ce.apply(card('🦆'))
+            ce.refresh()
+    assert [r.getMessage() for r in caplog.records] == ['Custom emoji are off: DISCORD_BOT_TOKEN is missing on this service']
+
+
+def test_the_log_says_which_emoji_are_not_uploaded_yet_and_only_when_that_changes(monkeypatch, caplog):
+    configure(monkeypatch, Reply(200, ITEMS))
+    with caplog.at_level(logging.INFO, logger=ce.log.name):
+        ce.refresh()
+        ce.refresh()
+    lines = [r.getMessage() for r in caplog.records]
+    assert lines == ['Custom emoji: 3 loaded from Discord; not uploaded yet: seemsgoodmelisa, andyevillaugh, JJhydrate']
+    caplog.clear()
+    every = [{'id': str(i), 'name': n} for i, n in enumerate(ALL, 1)]
+    configure(monkeypatch, Reply(200, {'items': every}))
+    with caplog.at_level(logging.INFO, logger=ce.log.name):
+        ce.refresh()
+    assert [r.getMessage() for r in caplog.records] == ['Custom emoji: 6 loaded from Discord; every emoji in PICKS is there']
+
+
+def test_the_log_lines_reach_uvicorns_handler():
+    assert ce.log.name.startswith('uvicorn.error.')

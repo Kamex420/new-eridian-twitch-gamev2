@@ -19,8 +19,12 @@ choice's emoji slot, not inside its label).
 Discord's emoji list is fetched with the bot token and cached for ten minutes. A send never waits for
 it: when the cache is missing or old, one background thread refreshes it and the message uses what is
 cached right now (nothing yet on the very first message after a restart; the startup hook warms it up).
-A failed refresh keeps the old list and logs one warning. With no bot token or application id
-configured (DISCORD_BOT_TOKEN, DISCORD_APPLICATION_ID; as in tests) nothing is fetched and nothing changes.
+A failed refresh keeps the old list and logs one warning. Each refresh that changes what is found logs
+which emoji were loaded and which named in PICKS are not uploaded yet, so Railway's logs show it.
+
+Only DISCORD_BOT_TOKEN is needed. The application id comes from DISCORD_APPLICATION_ID when it is set;
+otherwise it is asked from Discord once (/applications/@me, the bot's own application). With no bot
+token (as in tests) nothing is fetched, nothing changes, and one warning says the emoji are off.
 """
 import copy
 import logging
@@ -30,7 +34,7 @@ import threading
 import time
 import requests
 
-log = logging.getLogger(__name__)
+log = logging.getLogger('uvicorn.error.custom_emoji')    # uvicorn's handler puts INFO lines in Railway's logs
 
 # Edit this to change the emoji. Names must match the emoji names on the Discord Developer Portal's Emojis page.
 # 'done' and 'failed' are task-done and task-failed headings (they alternate); a unicode emoji maps to its stand-in.
@@ -45,6 +49,7 @@ TTL = 600           # seconds a fetched list is used before the next background 
 RETRY = 60          # seconds before trying again after a failed refresh
 TIMEOUT = 8
 URL = 'https://discord.com/api/v10/applications/{app}/emojis'
+ME = 'https://discord.com/api/v10/applications/@me'
 TEXT = 10           # a text display (layout_v2.TEXT)
 BUTTON = 2
 HEADING = re.compile(r'^(### )(✅|❌)(?= )')
@@ -56,23 +61,59 @@ _table = {}                 # name.lower() -> (name, id, animated)
 _next_try = 0.0             # time.monotonic() before which no refresh starts
 _running = False            # True while the one background refresh is in flight
 _turns = {}                 # 'done' / 'failed' -> how many headings have taken a turn
+_app_id = ''                # the application id learned from Discord when DISCORD_APPLICATION_ID is not set
+_reported = None            # the last 'loaded / missing' line logged, so an unchanged list is not logged again
+_warned_off = False         # the 'no bot token' warning was logged
 
 
 # ---------------------------------------------------------------- the emoji list
 
-def _credentials():
-    """(application id, bot token), read now so they can change after import; ('', '') when either is missing."""
-    app, token = os.getenv('DISCORD_APPLICATION_ID', '').strip(), os.getenv('DISCORD_BOT_TOKEN', '').strip()
-    return (app, token) if app and token else ('', '')
+def _token():
+    """The bot token, read now so it can change after import; '' when it is missing (one warning says so)."""
+    global _warned_off
+    token = os.getenv('DISCORD_BOT_TOKEN', '').strip()
+    if not token and not _warned_off:
+        _warned_off = True
+        log.warning('Custom emoji are off: DISCORD_BOT_TOKEN is missing on this service')
+    return token
+
+
+def _application(token):
+    """DISCORD_APPLICATION_ID, else the bot's own application id asked from Discord once (raises when it cannot)."""
+    global _app_id
+    app = os.getenv('DISCORD_APPLICATION_ID', '').strip() or _app_id
+    if app:
+        return app
+    response = requests.get(ME, headers={'Authorization': 'Bot ' + token}, timeout=TIMEOUT)
+    if response.status_code != 200:
+        raise ValueError(f'application id: HTTP {response.status_code}')
+    app = str((response.json() or {}).get('id') or '')
+    if not app.isdigit():
+        raise ValueError('application id missing from the answer')
+    _app_id = app
+    return app
+
+
+def _report(found):
+    """Log which emoji were loaded and which PICKS names are not uploaded yet, when that changed."""
+    global _reported
+    wanted = list(dict.fromkeys(n for names in PICKS.values() for n in names))
+    missing = [n for n in wanted if n.lower() not in found]
+    line = (f'Custom emoji: {len(found)} loaded from Discord; '
+            + ('every emoji in PICKS is there' if not missing else 'not uploaded yet: ' + ', '.join(missing)))
+    if line != _reported:
+        _reported = line
+        log.info(line)
 
 
 def refresh():
     """Fetch the application's emoji now (blocking). Keeps the old list and logs a warning when it fails."""
     global _table, _next_try
-    app, token = _credentials()
-    if not app:
+    token = _token()
+    if not token:
         return False
     try:
+        app = _application(token)
         response = requests.get(URL.format(app=app), headers={'Authorization': 'Bot ' + token}, timeout=TIMEOUT)
         if response.status_code != 200:
             raise ValueError(f'HTTP {response.status_code}')
@@ -89,6 +130,7 @@ def refresh():
         _next_try = time.monotonic() + RETRY
         return False
     _table, _next_try = found, time.monotonic() + TTL
+    _report(found)
     return True
 
 
@@ -104,7 +146,7 @@ def _background():
 def warm_up():
     """Start the one background refresh when the list is missing or old. Never waits, never raises."""
     global _running
-    if time.monotonic() < _next_try or not _credentials()[0]:
+    if time.monotonic() < _next_try or not _token():
         return
     with _LOCK:
         if _running or time.monotonic() < _next_try:
@@ -127,8 +169,8 @@ def set_table(names):
 
 def reset():
     """Forget the list, any refresh in flight and every turn taken, as at a restart."""
-    global _table, _next_try, _running
-    _table, _next_try, _running = {}, 0.0, False
+    global _table, _next_try, _running, _app_id, _reported, _warned_off
+    _table, _next_try, _running, _app_id, _reported, _warned_off = {}, 0.0, False, '', None, False
     _turns.clear()
 
 
