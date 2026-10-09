@@ -1,8 +1,9 @@
 """Optional Claude API features: Find's fallback answers, Seedling thoughts and diary, and the weekly recap's story.
 
 They are off until the game owner adds ANTHROPIC_API_KEY as a Railway variable. Every caller keeps its no-AI text:
-write() returns '' when the key is missing, the feature is switched off, the day's budget is spent, or the API is slow
-or fails, and the caller shows what it showed before. Nothing here ever raises into the game.
+write() returns '' when the key is missing, the feature is switched off, the day's budget is spent, the API is slow
+or fails, or the caller holds the game lock (task_queue.atomic: an API call there would hold up every player), and the
+caller shows what it showed before. Nothing here ever raises into the game.
 
 Railway variables (only the key is needed):
   ANTHROPIC_API_KEY    turns the features on. Never logged, stored or shown.
@@ -23,7 +24,7 @@ from sqlalchemy import Column, DateTime, Integer, String, Text, delete
 from sqlalchemy.exc import IntegrityError
 
 from . import runtime
-from .db import Base
+from .db import Base, connection_context
 
 API_URL = 'https://api.anthropic.com/v1/messages'
 API_VERSION = '2023-06-01'
@@ -89,6 +90,12 @@ def features():
 def enabled(feature):
     """Whether `feature` (find, seedling or recap) may call the API at all (the budget is checked when it does)."""
     return bool(_key()) and feature in features()
+
+
+def locked():
+    """Whether this code runs inside the game lock (task_queue.atomic). An API call there would hold up every player for
+    seconds, so write() refuses: callers make their call before or after the lock."""
+    return connection_context.get() is not None
 
 
 def today():
@@ -163,6 +170,9 @@ def write(db, feature, system, prompt, max_tokens=300, scope='', per_scope=None,
     `scope`/`per_scope` add a second daily limit (one player's Find answers). Uses the caller's session for the
     budget, so the caller commits as usual."""
     if not enabled(feature):
+        return ''
+    if locked():
+        log.warning('AI %s call skipped: it would run inside the game lock', feature)
         return ''
     try:
         if not _spend(db, scope, per_scope):

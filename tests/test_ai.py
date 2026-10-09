@@ -97,3 +97,15 @@ def test_nothing_is_kept_when_nothing_was_written(monkeypatch):
     monkeypatch.delenv('ANTHROPIC_API_KEY', raising=False)
     with m.SessionLocal() as db:
         assert ai.written(db, 'recap', 'recap:w', 'Write it.', 'The week.') == '' and ai.kept(db, 'recap:w') == ''
+
+
+def test_no_call_inside_the_game_lock(calls):
+    from app.db import connection_context
+    token = connection_context.set(object())               # what task_queue.atomic sets while it holds the lock
+    try:
+        assert ai.locked() and write() == ''
+    finally:
+        connection_context.reset(token)
+    assert not calls and write() == 'Answer 1'
+    with m.SessionLocal() as db:
+        assert ai.used(db) == 1                              # the refused call spent nothing
