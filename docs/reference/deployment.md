@@ -16,7 +16,7 @@ The Docker startup attempts command registration before starting Uvicorn. A regi
 
 ## Environment semantics
 
-`DISCORD_APPLICATION_ID`, `DISCORD_BOT_TOKEN` and `DISCORD_GUILD_ID` identify the server command-registration target. `DISCORD_PUBLIC_KEY` verifies interactions. `DISCORD_WORLD_ID` associates Discord players with their saved world; Twitch command definitions carry the corresponding channel/world parameter. Changing that association can make existing progress appear to be missing even though its database rows remain intact.
+`DISCORD_APPLICATION_ID`, `DISCORD_BOT_TOKEN` and `DISCORD_GUILD_ID` identify the server command-registration target. The same application id and bot token also read the application's custom emoji (Developer Portal, Emojis page) that `app/custom_emoji.py` puts on cards; without them the cards keep their unicode emoji. `DISCORD_PUBLIC_KEY` verifies interactions. `DISCORD_WORLD_ID` associates Discord players with their saved world; Twitch command definitions carry the corresponding channel/world parameter. Changing that association can make existing progress appear to be missing even though its database rows remain intact.
 
 Set `DISCORD_WORLD_ID` to the Twitch channel's numeric ID (what StreamElements sends as `$(channel.provider_id)`). If they differ, Twitch and Discord are two separate worlds and `!link` codes cannot be claimed; `/health` then shows a warning. If both worlds already have players, do not just change the setting (Discord characters would seem to disappear): merge the worlds first.
 

@@ -15,7 +15,7 @@ from types import SimpleNamespace
 import discord
 from discord.ext import tasks
 from sqlalchemy import select, update
-from . import queue_notifications as n, qol, layout_v2, quiet_hours
+from . import queue_notifications as n, qol, layout_v2, quiet_hours, custom_emoji
 from . import runtime
 from .db import SessionLocal
 from .models import Player
@@ -165,7 +165,7 @@ def v2_body(data,mention,notice,dm=False):
     if not layout_v2.ENABLED or not data.get('embeds'):return None
     body=layout_v2.convert(data)
     if body is None:return None
-    body=layout_v2.with_line(body,mention)
+    body=custom_emoji.apply(layout_v2.with_line(body,mention))
     body['allowed_mentions']={'parse':[],'users':[] if dm else [str(notice.recipient)],'replied_user':False}
     body['nonce']=notice.id[:25]
     return body

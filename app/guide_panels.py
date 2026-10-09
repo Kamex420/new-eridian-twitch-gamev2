@@ -319,9 +319,9 @@ def card(panel):
 
 def bodies():
     """What `post` sends: cards in the newer layout when it is on, else the coloured text blocks."""
-    from . import layout_v2
+    from . import custom_emoji, layout_v2
     if layout_v2.ENABLED:
-        return [dict(card(panel), allowed_mentions={'parse': []}) for panel in PANELS]
+        return [custom_emoji.apply(dict(card(panel), allowed_mentions={'parse': []})) for panel in PANELS]
     return [{'content': text, 'allowed_mentions': {'parse': []}} for text in messages()]
 
 

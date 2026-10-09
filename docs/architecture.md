@@ -33,6 +33,7 @@ The application now has one canonical Python package. Earlier releases stored im
 | `ui.py` | Buttons, dropdowns and one-time tickets for every panel; ◀️ Back and 🏠 Menu on every screen, with each message's screen history for Back (`HISTORY`, `go_back`) |
 | `presentation.py` | How every Discord card and Twitch line looks: task receipts, notices and information cards |
 | `layout_v2.py` | Discord's newer message layout (Components V2): rebuilds every message as one card just before it is sent, puts a button beside each list item a screen names (`ui.with_items`), and keeps every edit in the layout its message already has |
+| `custom_emoji.py` | The owner's custom (application) emoji on newer-layout cards: alternating emoji on done and failed headings, and the duck and Rocky in text, buttons and menu choices; `PICKS` names them. The emoji list is read from Discord in a background thread (cached ten minutes), so a send never waits |
 | `notice.py` | The fan-project notice (a free, unofficial fan project by Kamex, not affiliated with Klang Games): the card footer, Help → About, `!seed about`, the first guide panel, the pinned panel and the first welcome all use it. |
 | `qol.py` | Status view, favourites, follow-up queues, alert and auto-recovery preferences, recovery estimates, fetch plans, bulk selling, inventory search and fuzzy names |
 | `keep_levels.py` | Keep levels: how many of an item bulk and automatic selling always leaves, and restocking back up to it through the ordinary queue, craft queue or purchase |

@@ -20,10 +20,12 @@ layout must be edited in it, and a message sent in the old layout keeps it, so
 an edit always follows the message it changes. DISCORD_COMPONENTS_V2=false sends
 new messages in the old layout again; messages already in the new layout keep it.
 
-Nothing here changes game state; it only rearranges text and keeps every button.
+Nothing here changes game state; it only rearranges text and keeps every button. The last step of
+`respond`, `new_message` and `edit` is custom_emoji.apply, which puts the owner's custom emoji in.
 """
 import os
 import re
+from . import custom_emoji
 
 FLAG = 1 << 15            # IS_COMPONENTS_V2
 EPHEMERAL = 1 << 6
@@ -383,7 +385,7 @@ def respond(response, payload=None):
             return dict(response, data=private(data))       # a message in the old layout keeps it
         new = convert(data, force=True)
         new['flags'] = FLAG                     # an edit cannot change who sees the message
-        return dict(response, data=new)
+        return dict(response, data=custom_emoji.apply(new))
     return dict(response, data=new_message(data))
 
 
@@ -393,7 +395,7 @@ def new_message(data):
         return data
     if not ENABLED or not (data.get('embeds') or str(data.get('content') or '').strip()):
         return private(data)
-    return convert(data) or private(data)
+    return custom_emoji.apply(convert(data) or private(data))
 
 
 def edit(data, payload=None):
@@ -408,7 +410,7 @@ def edit(data, payload=None):
     if message is not None:
         if not is_v2(message):
             return None
-        new = convert(data, force=True)
+        new = custom_emoji.apply(convert(data, force=True))
     else:
         new = new_message(data)
         if not is_v2(new):

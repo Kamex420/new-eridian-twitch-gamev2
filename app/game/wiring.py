@@ -22,6 +22,8 @@ twitch_lite.install(main)
 from .. import maintenance, world_merge
 maintenance.install(main)
 world_merge.install(main)
+from .. import custom_emoji
+custom_emoji.install(main)
 presentation.SKILL_NAMES=tuple(SKILL_LABELS.values())
 # Every module above is loaded now: create any table a module added since the first create_all (existing tables are left alone).
 Base.metadata.create_all(engine)
