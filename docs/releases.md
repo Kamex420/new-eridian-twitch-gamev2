@@ -1,5 +1,11 @@
 # Release notes
 
+## Custom emoji on Discord cards
+
+- **Finished tasks and failed tasks get New Eridian's own emoji** in their heading, taking turns between two of each so back-to-back results look different.
+- **Ducks and Rocky look like themselves.** Every 🦆 and 🪨 on a Discord card, button or menu choice shows the game's own duck and Rocky emoji.
+- Twitch chat is unchanged.
+
 ## Optional Claude features: smarter Find, Seedlings in their own words, a weekly story
 
 These turn on when the game owner adds an Anthropic API key in Railway. Without it, everything works exactly as before.
