@@ -24,7 +24,7 @@ LEAF_ALIAS, and every leaf an old one-time ticket can name stays in LEAVES (hidd
 """
 import secrets
 from sqlalchemy import select
-from . import runtime, ui, workbench as wb
+from . import presentation, runtime, ui, workbench as wb
 from .db import SessionLocal
 from .models import AccountLink, PlayerTitle
 
@@ -1564,7 +1564,7 @@ def run(uid, name, action, token=''):
                        ui.button('Sell another', ui.cid(uid, 'mk', 'sell'), emoji='🏷️'), ui.button('Auto-sell', ui.cid(uid, 'av'), emoji='🧹'),
                        ui.button('Always keep', ui.cid(uid, 'kv'), emoji='🛡️')), rows[-1]]
     leaf_ = LEAVES.get(action.get('leaf', ''))
-    return ui.with_crumb(reply(text, legacy, rows), crumb(area, leaf_['label'].rstrip('…') if leaf_ else ''))
+    return ui.with_crumb(reply(text, presentation.action_command(legacy, legacy_options), rows), crumb(area, leaf_['label'].rstrip('…') if leaf_ else ''))
 
 
 def after_command(command, options, uid):

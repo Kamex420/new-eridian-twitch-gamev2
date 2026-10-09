@@ -2,7 +2,8 @@
 
 ## Custom emoji on Discord cards
 
-- **Finished tasks and failed tasks get New Eridian's own emoji** in their heading, taking turns between two of each so back-to-back results look different.
+- **Finished tasks and failed tasks get New Eridian's own emoji** in their heading, taking turns between a few of each so back-to-back results look different. JJLUL is now one of the failed-task emoji.
+- **Every task result now opens with a heading and the emoji**, wherever you start it. A failed training task (from the command, a menu button or Again) and the /social actions (say hi, hang out, mentor, group games) used to show a plain line instead. A failed training task is headed with its own name, like "Ore Mining failed".
 - **Ducks and Rocky look like themselves.** Every 🦆 and 🪨 on a Discord card, button or menu choice shows the game's own duck and Rocky emoji.
 - Twitch chat is unchanged.
 - Behind the scenes: the bot finds its own emoji without an extra Railway setting, and the server log lists any emoji that are not uploaded yet.

@@ -9,8 +9,9 @@ import pytest
 from app import custom_emoji as ce, layout_v2 as v2, discord_queue_worker as worker
 
 ALL = {'seemsgoodmelisa': '111', 'JohnShades': '222', 'andyevillaugh': '333', 'JJhydrate': '444',
-       'duck': '555', 'Rocky': '666'}
-MELISA, JOHN, ANDY, JJ = '<:seemsgoodmelisa:111>', '<:JohnShades:222>', '<:andyevillaugh:333>', '<:JJhydrate:444>'
+       'duck': '555', 'Rocky': '666', 'JJLUL': '777'}
+MELISA, JOHN, ANDY, JJ, LUL = ('<:seemsgoodmelisa:111>', '<:JohnShades:222>', '<:andyevillaugh:333>', '<:JJhydrate:444>',
+                               '<:JJLUL:777>')
 DUCK, ROCKY = '<:duck:555>', '<:Rocky:666>'
 
 
@@ -53,8 +54,8 @@ def test_done_headings_take_turns():
 
 def test_failed_headings_take_turns():
     ce.set_table(ALL)
-    got = [texts(ce.apply(card('### ❌ Mining failed')))[0] for _ in range(3)]
-    assert got == [f'### {e} Mining failed' for e in (ANDY, JJ, ANDY)]
+    got = [texts(ce.apply(card('### ❌ Mining failed')))[0] for _ in range(4)]
+    assert got == [f'### {e} Mining failed' for e in (ANDY, JJ, LUL, ANDY)]
 
 
 def test_done_and_failed_alternate_on_their_own_and_reset_starts_over():
@@ -387,13 +388,13 @@ def test_the_log_says_which_emoji_are_not_uploaded_yet_and_only_when_that_change
         ce.refresh()
         ce.refresh()
     lines = [r.getMessage() for r in caplog.records]
-    assert lines == ['Custom emoji: 3 loaded from Discord; not uploaded yet: seemsgoodmelisa, andyevillaugh, JJhydrate']
+    assert lines == ['Custom emoji: 3 loaded from Discord; not uploaded yet: seemsgoodmelisa, andyevillaugh, JJhydrate, JJLUL']
     caplog.clear()
     every = [{'id': str(i), 'name': n} for i, n in enumerate(ALL, 1)]
     configure(monkeypatch, Reply(200, {'items': every}))
     with caplog.at_level(logging.INFO, logger=ce.log.name):
         ce.refresh()
-    assert [r.getMessage() for r in caplog.records] == ['Custom emoji: 6 loaded from Discord; every emoji in PICKS is there']
+    assert [r.getMessage() for r in caplog.records] == ['Custom emoji: 7 loaded from Discord; every emoji in PICKS is there']
 
 
 def test_the_log_lines_reach_uvicorns_handler():

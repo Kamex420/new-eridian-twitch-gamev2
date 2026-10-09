@@ -65,3 +65,58 @@ def test_very_long_information_moves_to_details_pages():
     data = embed('📜 JOURNAL\n' + '\n'.join(f'Entry {i}: something happened' for i in range(90)))
     card = data['embeds'][0]
     assert len(card.get('description', '')) <= pr.OVERVIEW_CHARS and data['components']
+
+
+# ---------------------------------------------------------------- titles for performed tasks
+
+def test_a_training_task_gets_a_title_from_its_own_text():
+    miss = '❌ TASK FAILED\n\nWHY\nOre Mining did not succeed. All task materials were kept.\n\nNeeds: energy -3'
+    assert pr._receipt_title(miss, 'training', True) == '❌ Ore Mining failed'
+    assert pr._receipt_title('✅ TASK COMPLETE\nKam completes Ore Mining.\n', 'training', False) == '✅ Ore Mining'
+    # no name in the text: a plain label, never none
+    assert pr._receipt_title('❌ TASK FAILED\n\nWHY\nNothing came of it.', 'training', True) == '❌ Task failed'
+    assert pr._receipt_title('✅ TASK COMPLETE\nDone.', 'training', False) == '✅ Task complete'
+    # a long sentence is not taken for a name
+    assert pr._receipt_title('❌ TASK FAILED\n' + 'x' * 80 + ' did not succeed.', 'make', True) == '❌ Task failed'
+
+
+def test_the_titled_receipt_drops_the_raw_task_line():
+    card = pr.receipt('❌ TASK FAILED\n\nWHY\nOre Mining did not succeed. All task materials were kept.\n\nNeeds: energy -3', 'training', 'failure')
+    assert card['title'] == '❌ Ore Mining failed' and 'TASK FAILED' not in card['description']
+    assert card['description'].startswith('> Ore Mining did not succeed.')
+    card = pr.receipt('✅ TASK COMPLETE\nThe lab hummed along.\n\nNeeds: energy -3', 'training', 'success')
+    assert card['title'] == '✅ Task complete' and 'TASK COMPLETE' not in card['description']
+
+
+def test_the_titles_that_already_existed_are_unchanged():
+    assert pr._receipt_title('✅ TASK COMPLETE\nKam completes Harvest Pumpkins.', 'farm', False) == '✅ Harvest Pumpkins'
+    assert pr._receipt_title('❌ TASK FAILED\nKam completes Harvest Pumpkins.', 'farm', True) == '❌ Harvest Pumpkins failed'
+    assert pr._receipt_title('✅ TASK COMPLETE\nRested.', 'relax', False) == '✅ Relaxed'
+    assert pr._receipt_title('❌ TASK FAILED\nRested.', 'relax', True) == '❌ Relaxed failed'
+    assert pr._receipt_title('✅ GATHERING COMPLETE\n\nOUTPUT\n• Lumber ×1', 'gather', False) == '✅ Gathered Lumber'
+    assert pr._receipt_title('⛏️ MINING FAILED\nThe vein was empty.', 'mine', True) == '❌ Mining failed'
+    assert pr._receipt_title('✅ CRAFTING COMPLETE\n\nOUTPUT\n• Campfire ×1', 'make', False) == '✅ Crafted Campfire'
+    # a command with a label of its own wins over the generic fallback
+    assert pr._receipt_title('✅ TASK COMPLETE\nDid it.', 'relax', False) == '✅ Relaxed'
+    # a trade or unlock is still a plain sentence
+    assert pr._receipt_title('Bought 2 Lumber for 4 SC.', 'buyitem', False) == ''
+
+
+def test_social_actions_are_titled_by_their_action():
+    assert pr.action_command('social', {'action': 'hi'}) == 'hi'
+    assert pr.action_command('social', {'action': 'hangout'}) == 'hangout'
+    assert pr.action_command('social', {'action': 'group_games'}) == 'use'
+    assert pr.action_command('social', {'action': 'duo_walk'}) == 'duo'
+    assert pr.action_command('social', None) == 'social' and pr.action_command('social', {}) == 'social'
+    assert pr.action_command('work', {'action': 'hi'}) == 'work' and pr.action_command('relax', None) == 'relax'
+
+
+def test_twitch_chat_output_is_unchanged_by_the_fallback():
+    # Twitch text never carries the Discord "TASK COMPLETE/FAILED" line, so the fallback never reaches it; these lines are
+    # exactly what the chat produced before the fallback existed.
+    assert pr.chat('✅ Kam completes Harvest Pumpkins. | Output: Pumpkin ×3 | Needs: energy -3', 'farm') == \
+        '✅ Kam completes Harvest Pumpkins. | Output: Pumpkin ×3 | ⚡ −3 Energy'
+    assert pr.chat('❌ Ore Mining did not succeed. All task materials were kept.', 'training') == \
+        '❌ Ore Mining did not succeed. All task materials were kept.'
+    assert pr.chat('✅ Kam completes Ore Mining. | Output: Hematite Ore ×2', 'training') == \
+        '✅ Kam completes Ore Mining. | Output: Hematite Ore ×2'

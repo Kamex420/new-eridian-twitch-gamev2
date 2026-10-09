@@ -226,7 +226,18 @@ ACTION_TITLES = {'eatfull': 'Ate until full', 'eat_full': 'Ate until full', 'rel
                  'repair': 'Repair', 'build': 'Build', 'project': 'Project work', 'craft': 'Crafting', 'work': 'Work shift',
                  'machine': 'Machine run', 'business': 'Business shift', 'businesscontract': 'Business contract',
                  'businessinvest': 'Business investment', 'use': 'Item used', 'gearrepair': 'Gear repaired', 'recover': 'Recovered'}
+
+
+def action_command(command, options):
+    """The command a receipt is titled by: /social is one command for several actions, each with its own title."""
+    if command != 'social':
+        return command
+    action = str((options or {}).get('action') or '')
+    return 'duo' if action.startswith('duo_') else 'use' if action == 'group_games' else action or command
+
+
 OUTPUT_ITEM = re.compile(r'(?:OUTPUT\s*(?:\|\s*)?•?|Output:)\s*([^×·|\n]+?)\s*×')
+DID_NOT_SUCCEED = re.compile(r'(?m)^\W*([A-Z][^.\n]{1,60}?) did not succeed\.')     # a training task's failure sentence
 
 
 def _receipt_title(content, command, failed):
@@ -245,6 +256,12 @@ def _receipt_title(content, command, failed):
         label = 'Mining'
     elif command in ACTION_TITLES:
         label = ACTION_TITLES[command]
+    elif PERFORMED.search(content[:200]):
+        # A performed task with no label of its own (a training task started from a button): its name if the text gives it.
+        named = failed and DID_NOT_SUCCEED.search(content)
+        if not named:
+            return '❌ Task failed' if failed else '✅ Task complete'
+        label = named[1]
     else:
         return ''   # plain one-line trades keep their own sentence instead of a title
     return ('❌ ' + label + ' failed') if failed else ('✅ ' + label)

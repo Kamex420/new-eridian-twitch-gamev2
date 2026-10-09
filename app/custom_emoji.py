@@ -3,7 +3,7 @@
 Just before a message in Discord's newer layout leaves (layout_v2), `apply` swaps:
 
 * the ✅ of a finished-task heading ('### ✅ Crafted Iron Nails') for the next of two emoji,
-  and the ❌ of a failed-task heading ('### ❌ Mining failed') for the next of two others,
+  and the ❌ of a failed-task heading ('### ❌ Mining failed') for the next of three others,
   taking turns so neighbouring receipts look different;
 * every 🦆 and 🪨 in the text, and on buttons and menu choices, for the duck and Rocky emoji.
 
@@ -40,7 +40,7 @@ log = logging.getLogger('uvicorn.error.custom_emoji')    # uvicorn's handler put
 # 'done' and 'failed' are task-done and task-failed headings (they alternate); a unicode emoji maps to its stand-in.
 PICKS = {
     'done': ['seemsgoodmelisa', 'JohnShades'],
-    'failed': ['andyevillaugh', 'JJhydrate'],
+    'failed': ['andyevillaugh', 'JJhydrate', 'JJLUL'],
     '🦆': ['duck'],
     '🪨': ['Rocky'],
 }

@@ -56,7 +56,7 @@ def edit_original(application_id,token,data):
 
 
 def finish(payload,command,uid,name,options):
-    from . import discord_execution, extras, inbox, menu, task_queue, ui
+    from . import discord_execution, extras, inbox, menu, presentation, task_queue, ui
     origin=task_queue.queue_notifications.origin_channel
     token=origin.set(str(payload.get('channel_id') or ''))
     ui.INTERACTION.set(payload)   # lets /menu show moderator tools to the game owner
@@ -76,7 +76,7 @@ def finish(payload,command,uid,name,options):
         with ui.ticket_batch():
             try:
                 # Workbench, mining, gathering and queue replies carry dropdowns and buttons.
-                data=ui.slash_panel(command,uid,name,options,result) or runtime._discord_json_message(result,message_type=command)['data']
+                data=ui.slash_panel(command,uid,name,options,result) or runtime._discord_json_message(result,message_type=presentation.action_command(command,options))['data']
                 # Lists such as a skill's tasks get a button beside each item in the newer layout.
                 data=ui.add_list_items(data,uid,command,options,name)
                 # Every reply offers the next step as buttons: Again, its menu area, and Menu.
