@@ -251,7 +251,7 @@ SOCIAL = [('hi', 'Say hi', '👋'), ('hangout', 'Hang out', '☕'), ('mentor', '
           ('duo_games', 'Duo games', '🎲'), ('duo_research', 'Duo research', '🔬'), ('duo_delivery', 'Duo delivery', '🦆'),
           ('duo_explore', 'Duo explore', '🧭')]
 for _action, _label, _emoji in SOCIAL:
-    leaf('s_' + _action, _label, _emoji, 'do', 'social', {'action': _action}, hint='')
+    leaf('s_' + _action, _label, _emoji, 'do', 'social', {'action': _action}, option='player', hint='')   # the command needs the citizen chosen in Friends
 # Settings
 for _mode, _label, _emoji in [('mention', 'Alerts: mention', '🔔'), ('dm', 'Alerts: DM', '✉️'), ('private', 'Alerts: private', '🔒'),
                               ('quiet', 'Alerts: quiet', '🔕'), ('off', 'Alerts: off', '🚫')]:
@@ -455,6 +455,16 @@ COMMAND_AREA.update({'seedling': 'seedling', 'seedlingstep': 'seedling', 'link':
 # Slash commands whose replies offer "Again" (they perform a task and can simply be repeated).
 REPEATABLE = {'eatfull', 'relax', 'sleep', 'games', 'walk', 'meal', 'recover', 'farm', 'scan', 'rare', 'research', 'cargo', 'delivery',
               'spaceport', 'explore', 'repair', 'hobby', 'eat', 'use'}
+
+
+def repeatable(legacy, legacy_options):
+    """Whether a reply offers Again: the command does a task that can be repeated (Eat needs a food, Use an item)."""
+    return legacy in REPEATABLE and not (legacy == 'eat' and not legacy_options.get('food')) and not (legacy == 'use' and not legacy_options.get('item'))
+
+
+def again_button(uid, action):
+    """The green Again button: a one-time ticket for `action`."""
+    return ui.button('Again', ui.cid(uid, 't', ui.issue(uid, action)), style=3, emoji='🔁')
 
 
 # ---------------------------------------------------------------- what this citizen can do right now
@@ -1107,6 +1117,30 @@ def with_next(db, p, owner, ctx, rows, items):
     return [ui.row(b)] + [r for r in rows if r], [{'match': '**Do this next**', 'button': b, 'text': step['beside']}] + items
 
 
+def _heading(line):
+    """Whether a card's first line is its heading ('🧭 Kam — New Eridian Field Guide', '🏠 LIFE'): it starts with an emoji or is ALL CAPS."""
+    return line[:1] not in ('•', '-', '*') and bool(presentation.LEADING_SYMBOLS.match(line) or presentation.is_header(line))
+
+
+def under_heading(text, line):
+    """`text` with `line` right under its heading, so the heading stays the card's title (notices such as LEVEL UP come before it
+    and stay there); at the very top when the text starts with no heading."""
+    rows = text.split('\n')
+    first = next((i for i, x in enumerate(rows) if x.strip() and not presentation.is_note(x.strip())), None)
+    at = first + 1 if first is not None and _heading(rows[first].strip()) else 0
+    return '\n'.join(rows[:at] + [line] + rows[at:])
+
+
+def next_up(db, p, owner, ctx):
+    """Home's Do this next for another screen: (its line, [the green button's row], the item that puts the button beside the line in
+    the newer layout); the last two are empty when the step has no button."""
+    step = ctx.get('home_next', lambda: home_next(db, p)) if ctx is not None else home_next(db, p)
+    b = home_button(owner, step)
+    if b is None:
+        return step['line'], [], []
+    return step['line'], [ui.row(b)], [{'match': '**Do this next**', 'button': b, 'text': step['beside']}]
+
+
 def reply(text, command, rows):
     """A result card (with Details pages when long) followed by menu rows; five rows at most."""
     data = runtime._discord_json_message(text, message_type=command)['data']
@@ -1289,6 +1323,14 @@ def options_for(key, value=None):
 
 # ---------------------------------------------------------------- navigation (spends nothing)
 
+def social_rows(owner, value):
+    """One citizen's Friends activities, two rows of one-time buttons that each carry that citizen (`value`). The Friends screen
+    and the result of an activity both show these, so a second activity with the same friend is one press."""
+    buttons = [ui.button(LEAVES['s_' + a]['label'], ui.cid(owner, 't', ui.issue(owner, {'do': 'cmd', 'leaf': 's_' + a, 'value': value})),
+                         style=3, emoji=LEAVES['s_' + a]['emoji']) for a, _, _ in SOCIAL]
+    return [ui.row(*buttons[:5]), ui.row(*buttons[5:])]
+
+
 def navigate(db, p, owner, verb, args, values, name):
     """Handle mn/mv/mk/mp controls. Returns message data, or None when the choice must run as an action."""
     from . import extras
@@ -1369,10 +1411,8 @@ def navigate(db, p, owner, verb, args, values, name):
             return ui.message(text, ui.uses_components(owner, rows), 'catalog')
         if then == 'social':
             label = dict((v, l) for l, v in choices(db, p, 'player', owner)).get(value, 'that citizen')
-            buttons = [ui.button(LEAVES['s_' + a]['label'], ui.cid(owner, 't', ui.issue(owner, {'do': 'cmd', 'leaf': 's_' + a, 'value': value})),
-                                 style=3, emoji=LEAVES['s_' + a]['emoji']) for a, _, _ in SOCIAL]
             text = f'🤝 WITH {label.upper()}\nPick an activity. Each one builds your relationship and restores Social.'
-            return ui.message(text, [ui.row(*buttons[:5]), ui.row(*buttons[5:]), nav(owner, 'life', 'life')], 'menu')
+            return ui.message(text, social_rows(owner, value) + [nav(owner, 'life', 'life')], 'menu')
         return None   # 'do': run it as an action
     return None
 
@@ -1507,11 +1547,18 @@ def show(db, p, owner, command, options, area, name, key=''):
     shared = ui.share_button(owner, legacy, legacy_options)
     if shared:
         bottom = ui.row(shared, *((bottom or {}).get('components') or []))
+    ctx = context(owner, db, p)
     if panel is not None:
         rows = [r for r in panel.get('components', []) if r.get('components')]
-        panel['components'] = rows[:4] + [bottom]
+        lead = []
+        if key == 'guide':
+            line, lead, found = next_up(db, p, owner, ctx)
+            embed = next(iter(panel.get('embeds') or []), None)
+            if embed is not None:
+                embed['description'] = line + '\n' + embed.get('description', '')
+            ui.with_items(panel, found)
+        panel['components'] = lead + rows[:4 - len(lead)] + [bottom]
         return ui.with_crumb(panel, where)
-    ctx = context(owner, db, p)
     items = []
     if legacy == 'inventory':
         # Every view of the bag has the bag's own tools under it (Sell and Use only when there is something to sell or use),
@@ -1522,6 +1569,10 @@ def show(db, p, owner, command, options, area, name, key=''):
         if key == 'me_daily':
             lead, items, note = daily_controls(db, p, owner, ctx)
             text += ('\n' + note) if note else ''
+        elif key == 'guide':
+            # What next? starts with what Home says to do next: its line under the heading, its green button first.
+            line, lead, items = next_up(db, p, owner, ctx)
+            text = under_heading(text, line)
         rows = lead + area_rows(owner, area, ctx, rows=3 - len(lead)) + [bottom]
     data = ui.with_items(reply(text, legacy, rows), items)
     return ui.with_crumb(ui.add_list_items(data, owner, legacy, legacy_options, name), where)
@@ -1529,9 +1580,16 @@ def show(db, p, owner, command, options, area, name, key=''):
 
 # ---------------------------------------------------------------- actions (one-time tickets)
 
+def sold(text):
+    """Whether a Seed Industries reply is a finished sale ('… sold 5 Stone to Seed Industries for 40 SC'). A refusal
+    can say 'Nothing sold' too, so the word alone does not tell."""
+    return ' sold ' in text and 'to Seed Industries for' in text
+
+
 def run(uid, name, action, token=''):
     """Run a menu action; returns message data with the result and the area's buttons again."""
     from .game.discord_commands import discord_legacy_route
+    friend = ''
     if 'raw' in action:
         command, options = action['raw']
         area = COMMAND_AREA.get(discord_legacy_route(command, options)[0], 'home')
@@ -1547,19 +1605,26 @@ def run(uid, name, action, token=''):
             options['action'] = 'sellall'               # Sell all N: the whole stack, minus what the keep level keeps
         area = PARENT.get(key, 'home')
         if key.startswith('s_'):
-            area = 'life'
+            area, friend = 'life', action.get('value') or ''
     legacy, legacy_options = discord_legacy_route(command, options)
     denied = _denied(legacy)
     if denied:
         return reply(denied, 'moderator', [nav(uid, area, area)])
     text = runtime._discord_call_internal(command, uid, name, options, 'menu-' + (token or secrets.token_hex(8)))
+    bottom = nav(uid, area, area)
+    if repeatable(legacy, legacy_options):
+        # Again leads the nav row (no extra row) with a fresh ticket for the same action: its leaf, value and amount (as present), or its raw command.
+        again = again_button(uid, {'do': 'cmd', **{k: action[k] for k in ('raw', 'leaf', 'value', 'amount') if k in action}})
+        bottom = ui.row(again, *((bottom or {}).get('components') or []))
     panel = ui.slash_panel(legacy, uid, name, legacy_options, text)
     if panel is not None:
         rows = [r for r in panel.get('components', []) if r.get('components')]
-        panel['components'] = rows[:4] + [nav(uid, area, area)]
+        lead = social_rows(uid, friend) if friend else []        # a Friends activity keeps its citizen's activities; the panel's own rows only if there is room
+        panel['components'] = rows[:4 - len(lead)] + lead + [bottom]
         return panel
-    rows = with_context(uid, lambda c: area_rows(uid, area, c, rows=3), name) + [nav(uid, area, area)]
-    if legacy == 'seedindustries' and legacy_options.get('action') == 'sellall' and 'sold' in text:
+    # After a Friends activity the same citizen's activities come back (the Friends screen's buttons), not the Life grid.
+    rows = (social_rows(uid, friend) if friend else with_context(uid, lambda c: area_rows(uid, area, c, rows=3), name)) + [bottom]
+    if legacy == 'seedindustries' and legacy_options.get('action') in {'sell', 'sellall'} and sold(text):
         rows = [ui.row(ui.button('Undo sale (60s)', ui.cid(uid, 't', ui.issue(uid, {'do': 'undo'})), style=4, emoji='↩️'),
                        ui.button('Sell another', ui.cid(uid, 'mk', 'sell'), emoji='🏷️'), ui.button('Auto-sell', ui.cid(uid, 'av'), emoji='🧹'),
                        ui.button('Always keep', ui.cid(uid, 'kv'), emoji='🛡️')), rows[-1]]
@@ -1572,9 +1637,8 @@ def after_command(command, options, uid):
     from .game.discord_commands import discord_legacy_route
     legacy, legacy_options = discord_legacy_route(command, options)
     buttons = []
-    if legacy in REPEATABLE and not (legacy == 'eat' and not legacy_options.get('food')) and not (legacy == 'use' and not legacy_options.get('item')):
-        ticket = ui.issue(uid, {'do': 'cmd', 'raw': [command, dict(options or {})]})
-        buttons.append(ui.button('Again', ui.cid(uid, 't', ticket), style=3, emoji='🔁'))
+    if repeatable(legacy, legacy_options):
+        buttons.append(again_button(uid, {'do': 'cmd', 'raw': [command, dict(options or {})]}))
     if legacy == 'seedindustries' and legacy_options.get('action') == 'sellall':
         buttons.append(ui.button('Undo sale (60s)', ui.cid(uid, 't', ui.issue(uid, {'do': 'undo'})), style=4, emoji='↩️'))
     buttons.append(ui.share_button(uid, legacy, legacy_options))

@@ -327,3 +327,56 @@ def test_the_more_screen_lists_locked_buttons_closest_first(owner, newer):
     found = {x: text.find(f'**{x}**') for x in order if f'**{x}**' in text}
     assert len(found) >= 5 and next(iter(found)) == 'Delivery'             # Delivery: Other jobs fixes it, so it leads
     assert list(found) == sorted(found, key=found.get)
+
+
+# ---------------------------------------------------------------- 9. What next? starts with Home's Do this next
+
+def step_of():
+    with m.SessionLocal() as db:
+        return menu.home_next(db, player(db))
+
+
+@pytest.mark.parametrize('newer', [False, True])
+def test_what_next_starts_with_the_do_this_next_line_and_its_button(owner, newer):
+    set_daily('harvest')
+    no_cooldowns()
+    step = step_of()
+    data = shown(ui.cid('111', 'mv', 'guide'), newer=newer)
+    text = v2.text_of(data)
+    line = step['beside'] if newer else 'Do this next'                        # the newer layout drops the label: the button carries it
+    assert 'Field Guide' in text and text.index('Field Guide') < text.index(line) < text.index('Daily:')      # under the heading, above the guide
+    button = beside(data, 'contract: Harvest Pumpkins') if newer else data['components'][0]['components'][0]
+    assert button['label'] == 'Harvest' and button['style'] == 3 and button['custom_id'].startswith('ne|111|t|')
+    if not newer:
+        embed = data['embeds'][0]
+        assert 'Field Guide' in embed['title'] and embed['description'].split('\n')[0] == step['line']    # the heading is still the title
+        assert [c['label'] for c in data['components'][1]['components']][:2] == ['What next?', 'Guide for…']       # the Help buttons follow
+    press_as_owner(button['custom_id'])                                    # it does the contract's task, as on Home
+    assert progress() == (1, False)
+
+
+def test_what_next_shows_the_line_without_a_row_when_the_step_has_no_button(owner, monkeypatch):
+    set_daily('harvest')
+    monkeypatch.setattr(menu, 'home_button', lambda owner, step: None)
+    data = shown(ui.cid('111', 'mv', 'guide'))
+    assert data['embeds'][0]['description'].split('\n')[0] == step_of()['line'] and data['components'][0]['components'][0]['label'] == 'What next?'
+    assert beside(shown(ui.cid('111', 'mv', 'guide'), newer=True), 'Do this next') is None
+
+
+def test_what_next_handles_a_panel_too(owner, monkeypatch):
+    set_daily('harvest')
+    panel = {'embeds': [{'title': 'Guide', 'description': 'body'}], 'components': [ui.row(ui.button('Details', ui.cid('111', 'mn', 'help')))]}
+    monkeypatch.setattr(ui, 'slash_panel', lambda command, *args: dict(panel, components=list(panel['components'])) if command == 'guide' else None)
+    data = checked(ui.cid('111', 'mv', 'guide'))
+    assert data['embeds'][0]['description'] == step_of()['line'] + '\nbody'
+    assert [[c['label'] for c in r['components']] for r in data['components']][1:] == [['Details', 'Back', 'Menu']]
+    assert data['components'][0]['components'][0]['style'] == 3 and data['_items'][0]['match'] == '**Do this next**'
+
+
+def test_the_next_line_goes_under_the_heading_or_at_the_top_when_there_is_none():
+    line = '➡️ **Do this next** — x'
+    assert menu.under_heading('🧭 Kam — New Eridian Field Guide\nbody', line) == f'🧭 Kam — New Eridian Field Guide\n{line}\nbody'
+    assert menu.under_heading('🏠 LIFE\nbody', line) == f'🏠 LIFE\n{line}\nbody'
+    assert menu.under_heading('LEVEL UP: Fabrication Lv. 1 → Lv. 2\n\n🧭 Guide\nbody', line) == f'LEVEL UP: Fabrication Lv. 1 → Lv. 2\n\n🧭 Guide\n{line}\nbody'   # notices stay first
+    assert menu.under_heading('Nothing to guide you on.\nbody', line) == f'{line}\nNothing to guide you on.\nbody'
+    assert menu.under_heading('• one\n• two', line) == f'{line}\n• one\n• two'

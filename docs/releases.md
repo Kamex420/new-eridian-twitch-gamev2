@@ -1,5 +1,13 @@
 # Release notes
 
+## Menu: do it again, sell again, keep hanging out
+
+- **Friends activities from the menu work again.** Say hi, Hang out, Mentor and the duo activities replied "Select player" instead of doing the activity with the citizen you picked.
+- **After a Friends activity, that citizen's activities come back** so the next one with the same friend is one press, instead of the Life buttons.
+- **Again from the menu too.** Tasks you can repeat (Relax, Eat, a hobby, farm jobs…) get a green 🔁 Again button first in the bottom row, doing the same thing with the same choice and amount.
+- **Every sale gets Undo sale and Sell another**, not just Sell all. A refused sale no longer shows them.
+- **Help › What next? starts with Home's Do this next** line and its green button.
+
 ## Duo activities work on Discord
 
 - **/social duo walk, games, research, delivery and explore do the activity again.** On Discord they only replied with the list of duo activities.
