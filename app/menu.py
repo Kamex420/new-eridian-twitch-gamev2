@@ -16,6 +16,8 @@ nothing and carry their target in the custom_id:
   mv|<leaf>            run a view
   mk|<leaf>            open a leaf's choice list
   mp|<leaf>            a choice from that list (select value)
+  mk|buy|<category>    Buy: mk|buy shows the categories, mk|buy|<category> one category's items; its dropdown is mp|buy|<category>
+                       (a button from an older message has no category: mp|buy|=<item> still opens the amount screen)
   ma|<leaf>|<value>    amount buttons for a chosen item (buy, sell)
   mo|<leaf>            a pop-up form (search, link code, business name, custom amount)
 
@@ -205,7 +207,7 @@ leaf('market', 'Seed Industries', '🏭', 'view', 'seedindustries', hint='buy su
 leaf('browse', 'Shop by category', '🛒', 'pick', 'seedindustries', {'action': 'browse'}, pick='field:seedindustries:category', then='view',
      option='category', hint='supplies by category with prices')
 leaf('buy', 'Buy', '🛍️', 'pick', 'seedindustries', {'action': 'buy'}, pick='buy', then='amount', option='item',
-     hint='choose an item, then how many')
+     hint='choose a category, then an item, then how many')
 leaf('sellsome', 'Sell', '💵', 'pick', 'seedindustries', {'action': 'sell'}, pick='sell', then='amount', option='item')   # older messages: now Sell
 leaf('bstart', 'Start a business', '🏗️', 'modal', 'business', {'action': 'start'}, modal=('Start a business', 'Business name', 'e.g. Rocky Repairs'),
      option='name', max_length=30, hint='found your company (costs SC)')
@@ -1018,6 +1020,70 @@ def daily_controls(db, p, owner, ctx):
     return [ui.row(b)], [{'match': 'Task:', 'button': b}], note
 
 
+def _failed(db):
+    """A check that fails must not take a screen down: roll the session back and carry on without that check's buttons."""
+    try:
+        db.rollback()
+    except Exception:
+        pass
+
+
+def in_text_order(data, items):
+    """The `items` that have a line on the card, in the order their lines come (the newer layout finds items in order and,
+    when one is missing, puts no button beside any line)."""
+    embed = next(iter(data.get('embeds') or []), None) or {}
+    text = '\n'.join([str(data.get('content') or ''), str(embed.get('description') or '')] + [str(f.get('value') or '') for f in embed.get('fields') or []])
+    found = [(text.find(i['match']), i) for i in items]
+    return [i for at, i in sorted((f for f in found if f[0] >= 0), key=lambda f: f[0])] if text.strip() else items
+
+
+def _buttons_rows(controls):
+    """(rows of the old layout's buttons, items for the newer layout) from [(match, button beside the line, button for the rows)];
+    at most three rows, so the area's buttons and the bottom row still fit Discord's five."""
+    shown = [c for c in controls if c[1] is not None]
+    return ([ui.row(*[c[2] for c in shown[i:i + 5]]) for i in range(0, min(len(shown), 15), 5)],
+            [{'match': c[0], 'button': c[1]} for c in shown])
+
+
+def order_controls(db, p, owner):
+    """(rows, items) for the Orders screen: a Deliver button for each order not delivered today, beside its line in the newer
+    layout and in rows labelled with the order's name in the old one. Green when you have everything, grey while something is
+    missing (still pressable: the screen can be out of date). Pressing it asks to confirm, as Deliver an order does."""
+    from .game.cooldowns_materials import available_production_orders, order_completed
+    from .game.players import society
+    from .game.routes_crafting import craft_missing_materials
+    from .game.world import society_tier_index, world_clock
+    try:
+        clock = world_clock(db, p.channel_id)
+        controls = []
+        for key, data in available_production_orders(p.channel_id, clock['day'], society_tier_index(society(db, p.channel_id))):
+            if order_completed(db, p, clock['day'], key):
+                continue
+            b = ui.pick_button(ui.cid(owner, 'mp', 'fulfill'), key, 'Deliver', style=2 if craft_missing_materials(db, p, data['cost']) else 3)
+            if b is not None:
+                controls.append((f"**{data['name']}** (", b, dict(b, label=wb.clip(f"Deliver: {data['name']}", 80))))
+        return _buttons_rows(controls)
+    except Exception:
+        _failed(db)
+        return [], []
+
+
+def skill_controls(db, p, owner):
+    """(rows, items) for the Skills screen: a Train button for each skill that has training tasks, beside its line in the newer
+    layout and, as Train <skill>, in rows in the old one. Green while a task is ready now. It opens the skill's task list."""
+    from .game.training_and_items import training_skills
+    try:
+        controls = []
+        for hub, label, level, ready, total in training_skills(db, p):
+            b = ui.pick_button(ui.cid(owner, 'mp', ui.TRAIN_PICK), hub, 'Train', style=3 if ready else 2)
+            if b is not None:
+                controls.append((f'**{label}:**', b, dict(b, label=wb.clip(f'Train {label}', 80))))
+        return _buttons_rows(controls)
+    except Exception:
+        _failed(db)
+        return [], []
+
+
 FIND_GOAL = 'choose a goal: open any recipe and press 🎯 Set goal; the goal then walks you through every step'
 
 
@@ -1261,7 +1327,7 @@ def choices(db, p, source, uid):
     from .game.discord_commands import DISCORD_OPTION_SCHEMA, _discord_gear_autocomplete, _discord_player_autocomplete, ore_choice_rows
     from .game.players import resource_name, society
     from .game.routes_market import market_item_label
-    from .game.rules import QUALITY_RECIPES, SEED_INDUSTRIES, TITLE_DEFS
+    from .game.rules import QUALITY_RECIPES, TITLE_DEFS
     from .game.training_and_items import edible_inventory, emergency_food_available, owned_life_items, training_skills
     from .game.world import society_tier_index, world_clock
     if source == 'food':
@@ -1306,11 +1372,12 @@ def choices(db, p, source, uid):
     if source.startswith('field:'):
         _, command, field = source.split(':', 2)
         return [(c['name'], c['value']) for f in DISCORD_OPTION_SCHEMA.get(command, []) if f['name'] == field for c in f.get('choices', [])]
-    if source == 'buy':
+    if source == 'buy' or source.startswith('buy:'):
+        # Everything Seed Industries sells, or (buy:<category>) one category of it (see buy_categories).
         stock = seed_content.stock(db, p)
-        rows = [(k, d) for k, d in SEED_INDUSTRIES.items() if d.get('buy', 0) > 0]
-        rows.sort(key=lambda kv: (kv[1].get('category', 'legacy') != 'seed', market_item_label(kv[0])))
-        return [(f"{market_item_label(k)} — {d['buy']} SC · you have {stock.get(k, 0)}", k) for k, d in rows]
+        only = None if source == 'buy' else (buy_category(source[4:]) or (0, 0, 0, 0, []))[4]
+        return [(f"{market_item_label(k)} — {d['buy']} SC · you have {stock.get(k, 0)}", k)
+                for k, d in buy_items() if only is None or k in only]
     if source == 'gear':
         found = _discord_gear_autocomplete({'member': {'user': {'id': uid}}, 'data': {}}, '')
         return [(c['name'], c['value']) for c in found['data']['choices']]
@@ -1356,36 +1423,181 @@ def choices(db, p, source, uid):
     return []
 
 
+# ---------------------------------------------------------------- Buy: categories first, then a category's items
+
+BUY_MIN_CATEGORY = 3      # a category needs this many things for sale; smaller ones (and items with no category) go into Other
+BUY_OTHER = ('other', '📦', 'Other', 'Everything else Seed Industries sells.')
+BUY_GOAL_LINES = 5        # the Buy screen's "for my goal" group lists at most this many items
+# In the newer layout an item's Buy button sits beside its line only when the whole page fits Discord's 40 components
+# (layout_v2.convert): 11 items fit with just Back and Menu under them, 10 with Previous and Next as well.
+BUY_ONE_PAGE = 11         # a category of up to this many items is one page
+BUY_PER_PAGE = 10         # a larger one pages in even parts of at most this many
+
+
+def buy_items():
+    """[(item, its Seed Industries listing)] for everything Seed Industries sells, in the order Buy lists them: seeds first, each by name."""
+    from .game.routes_market import market_item_label
+    from .game.rules import SEED_INDUSTRIES
+    rows = [(k, d) for k, d in SEED_INDUSTRIES.items() if d.get('buy', 0) > 0]
+    return sorted(rows, key=lambda kv: (kv[1].get('category', 'legacy') != 'seed', market_item_label(kv[0])))
+
+
+def buy_categories():
+    """[(key, emoji, label, what is in it, [items])]: the item categories of seed_content.DISPLAY_CATEGORIES that hold at least
+    BUY_MIN_CATEGORY things Seed Industries sells, in that order, then Other with everything else (small categories, no category)."""
+    from . import seed_content
+    order = [k for k, _ in buy_items()]
+    found = {}
+    for k in order:
+        found.setdefault(seed_content.DISPLAY_CATEGORY.get(k, ''), []).append(k)
+    cats, rest = [], []
+    for key, emoji, label, text in seed_content.DISPLAY_CATEGORIES:
+        keys = found.pop(key, [])
+        if len(keys) >= BUY_MIN_CATEGORY:
+            cats.append((key, emoji, label, text, keys))
+        else:
+            rest += keys
+    rest += [k for keys in found.values() for k in keys]
+    if rest:
+        cats.append((*BUY_OTHER, sorted(rest, key=order.index)))
+    return cats
+
+
+def buy_category(key):
+    """One of buy_categories by its key, or None."""
+    return next((c for c in buy_categories() if c[0] == key), None)
+
+
+def buy_category_of(item):
+    """The key of the Buy category `item` sits in, or ''."""
+    return next((c[0] for c in buy_categories() if item in c[4]), '')
+
+
+def buy_needs(db, p):
+    """([(item, missing, you have, price)] to buy, most missing first; which of 'goal' and 'list' are set): what your craft goal and
+    shopping list still miss, of what Seed Industries sells (locked rare ore left out). One plan covers both (extras.list_plan:
+    one batch of the goal, as its walkthrough plans it, then the list), so what both need counts once against what you own. A cheap
+    lookup when neither is set; the plan itself is a few milliseconds, unlike the shopping list screen's (shopping_list.overview)."""
+    from . import crafting_progression as cp, extras, shopping_list
+    from .game.players import resource_name
+    from .game.rules import SEED_INDUSTRIES
+    goal = extras.goal_entry(db, p)
+    listed = [(wb.entry(r.recipe_id), r.want) for r in shopping_list.entries(db, p)]
+    listed = [(e, want) for e, want in listed if e is not None]
+    ctx = wb.Context(db, p) if goal is not None or listed else None
+    if goal is not None and ctx.status(goal).code == 'owned':
+        goal = None                                      # bonus equipment is limited to one of each: nothing left to buy for it
+    if goal is None and not listed:
+        return [], set()
+    _, raw, _, _, _ = extras.list_plan(ctx, listed, goal=goal)
+    rows = [(k, n, ctx.have(k), SEED_INDUSTRIES[k]['buy']) for k, n in raw.items()
+            if n > 0 and (SEED_INDUSTRIES.get(k) or {}).get('buy', 0) > 0 and not (k in cp.RARE and not ctx.rare_ok)]
+    rows.sort(key=lambda r: (-r[1], resource_name(r[0]).casefold()))
+    return rows, ({'goal'} if goal is not None else set()) | ({'list'} if listed else set())
+
+
+def buy_goal(db, p, owner):
+    """(lines, items, buttons for the old layout, how many more) for the Buy screen's group of what your goal and shopping list still
+    miss, each item with a green Buy button (it opens the amount screen); None when nothing is set or nothing missing can be bought.
+    A check that fails must not take the screen down: it just has no group."""
+    try:
+        rows, sources = buy_needs(db, p)
+    except Exception:
+        _failed(db)
+        return None
+    if not rows:
+        return None
+    from .game.routes_market import market_item_label
+    heading = 'FOR MY GOAL & LIST' if len(sources) > 1 else 'FOR MY GOAL' if 'goal' in sources else 'FOR MY SHOPPING LIST'
+    lines, items, loose = [heading], [], []
+    for key, missing, have, price in rows[:BUY_GOAL_LINES]:
+        name = market_item_label(key)
+        b = ui.pick_button(ui.cid(owner, 'mp', 'buy'), key, 'Buy', style=3)
+        lines.append(f'**{name}** — {price} SC · missing {missing} · you have {have}')
+        if b is not None:
+            items.append({'match': f'**{name}**', 'button': b})
+            loose.append(dict(b, label=wb.clip(f'Buy {name}', 80)))
+    return lines, items, loose, len(rows) - BUY_GOAL_LINES
+
+
+def buy_menu(db, p, owner):
+    """What Buy opens: the categories of supplies, each with how many items and an Open button (beside its line in the newer layout,
+    labelled with its name in the old one); above them the few items your goal and shopping list still need, each with a Buy button."""
+    item = LEAVES['buy']
+    area = PARENT['buy']
+    goal = buy_goal(db, p, owner)
+    lines = [f"{item['emoji']} {item['label'].upper()}", 'Choose a category, then an item and how many.', '']
+    items, loose = [], []
+    if goal is not None:
+        found, items, loose, more = goal
+        lines += [*found] + ([f'…and {more} more for them in the categories below.'] if more > 0 else []) + ['', 'CATEGORIES']
+    buttons = []
+    for key, emoji, label, _, keys in buy_categories():
+        lines.append(f"**{emoji} {label}** — {len(keys)} item{'s' if len(keys) != 1 else ''}")
+        items.append({'match': f'**{emoji} {label}**', 'button': ui.button('Open', ui.cid(owner, 'mk', 'buy', key))})
+        buttons.append(ui.button(f'{label} ({len(keys)})', ui.cid(owner, 'mk', 'buy', key), emoji=emoji))
+    rows = ([ui.row(*loose)] if loose else []) + [ui.row(*buttons[i:i + 5]) for i in range(0, min(len(buttons), 15), 5)]
+    return ui.with_crumb(ui.message('\n'.join(lines), rows + [nav(owner, area, area)], 'menu', items), crumb(area, item['label']))
+
+
+def buy_message(db, p, owner, category='', page=1):
+    """What Buy and its choices open: the categories, or one category's items when `category` names one (an unknown one, as an
+    older message may carry, shows the categories)."""
+    if category and buy_category(category) is not None:
+        return pick_message(db, p, owner, 'buy', page, category)
+    return buy_menu(db, p, owner)
+
+
 PAGE = 23   # dropdown rows per page, leaving room for Previous / Next
 
 
-def pick_view(db, p, owner, key, page=1):
+def pick_view(db, p, owner, key, page=1, category=''):
+    """A leaf's dropdown. `category` (Buy only) is the category it lists: it rides in the dropdown's custom_id (mp|buy|<category>),
+    so its pages and its choices keep it."""
     item = LEAVES[key]
-    everything = choices(db, p, item['pick'], owner)
-    pages = max(1, -(-len(everything) // PAGE)) if len(everything) > 25 else 1
-    page = max(1, min(page, pages))
-    rows = everything[:25] if pages == 1 else everything[(page - 1) * PAGE:page * PAGE]
+    cat = buy_category(category) if key == 'buy' and category else None
+    category = cat[0] if cat else ''
+    everything = choices(db, p, item['pick'] + (':' + category if category else ''), owner)
+    select_id = ui.cid(owner, 'mp', key, *([category] if category else []))
+    if cat:
+        # A category pages in even parts of at most BUY_PER_PAGE, so every item keeps its Buy button beside it; the dropdown holds
+        # the page's items only and Previous / Next are buttons (they act as choosing __page:N, as the old dropdown's option did).
+        pages = 1 if len(everything) <= BUY_ONE_PAGE else -(-len(everything) // BUY_PER_PAGE)
+        page = max(1, min(page, pages))
+        size = -(-len(everything) // pages) if everything else 1
+        rows = everything[(page - 1) * size:page * size]
+    else:
+        pages = max(1, -(-len(everything) // PAGE)) if len(everything) > 25 else 1
+        page = max(1, min(page, pages))
+        rows = everything[:25] if pages == 1 else everything[(page - 1) * PAGE:page * PAGE]
     area = PARENT.get(key, 'home')
     text = f"{item['emoji']} {item['label'].upper()}\n{item['hint'].capitalize() or 'Choose one.'}"
+    up = nav(owner, area, area)
+    if cat:
+        text = f"{item['emoji']} {item['label'].upper()} · {cat[2].upper()}\n{cat[3]} Choose an item, then how many."
+        turn = ([ui.pick_button(select_id, f'__page:{page - 1}', '◀ Previous')] if page > 1 else []) + \
+               ([ui.pick_button(select_id, f'__page:{page + 1}', 'Next ▶')] if page < pages else [])
+        up = ui.row(*[b for b in turn if b is not None], ui.back_button(owner, 'mk', key), ui.button('Menu', ui.cid(owner, 'mn', 'home'), emoji='🏠'))
     if not rows:
         empty = {'food': 'You have no food. Harvest, gather or craft some first.', 'use': 'You own nothing usable yet.',
                  'sell': 'You have nothing Seed Industries buys.', 'player': 'No other citizens yet.',
                  'title': 'You have not unlocked a title yet.', 'order': 'No production orders today.'}
-        return text + '\n\n' + empty.get(item['pick'], 'Nothing to choose from right now.'), [nav(owner, area, area)]
+        return text + '\n\n' + empty.get(item['pick'], 'Nothing to choose from right now.'), [up]
     options = [ui.option(label, value) for label, value in rows]
     if pages > 1:
         text += f'\nPage {page} of {pages}.'
-        if page > 1:
-            options.insert(0, ui.option(f'◀ Previous page ({page - 1}/{pages})', f'__page:{page - 1}'))
-        if page < pages:
-            options.append(ui.option(f'Next page ({page + 1}/{pages}) ▶', f'__page:{page + 1}'))
-    menu = ui.select(ui.cid(owner, 'mp', key), 'Choose…' if pages == 1 else f'Choose… (page {page}/{pages})', options)
-    return text, [menu, nav(owner, area, area)]
+        if not cat:                      # a category pages with buttons (above); every other list pages inside its dropdown
+            if page > 1:
+                options.insert(0, ui.option(f'◀ Previous page ({page - 1}/{pages})', f'__page:{page - 1}'))
+            if page < pages:
+                options.append(ui.option(f'Next page ({page + 1}/{pages}) ▶', f'__page:{page + 1}'))
+    menu = ui.select(select_id, 'Choose…' if pages == 1 else f'Choose… (page {page}/{pages})', options)
+    return text, [menu, up]
 
 
-def pick_message(db, p, owner, key, page=1):
+def pick_message(db, p, owner, key, page=1, category=''):
     """A choice list: in the newer layout each choice gets its own button when the list fits on one card."""
-    text, rows = pick_view(db, p, owner, key, page)
+    text, rows = pick_view(db, p, owner, key, page, category)
     item = LEAVES[key]
     select = next((r['components'][0] for r in rows if r and r.get('components') and r['components'][0].get('type') == 3), None)
     items = []
@@ -1393,7 +1605,7 @@ def pick_message(db, p, owner, key, page=1):
         then = item.get('then')
         verb = VERBS.get(key) or ('View' if then in {'view', 'leaf', 'uses'} else 'Meet' if then == 'social' else 'Choose')
         for o in select['options']:
-            runs = then == 'do' or grouped_action(key, o['value'])      # actions are green, everything else grey
+            runs = then == 'do' or key == 'buy' or grouped_action(key, o['value'])      # actions are green (so is Buy), everything else grey
             b = ui.pick_button(select['custom_id'], o['value'], verb, style=3 if runs else 2)
             if b is None:
                 items = []
@@ -1401,7 +1613,8 @@ def pick_message(db, p, owner, key, page=1):
             head, sep, tail = o['label'].partition(' — ')
             items.append({'line': f'**{head}**' + (f' — {tail}' if sep else ''), 'button': b})
     data = ui.message(text, rows, 'menu', items, [select['custom_id']] if items else ())
-    return ui.with_crumb(data, crumb(PARENT.get(key, 'home'), item['label'].rstrip('…')))
+    cat = buy_category(category) if key == 'buy' and category else None
+    return ui.with_crumb(data, crumb(PARENT.get(key, 'home'), item['label'].rstrip('…') + (f' › {cat[2]}' if cat else '')))
 
 
 def grouped_action(key, value):
@@ -1472,10 +1685,12 @@ def navigate(db, p, owner, verb, args, values, name):
     if verb == 'mv':
         command, options = options_for(key)
         return show(db, p, owner, command, options, area, name, key)
+    category = args[1] if key == 'buy' and len(args) > 1 else ''      # Buy: mk|buy|<category>, mp|buy|<category> (older buttons carry none)
     if verb == 'mk':
-        return pick_message(db, p, owner, key)
+        return buy_message(db, p, owner, category) if key == 'buy' else pick_message(db, p, owner, key)
     if verb == 'mp' and values and str(values[0]).startswith('__page:'):
-        return pick_message(db, p, owner, key, int(values[0].split(':', 1)[1] or 1))
+        page = int(values[0].split(':', 1)[1] or 1)
+        return buy_message(db, p, owner, category, page) if key == 'buy' else pick_message(db, p, owner, key, page)
     if verb == 'ma':
         return amount_view(db, p, owner, key, args[1] if len(args) > 1 else '')
     if verb == 'mp':
@@ -1551,7 +1766,9 @@ def amount_view(db, p, owner, key, value):
         text += '\nYou have none of this to sell.'
     if kept:
         text += f'\n🛡️ Always keep is {kept}, so Sell all leaves that many; the other buttons sell exactly what you choose.'
-    return ui.message(text, [ui.row(*buttons[:5]), ui.row(other, later, ui.back_button(owner, 'mk', key),
+    category = buy_category_of(value) if key == 'buy' else ''
+    up = ('mk', key, category) if category else ('mk', key)       # Back with nothing to go back to: a bought item's category
+    return ui.message(text, [ui.row(*buttons[:5]), ui.row(other, later, ui.back_button(owner, *up),
                                                             ui.button('Menu', ui.cid(owner, 'mn', 'home'), emoji='🏠'))], 'menu')
 
 
@@ -1674,8 +1891,14 @@ def show(db, p, owner, command, options, area, name, key=''):
             # What next? starts with what Home says to do next: its line under the heading, its green button first.
             line, lead, items = next_up(db, p, owner, ctx)
             text = under_heading(trim_guide(text, home_step(db, p, ctx)), line)
-        rows = lead + area_rows(owner, area, ctx, rows=3 - len(lead)) + [bottom]
-    data = ui.with_items(reply(text, legacy, rows), items)
+        elif key in {'orders', 'me_skills'}:
+            # A button for each order (Deliver) or trainable skill (Train): beside its line, and in rows for the old layout.
+            lead, items = (order_controls if key == 'orders' else skill_controls)(db, p, owner)
+        rows = lead + area_rows(owner, area, ctx, rows=max(1, 3 - len(lead))) + [bottom]
+    data = reply(text, legacy, rows)
+    if key in {'orders', 'me_skills'}:
+        items = in_text_order(data, items)
+    data = ui.with_items(data, items)
     return ui.with_crumb(ui.add_list_items(data, owner, legacy, legacy_options, name), where)
 
 

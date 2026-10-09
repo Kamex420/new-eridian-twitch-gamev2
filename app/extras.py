@@ -503,15 +503,18 @@ def full_plan(ctx, e):
     return planner.result()
 
 
-def list_plan(ctx, wanted):
+def list_plan(ctx, wanted, goal=None):
     """full_plan for several recipes at once, each wanted in an amount of its output (the shopping list).
 
     In list order each recipe's output comes from the shared pool first; what is short is made with
     that recipe itself (never another route to the same item), and what a batch leaves over goes back
     into the pool. Ingredients therefore count once against what you own, however many recipes need
-    them. Returns (crafts, raw shortfalls, opened stations as full_plan does, [(recipe, wanted,
+    them. `goal` (a recipe) is planned first, one batch as full_plan would, from the same pool: the craft goal and the list
+    in one plan (the Buy screen's). Returns (crafts, raw shortfalls, opened stations as full_plan does, [(recipe, wanted,
     batches of it planned)], {raw material: how many of what you own the plan uses})."""
     planner, rows = _Planner(ctx), []
+    if goal is not None:
+        planner.make(goal, 1, 0)
     for e, want in wanted:
         use = planner.take(e.output, want)
         if planner.source(e.output, 0) is None:

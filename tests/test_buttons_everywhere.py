@@ -57,13 +57,13 @@ def test_every_slash_command_option_has_a_button():
         assert len(children) <= 20, area
 
 
-def test_buy_with_pages_amount_buttons_and_a_custom_amount():
+def test_buy_with_categories_amount_buttons_and_a_custom_amount():
     citizen()
-    pick = press(ui.cid('111', 'mk', 'buy'))['data']
-    select = pick['components'][0]['components'][0]
-    assert len(select['options']) <= 25 and select['options'][-1]['value'].startswith('__page:')
-    page2 = press(select['custom_id'], values=['__page:2'])['data']
-    assert 'Page 2' in text_of(page2)
+    categories = press(ui.cid('111', 'mk', 'buy'))['data']          # Buy opens the categories first (see test_menu_flow_group3)
+    assert not [c for r in categories['components'] for c in r['components'] if c.get('type') == 3]
+    opened = press(categories['components'][0]['components'][0]['custom_id'])['data']
+    select = opened['components'][0]['components'][0]
+    assert len(select['options']) <= 25 and select['custom_id'].startswith('ne|111|mp|buy|')
     item = select['options'][0]['value']
     amounts = press(select['custom_id'], values=[item])['data']
     assert {'Buy 1', 'Buy 5', 'Buy 10', 'Buy 25', 'Other amount…'} <= set(labels(amounts))

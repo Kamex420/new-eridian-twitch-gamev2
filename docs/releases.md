@@ -1,5 +1,12 @@
 # Release notes
 
+## Menu: a button beside every order, item and skill
+
+- **Orders has a Deliver button beside each order.** It's green when you have everything, grey while something is missing, and gone once you've delivered that order today. It asks you to confirm first, like Deliver an order.
+- **Buy opens categories first**: Materials & Ores, Components, Food & Drink and Other. Each item in a category has its own green Buy button that opens How many?, and Back from there returns to that category. The bigger categories have Previous and Next pages, so every item keeps its button.
+- **Buy starts with what your goal needs.** If you have a craft goal or a shopping list, the items Seed Industries sells that they're still missing come first, most missing first, each with a Buy button.
+- **You › Skills has a Train button beside each skill** that has training tasks. It's green when a task is ready now and opens that skill's tasks.
+
 ## Menu: Home shows more, Work holds your day
 
 - **Home has buttons beside its lines.** Queue sits beside your queue line, Life beside your needs while one is under 50, and today's contract gets its own line with the button that does it (unless it's already your Do this next).
