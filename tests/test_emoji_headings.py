@@ -24,6 +24,7 @@ from app import (command_catalog, crafting_progression as cp, custom_emoji as ce
                  seed_content as sc, task_queue as queue, task_yields, ui, workbench as wb)
 from app.competencies import FIELDS
 from app.game.cooldowns_materials import available_production_orders
+from app.game.world import relationship_add
 from app.game.discord_commands import WORK_ROUTES, _discord_options, _discord_user, discord_legacy_route
 from app.game.rules import ACTION_SKILLS
 from app.game.world import society_tier_index, world_clock
@@ -172,7 +173,9 @@ def citizen(task=None, partner=False, food='', gear=(), damaged=(), name='Kam', 
         db.commit()
     if partner:
         with m.SessionLocal() as db:
-            m.player(db, W, 'discord', uid + '9', 'Pal' + uid)
+            pal = m.player(db, W, 'discord', uid + '9', 'Pal' + uid)[1]
+            if partner == 'friend':             # duo activities need a relationship score (up to 90)
+                relationship_add(db, W, m.player(db, W, 'discord', uid, name)[1].twitch_uid, pal.twitch_uid, 100)
             if partner == 'mentor':             # a mentor has to be better than the learner at their weakest skill
                 p = m.player(db, W, 'discord', uid, name)[1]
                 for field in FIELDS.values():
@@ -257,8 +260,9 @@ for _action in choices('life', 'action'):
 CASES += [case('business', {'action': a}) for a in choices('business', 'action') if a not in {'view', 'start'}]
 CASES += [case('market', {'action': a}) for a in choices('market', 'action') if a != 'view']
 CASES += [case('repair', {'target': 'society'}), case('repair', {'target': 'gear', 'item': 'toolkit'}, damaged=['toolkit'])]
-CASES += [case('social', {'action': a, 'player': 'PARTNER'}, partner='mentor' if a == 'mentor' else True)
-          for a in choices('social', 'action') if a != 'group_games' and not a.startswith('duo_')]
+CASES += [case('social', {'action': a, 'player': 'PARTNER'},
+               partner='mentor' if a == 'mentor' else 'friend' if a.startswith('duo_') else True)
+          for a in choices('social', 'action') if a != 'group_games']
 CASES += [case('social', {'action': 'group_games'}, gear=['recreation_set'])]
 CASES += [case('use', {'item': sc.item_label(key)}, stock={key: 3, **SUPPLIES}) for mode, key in USES.items()
           if mode not in {'ingredient', 'workshop', 'eat'}]
@@ -318,7 +322,6 @@ def test_a_menu_button_runs_the_same_task_with_the_same_heading(monkeypatch, see
 def test_the_cases_cover_the_catalog():
     """A new task choice in the catalog fails here until it is run above."""
     skipped = {('life', 'trick'), ('life', 'recover'), ('business', 'view'), ('business', 'start'), ('market', 'view')}
-    skipped |= {('social', a) for a in choices('social', 'action') if a.startswith('duo_')}
     ran = {(command, options.get('action') or options.get('task')) for command, options, _ in CASES}
     assert set(choices('work', 'task')) == set(WORK_ROUTES)
     for command, option in (('work', 'task'), ('life', 'action'), ('business', 'action'), ('market', 'action'), ('social', 'action')):
@@ -470,3 +473,11 @@ def test_a_cooldown_is_not_a_task_result(monkeypatch):
 def test_a_task_that_is_blocked_is_not_a_task_result(monkeypatch):
     data = slash(monkeypatch, 'work', {'task': 'scan'}, citizen(needs=2))
     assert_plain(data, 'tired scan')
+
+
+@pytest.mark.parametrize('act', ['walk', 'games', 'research', 'delivery', 'explore'])
+def test_a_duo_activity_runs_instead_of_listing_the_activities(monkeypatch, seen, act):
+    """'duo_walk' once reached the game as 'alk' (one letter too many cut), so every duo replied with the list."""
+    uid, options = prepare({'action': 'duo_' + act, 'player': 'PARTNER'}, {'partner': 'friend'})
+    text = '\n'.join(lines(slash(monkeypatch, 'social', options, uid)))
+    assert 'Duo activities:' not in text and f'complete a duo {act}' in text

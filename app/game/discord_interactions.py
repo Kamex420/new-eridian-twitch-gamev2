@@ -241,7 +241,7 @@ def _discord_call_internal(command: str, uid: str, name: str, options: dict, int
         if social_action=="mentor":return mentor(channel=channel,uid=uid,name=name,target=target,provider="discord").body.decode("utf-8")
         if social_action=="group_games":return use_item(channel=channel,uid=uid,name=name,item="recreation_set",provider="discord").body.decode("utf-8")
         if social_action.startswith("duo_"):
-            return duo(channel=channel,uid=uid,name=name,target=target,activity=social_action[5:],provider="discord").body.decode("utf-8")
+            return duo(channel=channel,uid=uid,name=name,target=target,activity=social_action[len("duo_"):],provider="discord").body.decode("utf-8")
         return "⛔ Unknown social activity."
     if command == "hi":
         return hi(channel=channel,uid=uid,name=name,target=str(options.get("player") or ""),provider="discord").body.decode("utf-8")

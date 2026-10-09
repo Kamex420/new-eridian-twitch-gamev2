@@ -237,6 +237,7 @@ def action_command(command, options):
 
 
 OUTPUT_ITEM = re.compile(r'(?:OUTPUT\s*(?:\|\s*)?•?|Output:)\s*([^×·|\n]+?)\s*×')
+DUO_DONE = re.compile(r' complete a duo (\w+)\.')                  # '🤝 Kam and Pal complete a duo research.'
 DID_NOT_SUCCEED = re.compile(r'(?m)^\W*([A-Z][^.\n]{1,60}?) did not succeed\.')     # a training task's failure sentence
 
 
@@ -254,6 +255,8 @@ def _receipt_title(content, command, failed):
         label = ('Gathered ' + got[1].strip()) if got else 'Gathering'
     elif 'MINING FAILED' in content:
         label = 'Mining'
+    elif duo := DUO_DONE.search(content[:200]):
+        label = 'Duo ' + duo[1]
     elif command in ACTION_TITLES:
         label = ACTION_TITLES[command]
     elif PERFORMED.search(content[:200]):
@@ -408,7 +411,9 @@ def card(content, command=''):
     from .game.discord_embeds import discord_message_status
     content = discord_command_copy(content)
     status = discord_message_status(content)
-    shape = kind(content)
+    # A finished duo activity is a task even when it changes no needs or coins (research, explore). Discord only:
+    # Twitch's chat() keeps its own shape for it.
+    shape = 'receipt' if DUO_DONE.search(content[:200]) else kind(content)
     if shape == 'receipt':
         return receipt(content, command, status), shape, len(content) > 900
     if shape == 'notice':

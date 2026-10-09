@@ -1,5 +1,10 @@
 # Release notes
 
+## Duo activities work on Discord
+
+- **/social duo walk, games, research, delivery and explore do the activity again.** On Discord they only replied with the list of duo activities.
+- **Each duo result has its own heading** ("Duo research", "Duo walk"…) with the game's emoji, like every other task.
+
 ## Custom emoji on Discord cards
 
 - **Finished tasks and failed tasks get New Eridian's own emoji** in their heading, taking turns between a few of each so back-to-back results look different. JJLUL is now one of the failed-task emoji.

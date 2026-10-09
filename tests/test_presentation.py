@@ -120,3 +120,15 @@ def test_twitch_chat_output_is_unchanged_by_the_fallback():
         '❌ Ore Mining did not succeed. All task materials were kept.'
     assert pr.chat('✅ Kam completes Ore Mining. | Output: Hematite Ore ×2', 'training') == \
         '✅ Kam completes Ore Mining. | Output: Hematite Ore ×2'
+
+
+DUO = '🤝 Kam and Pal complete a duo research. Research practice for both; +2 Knowledge. Relationship +6.'
+
+
+def test_a_finished_duo_is_a_discord_task_result_titled_by_its_activity():
+    embed, shape, _ = pr.card(DUO, 'duo')
+    assert shape == 'receipt' and embed['title'] == '✅ Duo research'
+
+
+def test_twitch_chat_for_a_duo_is_unchanged():
+    assert pr.chat(DUO, 'social') == DUO          # as on main before Discord duo cards became task results
