@@ -1,5 +1,13 @@
 # Release notes
 
+## Menu: Home shows more, Work holds your day
+
+- **Home has buttons beside its lines.** Queue sits beside your queue line, Life beside your needs while one is under 50, and today's contract gets its own line with the button that does it (unless it's already your Do this next).
+- **Notifications shows how many are unread**, like Notifications (3).
+- **The Daily contract moved from You to Work**, next to the other things you do each day.
+- **Work's Queue button opens your queue straight away.** The queue screen now has What runs next, and a button that sometimes didn't fit (Status) is back.
+- **Help › What next? no longer says today's contract twice** when it's your Do this next.
+
 ## Menu: do it again, sell again, keep hanging out
 
 - **Friends activities from the menu work again.** Say hi, Hang out, Mentor and the duo activities replied "Select player" instead of doing the activity with the citizen you picked.
