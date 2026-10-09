@@ -12,15 +12,17 @@ Railway variables (only the key is needed):
   AI_DAILY_LIMIT       API calls per UTC day for the whole game (default 300).
   AI_FIND_PER_PLAYER   AI answers in Find per player per UTC day (default 10).
 
-The budget counts calls before they are made, in the caller's session, so a busy minute cannot run past the limit
-(a call that fails still counts). The owner's hard limit on money is the monthly spend limit in the Claude Console.
+The budget counts calls before they are made (a call that fails still counts). Each call is its own row in the caller's
+session, so callers never wait on one another during a call; two calls at the same instant can each see the other's
+row missing and go one over the limit, which is fine for a daily budget. The owner's hard limit on money is the
+monthly spend limit in the Claude Console.
 """
 import logging
 import os
 import re
 from datetime import timedelta
 
-from sqlalchemy import Column, DateTime, Integer, String, Text, delete
+from sqlalchemy import Column, DateTime, Integer, String, Text, delete, func, select
 from sqlalchemy.exc import IntegrityError
 
 from . import runtime
@@ -39,12 +41,14 @@ LIMIT_TEXT = 1500            # the longest text write() returns
 log = logging.getLogger(__name__)
 
 
-class AiUsage(Base):
-    """API calls per UTC day: scope 'all' for the whole game, 'find:<player>' for one player's Find answers."""
-    __tablename__ = 'ai_usage_v1'
-    day = Column(String(10), primary_key=True)
-    scope = Column(String(160), primary_key=True)
-    count = Column(Integer, nullable=False, default=0)
+class AiCall(Base):
+    """One API call: its UTC day and its scope ('' or e.g. 'find:<world>:<player>' for one player's Find answers).
+    A row per call, not a counter, so no two calls ever wait on the same row."""
+    __tablename__ = 'ai_calls_v1'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    day = Column(String(10), nullable=False, index=True)
+    scope = Column(String(160), nullable=False, default='', index=True)
+    created_at = Column(DateTime(timezone=True), nullable=False)
 
 
 class AiText(Base):
@@ -105,35 +109,23 @@ def today():
 # ---------------------------------------------------------------- budget
 
 def used(db, scope='all', day=None):
-    row = db.get(AiUsage, (day or today(), scope))
-    return row.count if row is not None else 0
-
-
-def _count(db, day, scope):
-    """Add one call to (day, scope). Two requests may create the same row at once (PostgreSQL): the loser adds to the winner's."""
-    try:
-        with db.begin_nested():
-            row = db.get(AiUsage, (day, scope))
-            if row is None:
-                db.add(AiUsage(day=day, scope=scope, count=1))
-            else:
-                row.count += 1
-    except IntegrityError:
-        row = db.get(AiUsage, (day, scope))
-        if row is not None:
-            row.count += 1
+    """Calls made on `day` (today): all of them, or those of one scope."""
+    query = select(func.count()).select_from(AiCall).where(AiCall.day == (day or today()))
+    if scope != 'all':
+        query = query.where(AiCall.scope == scope)
+    return db.execute(query).scalar() or 0
 
 
 def _spend(db, scope='', per_scope=None):
-    """Reserve one call within today's limits; False (and nothing counted) when a limit is reached."""
+    """Reserve one call within today's limits; False (and nothing counted) when a limit is reached. Calls older than a
+    week are removed on the way."""
     day = today()
     if used(db, 'all', day) >= daily_limit():
         return False
     if scope and per_scope is not None and used(db, scope, day) >= per_scope:
         return False
-    _count(db, day, 'all')
-    if scope:
-        _count(db, day, scope)
+    db.add(AiCall(day=day, scope=scope or '', created_at=runtime.now()))
+    db.execute(delete(AiCall).where(AiCall.day < (runtime.now() - timedelta(days=7)).strftime('%Y-%m-%d')))
     db.flush()
     return True
 

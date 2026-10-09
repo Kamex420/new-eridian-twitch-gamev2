@@ -86,6 +86,27 @@ The command registrar publishes the revised option labels during normal containe
 
 References: [Discord message creation and allowed mentions](https://docs.discord.com/developers/resources/message), [Twitch chat delivery](https://dev.twitch.tv/docs/chat/send-receive-messages).
 
+## Claude API features (optional)
+
+Three features use the Claude API when `ANTHROPIC_API_KEY` is set: Find answers questions its own data can't (Discord
+only, labelled as an AI answer), Seedlings get a thought and a diary paragraph in their own words once a day (Discord
+only, written when the player opens Overview or Diary), and the Sunday recap opens with a short story. Without the key
+each one shows exactly what it showed before. The API is billed per use through the Claude Console, separately from
+any Claude plan: set a monthly spend limit there. Moderator › Unanswered questions (`/mod action:asklog`) shows under its
+heading whether the features are on and today's call count.
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `ANTHROPIC_API_KEY` | empty (features off) | The Claude Console API key. Read from the environment only; never logged or stored. |
+| `ANTHROPIC_MODEL` | `claude-haiku-5-5` | The model every feature uses. |
+| `AI_FEATURES` | `find,seedling,recap` | Which features run; remove one to switch it off. |
+| `AI_DAILY_LIMIT` | 300 | API calls per UTC day for the whole game. Past it, everything answers without AI until midnight UTC. |
+| `AI_FIND_PER_PLAYER` | 10 | AI answers in Find per player per UTC day. |
+
+No API call is made while the game lock is held (`app/ai.py` refuses), so a slow answer never holds up other players:
+slash `/find` runs without the lock (`discord_execution.LOCK_FREE`), Seedling words are written before the `/seedling`
+command takes it, and the community timer writes the recap story before it locks.
+
 ## Interaction response timing
 
 Discord requires an initial response within three seconds. All supported slash commands return a deferred response immediately after signature and access validation, then update the original response using the request-local interaction token. The token is not persisted. Discord allows interaction-token responses for fifteen minutes.[^discord-timing]

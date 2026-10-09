@@ -144,3 +144,13 @@ Delivery stays at-least-once with the same limit as before: a crash after Discor
 accepts the summary but before it is acknowledged can repeat that summary outside
 Discord's nonce window. Holding and release add no other duplicate. Startup repair
 leaves held notices alone because they are pending, not failed or missing.
+
+## Claude API features
+
+`ai_calls_v1` holds one row per Claude API call (UTC day, scope, time) so the daily limits in `AI_DAILY_LIMIT` and
+`AI_FIND_PER_PLAYER` can be counted without two calls ever waiting on the same row. The scope is empty or
+`find:<world>:<player>`; no question or reply text is stored. Rows older than seven days are deleted as new calls are made.
+
+`ai_text_v1` keeps texts Claude wrote so each is written once: `recap:<world>:<week's Monday>` (the recap story, written
+again if more than six hours old when needed) and `seedling:<world>:<player>:<day>` (a Seedling's thought and diary
+paragraph). Rows older than 30 days are deleted when a new one is kept. Find's AI answers are not kept.

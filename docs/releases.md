@@ -1,5 +1,14 @@
 # Release notes
 
+## Optional Claude features: smarter Find, Seedlings in their own words, a weekly story
+
+These turn on when the game owner adds an Anthropic API key in Railway. Without it, everything works exactly as before.
+
+- **Find can answer more questions.** When Find's own search has no answer, it asks Claude, using the game's handbook and menu. The reply is marked 🤖 AI answer and still lists Find's closest matches. Discord only, up to 10 a day per player.
+- **Seedlings speak in their own words.** Once a day, after your Seedling has done something, opening its Overview or Diary on Discord shows a thought and a short diary paragraph in its own attitude (cheerful, grumpy, dreamy…).
+- **The Sunday recap opens with a story** of the week, written from the week's real names and numbers.
+- For the owner: Moderator › Unanswered questions shows whether the AI features are on and how many calls were made today. The game stops calling Claude for the day after 300 calls.
+
 ## Easier menu screens: a button for every next step
 
 - **Your daily contract has a button that does it.** The Daily contract screen names the task (Mining, Harvest Pumpkins, Fire Safety…) with a green button beside it, and Home's Do this next does the task straight away. A delivery contract offers Prepare Cargo first when you have none.
