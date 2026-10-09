@@ -1490,6 +1490,11 @@ def show(db, p, owner, command, options, area, name, key=''):
     denied = _denied(discord_legacy_route(command, options)[0])
     if denied:
         return ui.message(denied, [nav(owner, area, area)], 'moderator')
+    if command == 'seedling' and not (options.get('schedule') or options.get('autonomy')):
+        # Overview and Diary: a view does not hold the game lock, but the command below takes it, so today's words (an API
+        # call, once a day) are written first; the command then only reads them.
+        from . import autonomy
+        autonomy.write_words(db, p)
     text = runtime._discord_call_internal(command, owner, name, options, '')
     legacy, legacy_options = discord_legacy_route(command, options)
     where = crumb(area, LEAVES[key]['label'].rstrip('…') if key in LEAVES else '')

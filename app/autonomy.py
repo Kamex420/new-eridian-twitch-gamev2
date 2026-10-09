@@ -19,8 +19,9 @@ least of first, its job task, and now and then a material it has none of.
 
 Moods come from needs, the weather, company and how the day is going. They
 nudge success chances a little (Inspired +3% … Miserable −4%) and give the
-Seedling a voice: a short thought in its own words. Everything it does is
-written to a diary, which the player reads when they come back and which the
+Seedling a voice: a short thought in its own words (on Discord, when the game has
+an API key, Claude writes the day's thought and a diary paragraph in its attitude:
+see "in its own words" below). Everything it does is written to a diary, which the player reads when they come back and which the
 stream narrator and the Avesta map overlay show live.
 
 The Seedling steps aside whenever the player is active (any command in the last
@@ -33,10 +34,11 @@ import json
 import logging
 import os
 import random
+import re
 from datetime import timedelta
 from sqlalchemy import Column, String, Integer, DateTime, select, delete
 from .db import Base, SessionLocal
-from . import needs, runtime
+from . import ai, needs, runtime
 from .models import Identity, LifeRelationship, Player, SkillBranch, Society
 from .settlement import seedling as colony_seedling
 
@@ -1281,6 +1283,125 @@ def entries(db, p, limit=10, since=None):
     return list(db.scalars(query.order_by(SeedlingDiary.id.desc()).limit(limit)))
 
 
+# ---- in its own words (optional, Discord only)
+# With an ANTHROPIC_API_KEY (app/ai.py), a Seedling that has a diary entry today gets, once a day, a thought and a diary
+# paragraph in its attitude. write_words makes the API call, so it must run outside the game lock (the menu's Overview and
+# Diary views call it before the /seedling command takes the lock); words only reads what was written, so the command, the
+# slash /seedling and the ticket buttons (all inside the lock) can show it. The stored thought column is never changed.
+
+WORDS_ENTRIES = 8              # today's diary entries the words are written from
+WORDS_THOUGHT_CHARS = 160
+WORDS_DIARY_CHARS = 600
+# Stable on every call (no names or numbers in it, so the provider can reuse it); everything about the Seedling is in the prompt.
+WORDS_SYSTEM = (
+    'You write in-character lines for a Seedling, a small settler living its own day in New Eridian on the planet Avesta. '
+    'Reply with exactly two lines and nothing else:\n'
+    'THOUGHT: <at most 15 words, first person, in its attitude>\n'
+    "DIARY: <2 or 3 sentences, first person, only about today's entries given>\n"
+    'Never invent items, numbers or people; use only the names given. Keep it family-friendly. '
+    'No hashtags, and no emojis beyond one.')
+_WORDS_LABEL = re.compile(r'^[\s>*_#`\-•]*(THOUGHT|DIARY)\s*[*_`]*\s*[:：]\s*[*_`]*\s*', re.I)
+
+
+def words_key(p, day=None):
+    """Where today's words are kept (ai_text_v1): one per Seedling per UTC day."""
+    return f'seedling:{p.channel_id}:{p.twitch_uid}:{day or ai.today()}'
+
+
+def _short(text, limit):
+    text = ' '.join(str(text or '').split())
+    return text if len(text) <= limit else text[:limit - 1].rsplit(' ', 1)[0].rstrip(' ,;:') + '…'
+
+
+def parse_words(text):
+    """(thought, diary) from the model's "THOUGHT: …" and "DIARY: …" lines (extra spaces, bullets, bold and a wrapped diary
+    are fine), or ('', '') when either is missing: then the Seedling keeps its template thought."""
+    found, current = {}, ''
+    for line in str(text or '').splitlines():
+        label = _WORDS_LABEL.match(line)
+        if label:
+            current = label[1].lower()
+            if current in found:
+                current = ''                    # a second THOUGHT or DIARY: the first one stands
+            else:
+                found[current] = [line[label.end():]]
+        elif current and line.strip():
+            found[current].append(line)
+    out = []
+    for name, limit in (('thought', WORDS_THOUGHT_CHARS), ('diary', WORDS_DIARY_CHARS)):
+        value = ' '.join(' '.join(found.get(name, [])).replace('*', '').replace('`', '').split()).strip(' "“”')
+        out.append(_short(value, limit))
+    return tuple(out) if all(out) else ('', '')
+
+
+def words(db, p):
+    """(thought, diary) written earlier today for this Seedling, or ('', ''). Only reads, so it is safe inside the game lock."""
+    try:
+        if not ai.enabled('seedling'):
+            return '', ''
+        return parse_words(ai.kept(db, words_key(p)))
+    except Exception:
+        logging.getLogger(__name__).exception('Seedling words could not be read; showing the template text')
+        return '', ''
+
+
+def day_start():
+    return runtime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+
+
+def words_prompt(db, p, today):
+    """What Claude is told: who the Seedling is, its attitude, mood and surroundings, and today's entries (oldest first)."""
+    from . import looks
+    found = row(db, p.channel_id, p.twitch_uid)
+    mood, weather = (found.mood if found is not None else '') or 'content', ''
+    try:
+        from .game.life import life_state
+        from .game.world import world_clock
+        clock = world_clock(db, p.channel_id)
+        weather = clock.get('condition', '')
+        mood = mood_of(life_state(db, p), clock.get('condition_key', ''), found.failures if found is not None else 0)[0]
+    except Exception:
+        logging.getLogger(__name__).warning('Seedling words: mood and weather unavailable; using what is stored')
+    style = looks.row(db, p)
+    attitude = looks.ATTITUDE.get(style.attitude) if style is not None else None
+    phrase = looks.CATCHPHRASES.get(style.catchphrase, '') if style is not None else ''
+    place = PLACES.get(found.place if found is not None else '', PLACES['residential_ring'])[0]
+    lines = [f'Seedling: {_short(clean_name(p.display_name), 40)}',
+             f'Attitude: {attitude[0]} ({attitude[1]})' if attitude else 'Attitude: none chosen (plain and friendly)',
+             f'Catchphrase: "{phrase}"' if phrase else 'Catchphrase: none',
+             f'Mood: {MOODS.get(mood, MOODS["content"])[1]}',
+             f"Right now: {_short(found.activity, 60) if found is not None else 'settling in'} at {place}",
+             f'Weather: {_short(weather, 40) or "unknown"}', '', "Today's diary entries, oldest first:"]
+    for e in today:
+        body = e.text.split(' — ', 1)[-1]
+        story = e.headline if body in e.headline else f'{e.headline} — {body}'
+        where = PLACES[e.place][0] if e.place in PLACES else ''
+        lines.append('- ' + _short(story, 220) + (f' ({where})' if where else ''))
+    return '\n'.join(lines)
+
+
+def write_words(db, p):
+    """Write today's words if this Seedling has a diary entry today and none were written yet (once a day, through
+    ai.written). Returns whether words are kept for today. It makes an API call, so call it outside the game lock (ai refuses
+    inside it). Never raises; commits the session (the spent call and the kept text)."""
+    try:
+        if not ai.enabled('seedling') or ai.locked():
+            return False
+        key = words_key(p)
+        if ai.kept(db, key):
+            return True
+        today = entries(db, p, WORDS_ENTRIES, day_start())
+        if not today:
+            return False
+        text = ai.written(db, 'seedling', key, WORDS_SYSTEM, words_prompt(db, p, list(reversed(today))), max_tokens=200, timeout=10)
+        db.commit()             # also frees the SQLite write lock before the command takes the game lock
+        return bool(text)
+    except Exception:
+        logging.getLogger(__name__).exception('Seedling words could not be written; showing the template text')
+        db.rollback()
+        return False
+
+
 def view_text(db, p, provider='discord'):
     from .game.life import life_state
     from .game.world import world_clock
@@ -1298,7 +1419,7 @@ def view_text(db, p, provider='discord'):
     sched = ' · '.join(f"{ph} {BLOCKS[b][0]}" for ph, b in blocks.items())
     lines = [f'🌱 YOUR SEEDLING — {p.display_name.upper()}',
              f'{emoji} **{label}** · {reason}' + (f' · {round(bonus * 100):+d}% success' if bonus else ''),
-             f'💭 *"{found.thought}"*', '',
+             f'💭 *"{words(db, p)[0] or found.thought}"*', '',
              'RIGHT NOW', f"{found.emoji} {found.activity} · {place[1]} {place[0]}"]
     if found.plan:
         lines.append(f'🧠 Thinking: {found.plan}')
@@ -1325,7 +1446,11 @@ def diary_text(db, p, provider='discord'):
     rows = entries(db, p, 10 if provider == 'discord' else 3)
     if provider != 'discord':
         return '📓 ' + (' | '.join(f'{e.headline}: {e.text.split(" — ", 1)[-1]}' for e in rows) if rows else f"{p.display_name}'s diary is empty so far.")
-    lines = [f'📓 DIARY — {p.display_name.upper()}', 'News from your Seedling\'s day, newest first.', '']
+    lines = [f'📓 DIARY — {p.display_name.upper()}']
+    own = words(db, p)[1]
+    if own:
+        lines += ['TODAY, IN ITS OWN WORDS', f'*{own}*', '', 'REPORTS']
+    lines += ['News from your Seedling\'s day, newest first.', '']
     for e in rows:
         lines.append(f'{e.emoji} **{e.headline}** · <t:{int(as_utc(e.created_at).timestamp())}:R>\n{e.text}')
     if not rows:
