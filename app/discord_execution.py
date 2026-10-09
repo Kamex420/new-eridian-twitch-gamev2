@@ -4,10 +4,12 @@ The receipt and gameplay commit together. A repeated signed interaction returns
 its original text. A world transaction lock orders commands against queue work,
 including shared society balances. Receipts intentionally do not store tokens.
 """
+import contextlib
 import hashlib
 import json
 import os
 from sqlalchemy import Column, String, Text, DateTime
+from sqlalchemy.exc import IntegrityError
 from .db import Base
 from . import runtime
 from .db import SessionLocal
@@ -21,11 +23,17 @@ class CommandReceipt(Base):
     created_at=Column(DateTime(timezone=True),nullable=False)
 
 
+# Commands that only read (plus Find's small count of questions it could not answer) and may wait for Claude's
+# answer (app/ai.py, up to ~12 seconds, which refuses to run inside the lock): they run without the world lock,
+# so one slow answer never holds up every other player. Receipts work the same for them.
+LOCK_FREE={'find'}
+
+
 def execute(payload,command,uid,name,options):
     from . import task_queue
     interaction_id=str(payload.get('id') or '')
     fingerprint=hashlib.sha256(json.dumps([uid,command,options],sort_keys=True).encode()).hexdigest()
-    with task_queue.atomic(runtime.DISCORD_WORLD_ID):
+    with (contextlib.nullcontext() if command in LOCK_FREE else task_queue.atomic(runtime.DISCORD_WORLD_ID)):
         with SessionLocal() as db:
             previous=db.get(CommandReceipt,interaction_id) if interaction_id else None
             if previous:
@@ -36,7 +44,14 @@ def execute(payload,command,uid,name,options):
             if interaction_id:
                 db.add(CommandReceipt(interaction_id=interaction_id,fingerprint=fingerprint,
                                       result=result,created_at=runtime.now()))
-                db.commit()
+                try:db.commit()
+                except IntegrityError:
+                    # The same interaction ran twice at once, which only a command without the lock can do:
+                    # the first receipt stands and both get its text.
+                    db.rollback()
+                    previous=db.get(CommandReceipt,interaction_id)
+                    if previous is None or previous.fingerprint!=fingerprint:raise
+                    return previous.result
             return result
 
 
