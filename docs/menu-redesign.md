@@ -43,18 +43,24 @@ Other things that make it harder than it needs to be:
 ```
 🏠 NEW ERIDIAN — Kamex
 ➡️ Gather Pumpkin Seeds · for your goal: Campfire        [ Do this next ]
-⚡ 72 · 🍲 40 · 💬 55 · 🛋️ 80 · 🪙 1,240 SC
-▶️ Running: Gather Stone · 3/10 done · finishes in 12 min
+⚡ 72 · 🍲 40 · 💬 55 · 🛋️ 80 · 🪙 1,240 SC              [ Life ]   (only while a need is under 50)
+▶️ Running: Gather Stone · 3/10 done · finishes in 12 min  [ Queue ]
+📋 Today's contract: Harvest Pumpkins 0/3 · 9 SC         [ Harvest ]   (only while it is not done and not the Do this next pick)
 
-⛏️ Work — gather, mine, farm, train skills, queues        [ Work ]
+⛏️ Work — gather, mine, farm, train skills, daily contract, queues  [ Work ]
 🛠️ Craft — your goal, recipes, shopping list              [ Craft ]
 ❤️ Life — eat, sleep, rest, friends                       [ Life ]
 🎒 Bag & Shop — what you own, buy, sell, your home        [ Bag & Shop ]
 🏘️ Town — event, vote, season, trophies, news             [ Town ]
 👤 You — profile, Seedling, looks, settings               [ You ]
 
-[ 📖 Help ]  [ 📬 Notifications ]  [ 🔁 Do again ]  [ 🛡️ Moderator ]
+[ 📖 Help ]  [ 📬 Notifications (3) ]  [ 🔁 Do again ]  [ 🛡️ Moderator ]
 ```
+
+The Life, Queue and contract buttons sit beside their lines in Discord's newer layout only; the older layout keeps its
+rows. Queue opens Queue status (a paused queue already has **Fix my queue** for that). Life opens the Life area. The
+contract's button is the one the Daily contract screen has (a grey **Daily contract** when the contract has no button
+of its own). Notifications shows how many are unread, `(99+)` past 99.
 
 Moderator shows only for the owner, as today. The **Status** button leaves Home: Home's own header already shows
 needs, SC, the queue and the next step. Full Status moves to You › More, and the public game panel keeps its Status
@@ -72,7 +78,7 @@ It picks the first of these that applies. 1, 3, 4 and 7 exist today; 2, 5 and 6 
 2. *(new)* Your queue is paused → **Fix my queue**: opens Queue status, which shows why it paused.
 3. First steps not finished → that step (+SC shown).
 4. You have a goal → the goal's next step.
-5. *(new)* Today's daily contract isn't done → a green button that does the task itself (Mine, Harvest, Irrigate, Train Fire Safety…; `menu.DAILY_LEAF` lists them). The Daily contract screen has the same button beside its Task line.
+5. *(new)* Today's daily contract isn't done → a green button that does the task itself (Mine, Harvest, Irrigate, Train Fire Safety…; `menu.DAILY_LEAF` lists them). The Daily contract screen has the same button beside its Task line. Home shows the contract under the queue line whenever it is not done and this is not the pick; when it is, Help › What next? leaves out the guide's own "Daily:" lines (Do this next, right under its heading, already says it).
 6. *(new)* Your last queue finished and nothing is running → **Repeat last queue**.
 7. Otherwise → **Find a goal**.
 
@@ -112,14 +118,17 @@ NOT YET
 Main buttons are listed in order. Buttons marked *(only when…)* are switches.
 
 ### ⛏️ Work
-- **Main:** Gather · Mine · Farm · Other jobs · Train skills · Queue
+- **Main:** Gather · Mine · Farm · Other jobs · Train skills · Queue status · Daily contract
 - **Farm:** one list of Tend fields, Harvest, Irrigate, Hydroponics, each with what it gives and a button.
 - **Other jobs:** one list of Scan, Research, Field analysis, Cargo, Delivery, Spaceport, Spaceport rush, Scout,
   Survey, each with what it gives.
 - **More:** Fix the town · Fix a tool, plus locked jobs (Mine rare ore, Hydroponics, Field analysis, Survey,
   Spaceport rush, Delivery when you have no Cargo).
-- **Queue** (sub-area): Queue status · Repeat last *(only when finished)* · Stop queue *(only while running)* · What
-  runs next · Clear what runs next *(only when something is planned)* · Queue rules
+- **Queue** (no longer a Work button; older buttons and tickets still open it, and its Back goes to Work): Queue status ·
+  Repeat last *(only when finished)* · Stop queue *(only while running)* · What runs next · Clear what runs next *(only when
+  something is planned)* · Queue rules. The queue screen itself has a grey **What runs next** button on its second row,
+  beside Queue rules.
+- **Daily contract** (moved here from You): its screen shows Work's buttons, crumb and Back.
 
 Replaces the Farming, Research, Logistics and Frontier sub-areas.
 
@@ -161,7 +170,7 @@ Replaces the Bag sub-area.
 Wear a hat and Pin a badge move to You › Looks.
 
 ### 👤 You
-- **Main:** Profile · Skills · Daily contract · My Seedling · Looks · Job & role · Settings
+- **Main:** Profile · Skills · My Seedling · Looks · Job & role · Settings (the Daily contract moved to Work)
 - **More:** Achievements · Full status · Collection · Bonuses · Traits · Relationships · Journal · Titles · Tutorial
 - **🌱 My Seedling:** Overview · Let it decide · Diary · Schedule (presets and Custom… in one list) · Lives on its
   own: On/Off

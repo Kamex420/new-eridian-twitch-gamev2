@@ -42,8 +42,8 @@ AREAS = {
     'home': ('🏠', 'New Eridian', 'Pick an area. Menus and views spend nothing; green buttons do their task once.',
              ['work', 'craft', 'life', 'trade', 'community', 'me', 'help', 'inbox', 'recent', 'mod']),
     'recent': ('🔁', 'Do again', 'Your last ten actions. Tap one to do it again.', []),
-    'work': ('⛏️', 'Work', 'Gather and mine materials, farm, do other jobs, train your skills and run queues.',
-             ['gather', 'mine', 'w_rare', 'farm', 'jobs', 'trainskill', 'queue']),
+    'work': ('⛏️', 'Work', 'Gather and mine materials, farm, do other jobs, train your skills, finish the daily contract and run queues.',
+             ['gather', 'mine', 'w_rare', 'farm', 'jobs', 'trainskill', 'qstatus', 'me_daily']),
     'queue': ('⏱️', 'Queue', 'Work that runs by itself while you watch. Check it, plan it, repeat it or stop it.',
               ['qstatus', 'repeat', 'cancel', 'plan', 'clearnext', 'qdetails']),
     'craft': ('🛠️', 'Craft', 'Your goal walks you through every step; your shopping list plans several recipes at once. All recipes has every recipe.',
@@ -57,7 +57,7 @@ AREAS = {
     'community': ('🏘️', 'Society', 'Everything New Eridian does together: the active event, the vote, the stream challenge, the season, trophies and news.',
                   ['wd_event', 'c_challenge', 'c_vote', 'c_season', 'c_trophies', 'wd_overview']),
     'me': ('👤', 'You', 'Your citizen, your Seedling, how it looks and your settings.',
-           ['me_overview', 'me_skills', 'me_daily', 'seedling', 'looks', 'choices', 'settings']),
+           ['me_overview', 'me_skills', 'seedling', 'looks', 'choices', 'settings']),
     'seedling': ('🌱', 'My Seedling', 'Your Seedling lives its own day: mood, thoughts, schedule and diary.',
                  ['sl_view', 'sl_decide', 'sl_diary', 'sl_schedule', 'sl_auto']),
     'looks': ('🎨', 'Looks', 'How your Seedling looks on the stream map and how it talks. Purely cosmetic.',
@@ -72,7 +72,7 @@ AREAS = {
             [k for _, keys in GROUPS['mod'] for k in keys]),
 }
 # The short line beside an area's button on Home (and on the area lists): what is inside.
-BLURB = {'work': 'gather, mine, farm, train skills, queues', 'craft': 'your goal, recipes, shopping list',
+BLURB = {'work': 'gather, mine, farm, train skills, daily contract, queues', 'craft': 'your goal, recipes, shopping list',
          'life': 'eat, sleep, rest, friends', 'trade': 'what you own, buy, sell, your home', 'community': 'event, vote, season, trophies, news',
          'me': 'profile, Seedling, looks, settings', 'queue': 'check it, repeat it, stop it, plan what runs next',
          'property': 'your home and your business', 'seedling': 'mood, schedule, diary', 'looks': 'skin, hair, clothes, voice, hats, badges',
@@ -440,6 +440,8 @@ for _key, _item in list(LEAVES.items()):
 for _key in LEAVES:
     if _key.startswith(('alerts_', 'popups_')):
         PARENT.setdefault(_key, 'settings')
+# Work lists Queue status itself, not the Queue area (older buttons and tickets still open it, and its Back goes to Work).
+PARENT['queue'] = 'work'
 # The area a slash command belongs to, for the "back to area" button on replies.
 COMMAND_AREA = {}
 for _key, _leaf in LEAVES.items():
@@ -694,6 +696,13 @@ def _button(owner, key, compact=False, ctx=None):
         on = _switch_on(owner, ctx, key)
         ticket = ui.issue(owner, {'do': 'cmd', 'leaf': item['flip'][on]})
         return ui.button(f"{item['label']}: {item['words'][0 if on else 1]}", ui.cid(owner, 't', ticket), emoji=item['emoji'])
+    if key == 'inbox' and ctx is not None and ctx.p is not None:
+        # Notifications says how many are waiting (Notifications (3), 99+ past 99); a failed read counts as none.
+        from . import inbox
+        waiting = ctx.get('unread', lambda: inbox.unread_count(ctx.db, ctx.p.channel_id, ctx.p.twitch_uid))
+        waiting = waiting if isinstance(waiting, int) and not isinstance(waiting, bool) else 0    # Ctx.get stores True when a check fails
+        label = f"{item['label']} ({'99+' if waiting > 99 else waiting})" if waiting > 0 else item['label']
+        return ui.button(label, ui.cid(owner, 'mv', key), emoji=item['emoji'])
     if key == 'quiet' and ctx is not None and ctx.quiet_on():
         return ui.button('Quiet hours: On', ui.cid(owner, 'mn', 'settings', 'quiet'), emoji=item['emoji'])    # Change or Turn off
     if item['kind'] == 'do':
@@ -809,14 +818,12 @@ def area_text(db, p, area, ctx=None):
     children = children_of(area, ctx)
     lines = [f'{emoji} {title.upper()}', text, '']
     if area == 'home' and p is not None:
-        # Home: the next step first, then needs and queue, then the areas (the description is left out: the lines say it).
-        from . import qol
-        from .game.life import life_state
-        life = life_state(db, p)
-        step = (ctx.get('home_next', lambda: home_next(db, p)) if ctx is not None else home_next(db, p))
-        lines = [f'{emoji} NEW ERIDIAN — {p.display_name}', step['line'],
-                 f'⚡ {life.energy} · 🍲 {life.nutrition} · 💬 {life.social} · 🛋️ {life.comfort} · 🪙 {p.sc} SC',
-                 qol.queue_summary(db, p, 'discord')[0].split('\n')[0], '']
+        # Home: the next step first, then needs, queue and today's contract, then the areas (the description is left out: the lines say it).
+        card = home_card(db, p, ctx)
+        lines = [f'{emoji} NEW ERIDIAN — {p.display_name}', card['step']['line'], card['needs'], card['queue']]
+        if card['contract'] is not None:
+            lines.append(card['contract'][0])
+        lines.append('')
     lines += _listing(area, children)
     return '\n'.join(lines).rstrip()
 
@@ -1069,7 +1076,7 @@ def _home_next(db, p):
         d = daily(db, p)
     if not d.complete:
         # The button does the task itself (Mine, Harvest, Train Fire Safety…); a contract with no button opens its screen.
-        return step(f"today's contract: {action_display_name(d.action)} {d.progress}/{d.target} · {d.reward_sc} SC",
+        return step(f"today's contract: {action_display_name(d.action)} {d.progress}/{d.target} · {d.reward_sc} SC", topic='daily',
                     **(daily_how(db, p, d) or dict(view=('mv', 'me_daily'), label='Daily contract')))
     if q is not None and q.state == 'completed':
         return step(f"your last queue finished: {task_queue.choices().get(q.task, q.task)} ×{q.total}", do={'do': 'cmd', 'leaf': 'repeat'},
@@ -1108,9 +1115,89 @@ def area_message(db, p, owner, area, ctx=None):
     return ui.with_crumb(data, crumb(area)) if area != 'home' else dict(data, _home=True)
 
 
+def home_step(db, p, ctx):
+    """Home's Do this next step, worked out once per screen."""
+    return ctx.get('home_next', lambda: home_next(db, p)) if ctx is not None else home_next(db, p)
+
+
+def _queue_line(db, p):
+    """The queue line on Home: the first line of the queue summary. Without its 'with the button below' hint: Home has no repeat
+    button, and a line with that hint is shown as small print in the newer layout, where no button can sit beside it."""
+    from . import qol
+    return qol.queue_summary(db, p, 'discord')[0].split('\n')[0].replace(' ' + qol.REPEAT_HINT, '')
+
+
+def home_contract(db, p, ctx, step):
+    """(the contract line, what its button does) for under Home's queue line, or None: nothing once today's contract is done, or
+    when Do this next already is the contract. What the button does is `daily_how` ({} when the contract has no button)."""
+    if step.get('topic') == 'daily':
+        return None
+    from .game.cooldowns_materials import action_display_name, daily
+    try:
+        d = daily(db, p)
+        if d.complete:
+            return None
+        return (f"📋 Today's contract: {action_display_name(d.action)} {d.progress}/{d.target} · {d.reward_sc} SC",
+                daily_how(db, p, d, ctx))
+    except Exception:    # a check that fails must not take Home down: it just has no contract line
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        return None
+
+
+def home_card(db, p, ctx):
+    """What the top of Home says, read once per screen (the text and the buttons beside the lines both use it): the Do this
+    next step, the needs line (`low` when Energy, Nutrition, Social or Comfort is under 50), the queue line and the contract line."""
+    def read():
+        from .game.life import life_state
+        step = home_step(db, p, ctx)
+        life = life_state(db, p)
+        return dict(step=step, low=min(life.energy, life.nutrition, life.social, life.comfort) < 50,
+                    needs=f'⚡ {life.energy} · 🍲 {life.nutrition} · 💬 {life.social} · 🛋️ {life.comfort} · 🪙 {p.sc} SC',
+                    queue=_queue_line(db, p), contract=home_contract(db, p, ctx, step))
+    card = ctx.get('home_card', read) if ctx is not None else read()
+    return card if isinstance(card, dict) else read()    # Ctx.get answers True when a read fails: read again and let it fail as it always did
+
+
+def _beside_match(line):
+    """Text that finds `line` on the card. Presentation bolds a leading 'Label:' ('⏸️ Paused:' becomes '⏸️ **Paused:**'), so match what
+    follows the label; a line with no label is matched by itself. It stops before a time (<t:…:R>), which moves from one read to the next."""
+    label, colon, rest = line.partition(': ')
+    return (rest if colon and rest else line).split('<t:', 1)[0].rstrip()[:40]
+
+
+def _beside_able(line):
+    """Whether the newer layout keeps `line` as an ordinary line a button can sit beside (it makes legends and how-to-use lines small print)."""
+    from . import layout_v2
+    return not (layout_v2.LEGEND.match(line) or layout_v2.HELP.search(line))
+
+
+def home_items(owner, card):
+    """The Life, Queue and contract buttons beside their lines on Home, in the order the lines come (the newer layout finds
+    items in order; the old layout ignores them, so Home keeps its rows). Life only while a need is under 50."""
+    items, step = [], card['step']
+    if card['low'] and _beside_able(card['needs']):
+        life = _button(owner, 'life')
+        life['custom_id'] += '|~'           # the Life line below has this button too; Discord refuses two with one custom_id (the suffix is ignored)
+        items.append({'match': _beside_match(card['needs']), 'button': life})
+    if step.get('view') != ('qv',) and _beside_able(card['queue']):    # a paused queue already has Fix my queue, which opens the same screen
+        items.append({'match': _beside_match(card['queue']), 'button': ui.button('Queue', ui.cid(owner, 'qv'), emoji='⏱️')})
+    if card['contract'] is not None:
+        how = card['contract'][1]
+        b = home_button(owner, how) if how else None
+        b = b or ui.button('Daily contract', ui.cid(owner, 'mv', 'me_daily'), emoji='📋')    # no button for this contract: its screen
+        items.append({'match': "Today's contract", 'button': b})
+    return items
+
+
 def with_next(db, p, owner, ctx, rows, items):
-    """Home's Do this next button: beside its line in the newer layout, the first row in the old one."""
-    step = ctx.get('home_next', lambda: home_next(db, p)) if ctx is not None else home_next(db, p)
+    """Home's buttons beside their lines: Do this next first (beside its line in the newer layout, the first row in the old one),
+    then Life, Queue and today's contract (newer layout only), then the areas."""
+    card = home_card(db, p, ctx)
+    step = card['step']
+    items = home_items(owner, card) + items
     b = home_button(owner, step)
     if b is None:
         return rows, items
@@ -1134,11 +1221,24 @@ def under_heading(text, line):
 def next_up(db, p, owner, ctx):
     """Home's Do this next for another screen: (its line, [the green button's row], the item that puts the button beside the line in
     the newer layout); the last two are empty when the step has no button."""
-    step = ctx.get('home_next', lambda: home_next(db, p)) if ctx is not None else home_next(db, p)
+    step = home_step(db, p, ctx)
     b = home_button(owner, step)
     if b is None:
         return step['line'], [], []
     return step['line'], [ui.row(b)], [{'match': '**Do this next**', 'button': b, 'text': step['beside']}]
+
+
+def trim_guide(text, step):
+    """The guide's text without its own daily-contract pair of lines ('📋 Daily: Mining 0/3.' and 'Do /mine next now. Reward: …')
+    when Do this next, which goes right under the heading, already says today's contract. Everything else stays, the NEXT THREE
+    STEPS list too. Presentation may have bolded the label and put the command in quotes (the embed), so the match ignores both."""
+    if step.get('topic') != 'daily':
+        return text
+    rows = text.split('\n')
+    for i in range(len(rows) - 1):
+        if rows[i].replace('*', '').strip().startswith('📋 Daily:') and rows[i + 1].replace('*', '').replace('`', '').lstrip().startswith('Do '):
+            return '\n'.join(rows[:i] + rows[i + 2:])
+    return text
 
 
 def reply(text, command, rows):
@@ -1555,7 +1655,8 @@ def show(db, p, owner, command, options, area, name, key=''):
             line, lead, found = next_up(db, p, owner, ctx)
             embed = next(iter(panel.get('embeds') or []), None)
             if embed is not None:
-                embed['description'] = line + '\n' + embed.get('description', '')
+                rest = trim_guide(embed.get('description', ''), home_step(db, p, ctx)).strip('\n')
+                embed['description'] = line + ('\n' + rest if rest else '')
             ui.with_items(panel, found)
         panel['components'] = lead + rows[:4 - len(lead)] + [bottom]
         return ui.with_crumb(panel, where)
@@ -1572,7 +1673,7 @@ def show(db, p, owner, command, options, area, name, key=''):
         elif key == 'guide':
             # What next? starts with what Home says to do next: its line under the heading, its green button first.
             line, lead, items = next_up(db, p, owner, ctx)
-            text = under_heading(text, line)
+            text = under_heading(trim_guide(text, home_step(db, p, ctx)), line)
         rows = lead + area_rows(owner, area, ctx, rows=3 - len(lead)) + [bottom]
     data = ui.with_items(reply(text, legacy, rows), items)
     return ui.with_crumb(ui.add_list_items(data, owner, legacy, legacy_options, name), where)

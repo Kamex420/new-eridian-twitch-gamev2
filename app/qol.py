@@ -805,6 +805,9 @@ def did_you_mean(suggestions):
 
 # ---------------------------------------------------------------- status dashboard
 
+REPEAT_HINT = 'Repeat it with the button below.'    # the end of a finished queue's line on Discord (Home leaves it off)
+
+
 def queue_summary(db, p, provider):
     """(line, row) describing the current or last queue, its pace and what follows."""
     from . import task_queue
@@ -828,7 +831,7 @@ def queue_summary(db, p, provider):
             line = f'⏸️ Paused: {label} · {done}/{row.total} done · {without_fix(reason) if provider == "discord" else reason}'
         else:
             state = {'completed': 'Completed', 'cancelled': 'Cancelled', 'error': 'Stopped'}.get(row.state, row.state.title())
-            repeat = 'Repeat it with the button below.' if provider == 'discord' else 'Repeat: !queuerepeat'
+            repeat = REPEAT_HINT if provider == 'discord' else 'Repeat: !queuerepeat'
             line = f'✔️ Last queue {state.lower()}: {label} ×{row.total}. {repeat}'
     if following:
         line += f'\n⏭️ Next: {following}' if provider == 'discord' else f' → next {following}'

@@ -536,10 +536,12 @@ def queue_components(db, p, owner):
     if p is not None and qol.next_task(db, p.channel_id, p.twitch_uid)[0]:
         buttons.append(button('Clear what runs next', cid(owner, 'cn'), emoji='⏭️'))
     buttons.append(button('Status', cid(owner, 'st'), emoji='📊'))
-    rows = [row(*buttons)]
+    # A row holds five buttons (row() drops the rest): the first row keeps the first five, the second row has What runs next, Queue rules
+    # (once there is a queue) and whatever did not fit above, so no button that should show is lost.
+    second = [button('What runs next', cid(owner, 'pv'), emoji='🗺️')]
     if row_ is not None:
-        rows.append(row(button('Queue rules', cid(owner, 'qd'), emoji='📘')))
-    return rows
+        second.append(button('Queue rules', cid(owner, 'qd'), emoji='📘'))
+    return [row(*buttons[:5]), row(*(second + buttons[5:])[:5])]
 
 
 def repeat_button(owner, queue_row):

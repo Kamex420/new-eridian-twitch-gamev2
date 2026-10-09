@@ -298,7 +298,8 @@ def test_nothing_is_more_than_two_taps_below_home():
                     depth[child] = depth[key] + 1
                     following.append(child)
         frontier = following
-    assert set(depth) == set(menu.AREAS) and max(depth.values()) == 2 and len(menu.AREAS) == 16
+    # Work lists Queue status, not the Queue area; the area stays for older buttons and the /queue reply (its Back goes to Work).
+    assert set(depth) == set(menu.AREAS) - {'queue'} and max(depth.values()) == 2 and len(menu.AREAS) == 16
 
 
 def test_no_two_buttons_share_a_name():

@@ -257,7 +257,8 @@ def test_buttons_appear_only_when_the_citizen_can_use_them():
 
 def test_no_button_is_listed_in_two_places():
     from collections import Counter
-    counts = Counter(k for area, (_, _, _, kids) in menu.AREAS.items() for k in kids if area != 'home')
+    # The Queue area is kept for older buttons and the /queue reply; it repeats Queue status, which Work lists itself.
+    counts = Counter(k for area, (_, _, _, kids) in menu.AREAS.items() for k in kids if area != 'home' and (area, k) != ('queue', 'qstatus'))
     counts.update(k for keys in menu.MORE.values() for k in keys)
     counts.update(k for keys in menu.JOBS.values() for k in keys)
     assert [k for k, n in counts.items() if n > 1] == []

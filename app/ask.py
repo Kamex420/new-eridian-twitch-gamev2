@@ -920,6 +920,10 @@ def _menu_map():
     for key in home:
         if key in menu.AREAS:
             walk(key, '')
+        if key == 'work':
+            # Queue status opens the queue screen (the Queue area is only reached from older buttons): say what is on it.
+            queue = [k for k in menu.AREAS['queue'][3] if k != 'qstatus' and k not in hidden and k in menu.LEAVES]
+            lines.append('Work › Queue status (the queue screen): ' + ' · '.join(button(k) for k in queue))
     return '\n'.join(lines)
 
 

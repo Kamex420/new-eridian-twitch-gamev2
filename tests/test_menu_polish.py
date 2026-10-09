@@ -202,7 +202,9 @@ def test_a_finished_contract_has_no_button_and_says_it_is_done(owner, newer):
         cm.daily(db, player(db)).complete = True
         db.commit()
     data = daily_screen(newer)
-    assert 'Contract complete' in v2.text_of(data) and 'Mine' not in labels(data) and beside(data, 'Task:') is None
+    # Work's own Mine (grey, a list) is there now; the green Mine that does the contract's task is not.
+    assert 'Contract complete' in v2.text_of(data) and beside(data, 'Task:') is None
+    assert not [b for b in buttons(data) if b.get('label') == 'Mine' and b.get('style') == 3]
 
 
 @pytest.mark.parametrize('newer', [False, True])
@@ -344,7 +346,8 @@ def test_what_next_starts_with_the_do_this_next_line_and_its_button(owner, newer
     data = shown(ui.cid('111', 'mv', 'guide'), newer=newer)
     text = v2.text_of(data)
     line = step['beside'] if newer else 'Do this next'                        # the newer layout drops the label: the button carries it
-    assert 'Field Guide' in text and text.index('Field Guide') < text.index(line) < text.index('Daily:')      # under the heading, above the guide
+    assert 'Field Guide' in text and text.index('Field Guide') < text.index(line) < text.index('Next Three Steps')      # under the heading, above the guide
+    assert 'Daily:' not in text                                            # the guide's own contract lines would say it twice
     button = beside(data, 'contract: Harvest Pumpkins') if newer else data['components'][0]['components'][0]
     assert button['label'] == 'Harvest' and button['style'] == 3 and button['custom_id'].startswith('ne|111|t|')
     if not newer:

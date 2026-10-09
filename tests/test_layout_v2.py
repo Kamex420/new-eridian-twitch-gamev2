@@ -207,7 +207,7 @@ def test_every_menu_area_and_choice_list_fits_with_buttons_beside_items():
             assert assert_valid(v2.convert(answer['data'])), key
     home = v2.convert(moderator(ui.cid('111', 'mn', 'home'))['data'])
     beside = [s['accessory']['label'] for s in sections(home)]
-    assert beside[1:7] == ['Work', 'Craft', 'Life', 'Bag & Shop', 'Society', 'You']                 # six areas, after Do this next
+    assert beside[1:8] == ['Queue', 'Work', 'Craft', 'Life', 'Bag & Shop', 'Society', 'You']        # Queue by its line, then six areas, after Do this next
     top = sections(home)[0]
     assert top['components'][0]['content'].startswith('➡️ ') and '**' not in top['components'][0]['content']    # the button carries the name
     assert top['accessory']['style'] == 3                                                          # Do this next is green
@@ -223,7 +223,8 @@ def test_menu_buttons_beside_lines():
     assert found['Relax']['accessory']['custom_id'].startswith('ne|111|t|') and found['Relax']['accessory']['style'] == 3   # actions: green
     assert found['Relax']['components'][0]['content'] == '🛋️ +25 Energy, +20 Comfort'                 # the button names it; the line says what it does
     assert found['Friends']['accessory']['style'] == 2                                                # lists and views: grey
-    assert sections(v2.convert(press(ui.cid('111', 'mn', 'home'))['data']))[1]['accessory']['style'] == 1        # areas: blue
+    home = {s['accessory']['label']: s for s in sections(v2.convert(press(ui.cid('111', 'mn', 'home'))['data']))}
+    assert home['Work']['accessory']['style'] == 1 and home['Queue']['accessory']['style'] == 2                  # areas: blue; Queue: grey
     farm = v2.convert(press(ui.cid('111', 'mn', 'farming'))['data'])                                 # an older Farming button opens the Farm list
     assert 'gives 1 Pumpkin + 1 Pumpkin Seeds' in v2.text_of(farm)                                    # every job has a line
     assert len(sections(farm)) == 3 and {s['accessory']['label'] for s in sections(farm)} == {'Do it'}

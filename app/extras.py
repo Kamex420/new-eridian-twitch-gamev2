@@ -929,7 +929,7 @@ def save_routine(db, p):
         return f'You already have {MAX_ROUTINES} routines. Delete one first. Nothing saved.'
     name = ' → '.join(step_label(st) for st in steps)[:100]
     db.add(Routine(channel_id=p.channel_id, canonical_uid=p.twitch_uid, name=name, steps=json.dumps(steps), created_at=runtime.now()))
-    return f'💾 Routine saved: {name}. Start it any time from /menu → Work → Queue → What runs next.'
+    return f'💾 Routine saved: {name}. Start it any time from /menu → Work → Queue status → What runs next.'
 
 
 def delete_routine(db, p, routine_id):
