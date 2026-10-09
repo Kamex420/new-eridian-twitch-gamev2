@@ -10,6 +10,11 @@
   🌱 Seedling moments      the funniest things the Seedlings did on their own
   👋 New citizens          who arrived this week
 
+When the optional Claude features are on (app/ai.py), the recap opens with "📖 This week on Avesta", a short story
+written from the facts below. It is written once a week (and again only if the kept one is old, see STORY_FRESH), never
+inside the game lock: the community timer calls prepare() before taking the lock, and the owner's menu preview writes it
+too; everything else just reads the kept story, and a recap without one is exactly the recap without the feature.
+
 It posts to RECAP_CHANNEL_ID (or DISCORD_GAME_CHANNEL_ID) on Sundays from RECAP_HOUR (UTC, default 18), once a
 week. Moderators can preview it or post it now (/mod or !recap post), and GET /api/v1/recap shows it as text.
 """
@@ -17,10 +22,11 @@ import hashlib
 import json
 import logging
 import os
+import re
 from datetime import datetime, timedelta, timezone
 from sqlalchemy import Column, String, Integer, DateTime, select, func
-from .db import Base
-from . import runtime
+from .db import Base, SessionLocal
+from . import ai, runtime
 from .models import Player
 from .models import Society
 
@@ -28,6 +34,19 @@ RECAP_HOUR = min(23, max(0, int(os.getenv('RECAP_HOUR', '18'))))
 FUNNY = ('fail', 'empty', 'nothing', 'slip', 'trip', 'nap', 'dozed', 'argu', 'rocky', 'duck', 'spill', 'lost', 'forgot', 'sneez', 'hum',
          'dance', 'sing', 'wander', 'chat', 'gossip', 'rumor', 'rumour', 'too tired', 'hungry', 'snack', 'games', 'joke', 'laugh')
 COLOUR = 0x7EE3B0
+
+STORY_HEADING = '📖 This week on Avesta'
+STORY_FRESH = timedelta(hours=6)     # a kept story older than this was written from other numbers: it is written again
+STORY_RETRY = timedelta(minutes=10)  # the timer asks Claude again no sooner than this after a try that gave nothing
+STORY_FIELD = 1000                   # the story's longest length (a Discord field holds 1024 characters)
+EMBED_LIMIT = 6000                   # Discord: all the characters of one embed
+STORY_SYSTEM = (
+    'You write the short weekly story that opens the Sunday recap for the players of New Eridian, a young settlement on '
+    'the planet Avesta. Write one warm, gentle story of 90 to 130 words, in two or three short paragraphs. '
+    'Use only the facts given in the message. Keep every name and number exactly as given. Do not invent events, '
+    'people, places or numbers; if the week was quiet, say so kindly. '
+    'Plain text only: no headings, no lists, no markdown, no @mentions, no hashtags and no links.')
+_asked = {}                          # story key -> when the timer last asked Claude for it (this process only)
 
 
 class RecapPost(Base):
@@ -71,8 +90,79 @@ def _stats(db):
     return {k: getattr(s, k) for k in ('food', 'materials', 'development', 'knowledge', 'treasury', 'reputation', 'population')}
 
 
-def build(db, when=None):
-    """The recap as (title, [(section heading, text)], plain text)."""
+def story_key(when=None):
+    """Where the week's story is kept (ai.AiText): one per world and week, shared by the preview and the post."""
+    return f'recap:{runtime.DISCORD_WORLD_ID}:{week_start(when).strftime("%Y-%m-%d")}'
+
+
+def kept_story(db, when=None):
+    """This week's story if it was written recently enough (STORY_FRESH) to match the numbers beside it, else ''."""
+    row = db.get(ai.AiText, story_key(when))
+    if row is None or runtime.now() - _utc(row.created_at) > STORY_FRESH:
+        return ''
+    return row.text
+
+
+def plain_facts(title, sections):
+    """The week's sections as plain text for Claude: no Markdown bold, italics or code marks."""
+    def plain(text):
+        text = re.sub(r'\*\*|__|~~|`', '', text)
+        return re.sub(r'\*([^*\n]+)\*', r'\1', text)
+    return plain(title) + '\n\n' + '\n\n'.join(f'{plain(h)}\n{plain(t)}' for h, t in sections)
+
+
+def _fit(text):
+    """The story cut at the end of a sentence to fit one Discord field."""
+    text = (text or '').strip()
+    if len(text) <= STORY_FIELD:
+        return text
+    head = text[:STORY_FIELD]
+    end = max(head.rfind('. '), head.rfind('! '), head.rfind('? '), head.rfind('\n'))
+    if end > STORY_FIELD // 2:
+        return head[:end + 1].strip()
+    return head.rsplit(' ', 1)[0].rstrip(' ,;:') + '…'
+
+
+def story(db, when, title, sections, write=False):
+    """The week's story: the kept one, or with write=True one written now from `sections` (the week's real numbers and
+    names). Writing is one API call and only happens outside the game lock; a failed call leaves ''."""
+    found = kept_story(db, when)
+    if found or not write or ai.locked() or not ai.enabled('recap'):
+        return _fit(found)
+    old = db.get(ai.AiText, story_key(when))
+    if old is not None:                         # kept, but from an earlier day's numbers: write it again
+        db.delete(old)
+        db.flush()
+    prompt = 'The week in New Eridian, as it was recorded:\n\n' + plain_facts(title, sections)
+    return _fit(ai.written(db, 'recap', story_key(when), STORY_SYSTEM, prompt, max_tokens=350, timeout=20))
+
+
+def prepare(when=None):
+    """Write this week's story ahead of the Sunday post. The community timer calls this BEFORE it takes the game lock
+    (an API call inside it would hold up every player); the locked recap.tick() then only reads the kept story.
+    Returns whether a try was made. A try that gave nothing is not repeated for STORY_RETRY."""
+    from . import seasons
+    when = when or _now()
+    if not due(when) or not channel_id() or not os.getenv('DISCORD_BOT_TOKEN', '').strip() or not ai.enabled('recap') or ai.locked():
+        return False
+    key, now = story_key(when), runtime.now()
+    if key in _asked and now - _asked[key] < STORY_RETRY:
+        return False
+    with SessionLocal() as db:
+        row = db.get(RecapPost, (runtime.DISCORD_WORLD_ID, seasons.week_key(when)))
+        if (row and row.sent) or kept_story(db, when):
+            return False
+        _asked[key] = now
+        build(db, when, write=True)
+        db.commit()
+    return True
+
+
+def build(db, when=None, write=False):
+    """The recap as (title, [(section heading, text)], plain text).
+
+    The week's story (STORY_HEADING) comes first when one was kept. With write=True a missing one is written now, but only
+    where the game lock is not held (ai.locked()); everywhere else, and when Claude is off, the recap is the one without it."""
     from .game.players import resource_name
     from .game.rules import SOCIETY_TIERS
     from .game.world import society_tier
@@ -166,6 +256,9 @@ def build(db, when=None):
 
     end = min(when, since + timedelta(days=6))
     title = f"📰 New Eridian Weekly · {since.strftime('%b %d')} – {end.strftime('%b %d')}"
+    tale = story(db, when, title, sections, write)
+    if tale:
+        sections.insert(0, (STORY_HEADING, tale))
     plain = title + '\n\n' + '\n\n'.join(f'{h}\n{t}' for h, t in sections)
     return title, sections, plain
 
@@ -196,8 +289,11 @@ def funny(db, since, week, n=3):
 
 def embed(title, sections):
     fields = [{'name': h[:256], 'value': (t[:1021] + '…') if len(t) > 1024 else t, 'inline': False} for h, t in sections[:25]]
-    return {'title': title[:256], 'color': COLOUR, 'fields': fields,
-            'footer': {'text': 'Posted every Sunday · /season · /trophies · /vote'}, 'timestamp': _now().isoformat()}
+    footer = {'text': 'Posted every Sunday · /season · /trophies · /vote'}
+    size = len(title[:256]) + len(footer['text']) + sum(len(f['name']) + len(f['value']) for f in fields)
+    if size > EMBED_LIMIT and fields and fields[0]['name'] == STORY_HEADING[:256]:
+        fields = fields[1:]             # Discord refuses an embed over 6000 characters: the story is the part that can go
+    return {'title': title[:256], 'color': COLOUR, 'fields': fields, 'footer': footer, 'timestamp': _now().isoformat()}
 
 
 def post(db, force=False, when=None):

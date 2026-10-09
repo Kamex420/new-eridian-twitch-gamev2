@@ -53,6 +53,12 @@ def tick():
     from . import task_queue
     if not ENABLED:
         return
+    # The recap's story is written by Claude over the network (up to 20 seconds), so it is written here, before the world
+    # lock is taken, in its own session; recap.tick() below, inside the lock, only reads the kept story.
+    try:
+        recap.prepare()
+    except Exception:
+        log.exception('Weekly recap story failed; the recap goes out without it')
     with task_queue.atomic(runtime.DISCORD_WORLD_ID):
         with SessionLocal() as db:
             votes.sync(db)
@@ -381,7 +387,9 @@ def discord(command, uid, name, options):
         elif command == 'recappost':
             ok, text = recap.post(db, force=True)
         else:
-            title, sections, _ = recap.build(db)
+            # The preview writes the week's story when it can: from the menu's Weekly recap preview nothing holds the world
+            # lock (write=True is ignored where it is held, as in /mod, which then shows the story kept earlier, if any).
+            title, sections, _ = recap.build(db, write=True)
             text = '**' + title + '**\n\n' + '\n\n'.join(f'**{h}**\n{t}' for h, t in sections)
             text = text[:1900] + ('\n…' if len(text) > 1900 else '') + '\n\n(Preview. /mod action:recappost posts it for everyone.)'
         audit_moderator(db, channel, actor, command, str(options.get('challenge') or ''))
