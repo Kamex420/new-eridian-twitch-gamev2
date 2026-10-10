@@ -1,5 +1,11 @@
 # Release notes
 
+## The stream map looks like a SEED colony
+
+- **Real workstations stand on the map.** Each workstation the colony has used (Crafting Table, Kiln, Furnace, Loom and the rest) gets its own building in the matching district, and a new one rises with a toast like "🔧 New Eridian built its first Kiln".
+- **Seedlings walk to their workstation** and work there, with a ring and label for who is working now. Districts have their own colours on doors, awnings and trims, and buildings have soft shadows and lit roof edges.
+- **The map shows more of the colony:** a construction site for the society project (it grows as it fills), a price board for wanted goods, a water tower, ore piles and tents when supplies run short, a live event with a countdown ring, and a statue and crown for the top contributor.
+
 ## Behind the scenes: slash command check passes again
 
 - The check after each update no longer trips over emoji that Discord stores slightly differently in the /make, /use, /catalog and /mod lists, so it can finish and clear out old leftover copies of commands. No gameplay changes.

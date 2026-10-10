@@ -249,7 +249,7 @@ def run_lowpoly(quality):
         pytest.skip('node is not installed')
     page = map_page()
     rng_src = re.search(r'^function rng\(seed\).*$', page, re.M).group(0)
-    js = (f'const QUALITY={json.dumps(quality)};const made=[];const el=(t,a,p)=>{{const e={{t,a:a||{{}}}};made.push(e);return e}};'
+    js = (f'const QUALITY={json.dumps(quality)};const made=[];const el=(t,a,p)=>{{const e={{t,a:a||{{}},setAttribute(k,v){{this.a[k]=v}}}};made.push(e);return e}};'
           'const pts=p=>p.map(q=>q.join(",")).join(" ");' + rng_src + '\nconst N=20,TW=38,TH=19,OX=480,OY=64;const iso=(i,j)=>[OX+(i-j)*TW/2,OY+(i+j)*TH/2];\n'
           + so.LOWPOLY_JS + '\nconst count=f=>{const n=made.length;f();return made.length-n},r=rng("test"),g={};'
           'console.log(JSON.stringify({tile:count(()=>facetTile(g,2,3,["#7a9656","#8aa262"])),conifer:count(()=>lowPolyTree(g,100,100,r,"conifer")),'
@@ -406,3 +406,170 @@ def test_newest_discord_features_are_named_but_never_shown_as_data(monkeypatch):
     text = json.dumps({k: v for k, v in data.items() if k != 'join'}).lower()
     for private in ('europe/berlin', 'quiet hours', 'keep level', 'shopping list', 'force merge'):
         assert private not in text, private
+
+
+# ---------------------------------------------------------------- workstations, live pieces and the SEED-style look on the map
+
+def craft_survival_bench():
+    """A real craft of the free Basic Workbench recipe, which uses the Survival Workbench."""
+    from app import seed_content as s
+    with m.SessionLocal() as db:
+        p = m.player(db, 'test', 'discord', 'new', 'Citizen')[1]
+        key = next(k for k in s.MACHINE_RECIPES if s.ITEMS[k]['name'] == 'Basic Workbench')
+        rid = next(k for k, r in s.RECIPES.items() if key in r['outputs'])
+        for k, n in s.RECIPES[rid]['inputs'].items():
+            for _ in range(n):
+                db.query(m.Cooldown).delete()
+                s.gather(db, p, k, 'discord')
+        db.query(m.Cooldown).delete()
+        assert 'CRAFTING COMPLETE' in s.craft(db, p, rid, 'discord')
+    return rid
+
+
+def test_overlay_names_the_workstations_the_world_has_crafted_with():
+    from app import crafting_progression as cp
+    assert overlay()['stations'] == []
+    craft_survival_bench()
+    stations = overlay()['stations']
+    assert [x['tag'] for x in stations] == [cp.SURVIVAL] and stations[0]['name'] == 'Survival Workbench' and stations[0]['at']
+    craft_survival_bench()          # the same station again is not a second entry
+    assert len(overlay()['stations']) == 1
+
+
+def test_station_use_is_recorded_once_per_world_and_never_breaks_a_craft():
+    with m.SessionLocal() as db:
+        so.station_used(db, 'test', 'TAG_MACHINE_KILN')
+        so.station_used(db, 'test', 'TAG_MACHINE_KILN')
+        so.station_used(db, W, 'TAG_MACHINE_OVEN')
+        so.station_used(db, 'test', '')
+        db.commit()
+        assert db.query(so.StreamStation).count() == 2
+        so.station_used(None, 'test', 'TAG_MACHINE_LOOM')       # a broken session is swallowed, like highlight()
+    assert [x['tag'] for x in overlay()['stations']] == ['TAG_MACHINE_KILN', 'TAG_MACHINE_OVEN'] or {x['tag'] for x in overlay()['stations']} == {'TAG_MACHINE_KILN', 'TAG_MACHINE_OVEN'}
+    assert all(x['name'] for x in overlay()['stations'])
+
+
+def test_a_world_with_older_crafts_gets_its_stations_from_the_crafting_ledger():
+    from app import crafting_progression as cp
+    with m.SessionLocal() as db:
+        db.add(m.CraftLedger(channel_id=W, canonical_uid='old', recipe='component', qty=3, best_quality=''))
+        db.add(m.CraftLedger(channel_id=W, canonical_uid='old', recipe='no_such_recipe', qty=1, best_quality=''))
+        db.commit()
+    assert [x['tag'] for x in overlay()['stations']] == [cp.SURVIVAL]
+
+
+def test_a_queued_craft_names_its_workstation_for_the_map():
+    from app import seed_content as s, crafting_progression as cp
+    rid = next(k for k, r in s.RECIPES.items() if cp.tags(k) == ['TAG_MACHINE_KILN'])
+    assert so.working_station('make:' + rid, set()) == 'TAG_MACHINE_KILN'
+    assert so.working_station('mine:iron', set()) == '' and so.working_station('make:no_such_recipe', set()) == ''
+    rid2 = next(k for k, r in s.RECIPES.items() if len(cp.tags(k)) > 1)
+    tags = cp.tags(rid2)
+    built = {tags[-1]}
+    assert so.working_station('make:' + rid2, built) == tags[-1]       # a station the colony has built wins
+    queue = enqueue(task='make:' + rid, count=2)
+    assert overlay()['working'][0]['station'] == 'TAG_MACHINE_KILN', queue
+
+
+def test_the_live_event_tells_the_map_how_long_it_lasts():
+    seed(uid='u', provider='twitch', name='Kamex')
+    with m.SessionLocal() as db:
+        m.start_event(db, m.world(db, W), 'fire', 'test')
+    event = overlay()['event']
+    assert event['key'] == 'fire' and event['seconds_total'] == 18 * 60 and 0 < event['seconds_remaining'] <= event['seconds_total']
+    assert {'progress', 'goal', 'support_progress', 'name', 'emoji'} <= set(event)
+
+
+def test_station_table_is_documented_and_created_at_startup():
+    import re
+    from pathlib import Path
+    docs = Path(__file__).resolve().parent.parent / 'docs' / 'persistence.md'
+    assert 'stream_stations_v1' in docs.read_text()
+    assert so.StreamStation.__table__.name == 'stream_stations_v1'
+
+
+STATION_KEYS_RE = r"^ (?:'?)([0-9A-Z_]+)(?:'?):\{d:'(\w+)',fx:'(\w+)'"
+
+
+def test_the_map_has_a_building_for_every_kind_of_workstation_and_the_live_pieces():
+    import re
+    from app import crafting_progression as cp
+    page = map_page()
+    rows = re.findall(STATION_KEYS_RE, so.STATIONS_JS, re.M)
+    keys = {k for k, _, _ in rows}
+    real = {re.sub(r'^TAG_MACH(INE)?_', '', t) for t in cp.STATIONS}
+    assert len(rows) == len(keys) >= 30 and keys <= real          # every station has its own silhouette, and only real SEED stations
+    assert {d for _, d, _ in rows} == {'industrial_ward', 'agricultural_district', 'residential_ring', 'research_block', 'frontier_edge'}
+    assert {fx for _, _, fx in rows} <= {'sparks', 'steam', 'dust'}
+    assert so.STATIONS_JS.strip() in page and so.TOWN_JS.strip() in page
+    for part in ('function stationsTown(', 'function workRings(', 'function eventSite(', 'function projectSite(', 'function marketBoard(', 'function shortages(',
+                 'function honours(', 'function crowns(', 'function atStations(', 'function fixture(', 'function townLife(', 'id="live"', 'townLife(d);',
+                 'function contact(', 'function doorway(', 'const FIXTURES='):
+        assert part in page, part
+    # the districts keep their reserved slots: workstations take the first slots, landmarks the last
+    for district in ('industrial_ward', 'agricultural_district', 'residential_ring', 'research_block', 'frontier_edge'):
+        listed = re.search(district + r":\[([^\]]*)\]", so.TOWN_JS).group(1)
+        assert 0 < len(re.findall("'", listed)) // 2 <= 12
+    assert 'const RESERVE=3;' in page and "fixture('commons','project',-5" in page and "fixture('commons','statue',-8" in page
+
+
+def test_the_map_looks_different_in_each_district_and_has_depth():
+    page = map_page()
+    for part in ("CREAM=", "METAL=", "TIMBER=", "LOOK.industrial_ward[2]", "LOOK.research_block[2]", "LOOK.spaceport_quarter[2]", "LOOK.frontier_edge[2]",
+                 "LOOK.residential_ring[2]", "LOOK.agricultural_district[2]", "glass:'#8fd6e2'", "roofColor:CANVAS"):
+        assert part in page, part
+    assert 'Districts differ by what stands on their plots, not by colour' not in page and 'materials' in page
+    assert "QUALITY!=='low'&&opt.rim!==0" in page and 'rgba(8,12,18' in page      # a rim on lit roof edges (not on low quality) and soft contact shadows
+    assert "if(CASTERS.some(c=>!c[2].isConnected))" in page                          # a building that is taken down stops casting
+
+
+def run_stations(quality):
+    """Draw every workstation in Node with a stand-in for the SVG; returns {station: [shapes, height, puffs]}."""
+    import json, re, shutil, subprocess, tempfile, pytest
+    node = shutil.which('node')
+    if not node:
+        pytest.skip('node is not installed')
+    page = map_page()
+    rng_src = re.search(r'^function rng\(seed\).*$', page, re.M).group(0)
+    line = lambda pattern: re.search(pattern, page, re.M).group(0)
+    box_src = page[page.index('const CASTERS=[]'):page.index('function centre(')]
+    drum_src = re.search(r'function drum\(.*?\n(?=// Crates)', page, re.S).group(0)
+    js = (f'const QUALITY={json.dumps(quality)};const made=[];const el=(t,a,p)=>{{const e={{t,a:a||{{}},setAttribute(k,v){{this.a[k]=v}}}};made.push(e);return e}};'
+          + rng_src + '\nconst N=20,TW=38,TH=19,OX=480,OY=64;const iso=(i,j)=>[OX+(i-j)*TW/2,OY+(i+j)*TH/2];\n' + so.LOWPOLY_JS + '\n'
+          + line(r'^function diamond\(.*$') + '\n' + line(r'^const pts=.*$') + '\n' + line(r'^const up=.*$') + '\n' + line(r"^const vr=rng\('lamps'\);$") + '\n'
+          + box_src + '\n' + drum_src + '\n' + so.STATIONS_JS + '\nconst out={};\n'
+          'for(const k in ST){const n=made.length,h=ST[k].draw({},3,4,"#ff9a76",{});out[k]=[made.length-n,h,made.slice(n).filter(e=>e.a.class==="puff").length]}\n'
+          'console.log(JSON.stringify(out))')
+    with tempfile.NamedTemporaryFile('w', suffix='.js', delete=False) as f:
+        f.write(js)
+    result = subprocess.run([node, f.name], capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr[:600]
+    return json.loads(result.stdout)
+
+
+def test_every_workstation_draws_at_every_quality_with_a_modest_shape_count():
+    low, normal, high = run_stations('low'), run_stations('normal'), run_stations('high')
+    assert set(low) == set(normal) == set(high) and len(high) >= 30
+    for key in high:
+        assert all(isinstance(v[key][1], (int, float)) and v[key][1] > 0 for v in (low, normal, high)), key       # each says how tall it stands, for its ring
+        assert 4 <= low[key][0] <= normal[key][0] <= high[key][0] <= 60, (key, low[key][0], normal[key][0], high[key][0])
+    assert sum(v[0] for v in high.values()) / len(high) < 30                                                       # about 20 shapes each, not hundreds
+    assert sum(v[2] for v in low.values()) == 0 and sum(v[2] for v in normal.values()) > 0                         # no smoke puffs on low quality
+
+
+def test_words_and_districts_pick_the_workstation_a_seedling_or_queue_uses():
+    import json, re, shutil, subprocess, tempfile, pytest
+    node = shutil.which('node')
+    if not node:
+        pytest.skip('node is not installed')
+    start = so.TOWN_JS.index('const WORDS=')
+    end = so.TOWN_JS.index('const standing=')
+    js = so.TOWN_JS[start:end] + ('\nconst pick=(text,built)=>{for(const [re,ids] of WORDS)if(re.test(text)){const id=ids.find(i=>built.includes(i));if(id)return id}return ""};'
+                                  'console.log(JSON.stringify([pick("Smelt Iron Ingot",["FURNACE","BASIC_FURNACE"]),pick("Working: Bake bread",["STOVE","OVEN"]),'
+                                  'pick("Training: Pottery",["POTTERY_STATION","KILN"]),pick("Gathering Lumber",["TABLE_SAW"]),pick("Mine Hematite Ore",["EXTRACTOR"]),'
+                                  'pick("Make Weave cloth",["TAILORING_BENCH"]),pick("Sleeping",["CAMPFIRE"])]))')
+    with tempfile.NamedTemporaryFile('w', suffix='.js', delete=False) as f:
+        f.write(js)
+    result = subprocess.run([node, f.name], capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr[:400]
+    assert json.loads(result.stdout) == ['FURNACE', 'OVEN', 'POTTERY_STATION', 'TABLE_SAW', 'EXTRACTOR', 'TAILORING_BENCH', '']

@@ -36,6 +36,8 @@ When each citizen last played themselves (not a Seedling or a queue acting for t
 
 Contribution a Seedling kept each day lives in the additive `seedling_contribution_v1` table (world, citizen, UTC day, amount), created when Seedlings start. A Seedling keeps at most 25 a day; anything more is taken back after its step.
 
+Workstations the colony has used live in the additive `stream_stations_v1` table (channel, workstation tag, first time used), created at startup like the other additive tables. A successful craft records its workstation once; the stream map reads the table to show a building for each one, with a new one rising when it first appears. Recording is best-effort and never blocks a craft. A world with no rows yet gets them rebuilt once from its crafting ledger (the lowest tier each recipe could use). It holds public information only and no player ids.
+
 Rare ores no longer use prospecting progress: the old `prospect:<ore>` bag rows are cleared the next time that ore is mined.
 
 Goal progress lives in the additive `player_goal_progress_v1` table (world, citizen, goal recipe ID, the walkthrough's step count when the goal was set, when it was set, and whether the one ready note went out); the goal itself stays in `player_extras_v1`. Setting a different goal replaces the row, clearing or completing the goal deletes it, and a goal set before the table existed gets its row the first time it is shown or checked (counting from then; a ready note the old reminder already sent is not repeated). A row for another recipe than the current goal is ignored. Linking keeps the target's row; the source's row moves when the target has none.

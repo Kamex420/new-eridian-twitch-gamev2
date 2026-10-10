@@ -175,6 +175,7 @@ def overlay_state_fresh(channel:str):
                 "goal":w.event_goal,
                 "percent":min(100,round((w.event_progress/max(1,w.event_goal))*100,1)),
                 "seconds_remaining":max(0,int((as_utc(w.event_ends)-main.now()).total_seconds())),
+                "seconds_total":int(cfg["minutes"])*60,
                 "primary":SKILL_LABELS.get(cfg["primary"],cfg["primary"].title()),
                 "support":SKILL_LABELS.get(cfg["support"],cfg["support"].title()),
                 "support_progress":w.event_support_successes,

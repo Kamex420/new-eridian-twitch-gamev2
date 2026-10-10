@@ -57,9 +57,18 @@ class StreamState(Base):
     directive = Column(String(80), nullable=False, default='')
 
 
+class StreamStation(Base):
+    """A workstation the world has crafted with at least once (the map builds it the first time). Written when a craft completes."""
+    __tablename__ = 'stream_stations_v1'
+    channel_id = Column(String(64), primary_key=True)
+    station = Column(String(64), primary_key=True)
+    first_used_at = Column(DateTime(timezone=True), nullable=False)
+
+
 def install(m):
     StreamHighlight.__table__.create(runtime.engine, checkfirst=True)
     StreamState.__table__.create(runtime.engine, checkfirst=True)
+    StreamStation.__table__.create(runtime.engine, checkfirst=True)
 
 
 def _now():
@@ -95,6 +104,81 @@ def queue_finished(db, p, queue):
     from . import task_queue
     label = task_queue.choices().get(queue.task, queue.task.split(':')[-1])
     highlight(db, p.channel_id, 'queue', f'{p.display_name} finished a queue', f'{label} ×{queue.total}', p.display_name)
+
+
+# ---------------------------------------------------------------- workstations the colony has used (they appear on the map)
+
+def station_used(db, channel, tag):
+    """Remember that a craft used this workstation. Never raises: gameplay must not depend on it."""
+    try:
+        if not tag:
+            return
+        with db.begin_nested():
+            if db.get(StreamStation, (str(channel), tag)) is None:
+                db.add(StreamStation(channel_id=str(channel), station=tag, first_used_at=_now()))
+                db.flush()
+    except Exception:
+        import logging
+        logging.getLogger(__name__).warning('Workstation use not recorded: %s', tag)
+
+
+def recipe_tags(recipe):
+    """The workstation tags a recipe can be made at (SEED recipes and the older New Eridian ones)."""
+    from . import crafting_progression as cp, seed_content
+    from .game import rules
+    if recipe in seed_content.RECIPES:
+        return list(cp.tags(recipe))
+    known = recipe in cp.LEGACY_STATIONS or recipe in rules.RECIPES or recipe in rules.QUALITY_RECIPES or recipe in rules.PART_RECIPES
+    return [cp.legacy_station(recipe)] if known else []
+
+
+def _backfill_stations(db, source_ids):
+    """Crafts from before the table existed: give an empty world the workstations its crafting ledger implies (the lowest tier each recipe could use)."""
+    from .models import CraftLedger
+    from . import crafting_progression as cp
+    if db.scalar(select(StreamStation.station).where(StreamStation.channel_id.in_(source_ids)).limit(1)) is not None:
+        return
+    found = {}
+    for channel, recipe in db.execute(select(CraftLedger.channel_id, CraftLedger.recipe).where(CraftLedger.channel_id.in_(source_ids)).distinct()):
+        try:
+            tags = [t for t in recipe_tags(recipe) if t in cp.STATIONS]
+        except Exception:
+            continue
+        if tags:
+            found[(channel, min(tags, key=lambda t: (cp.STATIONS[t]['tier'], t)))] = True
+    for channel, tag in found:
+        station_used(db, channel, tag)
+
+
+def station_list(db, source_ids):
+    """Workstations used so far by the shared world and the channel, oldest first: [{tag, name, at}]."""
+    from .game.players import as_utc
+    from . import crafting_progression as cp
+    try:
+        _backfill_stations(db, source_ids)
+    except Exception:
+        pass
+    first = {}
+    for r in db.scalars(select(StreamStation).where(StreamStation.channel_id.in_(source_ids))):
+        if r.station in cp.STATIONS and (r.station not in first or as_utc(r.first_used_at) < first[r.station]):
+            first[r.station] = as_utc(r.first_used_at)
+    return [{'tag': t, 'name': cp.STATIONS[t]['name'], 'at': a.isoformat()} for t, a in sorted(first.items(), key=lambda kv: (kv[1], kv[0]))]
+
+
+def working_station(task, built):
+    """The workstation a queued 'make:' task uses: one the colony has built if it can, else the lowest tier it could use."""
+    from . import crafting_progression as cp
+    kind, _, key = str(task or '').partition(':')
+    if kind != 'make':
+        return ''
+    try:
+        tags = [t for t in recipe_tags(key) if t in cp.STATIONS]
+    except Exception:
+        return ''
+    have = [t for t in tags if t in built]
+    if have:
+        return max(have, key=lambda t: (cp.STATIONS[t]['tier'], t))
+    return min(tags, key=lambda t: (cp.STATIONS[t]['tier'], t)) if tags else ''
 
 
 # ---------------------------------------------------------------- society milestones (seen by the overlay)
@@ -155,8 +239,10 @@ def extra(db, source_ids, world):
         for p in db.scalars(select(Player).where(Player.channel_id.in_(source_ids), Player.twitch_uid.in_([q.canonical_uid for q in queues]))):
             who.setdefault(p.twitch_uid, p.display_name)
     choices = tq.choices()
+    stations = station_list(db, source_ids)
+    built = {x['tag'] for x in stations}
     working = [{'name': clean_name(who.get(q.canonical_uid, 'Citizen')), 'task': choices.get(q.task, q.task.split(':')[-1]), 'done': q.total - q.remaining,
-                'total': q.total, 'state': q.state} for q in queues]
+                'total': q.total, 'state': q.state, 'station': working_station(q.task, built)} for q in queues]
 
     from . import seasonal
     festival = None
@@ -180,7 +266,7 @@ def extra(db, source_ids, world):
     if twitch_lite.ENABLED:
         join['tips'], join['queue'] = twitch_lite.join_tips(), ['/queue', 'on Discord to run up to 10 tasks while you watch']
     from . import autonomy
-    return {'highlights': highlights, 'leaders': leaders, 'working': working, 'festival': festival, 'join': join,
+    return {'highlights': highlights, 'leaders': leaders, 'working': working, 'stations': stations, 'festival': festival, 'join': join,
             **autonomy.overlay_data(db, source_ids)}
 
 
@@ -528,6 +614,273 @@ function kernel(g){const [ki,kj]=KERNEL,R=1.38,H=76,t0=.12,F=Math.PI/4,defs=el('
 // ---- end of the low-poly helpers
 """
 
+# The map's SEED workstations (one small building each) and the town's live pieces: fixtures on district slots, work rings, the colony event, the society
+# project, the price board, shortages, the statue and the crown. Kept as their own blocks so a test can run them with Node.
+STATIONS_JS = r"""
+// ---- SEED workstations: each one is a small building with its own silhouette, in its district's materials (the district's accent colour
+// is the trim). While a queue runs at a station it is "busy": its glow brightens, smoke rises and its moving part works. Every station
+// has a status light that blinks faster at work.
+const WOOD='#b88a56',WOOD2='#8f6a43',STEEL='#aab0b5',IRON='#5d646a',BRICK='#b4553d',WHITE='#eef1f2',GLASS='#bfe8ee',CANVAS='#e8e1cd',STONE='#9a968b',TEAL='#4fb7c4',COPPER='#c5783c',CLAY='#c9783f';
+const sb=(g,i,j,x,y,w,d,h,c,o={})=>box(g,i+x,j+y,w,d,h,c,{inset:0,cs:0,...o});   // a box placed inside a station's tile
+const sc=(i,j,x=.5,y=.5)=>iso(i+x,j+y);   // a screen point inside the tile
+const sline=(g,a,b,c,w=1)=>el('line',{x1:a[0],y1:a[1],x2:b[0],y2:b[1],stroke:c,'stroke-width':w,'stroke-linecap':'round'},g);
+const glowAt=(g,x,y,rx,ry,c='#ff8a2a')=>el('ellipse',{class:'sg',cx:x,cy:y,rx,ry,fill:c},g);
+function puffs(g,x,y,c='#d8d3ca',n=2){if(QUALITY==='low')return;for(let k=0;k<n;k++)el('circle',{class:'puff',cx:x,cy:y,r:3.2,fill:c,style:`animation-delay:-${(k*1.4).toFixed(1)}s`},g)}
+// A soft contact shadow under a whole station or building (boxes drawn with box() add their own).
+function contact(g,i,j,w,d,e){if(FINE)el('polygon',{points:pts(diamond(i,j,w,d,e-.1)),fill:'rgba(8,12,18,.13)'},g);el('polygon',{points:pts(diamond(i,j,w,d,e-.04)),fill:'rgba(8,12,18,.22)'},g)}
+// A doorway or glowing mouth on a building's left wall: from fraction f along the wall, dw of it wide, h high.
+function doorway(g,i,j,c,w=1,d=1,e=.16,f=.58,cls='',h=7.5,dw=.2){const [,,b,l]=diamond(i,j,w,d,e),P=(s,y)=>[l[0]+(b[0]-l[0])*s,l[1]+(b[1]-l[1])*s-y];
+  const p=el('polygon',{points:pts([P(f,0),P(f+dw,0),P(f+dw,h),P(f,h)]),fill:cls?c:shade(c,'left'),stroke:'rgba(0,0,0,.28)','stroke-width':.5},g);if(cls)p.setAttribute('class',cls);return p}
+// A flat canopy on four posts over part of a tile.
+function canopy(g,i,j,x0,y0,x1,y1,h,c){const C=[[x0,y0],[x1,y0],[x1,y1],[x0,y1]].map(([x,y])=>iso(i+x,j+y));
+  for(const p of C)sline(g,p,[p[0],p[1]-h],WOOD2,1.1);facet(g,up(C,h),shade(c,'top'));if(QUALITY!=='low')el('polyline',{points:pts([up(C,h)[3],up(C,h)[0],up(C,h)[1]]),fill:'none',stroke:shade(c,'top',1.25),'stroke-width':.7,opacity:.7},g)}
+// A workbench in three sizes: a plain table, one with a shelf behind, and a steel-topped one with a screen.
+function bench(g,i,j,t){if(t>1){sb(g,i,j,.1,.1,.8,.14,14,WOOD2);for(const [k,c] of [[.16,'#c0453a'],[.42,'#4f8fd8'],[.66,'#d8b23c']])sb(g,i,j,k,.1,.14,.14,3,c,{z:14})}
+  sb(g,i,j,.1,.3,.8,.5,6,t>2?STEEL:WOOD);sb(g,i,j,.18,.4,.2,.18,3,'#c0453a',{z:6});
+  if(t>2){sb(g,i,j,.56,.42,.22,.2,8,IRON,{z:6});const [x,y]=sc(i,j,.67,.52);el('rect',{class:'sblink',x:x-3,y:y-18,width:6,height:4,fill:TEAL},g)}}
+const ST={
+ /* Industry: grey metal, orange trim */
+ BASIC_FURNACE:{d:'industrial_ward',fx:'sparks',draw(g,i,j,a){sb(g,i,j,.68,.16,.16,.16,24,'#6b625b');const [x,y]=sc(i,j,.76,.24);
+   const E=ovoid(g,i+.45,j+.56,.4,16,()=>'#9a8f86',{c:0,n:FACETS?8:6,bands:FACETS?[0,.4,.75,1]:[0,1]}),F=Math.PI/4;   // a stone dome with a glowing mouth
+   facet(g,[E.P(F-.42,0),E.P(F+.42,0),E.P(F+.42,.42),E.P(F-.42,.42)].map(E.S),'#2a2220');const m=E.S(E.P(F,.2));glowAt(g,m[0],m[1],4.6,3.2);puffs(g,x,y-27);return 28}},
+ FURNACE:{d:'industrial_ward',fx:'sparks',draw(g,i,j,a){sb(g,i,j,.72,.1,.18,.18,38,'#6b625b');sb(g,i,j,.1,.22,.8,.68,17,BRICK);sb(g,i,j,.1,.22,.8,.68,2,a,{z:17});
+   doorway(g,i+.1,j+.22,'#ff8a2a',.8,.68,0,.3,'sg',9);const [x,y]=sc(i,j,.81,.19);puffs(g,x,y-41);return 40}},
+ BASIC_ANVIL:{d:'industrial_ward',fx:'sparks',draw(g,i,j,a){sb(g,i,j,.32,.32,.36,.36,6,WOOD2);sb(g,i,j,.22,.38,.56,.24,4,IRON,{z:6});const [x,y]=sc(i,j);
+   el('polygon',{points:pts([[x+7,y-12],[x+14,y-10.5],[x+7,y-9]]),fill:shade(IRON,'top')},g);glowAt(g,x-1,y-12.5,2.2,1.3,'#ffb347');return 14}},
+ METALWORKING_BENCH:{d:'industrial_ward',fx:'sparks',draw(g,i,j,a){sb(g,i,j,.08,.16,.84,.08,17,WOOD2);const [x,y]=sc(i,j,.3,.3);for(const dx of [-8,0,8])sline(g,[x+dx,y-8],[x+dx,y-14],IRON,1.3);
+   sb(g,i,j,.08,.4,.84,.42,7,STEEL);sb(g,i,j,.08,.4,.84,.42,1.4,a,{z:7});sb(g,i,j,.7,.5,.16,.2,5,IRON,{z:8.4});glowAt(g,x+12,y+1,2,1.2);return 19}},
+ METAL_LATHE:{d:'industrial_ward',fx:'sparks',draw(g,i,j,a){sb(g,i,j,.06,.32,.88,.4,6,IRON);sb(g,i,j,.06,.32,.88,.4,1.2,a,{z:6});sb(g,i,j,.06,.32,.26,.4,9,STEEL,{z:7.2});sb(g,i,j,.7,.4,.2,.24,5,STEEL,{z:7.2});
+   const [x,y]=sc(i,j,.4,.55);el('circle',{cx:x-9,cy:y-12,r:3.2,fill:'#dfe3e6',stroke:IRON,'stroke-width':.8},g);el('rect',{class:'smove',x:x-6,y:y-13,width:16,height:2,fill:'#cfd5d9'},g);return 18}},
+ ROLLING_MILL:{d:'industrial_ward',fx:'sparks',draw(g,i,j,a){sb(g,i,j,.1,.3,.2,.45,20,IRON);sb(g,i,j,.7,.3,.2,.45,20,IRON);sb(g,i,j,.1,.3,.2,.45,2,a,{z:20});sb(g,i,j,.7,.3,.2,.45,2,a,{z:20});const [x,y]=sc(i,j,.5,.54);
+   for(const k of [0,1])el('ellipse',{cx:x,cy:y-9-k*6,rx:10,ry:2.8,fill:shade(STEEL,'top'),stroke:IRON,'stroke-width':.7},g);   // two rollers
+   el('rect',{class:'smove',x:x-13,y:y-6.4,width:26,height:2,fill:'#d6dbde'},g);return 24}},
+ WIRE_DRAWER:{d:'industrial_ward',fx:'sparks',draw(g,i,j,a){sb(g,i,j,.1,.36,.8,.42,5,IRON);sb(g,i,j,.62,.4,.2,.3,9,STEEL,{z:5});const [x,y]=sc(i,j,.3,.52);
+   el('ellipse',{cx:x-3,cy:y-14,rx:6,ry:7,fill:COPPER,stroke:'#7a4a22','stroke-width':.8},g);el('circle',{cx:x-3,cy:y-14,r:2,fill:IRON},g);sline(g,[x+3,y-14],[x+13,y-10],COPPER,1);
+   el('circle',{class:'smove',cx:x-3,cy:y-14,r:.9,fill:a},g);return 20}},
+ MINERAL_SEPARATOR:{d:'industrial_ward',fx:'dust',draw(g,i,j,a){sb(g,i,j,.14,.34,.72,.44,8,STEEL);sb(g,i,j,.14,.34,.72,.44,1.4,a,{z:8});const [x,y]=sc(i,j,.5,.5);
+   el('polygon',{points:pts([[x-9,y-20],[x+9,y-20],[x+4,y-11],[x-4,y-11]]),fill:shade(IRON,'left'),stroke:'#2e3338','stroke-width':.6},g);
+   for(const dx of [-4,0,4])el('circle',{class:'smove',cx:x+dx,cy:y-19,r:1.3,fill:['#8a5a3a','#7a7f86','#b0814a'][(dx+4)/4],stroke:'none'},g);sb(g,i,j,.1,.82,.8,.12,2.4,IRON);return 22}},
+ EXTRACTOR:{d:'industrial_ward',fx:'dust',draw(g,i,j,a){sb(g,i,j,.2,.25,.6,.5,3,IRON);const [x,y]=sc(i,j);   // a drill rig: a lattice derrick
+   el('polygon',{points:pts([[x-9,y-2],[x,y-40],[x+9,y-2]]),fill:'none',stroke:IRON,'stroke-width':1.6,'stroke-linejoin':'round'},g);
+   for(const k of [.3,.55,.78]){const w=9*(1-k);sline(g,[x-w,y-2-38*k],[x+w,y-2-38*k],IRON,1)}sline(g,[x-9,y-2],[x+5,y-23],IRON,.8);sline(g,[x+9,y-2],[x-5,y-23],IRON,.8);
+   el('rect',{class:'smoveY',x:x-1,y:y-32,width:2,height:22,fill:STEEL},g);el('circle',{cx:x,cy:y-41,r:2,fill:a},g);return 44}},
+ /* Farms: wood, greenhouse glass */
+ SEED_SEPARATOR:{d:'agricultural_district',fx:'dust',draw(g,i,j,a){sb(g,i,j,.16,.3,.68,.44,7,WOOD);const [x,y]=sc(i,j);
+   el('polygon',{points:pts([[x-9,y-14],[x+9,y-14],[x+3,y-7],[x-3,y-7]]),fill:shade('#d6d9d4','top'),stroke:WOOD2,'stroke-width':.6},g);
+   sb(g,i,j,.06,.64,.24,.26,5,WOOD2);sb(g,i,j,.7,.64,.24,.26,5,WOOD2);for(const dx of [-12,12])el('circle',{cx:x+dx,cy:y+4,r:1.8,fill:a},g);return 16}},
+ GROWBOX:{d:'agricultural_district',fx:'steam',draw(g,i,j,a){sb(g,i,j,.1,.14,.8,.76,4,WOOD);const H=17,O=up(diamond(i+.1,j+.14,.8,.76,0),4),T=up(O,H);   // a glass box of plants
+   for(let k=0;k<5;k++){const [x,y]=iso(i+.24+k*.13,j+.46+(k%2)*.14);el('circle',{cx:x,cy:y-8,r:2.6,fill:['#5fae4a','#7fc15a','#4f9a3a'][k%3]},g)}
+   const gl=(p,o)=>el('polygon',{points:pts(p),fill:'#d8f2ee',opacity:o,stroke:'#f4fbfa','stroke-width':.8},g);
+   gl([O[3],O[2],T[2],T[3]],.5);gl([O[2],O[1],T[1],T[2]],.38);gl(T,.6);el('polyline',{points:pts([T[3],T[0],T[1]]),fill:'none',stroke:a,'stroke-width':1},g);return H+6}},
+ EXT_WATER:{d:'agricultural_district',fx:'steam',draw(g,i,j,a){const [x,y]=sc(i,j);drum(g,x-6,y+2,6,15,'#7ea6b8');sb(g,i,j,.56,.46,.14,.14,4,IRON);
+   el('polyline',{points:pts([[x-2,y-12],[x+8,y-12],[x+8,y+1]]),fill:'none',stroke:STEEL,'stroke-width':1.8},g);el('rect',{class:'smove',x:x+2,y:y-16,width:12,height:2,fill:WOOD2},g);
+   el('ellipse',{cx:x+8,cy:y+4,rx:5,ry:2,fill:'#6ec2e6'},g);puffs(g,x+8,y+1,'#8fd0ee',1);return 20}},
+ PROD_WATER_FILTRATION_SMALL:{d:'agricultural_district',fx:'steam',draw(g,i,j,a){const [x,y]=sc(i,j);drum(g,x-7,y+1,5,13,'#8aa8b6');drum(g,x+6,y+4,5,10,'#a7bfc9');
+   el('polyline',{points:pts([[x-7,y-12],[x-7,y-16],[x+6,y-16],[x+6,y-8]]),fill:'none',stroke:IRON,'stroke-width':1.4},g);el('rect',{x:x-9,y:y-6,width:4,height:2,fill:a},g);return 18}},
+ PROD_WATER_FILTRATION:{d:'agricultural_district',fx:'steam',draw(g,i,j,a){const [x,y]=sc(i,j);drum(g,x-9,y+1,5,20,'#7f9fae');drum(g,x,y+4,5,24,'#9ab5c2');drum(g,x+9,y+1,5,18,'#7f9fae');
+   el('polyline',{points:pts([[x-9,y-18],[x-9,y-22],[x+9,y-22],[x+9,y-16]]),fill:'none',stroke:IRON,'stroke-width':1.5},g);for(const dx of [-9,0,9])el('rect',{x:x+dx-2,y:y-8,width:4,height:2,fill:a},g);
+   puffs(g,x,y-25,'#bfe0ef',1);return 28}},
+ FOOD_PROCESSOR:{d:'agricultural_district',fx:'steam',draw(g,i,j,a){sb(g,i,j,.14,.26,.72,.5,10,WHITE);sb(g,i,j,.14,.26,.72,.5,1.8,a,{z:10});const [x,y]=sc(i,j);
+   el('polygon',{points:pts([[x-7,y-22],[x+7,y-22],[x+3,y-12],[x-3,y-12]]),fill:shade(GLASS,'top'),stroke:IRON,'stroke-width':.6},g);sb(g,i,j,.6,.7,.24,.2,3,STEEL);puffs(g,x,y-22,'#fff',1);return 24}},
+ MILLING_MACHINE:{d:'agricultural_district',fx:'dust',draw(g,i,j,a){sb(g,i,j,.1,.3,.5,.46,9,WOOD);const [x,y]=sc(i,j,.4,.5);
+   el('ellipse',{cx:x,cy:y-13,rx:8,ry:8.5,fill:shade(STONE,'left'),stroke:'#6f6b61','stroke-width':.8},g);el('ellipse',{class:'smove',cx:x,cy:y-13,rx:2.4,ry:2.6,fill:'#6f6b61'},g);
+   for(const [dx,dy] of [[16,3],[20,6]])el('ellipse',{cx:x+dx,cy:y+dy,rx:5,ry:6,fill:'#e2d6b8',stroke:'#a8997a','stroke-width':.6},g);return 24}},
+ /* Homes: cream and warm wood */
+ CAMPFIRE:{d:'residential_ring',fx:'steam',draw(g,i,j,a){const [x,y]=sc(i,j);el('ellipse',{cx:x,cy:y,rx:9,ry:4.5,fill:'none',stroke:STONE,'stroke-width':2.4,'stroke-dasharray':'3 1.6'},g);
+   sline(g,[x-6,y+1],[x+5,y-3],WOOD2,2);sline(g,[x-5,y-3],[x+6,y+1],WOOD,2);el('polygon',{class:'sg flicker',points:`${x-4},${y-2} ${x-1},${y-12} ${x+1},${y-6} ${x+3},${y-10} ${x+5},${y-2}`,fill:'#ffb347'},g);
+   for(const [dx,dy] of [[-15,2],[14,3],[0,10]])drum(g,x+dx,y+dy,3,3.5,WOOD2);puffs(g,x,y-12,'#e0dcd2',1);return 14}},
+ STOVE:{d:'residential_ring',fx:'steam',draw(g,i,j,a){sb(g,i,j,.68,.22,.1,.1,28,IRON);sb(g,i,j,.14,.3,.64,.46,10,IRON);sb(g,i,j,.14,.3,.64,.46,1.4,a,{z:10});const [x,y]=sc(i,j,.46,.52);
+   el('ellipse',{cx:x,cy:y-12,rx:6,ry:3,fill:'#7c8185'},g);el('rect',{x:x-6,y:y-18,width:12,height:6,fill:'#b0b5b8'},g);doorway(g,i+.14,j+.3,'#222',.64,.46,0,.5,'sg',5);const [px,py]=sc(i,j,.73,.27);puffs(g,px,py-30);puffs(g,x,y-18,'#fff',1);return 30}},
+ OVEN:{d:'residential_ring',fx:'steam',draw(g,i,j,a){sb(g,i,j,.7,.2,.14,.14,30,'#7a6a5c');sb(g,i,j,.1,.26,.8,.6,12,BRICK);sb(g,i,j,.1,.26,.8,.6,2,a,{z:12});
+   doorway(g,i+.1,j+.26,'#ff9a3c',.8,.6,0,.3,'sg',7);const [x,y]=sc(i,j,.77,.27);puffs(g,x,y-32);return 32}},
+ WEAVING_LOOM:{d:'residential_ring',fx:'dust',draw(g,i,j,a){const P=[[.14,.3],[.78,.3],[.14,.7],[.78,.7]];for(const [x,y] of P)sb(g,i,j,x,y,.08,.08,20,WOOD2);
+   const [x,y]=sc(i,j,.5,.5);for(let k=-3;k<=3;k++)sline(g,[x+k*3,y-4],[x+k*3,y-17],['#c0453a','#f1e6c8',a,'#4f8fd8'][(k+3)%4],1);
+   sb(g,i,j,.14,.3,.72,.08,2,WOOD,{z:20});el('rect',{class:'smove',x:x-12,y:y-13,width:8,height:2.4,fill:WOOD2},g);return 24}},
+ TAILORING_BENCH:{d:'residential_ring',fx:'dust',draw(g,i,j,a){sb(g,i,j,.1,.4,.62,.42,6,WOOD);sb(g,i,j,.14,.46,.3,.2,3,a,{z:6});const [x,y]=sc(i,j,.82,.4);   // a bench and a dress form
+   sline(g,[x,y+4],[x,y-8],WOOD2,1.2);el('ellipse',{cx:x,cy:y-12,rx:4,ry:6,fill:a,stroke:shade(a,.7),'stroke-width':.6},g);el('circle',{cx:x,cy:y-20,r:1.8,fill:'#e2d6c0'},g);
+   el('rect',{class:'sblink',x:x-12,y:y-8,width:5,height:1.6,fill:'#fff'},g);return 22}},
+ SURVIVAL_WORKBENCH:{d:'residential_ring',fx:'dust',draw(g,i,j,a){sb(g,i,j,.12,.3,.76,.46,5,WOOD);sb(g,i,j,.18,.36,.22,.16,3,'#c0453a',{z:5});sb(g,i,j,.5,.42,.28,.2,2,STEEL,{z:5});canopy(g,i,j,.04,.14,.96,.9,17,CANVAS);return 19}},
+ CRAFTING_TABLE_V1:{d:'residential_ring',fx:'dust',draw(g,i,j,a){bench(g,i,j,1);return 12}},
+ CRAFTING_TABLE_V2:{d:'residential_ring',fx:'dust',draw(g,i,j,a){bench(g,i,j,2);return 18}},
+ CRAFTING_TABLE_V3:{d:'residential_ring',fx:'dust',draw(g,i,j,a){bench(g,i,j,3);sb(g,i,j,.1,.3,.8,.5,1.2,a,{z:6});return 20}},
+ /* Research: white, teal glass */
+ CHEMISTRY_STATION:{d:'research_block',fx:'steam',draw(g,i,j,a){sb(g,i,j,.1,.14,.8,.12,24,STEEL);sb(g,i,j,.08,.36,.84,.44,7,WHITE);const [x,y]=sc(i,j,.5,.5);   // a bench under a vent hood
+   for(const [dx,c] of [[-9,TEAL],[0,'#7fd9a0'],[9,'#b58cff']]){el('polygon',{points:pts([[x+dx-4,y-8],[x+dx+4,y-8],[x+dx+1,y-15],[x+dx-1,y-15]]),fill:c,opacity:.85,stroke:'#dfe9ec','stroke-width':.6},g);el('rect',{x:x+dx-1,y:y-19,width:2,height:4,fill:'#dfe9ec'},g)}
+   puffs(g,x+9,y-20,'#9fe3d0',1);return 26}},
+ MEDICAL_FABRICATOR:{d:'research_block',fx:'steam',draw(g,i,j,a){sb(g,i,j,.12,.22,.76,.62,13,WHITE);sb(g,i,j,.12,.22,.76,.62,1.6,a,{z:13});const D=diamond(i+.12,j+.22,.76,.62,0),l=D[3],b=D[2];   // a red cross on the front wall
+   const cx=(l[0]+b[0])/2+4,cy=(l[1]+b[1])/2-7;el('rect',{x:cx-1.6,y:cy-5,width:3.2,height:10,fill:'#e0303a'},g);el('rect',{x:cx-5,y:cy-1.6,width:10,height:3.2,fill:'#e0303a'},g);
+   el('rect',{class:'sblink',x:cx-9,y:cy+4,width:3,height:1.6,fill:TEAL},g);return 17}},
+ ELECTRONICS_TABLE:{d:'research_block',fx:'sparks',draw(g,i,j,a){sb(g,i,j,.08,.34,.84,.46,6,WHITE);sb(g,i,j,.56,.36,.3,.12,9,IRON,{z:6});const [x,y]=sc(i,j,.7,.4);
+   el('rect',{class:'sblink',x:x-4,y:y-17,width:8,height:5,fill:TEAL},g);el('rect',{x:x-14,y:y-7,width:10,height:6,fill:'#3f9a5a',stroke:'#1f5a30','stroke-width':.5},g);
+   for(const dx of [-12,-9,-6])el('circle',{cx:x+dx,cy:y-4,r:.7,fill:'#ffd35a'},g);return 18}},
+ '3D_PRINTER':{d:'research_block',fx:'steam',draw(g,i,j,a){sb(g,i,j,.2,.3,.6,.46,3,IRON);const T=[[.2,.3],[.8,.3],[.8,.76],[.2,.76]];for(const [x,y] of T)sb(g,i,j,x-.03,y-.03,.06,.06,26,STEEL);   // a gantry frame
+   const top=T.map(([x,y])=>{const [px,py]=iso(i+x,j+y);return [px,py-26]});el('polygon',{points:pts(top),fill:'none',stroke:a,'stroke-width':1.6,'stroke-linejoin':'round'},g);
+   const [x,y]=sc(i,j,.5,.53);el('rect',{class:'smove',x:x-3,y:y-27,width:6,height:4,fill:IRON},g);el('polygon',{points:pts([[x-3,y-3],[x+3,y-3],[x,y-11]]),fill:TEAL},g);return 30}},
+ PLAXIN_SYNTHESIZER:{d:'research_block',fx:'steam',draw(g,i,j,a){sb(g,i,j,.2,.3,.6,.5,4,IRON);const [x,y]=sc(i,j);   // a glowing reaction tank
+   el('ellipse',{cx:x,cy:y-4,rx:10,ry:5,fill:'#2b6f7a'},g);el('rect',{x:x-10,y:y-26,width:20,height:22,fill:'#74d3dc',opacity:.7},g);el('ellipse',{cx:x,cy:y-26,rx:10,ry:5,fill:'#bff3f6'},g);
+   glowAt(g,x,y-15,5,8,'#e8ffff');for(const dx of [-10,10])sline(g,[x+dx,y-4],[x+dx,y-26],a,1.2);sline(g,[x+10,y-22],[x+17,y-22],IRON,1.6);sline(g,[x+17,y-22],[x+17,y],IRON,1.6);return 30}},
+ /* Frontier: timber and canvas */
+ SIMPLE_CARPENTRY_STATION:{d:'frontier_edge',fx:'dust',draw(g,i,j,a){sb(g,i,j,.08,.3,.46,.42,3,WOOD2);for(let k=0;k<3;k++)sb(g,i,j,.1,.32,.42,.38,1.8,k%2?WOOD2:'#c9a169',{z:3+k*1.8});
+   const [x,y]=sc(i,j,.74,.55);sline(g,[x-7,y+2],[x-3,y-8],WOOD2,1.6);sline(g,[x+7,y+2],[x+3,y-8],WOOD2,1.6);sline(g,[x-5,y-8],[x+5,y-8],WOOD,2.4);sline(g,[x-3,y-10.5],[x+5,y-12],STEEL,1.2);return 12}},
+ ADVANCED_CARPENTRY_STATION:{d:'frontier_edge',fx:'dust',draw(g,i,j,a){box(g,i+.06,j+.14,.88,.72,9,'#a07a4e',{inset:0,cs:0,roof:'pitched',roofColor:CANVAS});doorway(g,i+.06,j+.14,a,.88,.72,0,.5,'',7);
+   for(let k=0;k<3;k++){const [x,y]=sc(i,j,.9,.2+k*.22);el('circle',{cx:x+5,cy:y-1,r:2.6,fill:'#c9a169',stroke:WOOD2,'stroke-width':.6},g)}return 20}},
+ TABLE_SAW:{d:'frontier_edge',fx:'dust',draw(g,i,j,a){sb(g,i,j,.1,.32,.8,.5,7,IRON);sb(g,i,j,.1,.32,.8,.5,1.2,a,{z:7});const [x,y]=sc(i,j,.5,.56);
+   el('ellipse',{class:'smove',cx:x,cy:y-12,rx:2.2,ry:7,fill:'#d6dbde',stroke:'#7c8387','stroke-width':.8},g);sb(g,i,j,.14,.6,.4,.16,1.6,'#c9a169',{z:8});puffs(g,x,y-16,'#d9c9a8',1);return 20}},
+ MASONRY:{d:'frontier_edge',fx:'dust',draw(g,i,j,a){for(const [x,y,w,d,h,c] of [[.1,.2,.4,.3,5,'#a8a499'],[.14,.22,.34,.26,5,'#bdb9ad',],[.55,.25,.34,.3,8,'#98948a'],[.1,.6,.3,.26,4,'#b3afa3']])sb(g,i,j,x,y,w,d,h,c,{z:x===.14?5:0});
+   const [x,y]=sc(i,j,.7,.7);sline(g,[x-5,y-3],[x+1,y-9],IRON,1.6);sline(g,[x+4,y-3],[x+6,y-8],WOOD2,2);return 14}},
+ STONE_GRINDER:{d:'frontier_edge',fx:'dust',draw(g,i,j,a){sb(g,i,j,.14,.3,.72,.46,6,WOOD2);const [x,y]=sc(i,j);   // a stone wheel in a frame with a hopper
+   el('ellipse',{cx:x,cy:y-14,rx:9,ry:9.5,fill:shade(STONE,'left'),stroke:'#6f6b61','stroke-width':.9},g);el('circle',{class:'smove',cx:x,cy:y-14,r:2.4,fill:'#6f6b61'},g);
+   el('polygon',{points:pts([[x+8,y-24],[x+16,y-24],[x+13,y-16],[x+11,y-16]]),fill:shade(IRON,'left')},g);puffs(g,x,y-10,'#d4c9b2',1);return 24}},
+ KILN:{d:'frontier_edge',fx:'sparks',draw(g,i,j,a){sb(g,i,j,.74,.14,.14,.14,20,'#7a6a5c');const [x,y]=sc(i,j,.81,.21);   // a beehive dome of brick
+   const E=ovoid(g,i+.46,j+.56,.4,19,()=>CLAY,{c:0,n:FACETS?8:6,bands:FACETS?[0,.35,.7,.92,1]:[0,1]}),F=Math.PI/4;
+   facet(g,[E.P(F-.36,0),E.P(F+.36,0),E.P(F+.36,.3),E.P(F,.38),E.P(F-.36,.3)].map(E.S),'#2a2220');const m=E.S(E.P(F,.15));glowAt(g,m[0],m[1],4,2.8);puffs(g,x,y-22);return 24}},
+ POTTERY_STATION:{d:'frontier_edge',fx:'dust',draw(g,i,j,a){sb(g,i,j,.12,.34,.5,.4,6,WOOD);const [x,y]=sc(i,j,.36,.54);el('ellipse',{cx:x,cy:y-8,rx:5,ry:2.4,fill:'#6f5238'},g);
+   el('ellipse',{class:'smove',cx:x,cy:y-12,rx:3.2,ry:4,fill:CLAY,stroke:'#8a4a24','stroke-width':.6},g);for(const [dx,dy,r] of [[16,2,3.5],[21,5,3],[15,8,2.6]])el('ellipse',{cx:x+dx,cy:y+dy,rx:r,ry:r*1.2,fill:CLAY,stroke:'#8a4a24','stroke-width':.6},g);
+   canopy(g,i,j,.05,.2,.7,.85,19,a);return 21}},
+};
+"""
+TOWN_JS = r"""
+// ---- fixtures: what stands on a district's first slots. Workstations (once the colony has used them), the price board, the water tower,
+// the project site and the statue each claim a slot (a filler building there is removed) and are redrawn only when their signature changes.
+const stKey=t=>String(t||'').replace(/^TAG_MACH(INE)?_/,'');
+const FIXTURES={industrial_ward:['BASIC_FURNACE','FURNACE','BASIC_ANVIL','METALWORKING_BENCH','METAL_LATHE','ROLLING_MILL','WIRE_DRAWER','MINERAL_SEPARATOR','EXTRACTOR'],
+  agricultural_district:['SEED_SEPARATOR','GROWBOX','EXT_WATER','PROD_WATER_FILTRATION_SMALL','PROD_WATER_FILTRATION','FOOD_PROCESSOR','MILLING_MACHINE'],
+  residential_ring:['CAMPFIRE','STOVE','OVEN','WEAVING_LOOM','TAILORING_BENCH','SURVIVAL_WORKBENCH','CRAFTING_TABLE_V1','CRAFTING_TABLE_V2','CRAFTING_TABLE_V3'],
+  research_block:['CHEMISTRY_STATION','MEDICAL_FABRICATOR','ELECTRONICS_TABLE','3D_PRINTER','PLAXIN_SYNTHESIZER'],
+  frontier_edge:['SIMPLE_CARPENTRY_STATION','ADVANCED_CARPENTRY_STATION','TABLE_SAW','MASONRY','STONE_GRINDER','KILN','POTTERY_STATION']};
+const STN={};   // the workstations standing now, by key
+const txt=(g,x,y,s,size=7,fill='#fffaf0',anchor='middle',cls='')=>{const t=el('text',{x,y,'font-size':size,'font-weight':800,fill,'text-anchor':anchor,'dominant-baseline':'central',class:cls},g);t.textContent=s;return t};
+const cut=(s,n)=>{s=String(s||'');return s.length>n?s.slice(0,n-1)+'…':s};
+const slotAt=(dg,spec)=>typeof spec==='number'?(spec<0?dg.slots.length+spec:spec):dg.slots.findIndex(s=>s[0]===spec[0]&&s[1]===spec[1]);
+function sortCity(dg){[...dg.g.children].sort((p,q)=>(+p.dataset.depth||0)-(+q.dataset.depth||0)).forEach(e=>dg.g.appendChild(e))}
+// A small dark sign with a label that can change without a rebuild (hidden in the card layout, where the text would not be readable).
+function plate(g,x,y,s,w,accent,keep){const p=el('g',{class:keep?'sgn keep':'sgn'},g);el('rect',{x:x-w/2,y:y-6,width:w,height:12,rx:3,fill:'rgba(8,13,39,.92)',stroke:accent,'stroke-width':1},p);return txt(p,x,y,s,6.8)}
+function fixture(k,id,spec,sig,draw,o={}){const dg=drawn[k];if(!dg||!dg.unlocked||!dg.slots)return null;let f=dg.fx[id],i,j,n=-1;
+  if(spec!=null){n=slotAt(dg,spec);if(n<0||n>=dg.slots.length)return f||null;[i,j]=dg.slots[n]}else [i,j]=o.at;
+  if(f&&f.sig===sig)return f;
+  if(f)f.g.remove();else if(n>=0){dg.taken.add(n);if(dg.items[n]){dg.items[n].remove();delete dg.items[n]}}   // a filler building stood here
+  f=dg.fx[id]=Object.assign(f||{k,id,i,j,n},{sig,ready:false});
+  const mk=grow=>{if(f.g){f.g.remove();f.top.remove()}f.g=el('g',{class:'fx '+(o.cls||'')+(grow?' rise':''),'data-depth':o.depth??i+j},dg.g);f.top=el('g',{'data-depth':900},dg.g)},   // f.top: signs, drawn over everything in the district
+    paint=grow=>{mk(grow);if(!o.flat)contact(f.g,i+.08,j+.08,.84,.84,0);f.h=draw(f.g,i,j,LOOK[k][2],f)||20;f.ready=true;sortCity(dg);litSig='';
+      if(grow)setTimeout(()=>f.g&&f.g.classList.remove('rise'),1400)};
+  if(o.build&&!first){mk(false);scaffold(f.g,i,j,false);sortCity(dg);setTimeout(()=>{if(dg.fx[id]===f&&f.sig===sig)paint(true)},4500)}else paint(false);
+  return f}
+// Workstations: each one the colony has used appears in its district (scaffolding first if it was not there when the page opened).
+const seenSt=new Set();
+function stationsTown(d){const have=new Map((d.stations||[]).map(s=>[stKey(s.tag),s])),fresh=[];
+  for(const k in FIXTURES)FIXTURES[k].forEach((id,n)=>{const s=have.get(id),dg=drawn[k];if(!s||!ST[id]||!dg||!dg.unlocked||!dg.slots)return;   // a closed district waits
+    const f=fixture(k,id,n,'built',ST[id].draw,{build:!dg.fx[id],cls:'st'});
+    if(f){STN[id]=f;if(!seenSt.has(id)&&!first)fresh.push([k,s.name||id])}});
+  for(const id of have.keys())seenSt.add(id);   // announced once, and never for stations that were already there when the page opened
+  if(fresh.length)toast(fresh.length===1?`🔧 New Eridian built its first ${fresh[0][1]}`:`🔧 New Eridian built ${fresh.length} new workstations`,fresh[0][0])}
+// Which workstation fits some words (a Seedling's activity or a queue's task): the first rule whose station stands.
+const WORDS=[[/furnace|smelt|ingot|forge|alloy/i,['FURNACE','BASIC_FURNACE']],[/anvil|hammer|blade|sword/i,['BASIC_ANVIL','METALWORKING_BENCH']],
+  [/wire|cable|copper/i,['WIRE_DRAWER']],[/sheet|plate|roll/i,['ROLLING_MILL','METALWORKING_BENCH']],[/lathe|gear|shaft|bolt|screw/i,['METAL_LATHE','METALWORKING_BENCH']],
+  [/metal|steel|iron|tool/i,['METALWORKING_BENCH','METAL_LATHE','ROLLING_MILL']],[/mine|ore|mineral|dig|drill|extract/i,['EXTRACTOR','MINERAL_SEPARATOR']],
+  [/seed|sow/i,['SEED_SEPARATOR','GROWBOX']],[/crop|farm|grow|plant|harvest|cultiv|herb|hydropon/i,['GROWBOX','SEED_SEPARATOR']],
+  [/water|filter|pump|irrigat/i,['PROD_WATER_FILTRATION','PROD_WATER_FILTRATION_SMALL','EXT_WATER']],[/flour|mill|grain|corn/i,['MILLING_MACHINE','FOOD_PROCESSOR']],
+  [/bake|bread|oven|pie|cake/i,['OVEN','STOVE']],[/food|meal|cook|soup|juice|kitchen|stew|snack/i,['FOOD_PROCESSOR','STOVE','OVEN','CAMPFIRE']],[/fire|camp|roast|relax/i,['CAMPFIRE']],
+  [/weav|loom|yarn|thread|fib|flax|textile/i,['WEAVING_LOOM']],[/cloth|shirt|sew|tailor|jacket|coat|fabric|dress|hat/i,['TAILORING_BENCH','WEAVING_LOOM']],
+  [/medic|bandage|pill|clinic|pharm|heal|injection/i,['MEDICAL_FABRICATOR','CHEMISTRY_STATION']],[/chem|acid|solvent|dye|fertili|reagent/i,['CHEMISTRY_STATION']],
+  [/circuit|electr|battery|sensor|chip|solder|radio/i,['ELECTRONICS_TABLE']],[/plaxin|synth|polymer/i,['PLAXIN_SYNTHESIZER','3D_PRINTER']],[/print|plastic/i,['3D_PRINTER','PLAXIN_SYNTHESIZER']],
+  [/saw|plank|beam|board|wood|lumber|carpent|furniture|chair|bed|door/i,['TABLE_SAW','SIMPLE_CARPENTRY_STATION','ADVANCED_CARPENTRY_STATION']],
+  [/grind|gravel|powder/i,['STONE_GRINDER','MASONRY']],[/stone|brick|mason|rock|wall|concrete|slab/i,['MASONRY','STONE_GRINDER']],
+  [/kiln|ceramic|glass|tile/i,['KILN','POTTERY_STATION']],[/pot|clay|vase|jar|bowl|pottery/i,['POTTERY_STATION','KILN']],
+  [/workbench|craft|make|assembl|build|repair|tinker/i,['CRAFTING_TABLE_V3','CRAFTING_TABLE_V2','CRAFTING_TABLE_V1','SURVIVAL_WORKBENCH']]];
+const TASK_AT=[[/farm|crop|harvest|water|cultiv|seed|forage|food|cook/i,'agricultural_district'],[/research|study|scan|analy|experiment|medic|chem|circuit/i,'research_block'],
+  [/gather|explor|survey|scaveng|wood|lumber|stone|clay|pot|kiln/i,'frontier_edge'],[/home|cloth|weav|tailor|camp|stove|oven|bake/i,'residential_ring']];
+const standing=ids=>(ids||[]).find(id=>STN[id]&&STN[id].ready);
+// Work rings: a progress ring above the workstation each running queue uses (the server names the station for a craft, else words decide, else the
+// district's first station, else the Kernel). The station is "busy" while a ring is on it.
+const rings={};
+function ringAnchor(w){let id=standing([stKey(w.station)]);
+  if(!id)for(const [re,ids] of WORDS)if(re.test(w.task||'')&&(id=standing(ids)))break;
+  if(!id){const row=TASK_AT.find(([re])=>re.test(w.task||''));id=standing(FIXTURES[row?row[1]:'industrial_ward'])||standing(Object.values(FIXTURES).flat())}
+  if(id){const f=STN[id],[x,y]=sc(f.i,f.j);return {id,x,y:y-(f.h||20)-12}}
+  const [kx,ky]=iso(...KERNEL);return {id:'',x:kx,y:ky-92}}
+function workRings(d){const list=(d.working||[]).slice(0,6),live=document.getElementById('live'),keep=new Set(),busy=new Set(),stack={};
+  for(const w of list){const a=ringAnchor(w),key=w.name+'|'+w.task,n=stack[a.id||'kernel']=(stack[a.id||'kernel']||0)+1;keep.add(key);if(a.id)busy.add(a.id);
+    const pct=Math.round(100*Math.min(1,(w.done||0)/Math.max(1,w.total||1))),label=`${cut(w.name,10)} · ${cut(w.task,14)} ${w.done}/${w.total}`;let r=rings[key];
+    if(!r){const g=el('g',{class:'wring'},live);el('circle',{r:6,fill:'rgba(8,13,39,.82)',stroke:'rgba(255,255,255,.25)','stroke-width':2.4},g);
+      const arc=el('circle',{r:6,fill:'none',stroke:'#7ee3b0','stroke-width':2.4,pathLength:100,'stroke-linecap':'round',transform:'rotate(-90)',class:'arc'},g),lab=el('g',{class:'rl'},g);
+      r=rings[key]={g,arc,lab,label:'',pct:-1};el('rect',{y:-21,height:11,rx:3,fill:'rgba(8,13,39,.92)',stroke:'#7ee3b0','stroke-width':.8},lab);txt(lab,0,-15.5,'',6.4)}
+    if(r.pct!==pct){r.pct=pct;r.arc.setAttribute('stroke-dasharray',`${Math.max(2,pct)} 100`)}
+    if(r.label!==label){r.label=label;const t=r.lab.querySelector('text'),b=r.lab.querySelector('rect');t.textContent=label;const tw=t.getComputedTextLength()+8;b.setAttribute('x',-tw/2);b.setAttribute('width',tw)}
+    r.g.setAttribute('transform',`translate(${a.x.toFixed(1)},${(a.y-(n-1)*(CARD?15:25)).toFixed(1)})`)}
+  for(const key in rings)if(!keep.has(key)){rings[key].g.remove();delete rings[key]}
+  for(const id in STN)if(STN[id].g)STN[id].g.classList.toggle('busy',busy.has(id))}
+// Seedlings at work stand in front of a workstation: at most two at each (the rest keep the row under the district name).
+const STAY={},WORKING=/^(Working|Gathering|Training|Queue|Crafting|Making|Hobby)/i,hashOf=s=>{let h=0;for(const c of String(s))h=(h*31+c.charCodeAt(0))>>>0;return h};
+const spotAt=(f,n)=>n?iso(f.i+.72,f.j+1.08):iso(f.i+1.08,f.j+.72);   // in front of the station: left of its front corner, then right
+function atStations(list){const out={},load={},R=[...document.querySelectorAll('#labels .dlabel rect')].map(r=>[+r.getAttribute('x'),+r.getAttribute('y'),+r.getAttribute('x')+(+r.getAttribute('width')),+r.getAttribute('y')+(+r.getAttribute('height'))]),
+    clear=(f,n)=>{const [x,y]=spotAt(f,n),z=TK();return !R.some(([l,t,r,b])=>x+13*z>l-2&&x-13*z<r+2&&y+5>t-2&&y-46*z<b+2)};   // never standing on a district name
+  for(const s of list){const w=STAY[s.id];if(w&&WORKING.test(s.activity||'')&&STN[w.id]&&STN[w.id].ready&&STN[w.id].k===s.place&&!(load[w.id]||[])[w.n]&&clear(STN[w.id],w.n)){(load[w.id]=load[w.id]||[])[w.n]=s.id;out[s.id]=w}else delete STAY[s.id]}
+  for(const s of list.slice().sort((a,b)=>a.id<b.id?-1:1)){if(out[s.id]||!WORKING.test(s.activity||''))continue;
+    const here=Object.keys(STN).filter(id=>STN[id].ready&&STN[id].k===s.place);if(!here.length)continue;
+    const words=WORDS.filter(([re])=>re.test((s.activity||'')+' '+(s.job||''))).flatMap(([,ids])=>ids).filter(id=>here.includes(id));
+    const order=[...new Set([...words,...here.sort((a,b)=>hashOf(s.id+a)-hashOf(s.id+b))])];
+    found:for(const id of order)for(const n of [0,1])if(!(load[id]||[])[n]&&clear(STN[id],n)){(load[id]=load[id]||[])[n]=s.id;out[s.id]=STAY[s.id]={id,n};break found}}
+  const res={};for(const s of list){const w=out[s.id];if(!w)continue;const f=STN[w.id],[cx,cy]=sc(f.i,f.j),[x,y]=spotAt(f,w.n);
+    res[s.id]={x,y,look:[cx-x,cy-y],fx:ST[w.id].fx,side:w.n?-1:1}}
+  return res}
+// The little effect at a working Seedling's hands: sparks, steam or dust (shown by the .working class once it has arrived).
+function workFx(t,kind,side){const key=kind?kind+side:'';if(t.fxKey===key)return;t.fxKey=key;if(t.fxg){t.fxg.remove();t.fxg=null}if(!kind)return;
+  t.fxg=el('g',{class:'wfx '+kind,style:`--wx:${side*5}px`},t.g);for(let q=0;q<(QUALITY==='low'?2:3);q++)el('circle',{cx:side*11+q*side,cy:-21,r:kind==='steam'?2.2:1.2,style:`animation-delay:-${(q*.3).toFixed(1)}s`},t.fxg)}
+// ---- the colony event: a warning beacon with an effect for its kind, a countdown ring and a small sign, at a fitting district
+const EVENT_AT={siro:'research_block',food:'agricultural_district',mining:'frontier_edge',delivery:'spaceport_quarter',market:'market_concourse',water:'agricultural_district',machine:'industrial_ward',
+  spaceport:'spaceport_quarter',fire:'residential_ring',clinic:'research_block'},EVENT_FX={fire:'smoke',mining:'smoke',machine:'sparks',water:'drops',siro:'spores'};
+let ev=null,evHl=null;
+function evSpot(k){if(k==='commons')return iso(8.4,12.4);const [r,c]=CELLS[k],[a,b]=cellTiles(r,c);return iso(a+5.3,b+1.7)}   // beside the district's name and its row of Seedlings
+function eventSite(d){const e=d.event,live=document.getElementById('live'),hl=(d.highlights||[]).filter(h=>/^event_/.test(h.kind)),top=hl.length?Math.max(...hl.map(h=>h.id)):0;
+  if(evHl===null)evHl=top;
+  if(!e){if(ev){ev.g.remove();const h=hl.find(h=>h.id>evHl&&h.kind!=='event_start');if(!first)toast(h?`${h.emoji} ${h.title}`:`⌛ ${ev.name} is over`,ev.k);ev=null}evHl=Math.max(evHl,top);return}
+  if(!ev||ev.key!==e.key){if(ev)ev.g.remove();const k=EVENT_AT[e.key]&&drawn[EVENT_AT[e.key]]&&drawn[EVENT_AT[e.key]].unlocked?EVENT_AT[e.key]:'commons',[x,y]=evSpot(k),g=el('g',{class:'ev'},live),fx=EVENT_FX[e.key];
+    el('ellipse',{class:'evpulse',cx:x,cy:y,rx:18,ry:8,fill:'rgba(255,170,60,.4)'},g);sline(g,[x,y],[x,y-26],'#dfe3e1',1.5);
+    if(QUALITY!=='low')for(let q=0;q<(fx?4:0);q++)el('circle',{class:'evfx '+fx,cx:x+(q%2?5:-5)+(fx==='sparks'?(q-2)*3:0),cy:y-4,r:fx==='smoke'?4:fx==='spores'?3:1.6,style:`animation-delay:-${(q*.55).toFixed(2)}s`},g);
+    el('polygon',{points:pts([[x-8,y-26],[x+8,y-26],[x,y-40]]),fill:'#ffbf3a',stroke:'#7a4a00','stroke-width':1,'stroke-linejoin':'round'},g);txt(g,x,y-31,'!',8,'#3a2200');
+    el('circle',{class:'beacon',cx:x,cy:y-43,r:2.4,fill:'#ff4a4a'},g);el('circle',{cx:x,cy:y-33,r:14,fill:'none',stroke:'rgba(255,255,255,.28)','stroke-width':2.4},g);
+    const arc=el('circle',{cx:x,cy:y-33,r:14,fill:'none',stroke:'#ff7a5a','stroke-width':2.4,pathLength:100,'stroke-dasharray':'100 100','stroke-linecap':'round',transform:`rotate(-90 ${x} ${y-33})`},g),
+      s1=plate(g,x,y+11,'',104,'#ff7a5a'),s2=plate(g,x,y+22,'',104,'#ff7a5a');ev={key:e.key,k,g,arc,s1,s2,name:e.name,end:0,total:1};
+    if(!first)toast(`${e.emoji} ${e.name} has started!`,k)}
+  ev.name=e.name;ev.end=Date.now()+(e.seconds_remaining||0)*1000;ev.total=Math.max(1,e.seconds_total||0,e.seconds_remaining||0);evTick();
+  ev.s1.textContent=`${e.emoji} ${cut(e.name,20)}`;ev.s2.textContent=`${e.progress}/${e.goal} done · ${e.support_progress||0} support`}
+function evTick(){if(ev)ev.arc.setAttribute('stroke-dasharray',`${Math.max(1,Math.min(100,100*(ev.end-Date.now())/1000/ev.total)).toFixed(1)} 100`)}
+setInterval(evTick,1000);
+// ---- the society project: a construction site on a reserved Commons slot that builds up with its progress, and stays as a finished building
+function projectSite(d){const p=d.project;if(!p)return;const pct=Math.round(p.percent||0),done=!!p.completed||pct>=100,st=done?4:pct<25?0:pct<50?1:pct<75?2:3,label=CARD?`${pct}%`:`${cut(p.name,18)} · ${done?'done':pct+'%'}`;
+  const f=fixture('commons','project',-5,p.key+':'+st,(g,i,j,a,f)=>{if(st===4){module_(g,i,j,22,'#f1ead7','#8a5aa8',{garden:true,inset:.1,door:a});const [x,y]=centre(i,j);flag(g,x+9,y-26,a)}
+      else{sb(g,i,j,.04,.04,.92,.92,2,'#b9b4a8');if(st>=2)sb(g,i,j,.12,.12,.76,.76,st>2?14:9,'#efe7d4',{windows:st>2,z:2});
+        if(st>=3)sb(g,i,j,.08,.08,.84,.84,3,'#9a5a44',{z:16});
+        if(st===1)for(const [x,y] of [[.08,.08],[.88,.08],[.08,.88],[.88,.88]])sb(g,i,j,x,y,.05,.05,16,WOOD2,{z:2});
+        scaffold(g,i,j,st<3)}
+      f.label=plate(f.top,centre(i,j)[0],centre(i,j)[1]+14,label,CARD?30:96,a,true);return st===4?28:34},{cls:'proj',flat:false});
+  if(f&&f.label&&f.label.textContent!==label)f.label.textContent=label}
+// ---- the market price board: the two goods the market wants today and their prices (hidden in the card layout)
+function marketBoard(d){const m=d.market;if(!m||CARD)return;const rows=[m.primary,m.secondary].filter(x=>x&&x.name),sig=rows.map(r=>r.name+':'+r.price).join('|');
+  fixture('market_concourse','board',[19,11],'b'+sig,(g,i,j,a)=>{const [x,y]=sc(i,j),W=84,H=13+rows.length*10,top=y-H-8;sline(g,[x-W/2+9,y],[x-W/2+9,top+H],IRON,1.6);sline(g,[x+W/2-9,y],[x+W/2-9,top+H],IRON,1.6);
+    el('rect',{x:x-W/2,y:top,width:W,height:H,rx:3,fill:'#0f1530',stroke:a,'stroke-width':1.5},g);txt(g,x,top+6.5,'🪙 WANTED TODAY',6.2,a);
+    rows.forEach((r,n)=>{txt(g,x-W/2+5,top+16.5+n*10,cut(r.name,12),7.2,'#fffaf0','start');txt(g,x+W/2-5,top+16.5+n*10,`${r.price} SC`,7.2,'#ffd27a','end')});return H+8},{cls:'board',flat:true,depth:19+11+.4})}
+// ---- colony shortages: a water tower whose tank shows the water, ore piles by the Frontier sized by the ore, tents by the Homes when housing is short
+function shortages(d){const col=Object.values(d.colony||{}),sum=k=>col.reduce((a,c)=>a+(+c[k]||0),0),pop=d.population||0,water=sum('water'),ore=sum('ore'),housing=sum('housing');
+  const wl=Math.round(4*Math.min(1,water/Math.max(10,pop*4))),ol=ore<=0?0:ore<15?1:ore<60?2:ore<150?3:4,short=Math.max(0,pop-housing),tl=short<=0?0:short<4?1:short<12?2:3;
+  fixture('agricultural_district','tower',[4,18],'w'+wl,(g,i,j,a)=>{const [x,y]=sc(i,j);for(const dx of [-8,8]){sline(g,[x+dx,y+2],[x+dx*.7,y-26],IRON,1.6)}sline(g,[x-8,y+2],[x+5.6,y-26],IRON,.8);sline(g,[x+8,y+2],[x-5.6,y-26],IRON,.8);
+      drum(g,x,y-26,10,16,'#9db6c2');el('rect',{x:x-10,y:y-33,width:20,height:2,fill:a},g);el('rect',{x:x-3.5,y:y-40,width:7,height:12,fill:'#16202c',stroke:'#e8f4f8','stroke-width':.8},g);
+      if(wl)el('rect',{x:x-2.7,y:y-28.8-10.4*wl/4,width:5.4,height:10.4*wl/4,fill:'#58c8f0'},g);el('polygon',{points:pts([[x-11,y-42],[x,y-51],[x+11,y-42]]),fill:shade('#8a7a68','top')},g);return 52},{cls:'tower'});
+  fixture('frontier_edge','ore',null,'o'+ol,(g,i,j,a)=>{const r=rng('orepile');for(let q=0;q<ol;q++){const [x,y]=iso(20.5,.9+q*1.1);facetRock(g,x,y,3+ol*.9+r()*2,r,['#8a5a3a','#7a7f86','#a0693f','#6f747a'][q%4])}return 12},{at:[20.5,2.5],depth:23,flat:true});
+  fixture('residential_ring','tents',null,'t'+tl,(g,i,j,a)=>{for(let q=0;q<tl;q++){const [x,y]=iso([20.6,20.6,16.2][q],[15.4,17.6,20.7][q]);el('ellipse',{cx:x+2,cy:y+1,rx:11,ry:3.4,fill:'rgba(8,12,18,.25)'},g);
+      el('polygon',{points:pts([[x-9,y],[x,y-13],[x,y]]),fill:shade(CANVAS,'left')},g);el('polygon',{points:pts([[x,y],[x,y-13],[x+9,y]]),fill:shade(CANVAS,'right')},g);el('polygon',{points:pts([[x-2.4,y],[x,y-6],[x+2.4,y]]),fill:a},g)}return 14},{at:[20.6,18],depth:38,flat:true})}
+// ---- the top contributor's statue in the Commons, and a crown over today's most active Seedling
+function honours(d){const L=d.leaders||{},top=(L.contributors||[])[0];
+  if(top&&top.name)fixture('commons','statue',-8,'s'+top.name,(g,i,j,a,f)=>{sb(g,i,j,.2,.2,.6,.6,7,'#cfc6b2',{topColor:'#e2dccb'});const [x,y]=centre(i,j);
+      el('rect',{x:x-3.2,y:y-22,width:6.4,height:11,rx:2.4,fill:'#d9b25a',stroke:'#8a6a1c','stroke-width':.6},g);el('circle',{cx:x,cy:y-26,r:3.4,fill:'#e6c673',stroke:'#8a6a1c','stroke-width':.6},g);
+      sline(g,[x+3,y-20],[x+8,y-30],'#d9b25a',2);el('circle',{cx:x+8.4,cy:y-31.4,r:2,fill:'#fff3b0'},g);plate(f.top,x,y+8,cut(top.name,12),Math.min(88,22+cut(top.name,12).length*4.6),a);return 32},{cls:'statue'})}
+function crowns(d){const top=((d.leaders||{}).active_today||[])[0],who=top?String(top.name||'').toLowerCase():'';
+  for(const id in live){const t=live[id],on=!!who&&String((t.s||{}).name||'').toLowerCase()===who;if(!!t.crown===on)continue;
+    if(on){t.crown=el('g',{class:'crown'},t.g);const c=el('g',{class:'float'},t.crown);el('polygon',{points:'-7,-59 7,-59 8,-68 4,-63.5 0,-70 -4,-63.5 -8,-68',fill:'#ffd35a',stroke:'#a8781a','stroke-width':.8,'stroke-linejoin':'round'},c);
+      el('circle',{cx:0,cy:-62,r:1.3,fill:'#e0303a'},c)}else{t.crown.remove();t.crown=null}}}
+function townLife(d){for(const f of [stationsTown,projectSite,marketBoard,shortages,honours,workRings,eventSite]){try{f(d)}catch(e){console.error(e)}}}
+"""
+
 PAGES['map'] = (r"""
 /* New Eridian as a living SEED-style colony, built for broadcast (960×540 source recommended): lawn plots between pale
    sidewalks, flat-roofed modules, farms of soil beds, a misty forest horizon and the Kernel at the centre, where new Seedlings
@@ -575,6 +928,19 @@ svg{position:absolute;inset:0;width:100%;height:100%;display:block}
 .float{animation:float 3.2s ease-in-out infinite alternate}@keyframes float{to{transform:translateY(-5px)}}
 .fog{animation:fog 9s ease-in-out infinite alternate}@keyframes fog{from{transform:translateX(-9px)}to{transform:translateX(9px)}}
 .flagwave{animation:flagwave 2.6s ease-in-out infinite alternate;transform-box:fill-box;transform-origin:0 50%}@keyframes flagwave{to{transform:skewY(-2.5deg) scaleX(.96)}}
+/* Workstations: a glow that brightens, smoke that rises and a part that moves while a queue runs there (.busy), and a status light that blinks faster. */
+.st .sg{opacity:.3;transition:opacity .6s}.st.busy .sg{opacity:1;animation:flicker 1.4s steps(5) infinite}
+.puff{display:none;transform-box:fill-box;transform-origin:center}.st.busy .puff{display:block;animation:smoke 3s ease-out infinite}.q-low .puff{display:none!important}
+.sblink{animation:beacon 2.6s steps(2) infinite}.st.busy .sblink{animation-duration:.6s}
+.smove,.smoveY{animation:smove 1s ease-in-out infinite alternate;animation-play-state:paused}.smoveY{animation-name:smoveY}.st.busy .smove,.st.busy .smoveY{animation-play-state:running}
+@keyframes smove{to{transform:translateX(4px)}}@keyframes smoveY{to{transform:translateY(7px)}}
+/* A Seedling working at a station: sparks, steam or dust at its hands. */
+.token .wfx{display:none}.token.working .wfx{display:block}.wfx circle{animation:wsp .9s linear infinite;transform-box:fill-box}.wfx.sparks circle{fill:#ffb347}.wfx.steam circle{fill:#f4f7f8}.wfx.dust circle{fill:#d3c3a0}
+@keyframes wsp{from{opacity:1;transform:translate(0,0)}to{opacity:0;transform:translate(var(--wx,5px),-14px)}}
+/* Live pieces: the colony event (a pulsing beacon, an effect for its kind) and the rings above busy stations. */
+.evpulse{animation:evpulse 1.2s ease-in-out infinite alternate;transform-box:fill-box;transform-origin:center}@keyframes evpulse{from{opacity:.3;transform:scale(.8)}to{opacity:1;transform:scale(1.15)}}
+.evfx{animation:smoke 2.4s ease-out infinite;transform-box:fill-box;transform-origin:center}.evfx.smoke{fill:#6a6560}.evfx.sparks{fill:#ffd35a;animation-duration:1s}.evfx.drops{fill:#58c8f0;animation-duration:1.6s}.evfx.spores{fill:#8af07a}
+.wring .arc{transition:stroke-dasharray 1s linear}.L-card .rl,.L-card .sgn:not(.keep){display:none}.q-low .evpulse{animation:none}
 .head{position:absolute;left:0;right:0;top:0;height:8.5vh;display:flex;align-items:center;gap:1.2vw;padding:0 1.6vw;
   background:linear-gradient(180deg,rgba(6,9,28,.92),rgba(6,9,28,.72));border-bottom:2px solid rgba(147,154,255,.45);font-size:clamp(12px,min(2.2vw,3.9vh),44px);z-index:3}
 .head .name{font:700 1.15em var(--font-display);color:var(--ivory);white-space:nowrap}.head .tier{padding:.12em .55em;border-radius:.5em;background:rgba(126,227,176,.18);border:1px solid rgba(126,227,176,.55);color:var(--green2);font-weight:900;font-size:.8em;white-space:nowrap}
@@ -646,7 +1012,7 @@ svg{position:absolute;inset:0;width:100%;height:100%;display:block}
   <g id="ground"></g><path id="shadows" fill="#141428" opacity="0" style="transition:opacity 4s"/><g id="city"></g><g id="festive"></g><g id="civic"></g><g id="crowd"></g><g id="shades"></g>
   <rect id="tint" x="-600" y="-400" width="2160" height="1400" fill="transparent" style="pointer-events:none;transition:fill 4s"/>
   <rect id="haze" x="-600" y="-400" width="2160" height="1400" fill="transparent" style="pointer-events:none;transition:fill 4s"/>
-  <g id="lights" style="pointer-events:none"></g><g id="festlights" style="pointer-events:none"></g><g id="labels"></g><g id="tokens"></g>
+  <g id="live" style="pointer-events:none"></g><g id="lights" style="pointer-events:none"></g><g id="festlights" style="pointer-events:none"></g><g id="labels"></g><g id="tokens"></g>
  </g>
  <g id="fx"></g>
 </svg><div class="vig"></div></div>
@@ -667,7 +1033,8 @@ const RESERVE=3;   // tiles kept free in every district for landmarks the colony
 const LOOK={commons:['🌱','The Kernel','#8ff3ff'],residential_ring:['🏠','Homes','#ffd27a'],agricultural_district:['🌾','Farms','#9be37e'],industrial_ward:['🏭','Industry','#ff9a76'],
   research_block:['🔬','Research','#70ddff'],market_concourse:['🪙','Market','#ffd27a'],spaceport_quarter:['🚀','Spaceport','#bd91ff'],frontier_edge:['🧭','Frontier','#ff9ad5']};
 // The colony's ground: lawn green everywhere, pale concrete sidewalks and streets, brown soil beds on the farms, rougher meadow
-// where a district is not open yet and around the colony's edge. Districts differ by what stands on their plots, not by colour.
+// where a district is not open yet and around the colony's edge. The ground is the same everywhere: districts read apart by the materials and accent
+// colour of what stands on their plots (see BUILD).
 const LAWN=['#55893f','#629448'],MEADOW=['#71894a','#7f9152'],RING=['#4c7a3b','#5a8642'],CONCRETE=['#cbcfc8','#c1c6c0'],SOIL='#6a4e36',
   PLOT=['#e48a40','#9270dc'],KERB='rgba(84,92,88,.55)',ROOF=['#7a5638','#94724d','#86603f','#a98a5f'];   // plot lines: orange outside, purple inside
 const MOOD={Inspired:'#ffd27a',Content:'#7ee3b0',Tired:'#9aa3c7',Hungry:'#ffb36b',Lonely:'#8fb3ff',Uneasy:'#d6a4ff',Stressed:'#ff9a76',Miserable:'#ff7484'};
@@ -701,40 +1068,42 @@ const vr=rng('lamps');
 
 // ---- building parts (all drawn on a tile at i,j; w×d tiles; height h). Everything is a box lit by shade(): left walls in light,
 // right walls in shade, with the colony's look: plain pale walls, flat roof slabs, warm window strips.
-const CASTERS=[];
+const CASTERS=[];let casterVer=0;   // each caster remembers its group, so a building that is taken down stops casting
+// Every building gets a soft dark contact shadow at its base (cs:0 turns it off for a part of a bigger whole) and, above low quality, a thin light rim along its roof's lit edges (rim:0 turns it off).
 function box(g,i,j,w,d,h,color,opt={}){const z=opt.z||0,base=diamond(i,j,w,d,opt.inset??.12),[t,r,b,l]=up(base,z),top=up([t,r,b,l],h);
-  if(!z&&!opt.noshadow)CASTERS.push([base,h+(opt.roof==='pitched'?h*.4:0)]);
+  if(!z&&!opt.noshadow){CASTERS.push([base,h+(opt.roof==='pitched'?h*.4:0),g]);casterVer++;if(opt.cs!==0)contact(g,i,j,w,d,opt.inset??.12)}
   el('polygon',{points:pts([l,b,top[2],top[3]]),fill:shade(color,'left')},g);el('polygon',{points:pts([b,r,top[1],top[2]]),fill:shade(color,'right')},g);
   if(opt.roof==='pitched'){const rise=h*.55+6,apex=[(top[0][0]+top[2][0])/2,(top[0][1]+top[2][1])/2-rise],rc=opt.roofColor||'#9a5a44',s=rise/((1-2*(opt.inset??.12))*Math.min(w,d)*U/2);
     // four roof planes, each lit by its own slope: back-left, back-right, then the two in front
     for(const [p,n] of [[[top[3],top[0],apex],[-s,0,1]],[[top[0],top[1],apex],[0,-s,1]],[[top[3],top[2],apex],[0,s,1]],[[top[2],top[1],apex],[s,0,1]]])el('polygon',{points:pts(p),fill:shade(rc,n)},g)}
-  else if(!opt.notop)el('polygon',{points:pts(top),fill:opt.topColor?shade(opt.topColor,'top'):shade(color,'top',1.08)},g);
+  else if(!opt.notop){el('polygon',{points:pts(top),fill:opt.topColor?shade(opt.topColor,'top'):shade(color,'top',1.08)},g);
+    if(QUALITY!=='low'&&opt.rim!==0&&(h>=5||z))el('polyline',{points:pts([top[3],top[0],top[1]]),fill:'none',stroke:shade(opt.topColor||color,'top',1.34),'stroke-width':.7,opacity:.7,'stroke-linejoin':'round'},g)}
   // windows: a warm strip of glass on each wall per floor (or a pair of panes); cream by day, lit or dark at night (see liveTown)
   if(opt.windows){const pair=opt.windows==='pair',rows=Math.max(1,Math.floor((h-2)/8));
     for(let k=0;k<rows;k++){const lo=3+k*8,hi=lo+3.4;for(const [A,B] of [[l,b],[b,r]])for(const [f0,f1] of pair?[[.14,.42],[.58,.86]]:[[.16,.84]]){
       const P=(f,y)=>[A[0]+(B[0]-A[0])*f,A[1]+(B[1]-A[1])*f-y],q=[P(f0,lo),P(f1,lo),P(f1,hi),P(f0,hi)];
-      el('polygon',{class:'win',points:pts(q),fill:'#ecdfac','data-v':vr().toFixed(3),'data-x':((q[0][0]+q[1][0])/2).toFixed(1),'data-y':((q[0][1]+q[2][1])/2).toFixed(1)},g)}}}
+      el('polygon',{class:'win',points:pts(q),fill:opt.glass||'#ecdfac','data-day':opt.glass||'','data-v':vr().toFixed(3),'data-x':((q[0][0]+q[1][0])/2).toFixed(1),'data-y':((q[0][1]+q[2][1])/2).toFixed(1)},g)}}}
   return top}
 function centre(i,j,w=1,d=1){return iso(i+w/2,j+d/2)}
 function tree(g,i,j,r,kind){const [x,y]=centre(i+(r()-.5)*.5,j+(r()-.5)*.5);lowPolyTree(g,x,y,r,kind)}
 // A colony module: pale walls, a flat roof slab that overhangs a little, warm windows; on the roof a garden, a pool or solar panels.
-function module_(g,i,j,h,wall,roof,o={}){const w=o.w||1,d=o.d||1,e=o.inset??.16;box(g,i,j,w,d,h,wall,{windows:o.windows??true,inset:e,notop:true});
+function module_(g,i,j,h,wall,roof,o={}){const w=o.w||1,d=o.d||1,e=o.inset??.16;box(g,i,j,w,d,h,wall,{windows:o.windows??true,inset:e,notop:true,glass:o.glass});if(o.door&&h>=9)doorway(g,i,j,o.door,w,d,e,.43,'',7.5,.14);   // the district's accent colour on the door
   const top=box(g,i,j,w,d,2.6,roof,{inset:e-.05,z:h,noshadow:true}),patch=(c,k,ii=i,jj=j,ww=w,dd=d)=>facet(g,up(diamond(ii,jj,ww,dd,e+k),h+2.65),c);
   if(o.garden)patch(shade('#7fb04f','top'),.12);
   if(o.pool)patch('#8fd6e6',.22);
   if(o.solar&&FACETS)for(const f of [0,.5])patch(shade('#3d4c66','top'),.1,i+f*w,j,w*.5,d);
   return top}
 // A small white dome hut with a coloured door.
-function domeHut(g,i,j,door,c='#eceeed'){const E=ovoid(g,i+.5,j+.5,.34,10,()=>c,{c:0,n:FACETS?8:6,bands:FACETS?[0,.45,.8,1]:[0,1]});
+function domeHut(g,i,j,door,c='#eceeed'){const [hx,hy]=centre(i,j);el('ellipse',{cx:hx+2,cy:hy+1,rx:10,ry:4.4,fill:'rgba(8,12,18,.22)'},g);const E=ovoid(g,i+.5,j+.5,.34,10,()=>c,{c:0,n:FACETS?8:6,bands:FACETS?[0,.45,.8,1]:[0,1]});
   const F=Math.PI/4;facet(g,[E.P(F-.32,0),E.P(F+.32,0),E.P(F+.32,.5),E.P(F-.32,.5)].map(E.S),door)}
 // A long barracks or greenhouse with a rounded roof, lying along i.
-function barrack(g,i,j,len,wid,h,c,glass){box(g,i,j,len,wid,h,c,{inset:.06,notop:true,windows:glass?false:'pair'});
+function barrack(g,i,j,len,wid,h,c,glass,acc){box(g,i,j,len,wid,h,c,{inset:.06,notop:true,windows:glass?false:'pair'});if(acc&&!glass)doorway(g,i,j,acc,len,wid,.06,.45,'',6,.14);
   const a=[i+.06,i+len-.06],b0=j+.06,b1=j+wid-.06,seg=FACETS?4:2,arc=k=>{const th=Math.PI*k/seg;return [b0+(b1-b0)*(1-Math.cos(th))/2,h+Math.sin(th)*wid*U*.32]};   // the vault, as strips
   for(let k=0;k<seg;k++){const [j0,z0]=arc(k),[j1,z1]=arc(k+1),n=[0,-(z1-z0)/((j1-j0)*U||1),1],q=[up([iso(a[0],j0)],z0)[0],up([iso(a[1],j0)],z0)[0],up([iso(a[1],j1)],z1)[0],up([iso(a[0],j1)],z1)[0]];
     facet(g,q,shade(glass?'#d5ece8':c,n),glass?{opacity:.92}:{})}
-  if(glass)for(const f of [.33,.66]){const x=i+len*f,q=[0,1,2,3,4].map(k=>{const th=Math.PI*k/4;return up([iso(x,b0+(b1-b0)*(1-Math.cos(th))/2)],h+Math.sin(th)*wid*U*.32)[0]});el('polyline',{points:pts(q),fill:'none',stroke:'#f4f7f6','stroke-width':.8},g)}}
+  if(glass)for(const f of [.33,.66]){const x=i+len*f,q=[0,1,2,3,4].map(k=>{const th=Math.PI*k/4;return up([iso(x,b0+(b1-b0)*(1-Math.cos(th))/2)],h+Math.sin(th)*wid*U*.32)[0]});el('polyline',{points:pts(q),fill:'none',stroke:acc?shade(acc,'top',1.1):'#f4f7f6','stroke-width':.8},g)}}
 // A cylinder (tanks, silos): its lit and shaded halves, a darker foot and a pale lid.
-function drum(g,x,y,rx,h,c){el('ellipse',{cx:x,cy:y,rx,ry:rx/2,fill:shade(c,'right',.9)},g);
+function drum(g,x,y,rx,h,c){el('ellipse',{cx:x+rx*.2,cy:y+rx*.1,rx:rx*1.2,ry:rx*.58,fill:'rgba(8,12,18,.22)'},g);el('ellipse',{cx:x,cy:y,rx,ry:rx/2,fill:shade(c,'right',.9)},g);
   if(FACETS){el('rect',{x:x-rx,y:y-h,width:rx,height:h,fill:shade(c,toward(-1,0))},g);el('rect',{x,y:y-h,width:rx,height:h,fill:shade(c,toward(1,0))},g)}
   else el('rect',{x:x-rx,y:y-h,width:2*rx,height:h,fill:shade(c,'left')},g);
   el('ellipse',{cx:x,cy:y-h,rx,ry:rx/2,fill:shade(c,'top',1.12)},g)}
@@ -752,43 +1121,50 @@ function stringLights(g,P,cls='bulbs'){el('path',{d:'M'+P.map(p=>p[0].toFixed(1)
 function parasol(g,x,y,c1='#f2c632',c2='#f7f5ec',h=11,rx=7){el('line',{x1:x,y1:y,x2:x,y2:y-h,stroke:'#d8dcd8','stroke-width':1},g);el('ellipse',{cx:x,cy:y-h,rx,ry:rx*.42,fill:c2},g);
   el('path',{d:[0,2,4,6].map(k=>{const a0=k/8*Math.PI*2,a1=(k+1)/8*Math.PI*2;return `M${x} ${y-h-2}L${x+Math.cos(a0)*rx} ${y-h+Math.sin(a0)*rx*.42}L${x+Math.cos(a1)*rx} ${y-h+Math.sin(a1)*rx*.42}Z`}).join(''),fill:c1},g)}
 // A glowing purple neon panel on a building's left wall.
-function neon(g,i,j,h,inset=.16){const [t,r,b,l]=diamond(i,j,1,1,inset),P=(f,y)=>[l[0]+(b[0]-l[0])*f,l[1]+(b[1]-l[1])*f-y],q=[P(.22,h*.45),P(.62,h*.45),P(.62,h*.9),P(.22,h*.9)];
-  el('polygon',{class:'neon',points:pts(q),fill:'#b06cf0',stroke:'#e6c8ff','stroke-width':.8},g);if(FACETS)el('polygon',{class:'neon',points:pts(q),fill:'none',stroke:'#c78bff','stroke-width':4,opacity:.3},g)}
+function neon(g,i,j,h,inset=.16,c='#b06cf0'){const [t,r,b,l]=diamond(i,j,1,1,inset),P=(f,y)=>[l[0]+(b[0]-l[0])*f,l[1]+(b[1]-l[1])*f-y],q=[P(.22,h*.45),P(.62,h*.45),P(.62,h*.9),P(.22,h*.9)];
+  el('polygon',{class:'neon',points:pts(q),fill:c,stroke:shade(c,'top',1.3),'stroke-width':.8},g);if(FACETS)el('polygon',{class:'neon',points:pts(q),fill:'none',stroke:c,'stroke-width':4,opacity:.3},g)}
+// Every district has its own materials, and its accent colour (LOOK) shows on doors, roof trims and awnings: Homes are cream with warm wood, Farms
+// wood and greenhouse glass, Industry grey metal with orange trim, Research white with teal glass, the Spaceport white with violet, the Frontier timber
+// and canvas, and the Market keeps its colourful stalls.
+const CREAM=['#ece3cd','#e6dcc2','#efe7d4'],METAL=['#aab0b3','#9ea5a9','#b6babb'],TIMBER='#a07a4e';
 const BUILD={
- residential_ring(g,i,j,r,n,level){if(n%7===6)return tree(g,i,j,r);
-   if(level>=6&&n%5===0)return module_(g,i,j,20+r()*5,'#d9dcd8',ROOF[Math.floor(r()*ROOF.length)],{garden:true,pool:r()<.4});   // two-storey modules as the district grows
-   if(n%6===3)return domeHut(g,i,j,['#e07a3a','#4f8fd8','#d8b23c','#7ec36b'][Math.floor(r()*4)]);
-   module_(g,i,j,9+r()*4,['#dcdfdc','#cfd4d2','#e4e3dc'][Math.floor(r()*3)],ROOF[Math.floor(r()*ROOF.length)],{garden:r()<.2,windows:r()<.5?'pair':true})},
- agricultural_district(g,i,j,r,n){if(n%9===4)return barrack(g,i,j+.18,1,.64,8,'#efe6d4');
-   if(n%9===8)return barrack(g,i,j+.18,1,.64,7,'#d6ece8',true);
+ residential_ring(g,i,j,r,n,level){const a=LOOK.residential_ring[2];if(n%7===6)return tree(g,i,j,r);
+   if(level>=6&&n%5===0)return module_(g,i,j,20+r()*5,CREAM[0],ROOF[Math.floor(r()*ROOF.length)],{garden:true,pool:r()<.4,door:a});   // two-storey modules as the district grows
+   if(n%6===3)return domeHut(g,i,j,['#e07a3a','#4f8fd8','#d8b23c','#7ec36b'][Math.floor(r()*4)],'#efe6d2');
+   module_(g,i,j,9+r()*4,CREAM[Math.floor(r()*3)],ROOF[Math.floor(r()*ROOF.length)],{garden:r()<.2,windows:r()<.5?'pair':true,door:a})},
+ agricultural_district(g,i,j,r,n){const a=LOOK.agricultural_district[2];if(n%9===4)return barrack(g,i,j+.18,1,.64,8,'#c9a56a',false,a);   // a timber barn
+   if(n%9===8)return barrack(g,i,j+.18,1,.64,7,'#d6ece8',true,a);   // a greenhouse
    if(n===2){const [x,y]=centre(i,j);return water(g,x,y,12,6,{seed:'farmpond',rim:'#8a7a5a'})}
    if(n%9===6)return crates(g,i,j,r);
    // a soil plot: a grid of brown beds, each with a row of crops (leafy greens, or vegetables that turn orange as they ripen)
    const v=r().toFixed(3),veg=r()<.4?'1':'0',beds=FACETS?[[0,0],[.5,0],[0,.5],[.5,.5]]:[[0,0]],s=FACETS?.5:1;
    for(const [di,dj] of beds){const [t,rr,b,l]=diamond(i+di,j+dj,s,s,FACETS?.045:.07);facet(g,[t,rr,b,l],shade(SOIL,'top',.94+r()*.12));
      for(const f of FACETS?[.5]:[.33,.66])el('line',{class:'crop','data-v':v,'data-veg':veg,x1:t[0]+(l[0]-t[0])*f,y1:t[1]+(l[1]-t[1])*f,x2:rr[0]+(b[0]-rr[0])*f,y2:rr[1]+(b[1]-rr[1])*f,stroke:'#6aa547','stroke-width':2.4,'stroke-linecap':'round','stroke-dasharray':'.1 2.8'},g)}},
- industrial_ward(g,i,j,r,n){if(n%5===2){const [x,y]=centre(i,j);drum(g,x-3,y+1,7,13,'#a7adb2');return drum(g,x+5,y-2,5,9,'#9aa1a6')}
-   const h=13+r()*7,top=module_(g,i,j,h,['#aab0b3','#9ea5a9','#b6babb'][Math.floor(r()*3)],r()<.5?'#7c8387':'#94724d',{solar:r()<.45,windows:'pair',inset:.1});const cx=top[1][0]-6,cy=top[1][1];
-   if(n%3===0){el('rect',{x:cx-2.5,y:cy-16,width:5,height:16,fill:'#5c6268'},g);el('rect',{x:cx-2.5,y:cy-16,width:5,height:3,fill:'#a8564a'},g);
+ industrial_ward(g,i,j,r,n){const a=LOOK.industrial_ward[2];if(n%5===2){const [x,y]=centre(i,j);drum(g,x-3,y+1,7,13,'#a7adb2');el('rect',{x:x-10,y:y-6,width:14,height:2,fill:shade(a,'left')},g);return drum(g,x+5,y-2,5,9,'#9aa1a6')}
+   const h=13+r()*7,top=module_(g,i,j,h,METAL[Math.floor(r()*3)],a,{solar:r()<.45,windows:'pair',inset:.1,door:a});const cx=top[1][0]-6,cy=top[1][1];   // grey metal under an orange trim
+   if(n%3===0){el('rect',{x:cx-2.5,y:cy-16,width:5,height:16,fill:'#5c6268'},g);el('rect',{x:cx-2.5,y:cy-16,width:5,height:3,fill:shade(a,'left')},g);
      for(let k=0;k<2;k++)el('circle',{class:'smoke',cx:cx,cy:cy-20,r:4,fill:'#d8d3ca','data-v':r().toFixed(3),style:`animation-delay:-${(k*2.2+r()*2).toFixed(1)}s`},g)}},
- research_block(g,i,j,r,n){if(n%6===0){box(g,i,j,1,1,8,'#e3e7e8');const [x,y]=centre(i,j);el('ellipse',{cx:x,cy:y-12,rx:9,ry:4,fill:'#f2f4f5',stroke:'#93a6b5','stroke-width':1.2,transform:`rotate(-25 ${x} ${y-12})`},g);el('line',{x1:x,y1:y-12,x2:x+4,y2:y-22,stroke:'#93a6b5','stroke-width':1.5},g);return}
-   if(n%6===3){const [x,y]=centre(i,j);box(g,i,j,1,1,6,'#dfe4e6');el('ellipse',{cx:x,cy:y-12,rx:13,ry:10,fill:'url(#domeg)',stroke:'#eaf8ff','stroke-width':.8},g);return}
-   const h=16+r()*12;module_(g,i,j,h,'#e8ecec','#b9c0be',{garden:true,pool:r()<.3});if(n%3===1)neon(g,i,j,h)},
- market_concourse(g,i,j,r,n){if(n===0){module_(g,i,j,16,'#e2ddd0','#a9845a',{garden:false});const [x,y]=centre(i,j);flag(g,x,y-24,'#ffd27a');return}
+ research_block(g,i,j,r,n){const a=LOOK.research_block[2],W='#f0f3f4';
+   if(n%6===0){box(g,i,j,1,1,8,W);const [x,y]=centre(i,j);el('ellipse',{cx:x,cy:y-12,rx:9,ry:4,fill:'#f2f4f5',stroke:'#93a6b5','stroke-width':1.2,transform:`rotate(-25 ${x} ${y-12})`},g);el('line',{x1:x,y1:y-12,x2:x+4,y2:y-22,stroke:'#93a6b5','stroke-width':1.5},g);return}
+   if(n%6===3){const [x,y]=centre(i,j);box(g,i,j,1,1,6,W);el('ellipse',{cx:x,cy:y-12,rx:13,ry:10,fill:'url(#domeg)',stroke:'#eaf8ff','stroke-width':.8},g);return}
+   const h=16+r()*12;module_(g,i,j,h,W,'#5fb8c6',{garden:true,pool:r()<.3,glass:'#8fd6e2',door:a});if(n%3===1)neon(g,i,j,h,.16,'#46d6e8')},   // white walls, teal glass
+ market_concourse(g,i,j,r,n){if(n===0){module_(g,i,j,16,'#e2ddd0','#a9845a',{garden:false,door:LOOK.market_concourse[2]});const [x,y]=centre(i,j);flag(g,x,y-24,'#ffd27a');return}
    const c=['#c9614f','#e0a83c','#5a8fbe','#78a35c','#9370c4'][Math.floor(r()*5)],top=box(g,i,j,1,1,5,'#d9d4c6',{topColor:c,inset:.2});
    el('polygon',{points:pts(top),fill:'none',stroke:'#f6f2e8','stroke-width':.8,'stroke-dasharray':'3 3'},g);
    if(n%3===0){const [x,y]=centre(i+.3,j+.35);parasol(g,x,y,c,'#f6f3ea',10,6)}},
- spaceport_quarter(g,i,j,r,n){if(n===0){box(g,i,j,1,1,40,'#dfe3e5',{windows:true,topColor:'#5f6b80'});const [x,y]=centre(i,j);flag(g,x+8,y-44,'#bd91ff');el('circle',{class:'beacon',cx:x,cy:y-46,r:3,fill:'#ff5a5a'},g);return}
+ spaceport_quarter(g,i,j,r,n){const a=LOOK.spaceport_quarter[2];if(n===0){box(g,i,j,1,1,40,'#eef0f4',{windows:true,topColor:'#7d68c8'});const [x,y]=centre(i,j);flag(g,x+8,y-44,a);el('circle',{class:'beacon',cx:x,cy:y-46,r:3,fill:'#ff5a5a'},g);return}
    if(n===5){const [x,y]=centre(i,j),hull='#e6e9ec',fin='#b04a3c';   // a rocket on its pad: lit and shaded halves
+     el('ellipse',{cx:x+2,cy:y,rx:11,ry:4.6,fill:'rgba(8,12,18,.22)'},g);
      if(FACETS){el('polygon',{points:pts([[x-5,y-4],[x,y-4],[x,y-52],[x-5,y-40]]),fill:shade(hull,toward(-1,0))},g);el('polygon',{points:pts([[x,y-4],[x+5,y-4],[x+5,y-40],[x,y-52]]),fill:shade(hull,toward(1,0))},g)}
      else el('polygon',{points:pts([[x-5,y-4],[x+5,y-4],[x+5,y-40],[x,y-52],[x-5,y-40]]),fill:shade(hull,'left'),stroke:'#9aa3ad'},g);
      el('polygon',{points:pts([[x-5,y-4],[x-10,y+2],[x-5,y-16]]),fill:shade(fin,'left')},g);el('polygon',{points:pts([[x+5,y-4],[x+10,y+2],[x+5,y-16]]),fill:shade(fin,'right')},g);return}
    if(n%3===1){const [t,rr,b,l]=diamond(i,j,1,1,.04);el('polygon',{points:pts([t,rr,b,l]),fill:'#9fa5a6'},g);const [x,y]=centre(i,j);
      el('ellipse',{cx:x,cy:y,rx:12,ry:6,fill:'none',stroke:'#e8c766','stroke-width':1.6},g);el('text',{x:x,y:y+3,'text-anchor':'middle','font-size':8,'font-weight':900,fill:'#e8c766',transform:`scale(1 .6) translate(0 ${y/0.6-y})`},g).textContent='H';return}
-   module_(g,i,j,10+r()*6,'#c9ced2',r()<.5?'#a98a5f':'#7d8590',{solar:r()<.5,inset:.1})},
- frontier_edge(g,i,j,r,n){const [x,y]=centre(i,j);if(n%4===0){el('polygon',{points:pts([[x-9,y+2],[x,y-26],[x+9,y+2]]),fill:'none',stroke:'#6e5236','stroke-width':2.5},g);el('circle',{cx:x,cy:y-24,r:3.5,fill:'#b39a74'},g);return}
+   module_(g,i,j,10+r()*6,'#eef0f4',r()<.5?'#8a76d6':'#7d68c8',{solar:r()<.5,inset:.1,door:a})},   // white with violet
+ frontier_edge(g,i,j,r,n){const [x,y]=centre(i,j),a=LOOK.frontier_edge[2];
+   if(n%4===0){box(g,i,j,1,1,7,TIMBER,{roof:'pitched',roofColor:CANVAS,inset:.2});doorway(g,i,j,a,1,1,.2,.4,'',5,.2);return}   // a canvas tent on a timber frame
    if(n%4===1)return crates(g,i,j,r);
-   if(n%4===2)return domeHut(g,i,j,'#d08a3a','#e4ddcc');
+   if(n%4===2)return domeHut(g,i,j,a,'#e4ddcc');
    tree(g,i,j,r,r()<.6?'tall':'conifer')},
  commons(g,i,j,r,n){tree(g,i,j,r,r()<.7?'tall':'broad')},
  park(g,i,j,r,n){tree(g,i,j,r)},
@@ -801,6 +1177,7 @@ function scaffold(g,i,j,crane){const [t,r,b,l]=diamond(i,j,1,1,.15),h=22,c='#d4a
   if(crane){const [x,y]=centre(i,j);el('rect',{x:x+12,y:y-62,width:3,height:62,fill:'#f2b441'},g);el('rect',{x:x-22,y:y-64,width:48,height:3,fill:'#f2b441'},g);
     const hook=el('g',{class:'hook'},g);el('line',{x1:x-14,y1:y-61,x2:x-14,y2:y-36,stroke:'#333','stroke-width':1},hook);el('rect',{x:x-19,y:y-36,width:10,height:6,fill:'#9c3b2e'},hook)}}
 
+""" + STATIONS_JS + TOWN_JS + r"""
 // ---- terrain and streets, drawn once
 (function terrain(){const g=document.getElementById('ground'),lo=-1.4,hi=N+1.4;
   forest(document.getElementById('hills'),document.getElementById('hills2'));slab(g,lo,hi);
@@ -851,7 +1228,8 @@ const behindKernel=(x,y)=>{const [kx,ky]=iso(...KERNEL);return ((x-kx)/56)**2+((
 function district(key,info,tier){const [r,c]=CELLS[key],[a,b]=cellTiles(r,c),city=document.getElementById('city');
   let dg=drawn[key];const unlocked=key==='commons'||key==='park'||info.unlocked,level=key==='commons'?2+tier*2:key==='park'?6:(info.level||1);
   if(!dg||dg.unlocked!==unlocked){if(dg){dg.ground.remove();dg.g.remove();if(!first)toast(`🎉 ${LOOK[key]?LOOK[key][1]:'The Park'} is open for building!`,key)}
-    const G=document.getElementById('ground');dg=drawn[key]={unlocked,count:0,ground:G.insertBefore(el('g',{}),G.querySelector('.street')),g:el('g',{},city)};   // under the streets, kerbs and lamps
+    const G=document.getElementById('ground');dg=drawn[key]={unlocked,count:0,items:{},fx:{},taken:new Set(),ground:G.insertBefore(el('g',{}),G.querySelector('.street')),g:el('g',{},city)};   // under the streets, kerbs and lamps
+    for(const id in STN)if(STN[id].k===key)delete STN[id];
     if(key==='commons'){facet(dg.ground,diamond(a,b,6,6),shade(CONCRETE[0],'top'),{class:'walk'});facetTile(dg.ground,a,b,LAWN,{w:6,d:6,inset:.32,seed:'plaza',amp:2});plotLines(dg.ground,a,b,6,6,.4);
       plaza(el('g',{'data-depth':15.5},dg.g),true);kernel(el('g',{id:'kernel','data-depth':20.3},dg.g));plaza(el('g',{'data-depth':21},dg.g))}
     else if(key==='park'){for(let p=0;p<3;p++)for(let q=0;q<3;q++)facetTile(dg.ground,a+p*2,b+q*2,LAWN,{w:2,d:2,seed:'park'+p+q,amp:4});
@@ -872,8 +1250,8 @@ function district(key,info,tier){const [r,c]=CELLS[key],[a,b]=cellTiles(r,c),cit
   levels[key]=level;
   const want=!unlocked?0:key==='park'?dg.slots.length:key==='commons'?Math.min(dg.slots.length-RESERVE-1,4+tier*3):Math.min(dg.slots.length-RESERVE,3+level*3);
   if(want>dg.count){const add=dg.slots.slice(dg.count,want).map((s,n)=>[...s,dg.count+n]),grow=!first;dg.count=want;
-    const put=()=>{for(const [i,j,,n] of add){const g=el('g',{class:grow?'rise':'','data-depth':i+j},dg.g);BUILD[key](g,i,j,rng(key+':'+n),n,level)}
-      [...dg.g.children].sort((p,q)=>(+p.dataset.depth||0)-(+q.dataset.depth||0)).forEach(e=>dg.g.appendChild(e));litSig=''};
+    const put=()=>{for(const [i,j,,n] of add){if(dg.taken.has(n))continue;const g=el('g',{class:grow?'rise':'','data-depth':i+j},dg.g);dg.items[n]=g;BUILD[key](g,i,j,rng(key+':'+n),n,level)}   // a fixture's slot is skipped
+      sortCity(dg);litSig=''};
     if(!grow)return put();
     // New buildings: scaffolding and a crane first, then the building rises.
     const sc=add.map(([i,j],n)=>{const g=el('g',{'data-depth':i+j},dg.g);scaffold(g,i,j,n===0);return g});setTimeout(()=>{sc.forEach(g=>g.remove());put()},7000)}}
@@ -904,7 +1282,7 @@ function liveTown(d){const st=d.stats||{},pop=d.population||0,ds=d.districts||{}
   if(sig!==litSig){litSig=sig;const lights=document.getElementById('lights'),dark=darkness>.3;lights.innerHTML='';
     // windows are warm cream by day; after dark the lit ones glow and the rest are dark glass. Lamp heads light up at night.
     document.querySelectorAll('.win').forEach((w,n)=>{const on=+w.dataset.v<litF,lamp=w.classList.contains('lamp');
-      w.setAttribute('fill',lamp?(on?'#ffe6a3':'#e3e8e8'):on?'#ffd98a':dark?'#333b49':'#ecdfac');w.setAttribute('opacity',lamp&&!on&&w.tagName==='rect'?0:.95);
+      w.setAttribute('fill',lamp?(on?'#ffe6a3':'#e3e8e8'):on?'#ffd98a':dark?'#333b49':w.dataset.day||'#ecdfac');w.setAttribute('opacity',lamp&&!on&&w.tagName==='rect'?0:.95);
       if(on&&QUALITY!=='low'&&(lamp||n%3===0)){const x=+(w.dataset.x||w.getAttribute('cx')||w.getAttribute('x')),y=+(w.dataset.y||w.getAttribute('cy')||w.getAttribute('y'));
         if(QUALITY==='high'&&n%4===0)el('circle',{cx:x,cy:y,r:16,fill:'url(#glowdot)',opacity:.35},lights);if(lamp)el('ellipse',{cx:x,cy:y+15,rx:15,ry:7,fill:'url(#glowdot)',opacity:.8},lights);el('circle',{cx:x+1.5,cy:y+1.5,r:6,fill:'url(#glowdot)'},lights)}})}
   const market=(ds.market_concourse||{}).unlocked?Math.min(14,2+here('market_concourse')*2+(d.market&&d.market.primary?2:0)+Math.floor(((ds.market_concourse||{}).level||1)/2)):0;
@@ -1008,9 +1386,9 @@ function idle(){if(QUALITY==='low')return;const standing=Object.values(live).fil
   if(friends.length&&Math.random()<.6){t.g.classList.add('waving');setTimeout(()=>t.g.classList.remove('waving'),1800)}
   else{const e=t.eyes;e.animate([{transform:'translate(0,0)'},{transform:'translate(-1.8px,0)'},{transform:'translate(-1.8px,0)'},{transform:'translate(1.8px,0)'},{transform:'translate(1.8px,0)'},{transform:'translate(0,0)'}],{duration:2200,easing:'ease-in-out'})}}
 setInterval(idle,2600);
-function seedlings(list){const groups={};for(const s of list)(groups[s.place]=groups[s.place]||[]).push(s);const seen=new Set();document.querySelectorAll('.more').forEach(e=>e.remove());
-  for(const k in groups){const all=groups[k].sort((a,b)=>(isNew(b)-isNew(a))||(a.id<b.id?-1:1)),n=Math.min(all.length,PER_PLACE),extra=all.length-n;
-    all.forEach((s,i)=>{seen.add(s.id);const [tx,ty]=home(k,Math.min(i,n-1),n);let t=live[s.id];
+function seedlings(list){const at=atStations(list),groups={};for(const s of list)if(!at[s.id])(groups[s.place]=groups[s.place]||[]).push(s);const seen=new Set();document.querySelectorAll('.more').forEach(e=>e.remove());
+  // settle(): put one Seedling at its target spot: a place in the row under its district name, or in front of a workstation
+  const settle=(s,k,i,tx,ty,hid)=>{seen.add(s.id);let t=live[s.id];
       if(!t){t=live[s.id]=figure(s);t.id=s.id;t.place=k;
         // A Seedling new to this session steps out of the Kernel's door, waits a moment in its glow, then walks down the ramp
         // to its place. Those already here when the page opens are simply placed, so loading never starts a parade.
@@ -1018,16 +1396,20 @@ function seedlings(list){const groups={};for(const s of list)(groups[s.place]=gr
         t.g.setAttribute('transform',place_(t.x,t.y))}
       else if(t.lookSig!==JSON.stringify(s.look||{})){const old=t;t=live[s.id]=figure(s);Object.assign(t,{id:s.id,x:old.x,y:old.y,place:old.place,path:old.path});   // a new look: redraw in place
         t.g.setAttribute('transform',old.g.getAttribute('transform'));old.g.remove()}
-      everSeen.add(s.id);t.hidden=i>=n;t.s=s;const hk=s.hat||(s.look&&s.look.nohat?'':s.job);if(t.job!==hk){t.job=hk;hat(t.g.querySelector('.hat'),hk)}t.g.querySelector('.shirt').setAttribute('fill',(s.look&&s.look.outfit)||MOOD[s.mood]||'#b8f4d0');t.g.querySelector('.ini').textContent=(s.name||'?').slice(0,1).toUpperCase();
+      everSeen.add(s.id);t.hidden=hid;t.s=s;const hk=s.hat||(s.look&&s.look.nohat?'':s.job);if(t.job!==hk){t.job=hk;hat(t.g.querySelector('.hat'),hk)}t.g.querySelector('.shirt').setAttribute('fill',(s.look&&s.look.outfit)||MOOD[s.mood]||'#b8f4d0');t.g.querySelector('.ini').textContent=(s.name||'?').slice(0,1).toUpperCase();
       t.g.querySelector('.label').setAttribute('y',13+(i%2)*11);   // neighbours' names alternate height so they never overlap
       t.g.querySelector('.label').textContent=SHOW_NAMES?(s.badge?s.badge+' ':'')+(s.name.length>8?s.name.slice(0,7)+'…':s.name):'';t.g.querySelector('.act').textContent=s.emoji||'';
       if(t.place!==k){t.path=[...route(t.place,k),[tx,ty]];t.place=k;t.g.style.display='';hushBubble(t)}else if(!t.path.length&&(Math.abs(t.x-tx)>1||Math.abs(t.y-ty)>1))t.path=[[tx,ty]];
       else if(t.path.length)t.path[t.path.length-1]=[tx,ty];
-      if(!t.path.length)t.g.style.display=t.hidden?'none':''});
+      if(!t.path.length)t.g.style.display=t.hidden?'none':''};
+  for(const k in groups){const all=groups[k].sort((a,b)=>(isNew(b)-isNew(a))||(a.id<b.id?-1:1)),n=Math.min(all.length,PER_PLACE),extra=all.length-n;
+    all.forEach((s,i)=>{const [tx,ty]=home(k,Math.min(i,n-1),n);settle(s,k,i,tx,ty,i>=n)});
     if(extra>0){const [x,y]=home(k,n-1,n),z=TK(),b=Math.max(.85,z),m=el('g',{class:'more',transform:`translate(${(x+12*z+2).toFixed(1)},${(y-17*z).toFixed(1)}) scale(${b.toFixed(3)})`},tokens);
       el('rect',{x:0,y:-11,width:34,height:22,rx:11,fill:'#6b3fd1',stroke:'#fff','stroke-width':2},m);el('text',{x:17,y:0},m).textContent='+'+extra}}
+  for(const s of list){const w=at[s.id];if(!w)continue;settle(s,s.place,0,w.x,w.y,false);const t=live[s.id];t.look=w.look;t.work=true;workFx(t,w.fx,w.side)}   // at their workstations
+  for(const s of list)if(!at[s.id]&&live[s.id]&&live[s.id].work){const t=live[s.id];t.look=null;t.work=false;workFx(t,null,0)}
   for(const id in live)if(!seen.has(id)){live[id].g.remove();delete live[id]}
-  walk()}
+  crowns(lastData||{});walk()}
 const everSeen=new Set();   // every Seedling this page has shown, so only newcomers step out of the Kernel
 const fromKernel=id=>!first&&!everSeen.has(id);   // new during this session: not on the first render, and never shown before
 // The Kernel's welcome: a ring of cyan light spreads from its doorway and the pod's own ring flares.
@@ -1037,8 +1419,8 @@ function spawnGlow(){const [x,y]=KDOOR,g=el('g',{class:'spawn'});tokens.insertBe
 let walking=false,lastT=0;
 function walk(){if(walking)return;walking=true;lastT=performance.now();requestAnimationFrame(stepAll)}
 function stepAll(now){const dt=Math.min(.1,(now-lastT)/1000);lastT=now;let any=false;
-  for(const id in live){const t=live[id];if(!t.path.length){if(t.g.classList.contains('walking')){t.g.classList.remove('walking');face(t,0,0)}continue}any=true;t.g.style.display='';
-    if(t.wait){if(now<t.wait)continue;t.wait=0}t.g.classList.add('walking');
+  for(const id in live){const t=live[id];if(!t.path.length){if(t.g.classList.contains('walking')){t.g.classList.remove('walking');face(t,0,0)}if(t.look)face(t,t.look[0],t.look[1]);if(t.g.classList.contains('working')!==!!t.work)t.g.classList.toggle('working',!!t.work);continue}any=true;t.g.style.display='';
+    if(t.wait){if(now<t.wait)continue;t.wait=0}t.g.classList.add('walking');t.g.classList.remove('working');
     let left=46*dt;while(left>0&&t.path.length){const [px,py]=t.path[0],dx=px-t.x,dy=py-t.y,dist=Math.hypot(dx,dy);face(t,dx,dy);if(dist<=left){t.x=px;t.y=py;left-=dist;t.path.shift()}else{t.x+=dx/dist*left;t.y+=dy/dist*left;left=0}}
     t.g.setAttribute('transform',place_(t.x,t.y));if(id===speaking)dropBubbleIfHidden(t);if(!t.path.length&&t.hidden&&!t.g.querySelector('.bubble'))t.g.style.display='none'}
   sortTokens();if(any)requestAnimationFrame(stepAll);else walking=false}
@@ -1174,7 +1556,8 @@ function hull(p){p=p.slice().sort((a,b)=>a[0]-b[0]||a[1]-b[1]);const cross=(o,a,
   for(const q of p){while(lo.length>1&&cross(lo[lo.length-2],lo[lo.length-1],q)<=0)lo.pop();lo.push(q)}for(const q of p.reverse()){while(hi.length>1&&cross(hi[hi.length-2],hi[hi.length-1],q)<=0)hi.pop();hi.push(q)}
   return lo.slice(0,-1).concat(hi.slice(0,-1))}
 function shadows(sunT,strength){const path=document.getElementById('shadows');if(sunT==null||strength<=0||QUALITY==='low'){path.setAttribute('opacity',0);return}
-  const sig=sunT.toFixed(2)+':'+CASTERS.length;path.setAttribute('opacity',(.42*strength).toFixed(2));if(sig===shadowSig)return;shadowSig=sig;
+  if(CASTERS.some(c=>!c[2].isConnected))CASTERS.splice(0,CASTERS.length,...CASTERS.filter(c=>c[2].isConnected));   // buildings taken down stop casting
+  const sig=sunT.toFixed(2)+':'+casterVer+':'+CASTERS.length;path.setAttribute('opacity',(.42*strength).toFixed(2));if(sig===shadowSig)return;shadowSig=sig;
   const elev=Math.max(.12,Math.sin(Math.PI*sunT)),len=Math.min(2.6,.6/elev),dx=.95*len,dy=.18*len+.08;   // always away from the sun on the upper left
   path.setAttribute('d',CASTERS.map(([base,h])=>'M'+hull(base.concat(base.map(([x,y])=>[x+dx*h,y+dy*h]))).map(q=>q[0].toFixed(1)+' '+q[1].toFixed(1)).join('L')+'Z').join(''))}
 function particles(kind,n,make){if(QUALITY==='low')return;for(let k=0;k<n;k++){const p=document.createElement('i');p.className='particle';make(p,k);document.getElementById('wrap').appendChild(p)}}
@@ -1564,7 +1947,7 @@ poll(d=>{try{
   const tier=d.tier_index||0;if(!first&&lastTier>=0&&tier>lastTier)toast(`🏙️ New Eridian is now a ${d.tier_name||d.tier}!`);
   if(tier!==lastTier){streets(d,tier);lastTier=tier}for(const k in CELLS)district(k,(d.districts||{})[k]||{},tier);labelsFor(d);tidyLabels();
   sky(hour,weatherKey);night=darkness>.3;effects(d.phase);glitches(weatherKey==='sensor_noise');shuttles(weatherKey==='busy_spaceport'&&darkness<.6);
-  latest=d.seedlings||[];lastData=d;civic(d);liveTown(d);statPanel(d);fitHome();welcomeNew(d);seedlings(latest);if(first){first=false;caption()}
+  latest=d.seedlings||[];lastData=d;civic(d);townLife(d);liveTown(d);statPanel(d);fitHome();welcomeNew(d);seedlings(latest);if(first){first=false;caption()}
   document.getElementById('tier').textContent=`${d.tier_name||d.tier||'Outpost'} · ${d.population||0} citizens`;
   const hol=document.getElementById('hol');if(festival&&HOLIDAYS[festival.name]){const n=festival.days_to_holiday;hol.style.setProperty('--hol',HOLIDAYS[festival.name][1][0]);
     const GREET={'Christmas':'Merry Christmas!','Memorial Day':'Memorial Day','Thanksgiving':'Happy Thanksgiving!'};hol.textContent=`${festival.emoji} `+(n===0?(GREET[festival.name]||`Happy ${festival.name}!`):n>0?`${festival.name} in ${n} day${n===1?'':'s'}`:`${festival.name} festival`)}else hol.textContent='';

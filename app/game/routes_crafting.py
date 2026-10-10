@@ -174,6 +174,13 @@ def make(channel:str,uid:str,name:str="Citizen",recipe:str="",provider:str="twit
             return PlainTextResponse(noted(body))
         return response
 
+def legacy_station_used(db,p,recipe):
+    """Tell the stream map which workstation an older New Eridian craft used (it never raises)."""
+    from .. import stream_overlay
+    try:tag=crafting_progression.legacy_station(recipe)
+    except Exception:return
+    stream_overlay.station_used(db,p.channel_id,tag)
+
 def craft_legacy(db,p,channel,recipe,provider,life):
     """New Eridian equipment without a catalog twin; ingredients are catalog items."""
     station_block=crafting_progression.legacy_gate(db,p,recipe,provider)
@@ -189,7 +196,7 @@ def craft_legacy(db,p,channel,recipe,provider,life):
         add_quality_gear(db,p,recipe,quality)
         p._practice_quality={"Standard":1.0,"Fine":1.15,"Excellent":1.3,"Masterwork":1.5}.get(quality,1.1)
         rewards=craft_reward(db,p,society(db,channel),"quality",recipe)
-        craft_record(db,p,recipe,quality);main.extras.goal_crafted(db,p,recipe)
+        craft_record(db,p,recipe,quality);main.extras.goal_crafted(db,p,recipe);legacy_station_used(db,p,recipe)
         spend_life_for_action(life,"make")
         tier=QUALITY_TIERS[quality]
         effects=[]
@@ -219,7 +226,7 @@ def craft_legacy(db,p,channel,recipe,provider,life):
     if missing:return out("⚙️ Still needed: "+", ".join(missing)+". Nothing spent."+missing_material_sources(db,p,costs,provider))
     for key,amount in costs.items():material_change(db,p,key,-amount)
     material_change(db,p,recipe,1)
-    rewards=craft_reward(db,p,society_state,"core",recipe);craft_record(db,p,recipe);main.extras.goal_crafted(db,p,recipe)
+    rewards=craft_reward(db,p,society_state,"core",recipe);craft_record(db,p,recipe);main.extras.goal_crafted(db,p,recipe);legacy_station_used(db,p,recipe)
     spend_life_for_action(life,"make");db.commit();system_notes=craft_system_notes(db,p,society_state)
     goal_note=progress_daily(db,p,"make")+goal_progress(db,p,"make","fabrication",crafted=True)+tutorial_advance(db,p,"craft")
     milestone=achieve(db,p);determination_note=determination_clear(db,p,"fabrication")

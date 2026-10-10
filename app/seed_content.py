@@ -220,7 +220,9 @@ def craft(db,p,key,provider):
     found=practice.find(db,p,*(line or ('fabrication',None)))
     life=life_state(db,p);spend_life_for_action(life,'make')
     # Every successful catalog craft (button, chat, queue attempt) passes here: crafting the goal completes it.
-    p.actions+=1;p.successes+=1;craft_record(db,p,key);extras.goal_crafted(db,p,key);db.commit()
+    p.actions+=1;p.successes+=1;craft_record(db,p,key);extras.goal_crafted(db,p,key)
+    from . import stream_overlay
+    stream_overlay.station_used(db,p.channel_id,chosen or (cp.tags(key) or [''])[0]);db.commit()   # the map builds each workstation the first time it is used
     colony=work_counts(db,p,SKILLS.get(req,('fabrication',None))[0],contract='make',action='make',
                          detail='made '+', '.join(f"{item_label(k)} ×{v}" for k,v in outputs.items()))
     return ('✅ CRAFTING COMPLETE\n\nOUTPUT\n'+ '\n'.join(f"• {item_label(k)} ×{v}" for k,v in outputs.items())+
