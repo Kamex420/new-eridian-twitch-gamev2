@@ -1,5 +1,9 @@
 # Release notes
 
+## Behind the scenes: steadier automatic tests
+
+- The automatic tests download their database from a mirror instead of Docker Hub (whose failed downloads held up a release) and run on a fixed Ubuntu version. No gameplay changes.
+
 ## Cleaner Skills and Orders text
 
 - **You › Skills drops the old setup notes and the /training steps.** The Train button beside each skill does that now; the XP each level needs and when specializations unlock are still there.

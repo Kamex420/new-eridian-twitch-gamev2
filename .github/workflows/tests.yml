@@ -6,11 +6,14 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    # Pinned: GitHub starts moving ubuntu-latest to Ubuntu 26 on 2026-10-19.
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     services:
       postgres:
-        image: postgres:16
+        # The official postgres:16 image, pulled from AWS's mirror of Docker Hub's library
+        # (Docker Hub pulls failed four times in a row on 2026-10-09).
+        image: public.ecr.aws/docker/library/postgres:16
         env:
           POSTGRES_USER: game
           POSTGRES_PASSWORD: game
