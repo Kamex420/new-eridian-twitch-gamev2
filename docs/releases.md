@@ -1,5 +1,9 @@
 # Release notes
 
+## Behind the scenes: slash command check passes again
+
+- The check after each update no longer trips over emoji that Discord stores slightly differently in the /make, /use, /catalog and /mod lists, so it can finish and clear out old leftover copies of commands. No gameplay changes.
+
 ## Behind the scenes: clearer slash command check
 
 - When the game updates its slash commands on Discord, the check afterwards now lists every command that doesn't match, and exactly where, instead of stopping at the first one. No gameplay changes.

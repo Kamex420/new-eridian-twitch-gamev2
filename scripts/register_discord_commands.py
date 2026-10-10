@@ -11,13 +11,29 @@ import requests
 from app.command_catalog import commands
 
 
-def signature(command):
+VARIATION_SELECTOR = chr(0xFE0F)  # Follows some emoji (⚙️ 🏗️ 🛏️); invisible.
+
+
+def _fields(command, choice_name=lambda name: name):
     keys = ('name', 'type', 'required', 'autocomplete', 'choices', 'options',
             'min_value', 'max_value', 'min_length', 'max_length')
+
+    def choice(row):
+        return {**row, 'name': choice_name(row['name'])} if isinstance(row.get('name'), str) else row
+
     def option(row):
-        return {k: ([option(x) for x in row[k]] if k == 'options' else row[k])
+        return {k: ([option(x) for x in row[k]] if k == 'options' else
+                    [choice(x) for x in row[k]] if k == 'choices' else row[k])
                 for k in keys if k in row and row[k] not in (False, None, [])}
     return (command['description'], [option(x) for x in command.get('options', [])])
+
+
+def signature(command):
+    """What the registrar compares between the catalog and Discord's saved command.
+
+    Discord saves choice names without the emoji variation selector ('⚙️ Components' comes back as
+    '⚙ Components'), so it is dropped on both sides, for choice names only; any other difference still fails."""
+    return _fields(command, lambda name: name.replace(VARIATION_SELECTOR, ''))
 
 
 class _Missing:
@@ -31,16 +47,19 @@ MISSING = _Missing()
 def differences(catalog, saved):
     """Every place where Discord's saved command differs from the catalog, as (path, catalog value, Discord value).
 
-    Walks the fields signature() compares. Options are paired by name and choices by value, so one changed
-    label shows up as its own path (/make › option 'category' › choices › choice 'parts' › name)."""
+    Compares what signature() compares and reports the values as they were sent and saved. Options are paired by
+    name and choices by value, so one changed label shows up as its own path
+    (/make › option 'category' › choices › choice 'parts' › name)."""
     found = []
 
-    def compare(path, mine, theirs):
+    def compare(path, mine, theirs, raw_mine, raw_theirs):
+        # mine/theirs are signature() fields; raw_mine/raw_theirs are the same fields before normalizing.
         if mine == theirs:
             return
         if isinstance(mine, dict) and isinstance(theirs, dict):
             for key in [*mine, *(k for k in theirs if k not in mine)]:
-                compare(f'{path} › {key}', mine.get(key, MISSING), theirs.get(key, MISSING))
+                compare(f'{path} › {key}', mine.get(key, MISSING), theirs.get(key, MISSING),
+                        raw_mine.get(key, MISSING), raw_theirs.get(key, MISSING))
             return
         rows = isinstance(mine, list) and isinstance(theirs, list) and all(
             isinstance(r, dict) for r in mine + theirs)
@@ -49,20 +68,24 @@ def differences(catalog, saved):
             label = 'choice' if key == 'value' else 'option'
             ids_mine, ids_theirs = [r.get(key) for r in mine], [r.get(key) for r in theirs]
             if len(set(map(repr, ids_mine))) == len(mine) and len(set(map(repr, ids_theirs))) == len(theirs):
-                by_mine, by_theirs = dict(zip(ids_mine, mine)), dict(zip(ids_theirs, theirs))
+                by_mine = dict(zip(ids_mine, zip(mine, raw_mine)))
+                by_theirs = dict(zip(ids_theirs, zip(theirs, raw_theirs)))
                 for ident in [*ids_mine, *(i for i in ids_theirs if i not in by_mine)]:
-                    compare(f'{path} › {label} {ident!r}', by_mine.get(ident, MISSING), by_theirs.get(ident, MISSING))
+                    a, raw_a = by_mine.get(ident, (MISSING, MISSING))
+                    b, raw_b = by_theirs.get(ident, (MISSING, MISSING))
+                    compare(f'{path} › {label} {ascii(ident)}', a, b, raw_a, raw_b)
                 if [i for i in ids_mine if i in by_theirs] != [i for i in ids_theirs if i in by_mine]:
                     found.append((f'{path} › order', ids_mine, ids_theirs))
                 return
-        found.append((path, mine, theirs))
+        found.append((path, raw_mine, raw_theirs))
 
     mine, theirs = signature(catalog), signature(saved)
+    raw_mine, raw_theirs = _fields(catalog), _fields(saved)
     name = '/' + catalog['name']
-    compare(f'{name} › description', mine[0], theirs[0])
-    compare(name, mine[1], theirs[1])
+    compare(f'{name} › description', mine[0], theirs[0], raw_mine[0], raw_theirs[0])
+    compare(name, mine[1], theirs[1], raw_mine[1], raw_theirs[1])
     if mine != theirs and not found:
-        found.append((name, mine, theirs))
+        found.append((name, raw_mine, raw_theirs))
     return found
 
 
