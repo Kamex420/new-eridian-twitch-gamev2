@@ -29,8 +29,8 @@ jobs:
       # tests/test_postgres.py runs the game against PostgreSQL (the rest of the suite uses SQLite).
       TEST_POSTGRES_URL: postgresql://game:game@localhost:5432/game_test
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
           cache: pip

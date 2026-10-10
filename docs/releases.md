@@ -1,5 +1,9 @@
 # Release notes
 
+## Behind the scenes: test tools updated
+
+- The automatic tests use the current versions of GitHub's checkout and Python setup tools, ahead of GitHub retiring the old ones. No gameplay changes.
+
 ## Behind the scenes: steadier automatic tests
 
 - The automatic tests download their database from a mirror instead of Docker Hub (whose failed downloads held up a release) and run on a fixed Ubuntu version. No gameplay changes.
