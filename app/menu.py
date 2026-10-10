@@ -1045,6 +1045,9 @@ def _buttons_rows(controls):
             [{'match': c[0], 'button': c[1]} for c in shown])
 
 
+FULFILL_BY_BUTTON = "Press an order's Deliver button to hand it in; it's green once you have everything."
+
+
 def order_controls(db, p, owner):
     """(rows, items) for the Orders screen: a Deliver button for each order not delivered today, beside its line in the newer
     layout and in rows labelled with the order's name in the old one. Green when you have everything, grey while something is
@@ -1894,6 +1897,10 @@ def show(db, p, owner, command, options, area, name, key=''):
         elif key in {'orders', 'me_skills'}:
             # A button for each order (Deliver) or trainable skill (Train): beside its line, and in rows for the old layout.
             lead, items = (order_controls if key == 'orders' else skill_controls)(db, p, owner)
+            if key == 'orders' and items:
+                # With Deliver buttons on the screen, point to them rather than to the typed command.
+                from .game.routes_market import FULFILL_BY_COMMAND
+                text = text.replace(FULFILL_BY_COMMAND, FULFILL_BY_BUTTON)
         rows = lead + area_rows(owner, area, ctx, rows=max(1, 3 - len(lead))) + [bottom]
     data = reply(text, legacy, rows)
     if key in {'orders', 'me_skills'}:

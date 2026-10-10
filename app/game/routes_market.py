@@ -26,6 +26,9 @@ from .accounts import achieve
 from .routes_crafting import craft_missing_materials, task_readiness_warning
 from .. import main      # app.main: names from later modules and settings changed at runtime
 
+# How the Orders text says to hand an order in; the menu swaps it for FULFILL_BY_BUTTON when Deliver buttons are shown.
+FULFILL_BY_COMMAND = "Use /seedindustries action:Fulfill item:<order key>."
+
 @app.get("/api/v1/marketboard")
 @game_transaction
 def marketboard(channel:str,provider:str="twitch"):
@@ -93,7 +96,7 @@ def seed_industries(channel:str,uid:str,name:str="Citizen",action:str="browse",i
                     rows.append(f"• {state} — **{data['name']}** (`{order_key}`)\n  Deliver: {requirement_text(data['cost'])}\n  Reward: {numbers['sc']} SC · {numbers['contribution']} Contribution · {numbers['development']} Development · Crafting/Commerce practice (base 2/1; adjusted by conditions)\n  Purpose: {data['purpose']}")
                 discord=(f"🏭 SEED INDUSTRIES — DAY {clock['day']} PRODUCTION ORDERS\n\n"
                          "Three rotating contracts connect gathering, manufacturing, and New Eridian's needs. Each may be completed once per citizen per Avesta day.\n\n"+
-                         "\n\n".join(rows)+"\n\nUse /seedindustries action:Fulfill item:<order key>. Buying every input costs more than the order pays; manufacturing creates the profit.")
+                         "\n\n".join(rows)+f"\n\n{FULFILL_BY_COMMAND} Buying every input costs more than the order pays; manufacturing creates the profit.")
                 twitch=f"🏭 Day {clock['day']} Orders | "+" | ".join(f"{key}: {requirement_text(data['cost'])} → {production_order_numbers(data)['sc']} SC" for key,data in orders)
                 return platform_response(provider,discord,twitch)
             match=next(((order_key,data) for order_key,data in orders if order_key==key),None)

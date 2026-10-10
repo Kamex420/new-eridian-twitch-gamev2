@@ -6,7 +6,7 @@ from test_colony import m, reset
 from test_workbench_ui import citizen, W, LUMBER, CAMPFIRE
 import test_menu_polish as polish
 from app import crafting_progression as cp, extras, menu, shopping_list, ui, workbench as wb, layout_v2 as v2, seed_content as s
-from app.game import cooldowns_materials as cm
+from app.game import cooldowns_materials as cm, routes_market
 from app.game.training_and_items import training_skills
 from app.game.world import society_tier_index, world_clock
 
@@ -198,6 +198,31 @@ def test_the_orders_text_is_unchanged_and_the_slash_command_still_works(owner):
     assert order['name'] in text and 'Deliver:' in text
     give(order)
     assert 'PRODUCTION ORDER COMPLETE' in m._discord_call_internal('seedindustries', '111', 'Kam', {'action': 'fulfill', 'item': key}, '')
+
+
+def test_the_orders_view_points_to_the_deliver_buttons_instead_of_the_command(owner):
+    orders()
+    for newer in (True, False):
+        text = said(screen(ui.cid('111', 'mv', 'orders'), newer=newer))
+        assert menu.FULFILL_BY_BUTTON in text, newer
+        assert '/seedindustries' not in text and 'Fulfill Production Order' not in text, newer
+        assert 'Buying every input costs more than the order pays; manufacturing creates the profit.' in text      # the rest of the sentence stays
+
+
+def test_the_orders_view_keeps_the_command_line_once_every_order_is_delivered(owner):
+    for key, _ in orders():
+        complete(key)
+    data = screen(ui.cid('111', 'mv', 'orders'), newer=True)
+    assert not [b for b in polish.buttons(data) if b['label'].startswith('Deliver')]
+    assert menu.FULFILL_BY_BUTTON not in said(data) and '/seedindustries' in said(data)      # no button to point to
+
+
+def test_the_typed_orders_command_still_says_to_use_the_fulfill_command(owner):
+    orders()
+    text = m._discord_call_internal('seedindustries', '111', 'Kam', {'action': 'orders'}, '')
+    assert routes_market.FULFILL_BY_COMMAND == 'Use /seedindustries action:Fulfill item:<order key>.'
+    assert routes_market.FULFILL_BY_COMMAND in text and menu.FULFILL_BY_BUTTON not in text
+    assert text.endswith(routes_market.FULFILL_BY_COMMAND + ' Buying every input costs more than the order pays; manufacturing creates the profit.')
 
 
 # ---------------------------------------------------------------- 2. Buy: categories, then a category's items
@@ -581,6 +606,14 @@ def test_each_trainable_skill_has_a_train_button_beside_its_line(owner):
         assert b['style'] == (3 if ready else 2)                       # green while a task is ready now
     assert {b['style'] for _, b in beside} == {2, 3}
     assert not [b for b in polish.buttons(data) if b['label'].startswith('Train ')]       # the old layout's copies are gone
+
+
+def test_the_skills_reply_has_no_setup_notes_or_training_steps(owner):
+    text = m._discord_call_internal('me', '111', 'Kam', {'section': 'skills'}, '')
+    assert 'Skills' in text and '15 XP per level' in text and 'Specializations unlock' in text
+    assert 'reference screenshots' not in text and '/training' not in text
+    shown = said(screen(ui.cid('111', 'mv', 'me_skills'), newer=True))
+    assert '15 XP per level' in shown and 'reference screenshots' not in shown and '/training' not in shown
 
 
 def test_skills_with_no_training_have_no_button(owner):

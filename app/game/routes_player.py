@@ -87,8 +87,7 @@ def skills(channel:str,uid:str,name:str="Citizen",provider:str="twitch"):
         specs={r.skill:SPECIALIZATIONS.get(r.skill,{}).get(r.choice,r.choice) for r in db.execute(select(Specialization).where(Specialization.channel_id==channel,Specialization.canonical_uid==p.twitch_uid)).scalars()}
         rows=[f"• {label}: Lv. {lvl(skill_xp(p,key))} · {skill_xp(p,key)} XP"+(f" · {specs[key]}" if key in specs else "") for key,label in SKILL_LABELS.items()]
         text=f"🧬 {p.display_name} — Skills\n\n"+"\n".join(rows)
-        text+="\n\nThe eight skill families use the names in your reference screenshots. Research, Logistics, Frontier Operations and Commerce remain minigame skills. Existing XP is preserved; new skills and branch practice start at zero."
-        text+="\nLevel 2: 5 XP; level 3: 12 XP; level 4: 22 XP; level 5: 35 XP; then 15 XP per level. Open /training and select Skill to view branches, requirements, jobs and your branch levels. Choose Task only when ready to work. Specializations unlock at main skill level 10; specialist medical branches require Medicine 5."
+        text+="\n\nLevel 2: 5 XP; level 3: 12 XP; level 4: 22 XP; level 5: 35 XP; then 15 XP per level. Specializations unlock at main skill level 10; specialist medical branches require Medicine 5."
         return PlainTextResponse(text) if provider=="discord" else out("Skills | "+" · ".join(rows))
 
 

@@ -1,5 +1,10 @@
 # Release notes
 
+## Cleaner Skills and Orders text
+
+- **You › Skills drops the old setup notes and the /training steps.** The Train button beside each skill does that now; the XP each level needs and when specializations unlock are still there.
+- **Orders points to its Deliver buttons** instead of telling you to type /seedindustries.
+
 ## Menu: a button beside every order, item and skill
 
 - **Orders has a Deliver button beside each order.** It's green when you have everything, grey while something is missing, and gone once you've delivered that order today. It asks you to confirm first, like Deliver an order.
