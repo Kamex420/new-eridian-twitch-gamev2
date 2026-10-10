@@ -1,5 +1,9 @@
 # Release notes
 
+## Stream map: busier workshops
+
+- **Workstations now stand as each district grows** (more machines at higher levels, crafting tables always), and Seedlings who are gathering, crafting or running a queue walk to a machine and work there instead of waiting under the district name.
+
 ## The stream map looks like a SEED colony
 
 - **Real workstations stand on the map.** Each workstation the colony has used (Crafting Table, Kiln, Furnace, Loom and the rest) gets its own building in the matching district, and a new one rises with a toast like "🔧 New Eridian built its first Kiln".

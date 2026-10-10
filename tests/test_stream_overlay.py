@@ -588,3 +588,43 @@ def test_text_signs_sit_above_everything_and_step_aside_for_the_frame_bars_and_s
     assert speak.count('tidyLabels()') >= 4 and 'setTimeout(tidyLabels' in speak
     # signs fit their words, and a rebuilt district takes its signs with it
     assert 'function fitSign(' in page and 'dg.fx[id].top.remove()' in page
+
+
+def test_workstations_stand_as_a_district_grows_lowest_tier_first():
+    import re
+    from app import crafting_progression as cp
+    tier = {re.sub(r'^TAG_MACH(INE)?_', '', t): v['tier'] for t, v in cp.STATIONS.items()}
+    for district in ('industrial_ward', 'agricultural_district', 'residential_ring', 'research_block', 'frontier_edge'):
+        listed = re.findall(r"'([0-9A-Z_]+)'", re.search(district + r":\[([^\]]*)\]", so.TOWN_JS).group(1))
+        assert [tier[k] for k in listed] == sorted(tier[k] for k in listed), district   # a fixed tier-then-list order
+    town = so.TOWN_JS[so.TOWN_JS.index('function stationsTown('):so.TOWN_JS.index('// Which workstation fits')]
+    # an open district shows its first 2 + level stations, the crafting tables always, and any station the colony has used; a closed one none
+    assert 'grown=2+(levels[k]||1)' in town and '!(n<grown||s||TABLES.includes(id))' in town and '!dg.unlocked' in town
+    assert "const TABLES=['SURVIVAL_WORKBENCH','CRAFTING_TABLE_V1','CRAFTING_TABLE_V2','CRAFTING_TABLE_V3']" in so.TOWN_JS
+    # the "first built" toast is only for a station used for the first time
+    assert 'if(s&&!seenSt.has(id)&&!first)fresh.push' in town
+
+
+def test_queue_seedlings_work_at_their_ring_and_busy_seedlings_find_a_station():
+    import json, re, shutil, subprocess, tempfile, pytest
+    node = shutil.which('node')
+    if not node:
+        pytest.skip('node is not installed')
+    t = so.TOWN_JS
+    js = ('const iso=(i,j)=>[i,j],STN={},stand=(id,k)=>STN[id]={k,ready:true,i:0,j:0};\n' + re.search(r'^const rings=.*$', t, re.M).group(0) + '\n'
+          + t[t.index('const WORDS='):t.index('const standing=')] + t[t.index('const STAY='):t.index('function atStations(')]
+          + "stand('CAMPFIRE','residential_ring');stand('TABLE_SAW','frontier_edge');stand('MASONRY','frontier_edge');stand('BASIC_FURNACE','industrial_ward');QUEUE_AT.fxtkil='CAMPFIRE';\n"
+          "const S=(name,place,activity)=>stationsFor({id:name,name,place,activity,job:''});\n"
+          "console.log(JSON.stringify([S('FX-TKIL','agricultural_district','Gathering Crops'),S('Cy','frontier_edge','Gathering Lumber'),"
+          "S('Ada','agricultural_district','Gathering Lumber'),S('Bo','agricultural_district','Gathering Crops'),S('Eli','industrial_ward','Relaxing')]))")
+    with tempfile.NamedTemporaryFile('w', suffix='.js', delete=False) as f:
+        f.write(js)
+    result = subprocess.run([node, f.name], capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr[:400]
+    queue, own, words, none, idle = json.loads(result.stdout)
+    assert queue == ['CAMPFIRE']                                  # a queue's Seedling goes to its ring's station, whatever its place (its name cleaned)
+    assert own[0] == 'TABLE_SAW' and set(own) == {'TABLE_SAW', 'MASONRY'}   # a station in its own district, the one that fits its words first
+    assert words == ['TABLE_SAW']                                 # none in its district: one anywhere whose words fit
+    assert none == [] and idle == []                              # nothing fits: the row; not busy: the row
+    # rings fall back to the Kernel only when no station stands anywhere; Seedlings at a station in another district walk there
+    assert 'standing(Object.values(FIXTURES).flat())' in t and 'settle(s,w.k,0,w.x,w.y,false)' in so.TOWN_JS + map_page()

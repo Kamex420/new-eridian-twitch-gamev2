@@ -740,14 +740,16 @@ const ST={
 };
 """
 TOWN_JS = r"""
-// ---- fixtures: what stands on a district's first slots. Workstations (once the colony has used them), the price board, the water tower,
+// ---- fixtures: what stands on a district's first slots. Workstations (as the district grows, and any the colony has used), the price board, the water tower,
 // the project site and the statue each claim a slot (a filler building there is removed) and are redrawn only when their signature changes.
 const stKey=t=>String(t||'').replace(/^TAG_MACH(INE)?_/,'');
-const FIXTURES={industrial_ward:['BASIC_FURNACE','FURNACE','BASIC_ANVIL','METALWORKING_BENCH','METAL_LATHE','ROLLING_MILL','WIRE_DRAWER','MINERAL_SEPARATOR','EXTRACTOR'],
-  agricultural_district:['SEED_SEPARATOR','GROWBOX','EXT_WATER','PROD_WATER_FILTRATION_SMALL','PROD_WATER_FILTRATION','FOOD_PROCESSOR','MILLING_MACHINE'],
-  residential_ring:['CAMPFIRE','STOVE','OVEN','WEAVING_LOOM','TAILORING_BENCH','SURVIVAL_WORKBENCH','CRAFTING_TABLE_V1','CRAFTING_TABLE_V2','CRAFTING_TABLE_V3'],
-  research_block:['CHEMISTRY_STATION','MEDICAL_FABRICATOR','ELECTRONICS_TABLE','3D_PRINTER','PLAXIN_SYNTHESIZER'],
-  frontier_edge:['SIMPLE_CARPENTRY_STATION','ADVANCED_CARPENTRY_STATION','TABLE_SAW','MASONRY','STONE_GRINDER','KILN','POTTERY_STATION']};
+// Each district's workstations, lowest tier first (the order they appear in as the district grows; a station's slot is its place in this list).
+const FIXTURES={industrial_ward:['BASIC_FURNACE','BASIC_ANVIL','METALWORKING_BENCH','WIRE_DRAWER','MINERAL_SEPARATOR','FURNACE','METAL_LATHE','ROLLING_MILL','EXTRACTOR'],
+  agricultural_district:['SEED_SEPARATOR','EXT_WATER','PROD_WATER_FILTRATION_SMALL','FOOD_PROCESSOR','PROD_WATER_FILTRATION','MILLING_MACHINE','GROWBOX'],
+  residential_ring:['SURVIVAL_WORKBENCH','CRAFTING_TABLE_V1','CAMPFIRE','WEAVING_LOOM','CRAFTING_TABLE_V2','STOVE','OVEN','TAILORING_BENCH','CRAFTING_TABLE_V3'],
+  research_block:['MEDICAL_FABRICATOR','CHEMISTRY_STATION','ELECTRONICS_TABLE','3D_PRINTER','PLAXIN_SYNTHESIZER'],
+  frontier_edge:['SIMPLE_CARPENTRY_STATION','MASONRY','KILN','POTTERY_STATION','ADVANCED_CARPENTRY_STATION','TABLE_SAW','STONE_GRINDER']};
+const TABLES=['SURVIVAL_WORKBENCH','CRAFTING_TABLE_V1','CRAFTING_TABLE_V2','CRAFTING_TABLE_V3'];   // the crafting tables always stand
 const STN={};   // the workstations standing now, by key
 const txt=(g,x,y,s,size=7,fill='#fffaf0',anchor='middle',cls='')=>{const t=el('text',{x,y,'font-size':size,'font-weight':800,fill,'text-anchor':anchor,'dominant-baseline':'central',class:cls},g);t.textContent=s;return t};
 const cut=(s,n)=>{s=String(s||'');return s.length>n?s.slice(0,n-1)+'…':s};
@@ -767,12 +769,14 @@ function fixture(k,id,spec,sig,draw,o={}){const dg=drawn[k];if(!dg||!dg.unlocked
       if(grow)setTimeout(()=>f.g&&f.g.classList.remove('rise'),1400)};
   if(o.build&&!first){mk(false);scaffold(f.g,i,j,false);sortCity(dg);setTimeout(()=>{if(dg.fx[id]===f&&f.sig===sig)paint(true)},4500)}else paint(false);
   return f}
-// Workstations: each one the colony has used appears in its district (scaffolding first if it was not there when the page opened).
+// Workstations stand as an open district grows: its first 2 + level stations, the crafting tables, and every station the colony has used
+// (scaffolding first if it was not there when the page opened). A closed district has none.
 const seenSt=new Set();
 function stationsTown(d){const have=new Map((d.stations||[]).map(s=>[stKey(s.tag),s])),fresh=[];
-  for(const k in FIXTURES)FIXTURES[k].forEach((id,n)=>{const s=have.get(id),dg=drawn[k];if(!s||!ST[id]||!dg||!dg.unlocked||!dg.slots)return;   // a closed district waits
-    const f=fixture(k,id,n,'built',ST[id].draw,{build:!dg.fx[id],cls:'st'});
-    if(f){STN[id]=f;if(!seenSt.has(id)&&!first)fresh.push([k,s.name||id])}});
+  for(const k in FIXTURES){const dg=drawn[k],grown=2+(levels[k]||1);if(!dg||!dg.unlocked||!dg.slots)continue;
+    FIXTURES[k].forEach((id,n)=>{const s=have.get(id);if(!ST[id]||!(n<grown||s||TABLES.includes(id)))return;
+      const f=fixture(k,id,n,'built',ST[id].draw,{build:!dg.fx[id],cls:'st'});
+      if(f){STN[id]=f;if(s&&!seenSt.has(id)&&!first)fresh.push([k,s.name||id])}})}   // the toast is only for a station used for the first time
   for(const id of have.keys())seenSt.add(id);   // announced once, and never for stations that were already there when the page opened
   if(fresh.length)toast(fresh.length===1?`🔧 New Eridian built its first ${fresh[0][1]}`:`🔧 New Eridian built ${fresh.length} new workstations`,fresh[0][0])}
 // Which workstation fits some words (a Seedling's activity or a queue's task): the first rule whose station stands.
@@ -794,14 +798,14 @@ const TASK_AT=[[/farm|crop|harvest|water|cultiv|seed|forage|food|cook/i,'agricul
 const standing=ids=>(ids||[]).find(id=>STN[id]&&STN[id].ready);
 // Work rings: a progress ring above the workstation each running queue uses (the server names the station for a craft, else words decide, else the
 // district's first station, else the Kernel). The station is "busy" while a ring is on it.
-const rings={};
+const rings={},QUEUE_AT={},clean=s=>String(s||'').toLowerCase().replace(/[^a-z0-9]/g,'');   // QUEUE_AT: a queue's Seedling (cleaned name) → its ring's station
 function ringAnchor(w){let id=standing([stKey(w.station)]);
   if(!id)for(const [re,ids] of WORDS)if(re.test(w.task||'')&&(id=standing(ids)))break;
   if(!id){const row=TASK_AT.find(([re])=>re.test(w.task||''));id=standing(FIXTURES[row?row[1]:'industrial_ward'])||standing(Object.values(FIXTURES).flat())}
   if(id){const f=STN[id],[x,y]=sc(f.i,f.j);return {id,x,y:y-(f.h||20)-12}}
   const [kx,ky]=iso(...KERNEL);return {id:'',x:kx,y:ky-92}}
-function workRings(d){const list=(d.working||[]).slice(0,6),live=document.getElementById('live'),keep=new Set(),busy=new Set(),stack={};
-  for(const w of list){const a=ringAnchor(w),key=w.name+'|'+w.task,n=stack[a.id||'kernel']=(stack[a.id||'kernel']||0)+1;keep.add(key);if(a.id)busy.add(a.id);
+function workRings(d){const list=(d.working||[]).slice(0,6),live=document.getElementById('live'),keep=new Set(),busy=new Set(),stack={};for(const n in QUEUE_AT)delete QUEUE_AT[n];
+  for(const w of list){const a=ringAnchor(w),key=w.name+'|'+w.task,n=stack[a.id||'kernel']=(stack[a.id||'kernel']||0)+1;keep.add(key);if(a.id){busy.add(a.id);QUEUE_AT[clean(w.name)]=QUEUE_AT[clean(w.name)]||a.id}
     const pct=Math.round(100*Math.min(1,(w.done||0)/Math.max(1,w.total||1))),label=`${cut(w.name,10)} · ${cut(w.task,14)} ${w.done}/${w.total}`;let r=rings[key];
     if(!r){const g=el('g',{class:'wring'},live);el('circle',{r:6,fill:'rgba(8,13,39,.82)',stroke:'rgba(255,255,255,.25)','stroke-width':2.4},g);
       const arc=el('circle',{r:6,fill:'none',stroke:'#7ee3b0','stroke-width':2.4,pathLength:100,'stroke-linecap':'round',transform:'rotate(-90)',class:'arc'},g),lab=el('g',{class:'rl tl'},g);
@@ -811,19 +815,21 @@ function workRings(d){const list=(d.working||[]).slice(0,6),live=document.getEle
     r.g.setAttribute('transform',`translate(${a.x.toFixed(1)},${(a.y-(n-1)*(CARD?15:25)).toFixed(1)})`)}
   for(const key in rings)if(!keep.has(key)){rings[key].g.remove();delete rings[key]}
   for(const id in STN)if(STN[id].g)STN[id].g.classList.toggle('busy',busy.has(id))}
-// Seedlings at work stand in front of a workstation: at most two at each (the rest keep the row under the district name).
+// Seedlings at work stand in front of a workstation, at most two at each (the rest keep the row under the district name):
+// a queue's Seedling at its ring's station wherever that is; other busy Seedlings at one in their own district, else at one anywhere whose words fit.
 const STAY={},WORKING=/^(Working|Gathering|Training|Queue|Crafting|Making|Hobby)/i,hashOf=s=>{let h=0;for(const c of String(s))h=(h*31+c.charCodeAt(0))>>>0;return h};
 const spotAt=(f,n)=>n?iso(f.i+.72,f.j+1.08):iso(f.i+1.08,f.j+.72);   // in front of the station: left of its front corner, then right
+function stationsFor(s){const ready=id=>STN[id]&&STN[id].ready,q=QUEUE_AT[clean(s.name)],out=q&&ready(q)?[q]:[];if(!WORKING.test(s.activity||''))return out;
+  const here=Object.keys(STN).filter(id=>ready(id)&&STN[id].k===s.place).sort((a,b)=>hashOf(s.id+a)-hashOf(s.id+b)),fit=t=>WORDS.filter(([re])=>re.test(t)).flatMap(([,ids])=>ids).filter(ready);
+  return [...new Set([...out,...(here.length?[...fit((s.activity||'')+' '+(s.job||'')).filter(id=>here.includes(id)),...here]:fit(s.activity||''))])]}
 function atStations(list){const out={},load={},R=[...document.querySelectorAll('#labels .dlabel rect')].map(r=>[+r.getAttribute('x'),+r.getAttribute('y'),+r.getAttribute('x')+(+r.getAttribute('width')),+r.getAttribute('y')+(+r.getAttribute('height'))]),
-    clear=(f,n)=>{const [x,y]=spotAt(f,n),z=TK();return !R.some(([l,t,r,b])=>x+13*z>l-2&&x-13*z<r+2&&y+5>t-2&&y-46*z<b+2)};   // never standing on a district name
-  for(const s of list){const w=STAY[s.id];if(w&&WORKING.test(s.activity||'')&&STN[w.id]&&STN[w.id].ready&&STN[w.id].k===s.place&&!(load[w.id]||[])[w.n]&&clear(STN[w.id],w.n)){(load[w.id]=load[w.id]||[])[w.n]=s.id;out[s.id]=w}else delete STAY[s.id]}
-  for(const s of list.slice().sort((a,b)=>a.id<b.id?-1:1)){if(out[s.id]||!WORKING.test(s.activity||''))continue;
-    const here=Object.keys(STN).filter(id=>STN[id].ready&&STN[id].k===s.place);if(!here.length)continue;
-    const words=WORDS.filter(([re])=>re.test((s.activity||'')+' '+(s.job||''))).flatMap(([,ids])=>ids).filter(id=>here.includes(id));
-    const order=[...new Set([...words,...here.sort((a,b)=>hashOf(s.id+a)-hashOf(s.id+b))])];
-    found:for(const id of order)for(const n of [0,1])if(!(load[id]||[])[n]&&clear(STN[id],n)){(load[id]=load[id]||[])[n]=s.id;out[s.id]=STAY[s.id]={id,n};break found}}
+    clear=(f,n)=>{const [x,y]=spotAt(f,n),z=TK();return !R.some(([l,t,r,b])=>x+13*z>l-2&&x-13*z<r+2&&y+5>t-2&&y-46*z<b+2)},   // never standing on a district name
+    free=(id,n)=>!(load[id]||[])[n]&&clear(STN[id],n),take=(s,id,n)=>{(load[id]=load[id]||[])[n]=s.id;out[s.id]=STAY[s.id]={id,n}};
+  const opts={},queued=s=>!!QUEUE_AT[clean(s.name)],order=list.slice().sort((a,b)=>(queued(b)-queued(a))||(a.id<b.id?-1:1));for(const s of order)opts[s.id]=stationsFor(s);
+  for(const s of order){const w=STAY[s.id];if(w&&opts[s.id].includes(w.id)&&free(w.id,w.n))take(s,w.id,w.n);else delete STAY[s.id]}   // whoever is already there stays
+  for(const s of order){if(out[s.id])continue;found:for(const id of opts[s.id])for(const n of [0,1])if(free(id,n)){take(s,id,n);break found}}
   const res={};for(const s of list){const w=out[s.id];if(!w)continue;const f=STN[w.id],[cx,cy]=sc(f.i,f.j),[x,y]=spotAt(f,w.n);
-    res[s.id]={x,y,look:[cx-x,cy-y],fx:ST[w.id].fx,side:w.n?-1:1}}
+    res[s.id]={x,y,k:f.k,look:[cx-x,cy-y],fx:ST[w.id].fx,side:w.n?-1:1}}
   return res}
 // The little effect at a working Seedling's hands: sparks, steam or dust (shown by the .working class once it has arrived).
 function workFx(t,kind,side){const key=kind?kind+side:'';if(t.fxKey===key)return;t.fxKey=key;if(t.fxg){t.fxg.remove();t.fxg=null}if(!kind)return;
@@ -1408,7 +1414,7 @@ function seedlings(list){const at=atStations(list),groups={};for(const s of list
     all.forEach((s,i)=>{const [tx,ty]=home(k,Math.min(i,n-1),n);settle(s,k,i,tx,ty,i>=n)});
     if(extra>0){const [x,y]=home(k,n-1,n),z=TK(),b=Math.max(.85,z),m=el('g',{class:'more',transform:`translate(${(x+12*z+2).toFixed(1)},${(y-17*z).toFixed(1)}) scale(${b.toFixed(3)})`},tokens);
       el('rect',{x:0,y:-11,width:34,height:22,rx:11,fill:'#6b3fd1',stroke:'#fff','stroke-width':2},m);el('text',{x:17,y:0},m).textContent='+'+extra}}
-  for(const s of list){const w=at[s.id];if(!w)continue;settle(s,s.place,0,w.x,w.y,false);const t=live[s.id];t.look=w.look;t.work=true;workFx(t,w.fx,w.side)}   // at their workstations
+  for(const s of list){const w=at[s.id];if(!w)continue;settle(s,w.k,0,w.x,w.y,false);const t=live[s.id];t.look=w.look;t.work=true;workFx(t,w.fx,w.side)}   // at their workstations
   for(const s of list)if(!at[s.id]&&live[s.id]&&live[s.id].work){const t=live[s.id];t.look=null;t.work=false;workFx(t,null,0)}
   for(const id in live)if(!seen.has(id)){live[id].g.remove();delete live[id]}
   crowns(lastData||{});walk()}
@@ -1505,7 +1511,10 @@ function tidyLabels(){const walls=panels();document.querySelectorAll('.dlabel').
   g.style.opacity=cut?0:1;g.dataset.hidden=cut?'1':''});
   // Ring labels and signs follow the same rule, and also step aside while a speech bubble is over them.
   const talk=[...document.querySelectorAll('.bubble')].filter(b=>!b.dataset.leaving).map(wbox),tl=[...document.querySelectorAll('.tl')],hit=(q,w,m)=>Math.min(q.r,w.r+m)-Math.max(q.l,w.l-m)>0&&Math.min(q.b,w.b+m)-Math.max(q.t,w.t-m)>0,
-    fr=vb(svgEl),gone=tl.map(g=>{const q=wbox(g);return !q||q.l<fr.l+2||q.r>fr.r-2||q.t<fr.t||q.b>fr.b||walls.some(w=>hit(q,w,0))||talk.some(w=>w&&hit(q,w,3))});
+    names=[...document.querySelectorAll('.dlabel:not([data-hidden="1"])')].map(wbox),onName=g=>{const q=wbox(g);return q&&names.some(w=>w&&hit(q,w,1))};
+  // A ring label that would sit on a district name moves below its ring, and fades if that is covered too.
+  document.querySelectorAll('.rl').forEach(g=>{g.removeAttribute('transform');if(onName(g)){g.setAttribute('transform','translate(0,31)');if(onName(g))g.removeAttribute('transform')}});
+  const fr=vb(svgEl),gone=tl.map(g=>{const q=wbox(g);return !q||q.l<fr.l+2||q.r>fr.r-2||q.t<fr.t||q.b>fr.b||walls.some(w=>hit(q,w,0))||talk.some(w=>w&&hit(q,w,3))||g.classList.contains('rl')&&onName(g)});
   tl.forEach((g,n)=>g.style.opacity=gone[n]?0:1)}
 // An element's outline where the camera is heading (its on-screen box lags behind while the camera glides).
 function wbox(g){try{const b=g.getBBox(),m=world.getCTM().inverse().multiply(g.getCTM()),p=[[b.x,b.y],[b.x+b.width,b.y+b.height]].map(([x,y])=>{const q=new DOMPoint(x,y).matrixTransform(m);return toScreen(q.x,q.y)});return {l:p[0][0],t:p[0][1],r:p[1][0],b:p[1][1]}}catch(e){return null}}
