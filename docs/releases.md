@@ -1,5 +1,9 @@
 # Release notes
 
+## Behind the scenes: clearer slash command check
+
+- When the game updates its slash commands on Discord, the check afterwards now lists every command that doesn't match, and exactly where, instead of stopping at the first one. No gameplay changes.
+
 ## Slash commands match the menu
 
 - **Each slash command's description now names the /menu area it matches** (for example /vote: Society › Today's vote), and the last "Colony" labels (the trophy group, the stream's vote slide, the Twitch !vote help and the society tier's LEVEL UP line) now say Society. Commands work exactly as before.

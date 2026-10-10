@@ -20,6 +20,52 @@ def signature(command):
     return (command['description'], [option(x) for x in command.get('options', [])])
 
 
+class _Missing:
+    def __repr__(self):
+        return '<missing>'
+
+
+MISSING = _Missing()
+
+
+def differences(catalog, saved):
+    """Every place where Discord's saved command differs from the catalog, as (path, catalog value, Discord value).
+
+    Walks the fields signature() compares. Options are paired by name and choices by value, so one changed
+    label shows up as its own path (/make › option 'category' › choices › choice 'parts' › name)."""
+    found = []
+
+    def compare(path, mine, theirs):
+        if mine == theirs:
+            return
+        if isinstance(mine, dict) and isinstance(theirs, dict):
+            for key in [*mine, *(k for k in theirs if k not in mine)]:
+                compare(f'{path} › {key}', mine.get(key, MISSING), theirs.get(key, MISSING))
+            return
+        rows = isinstance(mine, list) and isinstance(theirs, list) and all(
+            isinstance(r, dict) for r in mine + theirs)
+        if rows and mine and theirs:
+            key = 'value' if all('value' in r for r in mine + theirs) else 'name'
+            label = 'choice' if key == 'value' else 'option'
+            ids_mine, ids_theirs = [r.get(key) for r in mine], [r.get(key) for r in theirs]
+            if len(set(map(repr, ids_mine))) == len(mine) and len(set(map(repr, ids_theirs))) == len(theirs):
+                by_mine, by_theirs = dict(zip(ids_mine, mine)), dict(zip(ids_theirs, theirs))
+                for ident in [*ids_mine, *(i for i in ids_theirs if i not in by_mine)]:
+                    compare(f'{path} › {label} {ident!r}', by_mine.get(ident, MISSING), by_theirs.get(ident, MISSING))
+                if [i for i in ids_mine if i in by_theirs] != [i for i in ids_theirs if i in by_mine]:
+                    found.append((f'{path} › order', ids_mine, ids_theirs))
+                return
+        found.append((path, mine, theirs))
+
+    mine, theirs = signature(catalog), signature(saved)
+    name = '/' + catalog['name']
+    compare(f'{name} › description', mine[0], theirs[0])
+    compare(name, mine[1], theirs[1])
+    if mine != theirs and not found:
+        found.append((name, mine, theirs))
+    return found
+
+
 def main_functions():
     """Top-level function names of app.main, read without importing it (app.main offers those of app/game/*.py)."""
     app_dir = Path(__file__).resolve().parents[1] / 'app'
@@ -67,9 +113,17 @@ def main():
     server = f'{base}/guilds/{guild_id}/commands'
     api('PUT', server, json=commands)
     saved = {c['name']: c for c in api('GET', server) if c.get('type', 1) == 1}
+    failed = []
     for command in commands:
-        if command['name'] not in saved or signature(saved[command['name']]) != signature(command):
-            raise RuntimeError(f"Verification failed for /{command['name']}. No global commands were deleted.")
+        name = command['name']
+        found = differences(command, saved[name]) if name in saved else [(f'/{name}', name, MISSING)]
+        if found:
+            failed.append('/' + name)
+        # ascii() rather than repr(): repr() prints variation selectors (U+FE0F) and other marks as-is.
+        for path, mine, theirs in found:
+            print(f'MISMATCH {path}: catalog {ascii(mine)} | Discord {ascii(theirs)}', flush=True)
+    if failed:
+        raise RuntimeError(f"Verification failed for {', '.join(failed)}. No global commands were deleted.")
     print(f'CONFIRMED: all {len(commands)} server commands match the current catalog.', flush=True)
     print('CONFIRMED: server /life has Food autocomplete.', flush=True)
     names = {c['name'] for c in commands} | {'agriculture'}  # Retired command name.
