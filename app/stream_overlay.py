@@ -754,13 +754,15 @@ const cut=(s,n)=>{s=String(s||'');return s.length>n?s.slice(0,n-1)+'…':s};
 const slotAt=(dg,spec)=>typeof spec==='number'?(spec<0?dg.slots.length+spec:spec):dg.slots.findIndex(s=>s[0]===spec[0]&&s[1]===spec[1]);
 function sortCity(dg){[...dg.g.children].sort((p,q)=>(+p.dataset.depth||0)-(+q.dataset.depth||0)).forEach(e=>dg.g.appendChild(e))}
 // A small dark sign with a label that can change without a rebuild (hidden in the card layout, where the text would not be readable).
-function plate(g,x,y,s,w,accent,keep){const p=el('g',{class:keep?'sgn keep':'sgn'},g);el('rect',{x:x-w/2,y:y-6,width:w,height:12,rx:3,fill:'rgba(8,13,39,.92)',stroke:accent,'stroke-width':1},p);return txt(p,x,y,s,6.8)}
+function plate(g,x,y,s,w,accent,keep){const p=el('g',{class:keep?'sgn keep tl':'sgn tl'},g);el('rect',{x:x-w/2,y:y-6,width:w,height:12,rx:3,fill:'rgba(8,13,39,.92)',stroke:accent,'stroke-width':1},p);return fitSign(txt(p,x,y,s,6.8))}
+// Make a sign as wide as its words (after the text changes).
+function fitSign(t){if(t.textContent){const r=t.parentNode.querySelector('rect'),w=Math.max(20,t.getComputedTextLength()+12);r.setAttribute('x',+t.getAttribute('x')-w/2);r.setAttribute('width',w)}return t}
 function fixture(k,id,spec,sig,draw,o={}){const dg=drawn[k];if(!dg||!dg.unlocked||!dg.slots)return null;let f=dg.fx[id],i,j,n=-1;
   if(spec!=null){n=slotAt(dg,spec);if(n<0||n>=dg.slots.length)return f||null;[i,j]=dg.slots[n]}else [i,j]=o.at;
   if(f&&f.sig===sig)return f;
   if(f)f.g.remove();else if(n>=0){dg.taken.add(n);if(dg.items[n]){dg.items[n].remove();delete dg.items[n]}}   // a filler building stood here
   f=dg.fx[id]=Object.assign(f||{k,id,i,j,n},{sig,ready:false});
-  const mk=grow=>{if(f.g){f.g.remove();f.top.remove()}f.g=el('g',{class:'fx '+(o.cls||'')+(grow?' rise':''),'data-depth':o.depth??i+j},dg.g);f.top=el('g',{'data-depth':900},dg.g)},   // f.top: signs, drawn over everything in the district
+  const mk=grow=>{if(f.g){f.g.remove();f.top.remove()}f.g=el('g',{class:'fx '+(o.cls||'')+(grow?' rise':''),'data-depth':o.depth??i+j},dg.g);f.top=el('g',{},document.getElementById('signs'))},   // f.top: text signs, in a layer over the city, trees, Seedlings and district names
     paint=grow=>{mk(grow);if(!o.flat)contact(f.g,i+.08,j+.08,.84,.84,0);f.h=draw(f.g,i,j,LOOK[k][2],f)||20;f.ready=true;sortCity(dg);litSig='';
       if(grow)setTimeout(()=>f.g&&f.g.classList.remove('rise'),1400)};
   if(o.build&&!first){mk(false);scaffold(f.g,i,j,false);sortCity(dg);setTimeout(()=>{if(dg.fx[id]===f&&f.sig===sig)paint(true)},4500)}else paint(false);
@@ -802,7 +804,7 @@ function workRings(d){const list=(d.working||[]).slice(0,6),live=document.getEle
   for(const w of list){const a=ringAnchor(w),key=w.name+'|'+w.task,n=stack[a.id||'kernel']=(stack[a.id||'kernel']||0)+1;keep.add(key);if(a.id)busy.add(a.id);
     const pct=Math.round(100*Math.min(1,(w.done||0)/Math.max(1,w.total||1))),label=`${cut(w.name,10)} · ${cut(w.task,14)} ${w.done}/${w.total}`;let r=rings[key];
     if(!r){const g=el('g',{class:'wring'},live);el('circle',{r:6,fill:'rgba(8,13,39,.82)',stroke:'rgba(255,255,255,.25)','stroke-width':2.4},g);
-      const arc=el('circle',{r:6,fill:'none',stroke:'#7ee3b0','stroke-width':2.4,pathLength:100,'stroke-linecap':'round',transform:'rotate(-90)',class:'arc'},g),lab=el('g',{class:'rl'},g);
+      const arc=el('circle',{r:6,fill:'none',stroke:'#7ee3b0','stroke-width':2.4,pathLength:100,'stroke-linecap':'round',transform:'rotate(-90)',class:'arc'},g),lab=el('g',{class:'rl tl'},g);
       r=rings[key]={g,arc,lab,label:'',pct:-1};el('rect',{y:-21,height:11,rx:3,fill:'rgba(8,13,39,.92)',stroke:'#7ee3b0','stroke-width':.8},lab);txt(lab,0,-15.5,'',6.4)}
     if(r.pct!==pct){r.pct=pct;r.arc.setAttribute('stroke-dasharray',`${Math.max(2,pct)} 100`)}
     if(r.label!==label){r.label=label;const t=r.lab.querySelector('text'),b=r.lab.querySelector('rect');t.textContent=label;const tw=t.getComputedTextLength()+8;b.setAttribute('x',-tw/2);b.setAttribute('width',tw)}
@@ -840,10 +842,10 @@ function eventSite(d){const e=d.event,live=document.getElementById('live'),hl=(d
     el('polygon',{points:pts([[x-8,y-26],[x+8,y-26],[x,y-40]]),fill:'#ffbf3a',stroke:'#7a4a00','stroke-width':1,'stroke-linejoin':'round'},g);txt(g,x,y-31,'!',8,'#3a2200');
     el('circle',{class:'beacon',cx:x,cy:y-43,r:2.4,fill:'#ff4a4a'},g);el('circle',{cx:x,cy:y-33,r:14,fill:'none',stroke:'rgba(255,255,255,.28)','stroke-width':2.4},g);
     const arc=el('circle',{cx:x,cy:y-33,r:14,fill:'none',stroke:'#ff7a5a','stroke-width':2.4,pathLength:100,'stroke-dasharray':'100 100','stroke-linecap':'round',transform:`rotate(-90 ${x} ${y-33})`},g),
-      s1=plate(g,x,y+11,'',104,'#ff7a5a'),s2=plate(g,x,y+22,'',104,'#ff7a5a');ev={key:e.key,k,g,arc,s1,s2,name:e.name,end:0,total:1};
+      sg=el('g',{class:'tl'},g),s1=plate(sg,x,y+11,'',104,'#ff7a5a'),s2=plate(sg,x,y+22,'',104,'#ff7a5a');ev={key:e.key,k,g,arc,s1,s2,name:e.name,end:0,total:1};
     if(!first)toast(`${e.emoji} ${e.name} has started!`,k)}
   ev.name=e.name;ev.end=Date.now()+(e.seconds_remaining||0)*1000;ev.total=Math.max(1,e.seconds_total||0,e.seconds_remaining||0);evTick();
-  ev.s1.textContent=`${e.emoji} ${cut(e.name,20)}`;ev.s2.textContent=`${e.progress}/${e.goal} done · ${e.support_progress||0} support`}
+  ev.s1.textContent=`${e.emoji} ${cut(e.name,20)}`;ev.s2.textContent=`${e.progress}/${e.goal} done · ${e.support_progress||0} support`;fitSign(ev.s1);fitSign(ev.s2)}
 function evTick(){if(ev)ev.arc.setAttribute('stroke-dasharray',`${Math.max(1,Math.min(100,100*(ev.end-Date.now())/1000/ev.total)).toFixed(1)} 100`)}
 setInterval(evTick,1000);
 // ---- the society project: a construction site on a reserved Commons slot that builds up with its progress, and stays as a finished building
@@ -853,13 +855,13 @@ function projectSite(d){const p=d.project;if(!p)return;const pct=Math.round(p.pe
         if(st>=3)sb(g,i,j,.08,.08,.84,.84,3,'#9a5a44',{z:16});
         if(st===1)for(const [x,y] of [[.08,.08],[.88,.08],[.08,.88],[.88,.88]])sb(g,i,j,x,y,.05,.05,16,WOOD2,{z:2});
         scaffold(g,i,j,st<3)}
-      f.label=plate(f.top,centre(i,j)[0],centre(i,j)[1]+14,label,CARD?30:96,a,true);return st===4?28:34},{cls:'proj',flat:false});
-  if(f&&f.label&&f.label.textContent!==label)f.label.textContent=label}
+      f.label=plate(f.top,centre(i,j)[0]-14,centre(i,j)[1]+16,label,CARD?30:96,a,true);return st===4?28:34},{cls:'proj',flat:false});
+  if(f&&f.label&&f.label.textContent!==label)fitSign(Object.assign(f.label,{textContent:label}))}
 // ---- the market price board: the two goods the market wants today and their prices (hidden in the card layout)
 function marketBoard(d){const m=d.market;if(!m||CARD)return;const rows=[m.primary,m.secondary].filter(x=>x&&x.name),sig=rows.map(r=>r.name+':'+r.price).join('|');
   fixture('market_concourse','board',[19,11],'b'+sig,(g,i,j,a)=>{const [x,y]=sc(i,j),W=84,H=13+rows.length*10,top=y-H-8;sline(g,[x-W/2+9,y],[x-W/2+9,top+H],IRON,1.6);sline(g,[x+W/2-9,y],[x+W/2-9,top+H],IRON,1.6);
-    el('rect',{x:x-W/2,y:top,width:W,height:H,rx:3,fill:'#0f1530',stroke:a,'stroke-width':1.5},g);txt(g,x,top+6.5,'🪙 WANTED TODAY',6.2,a);
-    rows.forEach((r,n)=>{txt(g,x-W/2+5,top+16.5+n*10,cut(r.name,12),7.2,'#fffaf0','start');txt(g,x+W/2-5,top+16.5+n*10,`${r.price} SC`,7.2,'#ffd27a','end')});return H+8},{cls:'board',flat:true,depth:19+11+.4})}
+    const bd=el('g',{class:'tl'},g);el('rect',{x:x-W/2,y:top,width:W,height:H,rx:3,fill:'#0f1530',stroke:a,'stroke-width':1.5},bd);txt(bd,x,top+6.5,'🪙 WANTED TODAY',6.2,a);
+    rows.forEach((r,n)=>{txt(bd,x-W/2+5,top+16.5+n*10,cut(r.name,12),7.2,'#fffaf0','start');txt(bd,x+W/2-5,top+16.5+n*10,`${r.price} SC`,7.2,'#ffd27a','end')});return H+8},{cls:'board',flat:true,depth:19+11+.4})}
 // ---- colony shortages: a water tower whose tank shows the water, ore piles by the Frontier sized by the ore, tents by the Homes when housing is short
 function shortages(d){const col=Object.values(d.colony||{}),sum=k=>col.reduce((a,c)=>a+(+c[k]||0),0),pop=d.population||0,water=sum('water'),ore=sum('ore'),housing=sum('housing');
   const wl=Math.round(4*Math.min(1,water/Math.max(10,pop*4))),ol=ore<=0?0:ore<15?1:ore<60?2:ore<150?3:4,short=Math.max(0,pop-housing),tl=short<=0?0:short<4?1:short<12?2:3;
@@ -873,12 +875,12 @@ function shortages(d){const col=Object.values(d.colony||{}),sum=k=>col.reduce((a
 function honours(d){const L=d.leaders||{},top=(L.contributors||[])[0];
   if(top&&top.name)fixture('commons','statue',-8,'s'+top.name,(g,i,j,a,f)=>{sb(g,i,j,.2,.2,.6,.6,7,'#cfc6b2',{topColor:'#e2dccb'});const [x,y]=centre(i,j);
       el('rect',{x:x-3.2,y:y-22,width:6.4,height:11,rx:2.4,fill:'#d9b25a',stroke:'#8a6a1c','stroke-width':.6},g);el('circle',{cx:x,cy:y-26,r:3.4,fill:'#e6c673',stroke:'#8a6a1c','stroke-width':.6},g);
-      sline(g,[x+3,y-20],[x+8,y-30],'#d9b25a',2);el('circle',{cx:x+8.4,cy:y-31.4,r:2,fill:'#fff3b0'},g);plate(f.top,x,y+8,cut(top.name,12),Math.min(88,22+cut(top.name,12).length*4.6),a);return 32},{cls:'statue'})}
+      sline(g,[x+3,y-20],[x+8,y-30],'#d9b25a',2);el('circle',{cx:x+8.4,cy:y-31.4,r:2,fill:'#fff3b0'},g);plate(f.top,x-10,y+8,cut(top.name,12),40,a);return 32},{cls:'statue'})}
 function crowns(d){const top=((d.leaders||{}).active_today||[])[0],who=top?String(top.name||'').toLowerCase():'';
   for(const id in live){const t=live[id],on=!!who&&String((t.s||{}).name||'').toLowerCase()===who;if(!!t.crown===on)continue;
     if(on){t.crown=el('g',{class:'crown'},t.g);const c=el('g',{class:'float'},t.crown);el('polygon',{points:'-7,-59 7,-59 8,-68 4,-63.5 0,-70 -4,-63.5 -8,-68',fill:'#ffd35a',stroke:'#a8781a','stroke-width':.8,'stroke-linejoin':'round'},c);
       el('circle',{cx:0,cy:-62,r:1.3,fill:'#e0303a'},c)}else{t.crown.remove();t.crown=null}}}
-function townLife(d){for(const f of [stationsTown,projectSite,marketBoard,shortages,honours,workRings,eventSite]){try{f(d)}catch(e){console.error(e)}}}
+function townLife(d){for(const f of [stationsTown,projectSite,marketBoard,shortages,honours,workRings,eventSite]){try{f(d)}catch(e){console.error(e)}}tidyLabels()}
 """
 
 PAGES['map'] = (r"""
@@ -940,7 +942,7 @@ svg{position:absolute;inset:0;width:100%;height:100%;display:block}
 /* Live pieces: the colony event (a pulsing beacon, an effect for its kind) and the rings above busy stations. */
 .evpulse{animation:evpulse 1.2s ease-in-out infinite alternate;transform-box:fill-box;transform-origin:center}@keyframes evpulse{from{opacity:.3;transform:scale(.8)}to{opacity:1;transform:scale(1.15)}}
 .evfx{animation:smoke 2.4s ease-out infinite;transform-box:fill-box;transform-origin:center}.evfx.smoke{fill:#6a6560}.evfx.sparks{fill:#ffd35a;animation-duration:1s}.evfx.drops{fill:#58c8f0;animation-duration:1.6s}.evfx.spores{fill:#8af07a}
-.wring .arc{transition:stroke-dasharray 1s linear}.L-card .rl,.L-card .sgn:not(.keep){display:none}.q-low .evpulse{animation:none}
+.tl{transition:opacity .4s var(--ease)}.wring .arc{transition:stroke-dasharray 1s linear}.L-card .rl,.L-card .sgn:not(.keep){display:none}.q-low .evpulse{animation:none}
 .head{position:absolute;left:0;right:0;top:0;height:8.5vh;display:flex;align-items:center;gap:1.2vw;padding:0 1.6vw;
   background:linear-gradient(180deg,rgba(6,9,28,.92),rgba(6,9,28,.72));border-bottom:2px solid rgba(147,154,255,.45);font-size:clamp(12px,min(2.2vw,3.9vh),44px);z-index:3}
 .head .name{font:700 1.15em var(--font-display);color:var(--ivory);white-space:nowrap}.head .tier{padding:.12em .55em;border-radius:.5em;background:rgba(126,227,176,.18);border:1px solid rgba(126,227,176,.55);color:var(--green2);font-weight:900;font-size:.8em;white-space:nowrap}
@@ -1012,7 +1014,7 @@ svg{position:absolute;inset:0;width:100%;height:100%;display:block}
   <g id="ground"></g><path id="shadows" fill="#141428" opacity="0" style="transition:opacity 4s"/><g id="city"></g><g id="festive"></g><g id="civic"></g><g id="crowd"></g><g id="shades"></g>
   <rect id="tint" x="-600" y="-400" width="2160" height="1400" fill="transparent" style="pointer-events:none;transition:fill 4s"/>
   <rect id="haze" x="-600" y="-400" width="2160" height="1400" fill="transparent" style="pointer-events:none;transition:fill 4s"/>
-  <g id="live" style="pointer-events:none"></g><g id="lights" style="pointer-events:none"></g><g id="festlights" style="pointer-events:none"></g><g id="labels"></g><g id="tokens"></g>
+  <g id="live" style="pointer-events:none"></g><g id="lights" style="pointer-events:none"></g><g id="festlights" style="pointer-events:none"></g><g id="labels"></g><g id="tokens"></g><g id="signs" style="pointer-events:none"></g>
  </g>
  <g id="fx"></g>
 </svg><div class="vig"></div></div>
@@ -1227,7 +1229,7 @@ function plaza(g,back){if(back){const [lx,ly]=iso(7.75,7.75);return streetLamp(g
 const behindKernel=(x,y)=>{const [kx,ky]=iso(...KERNEL);return ((x-kx)/56)**2+((y-ky+36)/48)**2<1&&y<ky-4};
 function district(key,info,tier){const [r,c]=CELLS[key],[a,b]=cellTiles(r,c),city=document.getElementById('city');
   let dg=drawn[key];const unlocked=key==='commons'||key==='park'||info.unlocked,level=key==='commons'?2+tier*2:key==='park'?6:(info.level||1);
-  if(!dg||dg.unlocked!==unlocked){if(dg){dg.ground.remove();dg.g.remove();if(!first)toast(`🎉 ${LOOK[key]?LOOK[key][1]:'The Park'} is open for building!`,key)}
+  if(!dg||dg.unlocked!==unlocked){if(dg){for(const id in dg.fx)if(dg.fx[id].top)dg.fx[id].top.remove();dg.ground.remove();dg.g.remove();if(!first)toast(`🎉 ${LOOK[key]?LOOK[key][1]:'The Park'} is open for building!`,key)}
     const G=document.getElementById('ground');dg=drawn[key]={unlocked,count:0,items:{},fx:{},taken:new Set(),ground:G.insertBefore(el('g',{}),G.querySelector('.street')),g:el('g',{},city)};   // under the streets, kerbs and lamps
     for(const id in STN)if(STN[id].k===key)delete STN[id];
     if(key==='commons'){facet(dg.ground,diamond(a,b,6,6),shade(CONCRETE[0],'top'),{class:'walk'});facetTile(dg.ground,a,b,LAWN,{w:6,d:6,inset:.32,seed:'plaza',amp:2});plotLines(dg.ground,a,b,6,6,.4);
@@ -1430,7 +1432,7 @@ let sortAt=0,speaking=null;function sortTokens(force){const now=performance.now(
   if(want.length===have.length&&want.every((g,i)=>g===have[i]))return;want.forEach(g=>tokens.appendChild(g))}
 // A speech bubble pops up once over the speaker, stays a few seconds and fades away.
 let bubbleTimer=null;
-function speak(t,line){document.querySelectorAll('.bubble').forEach(b=>b.remove());clearTimeout(bubbleTimer);if(!t||!line)return;
+function speak(t,line){document.querySelectorAll('.bubble').forEach(b=>b.remove());clearTimeout(bubbleTimer);tidyLabels();if(!t||!line)return;
   // The whole line, word-wrapped. The bubble tries above the head, higher up, then to either side,
   // and takes the first spot that covers no district name, panel or bar and stays on screen.
   // No bubble for a speaker the camera cannot see (off-frame, or behind a bar or panel); the caption still names them.
@@ -1467,15 +1469,15 @@ function speak(t,line){document.querySelectorAll('.bubble').forEach(b=>b.remove(
   pop.insertBefore(el('polygon',{points:pts([base[0],base[1],tip]),fill:'#fffdf5',stroke:'#171230','stroke-width':1.6,'stroke-linejoin':'round'}),tx);
   const seam=side==='b'||side==='t'?{x:P[0]-5,y:(side==='b'?by+h:by)-1.6,width:10,height:3.2}:{x:(side==='l'?bx:bx+w)-1.6,y:P[1]-5,width:3.2,height:10};
   pop.insertBefore(el('rect',{...seam,fill:'#fffdf5'}),tx);
-  t.g.style.display='';sortTokens(true);
+  t.g.style.display='';sortTokens(true);setTimeout(tidyLabels,420);
   pop.animate([{opacity:0,transform:'scale(.4)'},{opacity:1,transform:'none'}],{duration:350,easing:'cubic-bezier(.2,1.4,.4,1)'});
-  bubbleTimer=setTimeout(()=>{b.animate([{opacity:1},{opacity:0}],{duration:500,fill:'forwards'}).onfinish=()=>{b.remove();if(t.hidden&&!t.path.length)t.g.style.display='none'}},Math.min(5500,SECONDS-800))}
+  bubbleTimer=setTimeout(()=>{b.dataset.leaving='1';tidyLabels();b.animate([{opacity:1},{opacity:0}],{duration:500,fill:'forwards'}).onfinish=()=>{b.remove();if(t.hidden&&!t.path.length)t.g.style.display='none'}},Math.min(5500,SECONDS-800))}
 
 // A Seedling that sets off walking stops talking: its bubble fades rather than drifting into names or off the frame.
-function hushBubble(t){const b=t.g.querySelector('.bubble');if(!b||b.dataset.leaving)return;b.dataset.leaving='1';b.animate([{opacity:1},{opacity:0}],{duration:400,fill:'forwards'}).onfinish=()=>b.remove()}
+function hushBubble(t){const b=t.g.querySelector('.bubble');if(!b||b.dataset.leaving)return;b.dataset.leaving='1';tidyLabels();b.animate([{opacity:1},{opacity:0}],{duration:400,fill:'forwards'}).onfinish=()=>b.remove()}
 // A speaker who walks out of the shot (or behind a bar) takes the bubble with them.
 function dropBubbleIfHidden(t){const b=t.g.querySelector('.bubble');if(!b||b.dataset.leaving)return;const [x,y]=toScreen(t.x,t.y-30*TK());
-  if(x<10||x>950||y<band[0]||y>536||panels().some(q=>x>q.l&&x<q.r&&y>q.t&&y<q.b)){b.dataset.leaving='1';b.animate([{opacity:1},{opacity:0}],{duration:400,fill:'forwards'}).onfinish=()=>b.remove()}}
+  if(x<10||x>950||y<band[0]||y>536||panels().some(q=>x>q.l&&x<q.r&&y>q.t&&y<q.b)){b.dataset.leaving='1';tidyLabels();b.animate([{opacity:1},{opacity:0}],{duration:400,fill:'forwards'}).onfinish=()=>b.remove()}}
 
 // ---- the camera: a wide shot, drifting in on whoever is talking and on new buildings
 const world=document.getElementById('world'),svgEl=document.getElementById('map');let lockUntil=0;
@@ -1500,7 +1502,13 @@ function panels(){const out=[vb(document.querySelector('.head')),vb(document.get
 function tidyLabels(){const walls=panels();document.querySelectorAll('.dlabel').forEach(g=>{const r=g.querySelector('rect');if(!r)return;const x=+r.getAttribute('x'),y=+r.getAttribute('y');
   const [l,t]=toScreen(x,y),[rr,b]=toScreen(x+(+r.getAttribute('width')),y+(+r.getAttribute('height')));
   const cut=l<2||rr>958||t<0||b>540||walls.some(q=>Math.min(rr,q.r)-Math.max(l,q.l)>0&&Math.min(b,q.b)-Math.max(t,q.t)>0);
-  g.style.opacity=cut?0:1;g.dataset.hidden=cut?'1':''})}
+  g.style.opacity=cut?0:1;g.dataset.hidden=cut?'1':''});
+  // Ring labels and signs follow the same rule, and also step aside while a speech bubble is over them.
+  const talk=[...document.querySelectorAll('.bubble')].filter(b=>!b.dataset.leaving).map(wbox),tl=[...document.querySelectorAll('.tl')],hit=(q,w,m)=>Math.min(q.r,w.r+m)-Math.max(q.l,w.l-m)>0&&Math.min(q.b,w.b+m)-Math.max(q.t,w.t-m)>0,
+    fr=vb(svgEl),gone=tl.map(g=>{const q=wbox(g);return !q||q.l<fr.l+2||q.r>fr.r-2||q.t<fr.t||q.b>fr.b||walls.some(w=>hit(q,w,0))||talk.some(w=>w&&hit(q,w,3))});
+  tl.forEach((g,n)=>g.style.opacity=gone[n]?0:1)}
+// An element's outline where the camera is heading (its on-screen box lags behind while the camera glides).
+function wbox(g){try{const b=g.getBBox(),m=world.getCTM().inverse().multiply(g.getCTM()),p=[[b.x,b.y],[b.x+b.width,b.y+b.height]].map(([x,y])=>{const q=new DOMPoint(x,y).matrixTransform(m);return toScreen(q.x,q.y)});return {l:p[0][0],t:p[0][1],r:p[1][0],b:p[1][1]}}catch(e){return null}}
 function look(x,y,s){if(!CAMERA||x==null||FOCUS)return apply(HOME);
   const hw=480/s,hh=(band[1]-band[0])/2/s;x=Math.max(BOUNDS.left+hw,Math.min(BOUNDS.right-hw,x));y=Math.max(BOUNDS.top+hh,Math.min(BOUNDS.bottom-hh,y));
   apply({x,y,s,px:480,py:(band[0]+band[1])/2})}

@@ -573,3 +573,18 @@ def test_words_and_districts_pick_the_workstation_a_seedling_or_queue_uses():
     result = subprocess.run([node, f.name], capture_output=True, text=True)
     assert result.returncode == 0, result.stderr[:400]
     assert json.loads(result.stdout) == ['FURNACE', 'OVEN', 'POTTERY_STATION', 'TABLE_SAW', 'EXTRACTOR', 'TAILORING_BENCH', '']
+
+
+def test_text_signs_sit_above_everything_and_step_aside_for_the_frame_bars_and_speech_bubbles():
+    page = map_page()
+    # one layer for text signs, over the city, trees, Seedlings and district names; every sign and ring label carries the "tl" fade class
+    assert '<g id="tokens"></g><g id="signs"' in page and "document.getElementById('signs')" in page
+    assert "'sgn keep tl':'sgn tl'" in page and "class:'rl tl'" in page and "const bd=el('g',{class:'tl'},g)" in page and "sg=el('g',{class:'tl'},g)" in page
+    # tidyLabels fades them when the frame or a bar or panel cuts them, or a speech bubble is over them (measured where the camera is heading)
+    tidy = page[page.index('function tidyLabels('):page.index('function look(')]
+    assert "querySelectorAll('.tl')" in tidy and "'.bubble'" in tidy and 'dataset.leaving' in tidy and 'vb(svgEl)' in tidy and 'function wbox(' in tidy
+    # a bubble that appears or leaves re-checks the fades
+    speak = page[page.index('function speak('):page.index('// ---- the camera')]
+    assert speak.count('tidyLabels()') >= 4 and 'setTimeout(tidyLabels' in speak
+    # signs fit their words, and a rebuilt district takes its signs with it
+    assert 'function fitSign(' in page and 'dg.fx[id].top.remove()' in page
