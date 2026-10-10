@@ -1,5 +1,9 @@
 # Release notes
 
+## Slash commands match the menu
+
+- **Each slash command's description now names the /menu area it matches** (for example /vote: Society › Today's vote), and the last "Colony" labels (the trophy group, the stream's vote slide, the Twitch !vote help and the society tier's LEVEL UP line) now say Society. Commands work exactly as before.
+
 ## Behind the scenes: test tools updated
 
 - The automatic tests use the current versions of GitHub's checkout and Python setup tools, ahead of GitHub retiring the old ones. No gameplay changes.

@@ -310,8 +310,8 @@ def test_colony_levelup_and_action_log(monkeypatch):
         for k in ('food','materials','development','knowledge','treasury','reputation'):setattr(s,k,threshold)
         s.food=threshold-1;db.commit()
     r=m.action('harvest','test','u')
-    assert 'LEVEL UP: Colony growth' in r.body.decode()
-    with m.SessionLocal() as db:assert 'LEVEL UP: Colony growth' in db.query(m.ActionLog).one().response
+    assert 'LEVEL UP: Society growth' in r.body.decode()
+    with m.SessionLocal() as db:assert 'LEVEL UP: Society growth' in db.query(m.ActionLog).one().response
 
 def test_admin_routine_step_obeys_cooldown(monkeypatch):
     seed();monkeypatch.setattr(m,'ADMIN_KEY','local-test-key')

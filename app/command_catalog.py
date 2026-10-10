@@ -519,7 +519,7 @@ new_commands=[
     cmd('trophies','Collections and trophies: what you have, what is close, and your pinned badge',[
         {'type':STRING,'name':'group','description':'Show one group in full','required':False,
          'choices':[{'name':'Collections','value':'collections'},{'name':'Crafting','value':'crafting'},{'name':'Festivals','value':'festivals'},
-                    {'name':'Colony','value':'colony'},{'name':'Stream','value':'stream'},{'name':'Seasons','value':'seasons'}]},
+                    {'name':'Society','value':'colony'},{'name':'Stream','value':'stream'},{'name':'Seasons','value':'seasons'}]},
         {'type':STRING,'name':'badge','description':'Pin a trophy badge next to your name on the stream map','required':False,'max_length':40}]),
 ]
 for command in commands:
@@ -532,3 +532,52 @@ for command in commands:
 new_commands.insert(0,cmd('menu','Every area of the game as buttons: pick one, then pick what to do'))
 legacy_commands=[c for c in commands if c['name'] in RETIRED]
 commands=[c for c in commands if c['name'] not in RETIRED]+new_commands
+
+# ---------------------------------------------------------------- descriptions
+# The text Discord shows beside each registered command: the menu area or screen it matches (Area › Screen, as the
+# menu's own crumbs read; see AREAS and LEAVES in app/menu.py), then what it does. This is the last word on every
+# registered command's description (earlier strings above are overwritten here). Discord allows 100 characters;
+# tests/test_command_descriptions.py checks the length and that every registered command has a line here.
+DESCRIPTIONS={
+    'seed':'Help › Handbook: every topic of the game explained, from first steps to terms',
+    'guide':'Help › What next? and Guide for…: your best next step and why, or help with one goal',
+    'start':'You › Settings › More › Start / load citizen: create your citizen or load your linked one',
+    'me':'The You area: profile, skills, achievements, titles and more; also Needs and Daily contract',
+    'inventory':'Bag & Shop › My bag: everything you own, with search, sort and filters',
+    'job':'You › Job & role › Job: pick your profession bonus',
+    'specialize':'You › Job & role › Specialize: choose your permanent Lv.10 skill path',
+    'home':'Bag & Shop › Home & business: see your home (Habitat) or upgrade it',
+    'business':'Bag & Shop › Home & business: start, work, contract or invest in your business',
+    'make':'Craft › All recipes: pick a category, then a recipe; preview, craft or queue it',
+    'seedindustries':'Bag & Shop: buy, sell, orders, shop by category and sell extras with Seed Industries',
+    'world':'The Society area: news, the event, society stats and next tier, top helpers, weather, holidays',
+    'district':'You › Job & role › District: choose your home district',
+    'shift':"You › Job & role › Shift: choose today's optional shift role",
+    'social':'Life › Friends: say hi, hang out, mentor, duo activities or group games',
+    'use':"Bag & Shop › Use: consume supplies or use equipment, with each item's exact effect",
+    'ducks':'You › Job & role › Delivery partner: fleet bonds and your preferred duck',
+    'link':'You › Settings › Link Twitch: link and merge this citizen with your Twitch one',
+    'mine':'Work › Mine: choose ore or Coal, see requirements, mine or queue up to 10',
+    'repair':'Work › More: Fix infrastructure (Engineering) or Fix a tool',
+    'market':'Bag & Shop › More: Best prices today, Trade for SC or Market analysis',
+    'training':'Work › Train skills: skills, branch levels, supplies and jobs; pick a task to work',
+    'catalog':'Craft › More › Item list: every item by category, with its uses and recipes',
+    'gather':'Work › Gather: collect natural materials for cooking, processing and crafting',
+    'workshop':'Craft › More: Workstations and Unlock a station (recipe tiers, one-time fees)',
+    'queue':'Work › Queue status: view, start or stop a queue of up to 10 attempts; plan what runs next',
+    'status':'You › More › Full status: needs, queue, cooldowns, ready recipes and your next step',
+    'seedling':'You › My Seedling: mood, thoughts, what it is doing, schedule and diary',
+    'find':'Help › Ask or search: a word, or how do I make…, where do I get…, how do I level…',
+    'settings':'You › Settings: queue alerts, pop-ups, auto-recover, activity feed; blank shows them',
+    'menu':'Home: buttons for Work, Craft, Life, Bag & Shop, Society, You and Help',
+    'life':'The Life area: relax, sleep, eat, games, walk, hobbies, meals or one-press recovery',
+    'work':'Work › Farm and Other jobs: farming, research, logistics and frontier work',
+    'mod':'The Moderator area (owner only): events, moderator log, linked accounts',
+    'vote':"Society › Today's vote: what New Eridian builds or celebrates next (blank shows the ballot)",
+    'season':'Society › Season: your points and rank, top ten, rewards, story and hats',
+    'challenge':'Society › Stream challenge: goal, time left, top helpers and how to help',
+    'customize':'You › Looks: skin tone, hair, outfit, accessory, attitude, catchphrase (blank shows it)',
+    'trophies':'Society › Trophies: what you have, what is close, and your pinned badge',
+}
+for command in commands:
+    command['description']=DESCRIPTIONS[command['name']]

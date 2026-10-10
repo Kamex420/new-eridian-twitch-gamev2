@@ -152,7 +152,7 @@ def snapshot(db,p):
     life=db.execute(select(LifeState).where(LifeState.channel_id==p.channel_id,LifeState.canonical_uid==p.twitch_uid)).scalar_one_or_none()
     s=db.execute(select(Society).where(Society.channel_id==p.channel_id)).scalar_one()
     shared=state(db,p.channel_id)
-    ranks={"Colony growth":society_tier_index(s)+1}
+    ranks={"Society growth":society_tier_index(s)+1}
     home=db.execute(select(Home).where(Home.channel_id==p.channel_id,Home.canonical_uid==p.twitch_uid)).scalar_one_or_none()
     ranks["Habitat"]=home.tier if home else 1
     for row in db.execute(select(HobbyProgress).where(HobbyProgress.channel_id==p.channel_id,HobbyProgress.canonical_uid==p.twitch_uid)).scalars():

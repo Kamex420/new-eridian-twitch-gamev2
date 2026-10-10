@@ -70,7 +70,7 @@ NEWCOMER_PANELS = [
          ('Avesta', 'The planet. Humanity moved here from Earth.'),
          ('New Eridian', 'Our town. Everyone who plays builds it together.'),
          ('Seedling', 'Your citizen. It has moods and thoughts, and it keeps living while you are away.'),
-         ('Avesta day', 'Game time: Morning, Day, Evening and Night. Each day brings a new colony vote.')]),
+         ('Avesta day', 'Game time: Morning, Day, Evening and Night. Each day brings a new society vote.')]),
       ('YOU', [
           ('Needs', 'Energy, Nutrition, Comfort and Social. Tasks use them up; eating and resting fill them again.'),
           ('Skills', 'Every task gives practice in a skill. Higher levels unlock more.'),
@@ -245,7 +245,7 @@ PANELS = NEWCOMER_PANELS + [
       ('DO THINGS', [('/life  /work  /gather  /mine  /use', 'Recover, work, collect and use items.'),
                      ('/make  /workshop  /catalog  /queue', 'Craft, unlock stations, look things up, automate.')]),
       ('TRADE & COMMUNITY', [('/seedindustries  /market  /home  /business', 'Money, prices, your Habitat and company.'),
-                             ('/vote  /challenge  /season  /trophies', 'Colony votes, stream challenges, seasons and trophies.'),
+                             ('/vote  /challenge  /season  /trophies', 'Society votes, stream challenges, seasons and trophies.'),
                              ('/social  /world  /district  /shift  /ducks', 'Friends, the settlement, events and holidays.')]),
       ('HELP', [('/guide  /find  /seed  /start  /link  /job', 'Next steps, search or ask, the handbook and your setup.'),
                 ('/mod', 'Moderators: events, stream challenges, the recap and these panels.')])],

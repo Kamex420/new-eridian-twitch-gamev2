@@ -447,7 +447,7 @@ def overview(db, p, provider='discord'):
         lines.append('🥇 Every season reward unlocked. Now chase the top three for a champion title!')
     lines.append('')
     lines.append(f'🤝 **Community:** {total:,} points together' + (f' · next milestone {goal[0]:,}: {goal[1]} {goal[2]}' if goal else ' · every milestone reached!'))
-    lines.append('Points: 3 per Contribution, 1 per aptitude XP, plus stream challenges, colony votes and trophies. Only season points reset at the end; stats and items stay.')
+    lines.append('Points: 3 per Contribution, 1 per aptitude XP, plus stream challenges, society votes and trophies. Only season points reset at the end; stats and items stay.')
     return '\n'.join(lines)
 
 

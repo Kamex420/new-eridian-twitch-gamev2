@@ -47,7 +47,7 @@ A short dictionary. All of these come up in your first hour.
 - **Avesta:** The planet. Humanity moved here from Earth.
 - **New Eridian:** Our town. Everyone who plays builds it together.
 - **Seedling:** Your citizen. It has moods and thoughts, and it keeps living while you are away.
-- **Avesta day:** Game time: Morning, Day, Evening and Night. Each day brings a new colony vote.
+- **Avesta day:** Game time: Morning, Day, Evening and Night. Each day brings a new society vote.
 
 **You**
 
@@ -390,7 +390,7 @@ Every command, grouped. /menu shows all of them as buttons.
 **Trade & Community**
 
 - `/seedindustries  /market  /home  /business` Money, prices, your Habitat and company.
-- `/vote  /challenge  /season  /trophies` Colony votes, stream challenges, seasons and trophies.
+- `/vote  /challenge  /season  /trophies` Society votes, stream challenges, seasons and trophies.
 - `/social  /world  /district  /shift  /ducks` Friends, the settlement, events and holidays.
 
 **Help**

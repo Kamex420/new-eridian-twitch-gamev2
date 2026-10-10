@@ -58,7 +58,7 @@ The Holidays panel's COMING UP part is worked out when the bot posts it; the cop
 [0mliving while you are away.
 [0;33mAvesta day
 [0mGame time: Morning, Day, Evening and Night. Each day
-[0mbrings a new colony vote.
+[0mbrings a new society vote.
 [1;36mYOU
 [0;33mNeeds
 [0mEnergy, Nutrition, Comfort and Social. Tasks use them up;
@@ -467,7 +467,7 @@ The Holidays panel's COMING UP part is worked out when the bot posts it; the cop
 [0;33m/seedindustries  /market  /home  /business
 [0mMoney, prices, your Habitat and company.
 [0;33m/vote  /challenge  /season  /trophies
-[0mColony votes, stream challenges, seasons and trophies.
+[0mSociety votes, stream challenges, seasons and trophies.
 [0;33m/social  /world  /district  /shift  /ducks
 [0mFriends, the settlement, events and holidays.
 [1;36mHELP

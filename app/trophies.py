@@ -6,7 +6,7 @@ Trophies come in six groups:
                finish each curio set and all ten curios
   Crafting     master a craft category (12 different recipes, or all of them in a small one), and five of them
   Festivals    craft every festival food of a holiday
-  Colony       vote, help finish society projects, finish First Steps, reach Lv 3 in every aptitude,
+  Society      vote, help finish society projects, finish First Steps, reach Lv 3 in every aptitude,
                a Seedling with 50 good days of its own
   Stream       take part in 1, 10 and 25 stream challenges, win 5
   Seasons      reach Gold in a season, finish in a season's top three
@@ -37,7 +37,7 @@ CATEGORY_LOOK = {'decor': ('🖼️', 'Decor'), 'parts': ('⚙️', 'Parts'), 'c
                  'tables': ('🪵', 'Tables'), 'machines': ('🏭', 'Machines'), 'equipment': ('🧰', 'Equipment'), 'building': ('🏠', 'Building'),
                  'bathroom': ('🛁', 'Bathroom'), 'beds': ('🛏️', 'Beds'), 'seeds': ('🌱', 'Seeds')}
 GROUPS = [('collections', '🧺', 'Collections'), ('crafting', '🛠️', 'Crafting'), ('festivals', '🎉', 'Festivals'),
-          ('colony', '🏛️', 'Colony'), ('stream', '📺', 'Stream'), ('seasons', '🏁', 'Seasons')]
+          ('colony', '🏛️', 'Society'), ('stream', '📺', 'Stream'), ('seasons', '🏁', 'Seasons')]
 
 
 class Found(Base):
@@ -118,8 +118,8 @@ def _build():
     trophy('pumpkin_head', '🎃', 'Pumpkin Head', "Craft a Jack-o'-lantern Mask (your Seedling wears it on the stream map)", 'festivals', 5, 1,
            lambda c, mask=mask: int(bool(c['crafted'] & mask)), hat='jackmask')
 
-    trophy('civic_duty', '🗳️', 'Civic Duty', 'Vote in a colony vote', 'colony', 5, 1, lambda c: c['votes'])
-    trophy('town_council', '📜', 'Town Council', 'Vote in 15 colony votes', 'colony', 30, 15, lambda c: c['votes'], title='town_councillor')
+    trophy('civic_duty', '🗳️', 'Civic Duty', 'Vote in a society vote', 'colony', 5, 1, lambda c: c['votes'])
+    trophy('town_council', '📜', 'Town Council', 'Vote in 15 society votes', 'colony', 30, 15, lambda c: c['votes'], title='town_councillor')
     trophy('builder', '🏗️', 'Builder', 'Help finish a society project', 'colony', 15, 1, lambda c: c['projects'])
     trophy('project_veteran', '🏢', 'Project Veteran', 'Help finish 3 society projects', 'colony', 40, 3, lambda c: c['projects'], title='project_veteran')
     trophy('settled_in', '🎓', 'Settled In', 'Finish First Steps', 'colony', 5, 1, lambda c: c['first_steps'])

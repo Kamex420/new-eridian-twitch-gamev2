@@ -167,7 +167,7 @@ TOPICS = {
     'life': 'Every task costs Energy, Nutrition and Comfort; work stops when they run low. !relax: +Energy and +Comfort. !sleep: back to full '
             '(every 30 minutes). !eat: pick a food. !games: +Social. !recover: every recovery that is ready. !eatfull: eat to 80 Nutrition. '
             'Using beds, seats and clothing, and auto-recovering queues, are on Discord.',
-    'other': '!seedling: your Seedling now. !diary: what it did while you were away. !vote 1-3: the colony vote. !challenge: the stream '
+    'other': '!seedling: your Seedling now. !diary: what it did while you were away. !vote 1-3: the society vote. !challenge: the stream '
              'challenge. !recap: this week’s leaders. !find <word or question>: search or ask. !meal: share a Pumpkin. Queues, favourites, goals, '
              'shopping lists, auto-selling, keep levels, schedules and your Seedling’s look are on Discord.',
 }
